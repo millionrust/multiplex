@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "685f72311a08494cf303f401172f95f2def77b4006cadd8d1e0d21bfa4d41073",
+  "sourceSha256": "7bef6ec44df4637758ac855c6782e9238c86dad5a4214346d7daa72d95520123",
   "statuses": [
     {
       "color": "color.status.attention",
@@ -13,14 +13,14 @@
       "color": "color.status.busy",
       "icon": "icon.status.busy",
       "kind": "busy",
-      "shape": "filled_circle",
+      "shape": "ring_spinner",
       "text": "text.status.busy"
     },
     {
       "color": "color.status.done",
       "icon": "icon.status.done",
       "kind": "done",
-      "shape": "check_circle",
+      "shape": "filled_circle",
       "text": "text.status.done"
     },
     {
@@ -41,21 +41,21 @@
       "color": "color.status.offline",
       "icon": "icon.status.offline",
       "kind": "offline",
-      "shape": "broken_link",
+      "shape": "dashed_circle",
       "text": "text.status.offline"
     },
     {
       "color": "color.status.attention",
       "icon": "icon.status.orphaned",
       "kind": "orphaned",
-      "shape": "question_diamond",
+      "shape": "hollow_diamond",
       "text": "text.status.orphaned"
     },
     {
       "color": "color.status.error",
       "icon": "icon.status.permission_denied",
       "kind": "permission_denied",
-      "shape": "lock",
+      "shape": "hollow_square",
       "text": "text.status.permission_denied"
     }
   ],
@@ -96,115 +96,213 @@
       }
     },
     {
-      "allowedUse": "Primary actions and links.",
+      "allowedUse": "Links, the active navigation icon, toggles, and drop zones. Never a button fill.",
       "category": "color",
-      "description": "Primary action color.",
+      "description": "Accent color.",
       "key": "color.action.primary",
       "reducedMotion": null,
       "values": {
-        "dark": "#7EA2FF",
+        "dark": "#74A7F2",
         "high_contrast": "#00FFFF",
-        "light": "#2457D6",
+        "light": "#2A64C8",
         "recording_friendly": "#8CA8E8",
-        "system": "#7EA2FF"
+        "system": "#74A7F2"
       }
     },
     {
-      "allowedUse": "Primary action foreground only.",
+      "allowedUse": "Accent foreground only.",
       "category": "color",
-      "description": "Text shown on the primary action color.",
+      "description": "Text shown on the accent color.",
       "key": "color.action.primary_text",
       "reducedMotion": null,
       "values": {
-        "dark": "#07132E",
+        "dark": "#0E1622",
         "high_contrast": "#000000",
         "light": "#FFFFFF",
         "recording_friendly": "#111318",
-        "system": "#07132E"
+        "system": "#0E1622"
       }
     },
     {
-      "allowedUse": "Top-level application backgrounds.",
+      "allowedUse": "Content panes and the window background.",
       "category": "color",
-      "description": "Window and application canvas background.",
+      "description": "Content pane and window ground.",
       "key": "color.bg.canvas",
       "reducedMotion": null,
       "values": {
-        "dark": "#101318",
+        "dark": "#17191D",
         "high_contrast": "#000000",
-        "light": "#F7F8FA",
-        "recording_friendly": "#17191D",
-        "system": "#101318"
+        "light": "#FAFBFC",
+        "recording_friendly": "#202328",
+        "system": "#17191D"
       }
     },
     {
-      "allowedUse": "Raised application surfaces.",
+      "allowedUse": "The title bar, sidebar, toolbar, and status bar.",
       "category": "color",
-      "description": "Menu, popover, and dialog background.",
+      "description": "Window chrome background.",
+      "key": "color.bg.chrome",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#111316",
+        "high_contrast": "#000000",
+        "light": "#E9ECF0",
+        "recording_friendly": "#1A1C20",
+        "system": "#111316"
+      }
+    },
+    {
+      "allowedUse": "Default buttons, inputs, key caps, and segmented tracks.",
+      "category": "color",
+      "description": "Neutral control fill.",
+      "key": "color.bg.control",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#23262B",
+        "high_contrast": "#000000",
+        "light": "#FFFFFF",
+        "recording_friendly": "#2C3037",
+        "system": "#23262B"
+      }
+    },
+    {
+      "allowedUse": "Hovered default buttons and controls.",
+      "category": "color",
+      "description": "Neutral control fill on hover.",
+      "key": "color.bg.control_hover",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#2A2E34",
+        "high_contrast": "#1A1A1A",
+        "light": "#F2F4F7",
+        "recording_friendly": "#333841",
+        "system": "#2A2E34"
+      }
+    },
+    {
+      "allowedUse": "Host cards, menus, the command palette, and dialogs.",
+      "category": "color",
+      "description": "Floating object background.",
       "key": "color.bg.elevated",
       "reducedMotion": null,
       "values": {
-        "dark": "#20252D",
+        "dark": "#1B1E23",
         "high_contrast": "#0A0A0A",
         "light": "#FFFFFF",
-        "recording_friendly": "#282C33",
-        "system": "#20252D"
+        "recording_friendly": "#25292F",
+        "system": "#1B1E23"
       }
     },
     {
-      "allowedUse": "Unraised application surfaces.",
+      "allowedUse": "Hovered navigation items, rows, menu items, and tabs.",
       "category": "color",
-      "description": "Panel and card surface background.",
+      "description": "Row and item hover background.",
+      "key": "color.bg.hover",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#1C1F24",
+        "high_contrast": "#1A1A1A",
+        "light": "#EDF0F3",
+        "recording_friendly": "#2A2E34",
+        "system": "#1C1F24"
+      }
+    },
+    {
+      "allowedUse": "Selected navigation items, rows, segments, and the active tab.",
+      "category": "color",
+      "description": "Selected row and item background.",
+      "key": "color.bg.selected",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#23272E",
+        "high_contrast": "#0033FF",
+        "light": "#E1E6ED",
+        "recording_friendly": "#30353D",
+        "system": "#23272E"
+      }
+    },
+    {
+      "allowedUse": "Sidebar, inspector, tab and pane headers, and recessed fields.",
+      "category": "color",
+      "description": "Side pane and header surface.",
       "key": "color.bg.surface",
       "reducedMotion": null,
       "values": {
-        "dark": "#181C22",
+        "dark": "#14161A",
         "high_contrast": "#000000",
-        "light": "#FFFFFF",
-        "recording_friendly": "#202329",
-        "system": "#181C22"
+        "light": "#F1F3F6",
+        "recording_friendly": "#1D2024",
+        "system": "#14161A"
       }
     },
     {
       "allowedUse": "Terminal viewport only.",
       "category": "color",
-      "description": "Default terminal background.",
+      "description": "Terminal background, equal to the canvas.",
       "key": "color.bg.terminal",
       "reducedMotion": null,
       "values": {
-        "dark": "#0B0D10",
+        "dark": "#17191D",
         "high_contrast": "#000000",
-        "light": "#111318",
-        "recording_friendly": "#111318",
-        "system": "#0B0D10"
+        "light": "#FAFBFC",
+        "recording_friendly": "#202328",
+        "system": "#17191D"
       }
     },
     {
-      "allowedUse": "Controls and structural dividers.",
+      "allowedUse": "Pane edges, the title bar, cards, and fields.",
       "category": "color",
-      "description": "Default control and divider border.",
+      "description": "Default pane and divider border.",
       "key": "color.border.default",
       "reducedMotion": null,
       "values": {
-        "dark": "#343B46",
+        "dark": "#2A2E35",
         "high_contrast": "#FFFFFF",
-        "light": "#D7DCE3",
-        "recording_friendly": "#474C55",
-        "system": "#343B46"
+        "light": "#D6DAE0",
+        "recording_friendly": "#3A3F47",
+        "system": "#2A2E35"
       }
     },
     {
-      "allowedUse": "Selection and drag targets.",
+      "allowedUse": "Focused text inputs, paired with the focus ring.",
       "category": "color",
-      "description": "Strong selected or drop-target border.",
+      "description": "Input border while the input holds focus.",
+      "key": "color.border.focus",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#4A5260",
+        "high_contrast": "#FFFF00",
+        "light": "#8F99A6",
+        "recording_friendly": "#6A7280",
+        "system": "#4A5260"
+      }
+    },
+    {
+      "allowedUse": "Buttons and form fields.",
+      "category": "color",
+      "description": "Control border.",
       "key": "color.border.strong",
       "reducedMotion": null,
       "values": {
-        "dark": "#657083",
+        "dark": "#363A41",
         "high_contrast": "#FFFFFF",
-        "light": "#9AA4B2",
-        "recording_friendly": "#777D87",
-        "system": "#657083"
+        "light": "#C4CAD2",
+        "recording_friendly": "#464C55",
+        "system": "#363A41"
+      }
+    },
+    {
+      "allowedUse": "Row dividers, pane separators, and card outlines.",
+      "category": "color",
+      "description": "Quiet hairline between sibling regions.",
+      "key": "color.border.subtle",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#22262C",
+        "high_contrast": "#8A8A8A",
+        "light": "#E3E6EA",
+        "recording_friendly": "#30343B",
+        "system": "#22262C"
       }
     },
     {
@@ -214,11 +312,11 @@
       "key": "color.focus",
       "reducedMotion": null,
       "values": {
-        "dark": "#8FC7FF",
+        "dark": "#74A7F2",
         "high_contrast": "#FFFF00",
-        "light": "#005FCC",
+        "light": "#2A64C8",
         "recording_friendly": "#FFFFFF",
-        "system": "#8FC7FF"
+        "system": "#74A7F2"
       }
     },
     {
@@ -228,39 +326,95 @@
       "key": "color.focus.separation",
       "reducedMotion": null,
       "values": {
-        "dark": "#181C22",
+        "dark": "#14161A",
         "high_contrast": "#000000",
-        "light": "#FFFFFF",
-        "recording_friendly": "#202329",
-        "system": "#181C22"
+        "light": "#F1F3F6",
+        "recording_friendly": "#1D2024",
+        "system": "#14161A"
       }
     },
     {
-      "allowedUse": "Modal separation only.",
+      "allowedUse": "Group dots and tile marks, always with the group name.",
+      "category": "color",
+      "description": "Jump host group identity.",
+      "key": "color.group.jump",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#B4B9C2",
+        "high_contrast": "#FFFFFF",
+        "light": "#4F5661",
+        "recording_friendly": "#C9CDD3",
+        "system": "#B4B9C2"
+      }
+    },
+    {
+      "allowedUse": "Group dots and tile marks, always with the group name.",
+      "category": "color",
+      "description": "Lab host group identity.",
+      "key": "color.group.lab",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#B69CF0",
+        "high_contrast": "#FF66FF",
+        "light": "#6E48C2",
+        "recording_friendly": "#B5A6D9",
+        "system": "#B69CF0"
+      }
+    },
+    {
+      "allowedUse": "Group dots and tile marks, always with the group name.",
+      "category": "color",
+      "description": "Production host group identity.",
+      "key": "color.group.production",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#74A7F2",
+        "high_contrast": "#00FFFF",
+        "light": "#2A64C8",
+        "recording_friendly": "#8CA8E8",
+        "system": "#74A7F2"
+      }
+    },
+    {
+      "allowedUse": "Group dots and tile marks, always with the group name.",
+      "category": "color",
+      "description": "Staging host group identity.",
+      "key": "color.group.staging",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#6CCB8F",
+        "high_contrast": "#00FF66",
+        "light": "#1A7A45",
+        "recording_friendly": "#8BC3A4",
+        "system": "#6CCB8F"
+      }
+    },
+    {
+      "allowedUse": "Behind the command palette and dialogs only.",
       "category": "color",
       "description": "Modal overlay scrim.",
       "key": "color.overlay.scrim",
       "reducedMotion": null,
       "values": {
-        "dark": "#000000B3",
+        "dark": "#08090B8C",
         "high_contrast": "#000000E6",
-        "light": "#11131899",
-        "recording_friendly": "#000000D9",
-        "system": "#000000B3"
+        "light": "#1A1D2266",
+        "recording_friendly": "#000000B3",
+        "system": "#08090B8C"
       }
     },
     {
-      "allowedUse": "Selected content.",
+      "allowedUse": "Selected terminal text. Row selection uses color.bg.selected.",
       "category": "color",
-      "description": "Selected row and terminal selection background.",
+      "description": "Terminal text selection background.",
       "key": "color.selection",
       "reducedMotion": null,
       "values": {
-        "dark": "#253A69",
+        "dark": "#2B3B52",
         "high_contrast": "#0033FF",
-        "light": "#DCE7FF",
+        "light": "#CFE0FA",
         "recording_friendly": "#39465F",
-        "system": "#253A69"
+        "system": "#2B3B52"
       }
     },
     {
@@ -270,11 +424,11 @@
       "key": "color.status.attention",
       "reducedMotion": null,
       "values": {
-        "dark": "#FFB35C",
+        "dark": "#E9B061",
         "high_contrast": "#FFFF00",
-        "light": "#A65300",
+        "light": "#8F5300",
         "recording_friendly": "#D6B47A",
-        "system": "#FFB35C"
+        "system": "#E9B061"
       }
     },
     {
@@ -284,11 +438,11 @@
       "key": "color.status.busy",
       "reducedMotion": null,
       "values": {
-        "dark": "#7EA2FF",
+        "dark": "#74A7F2",
         "high_contrast": "#00FFFF",
-        "light": "#2457D6",
+        "light": "#2A64C8",
         "recording_friendly": "#8CA8E8",
-        "system": "#7EA2FF"
+        "system": "#74A7F2"
       }
     },
     {
@@ -298,11 +452,11 @@
       "key": "color.status.done",
       "reducedMotion": null,
       "values": {
-        "dark": "#4ED08A",
+        "dark": "#6CCB8F",
         "high_contrast": "#00FF66",
-        "light": "#137A4B",
+        "light": "#1A7A45",
         "recording_friendly": "#8BC3A4",
-        "system": "#4ED08A"
+        "system": "#6CCB8F"
       }
     },
     {
@@ -312,11 +466,11 @@
       "key": "color.status.error",
       "reducedMotion": null,
       "values": {
-        "dark": "#FF7B83",
+        "dark": "#E5787A",
         "high_contrast": "#FF66FF",
-        "light": "#B4232A",
+        "light": "#B8343A",
         "recording_friendly": "#D99599",
-        "system": "#FF7B83"
+        "system": "#E5787A"
       }
     },
     {
@@ -326,11 +480,11 @@
       "key": "color.status.idle",
       "reducedMotion": null,
       "values": {
-        "dark": "#98A2B3",
+        "dark": "#8C929C",
         "high_contrast": "#FFFFFF",
-        "light": "#667085",
-        "recording_friendly": "#B7BBC2",
-        "system": "#98A2B3"
+        "light": "#4F5661",
+        "recording_friendly": "#A3A8B0",
+        "system": "#8C929C"
       }
     },
     {
@@ -340,53 +494,319 @@
       "key": "color.status.offline",
       "reducedMotion": null,
       "values": {
-        "dark": "#A7AFBA",
+        "dark": "#838993",
         "high_contrast": "#FFFFFF",
-        "light": "#5B6472",
-        "recording_friendly": "#A7ABB1",
-        "system": "#A7AFBA"
+        "light": "#626974",
+        "recording_friendly": "#8E949D",
+        "system": "#838993"
       }
     },
     {
-      "allowedUse": "Non-critical metadata.",
+      "allowedUse": "Terminal SGR color 0.",
+      "category": "color",
+      "description": "ANSI palette slot 0.",
+      "key": "color.terminal.ansi.black",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#1B1E23",
+        "high_contrast": "#000000",
+        "light": "#1A1D22",
+        "recording_friendly": "#25292F",
+        "system": "#1B1E23"
+      }
+    },
+    {
+      "allowedUse": "Terminal SGR color 4.",
+      "category": "color",
+      "description": "ANSI palette slot 4.",
+      "key": "color.terminal.ansi.blue",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#74A7F2",
+        "high_contrast": "#66B3FF",
+        "light": "#2A64C8",
+        "recording_friendly": "#8CA8E8",
+        "system": "#74A7F2"
+      }
+    },
+    {
+      "allowedUse": "Terminal SGR color 8.",
+      "category": "color",
+      "description": "ANSI palette slot 8.",
+      "key": "color.terminal.ansi.bright_black",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#5A6069",
+        "high_contrast": "#9A9A9A",
+        "light": "#4F5661",
+        "recording_friendly": "#6A7280",
+        "system": "#5A6069"
+      }
+    },
+    {
+      "allowedUse": "Terminal SGR color 12.",
+      "category": "color",
+      "description": "ANSI palette slot 12.",
+      "key": "color.terminal.ansi.bright_blue",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#95BCF6",
+        "high_contrast": "#A6D2FF",
+        "light": "#3F76D6",
+        "recording_friendly": "#A9BFEE",
+        "system": "#95BCF6"
+      }
+    },
+    {
+      "allowedUse": "Terminal SGR color 14.",
+      "category": "color",
+      "description": "ANSI palette slot 14.",
+      "key": "color.terminal.ansi.bright_cyan",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#86D6E0",
+        "high_contrast": "#99FFFF",
+        "light": "#13879A",
+        "recording_friendly": "#A8D4DA",
+        "system": "#86D6E0"
+      }
+    },
+    {
+      "allowedUse": "Terminal SGR color 10.",
+      "category": "color",
+      "description": "ANSI palette slot 10.",
+      "key": "color.terminal.ansi.bright_green",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#8ADBA7",
+        "high_contrast": "#7DFFAE",
+        "light": "#228A52",
+        "recording_friendly": "#A6D3BA",
+        "system": "#8ADBA7"
+      }
+    },
+    {
+      "allowedUse": "Terminal SGR color 13.",
+      "category": "color",
+      "description": "ANSI palette slot 13.",
+      "key": "color.terminal.ansi.bright_magenta",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#CAB5F5",
+        "high_contrast": "#FF9CFF",
+        "light": "#8160CF",
+        "recording_friendly": "#C8BCE3",
+        "system": "#CAB5F5"
+      }
+    },
+    {
+      "allowedUse": "Terminal SGR color 9.",
+      "category": "color",
+      "description": "ANSI palette slot 9.",
+      "key": "color.terminal.ansi.bright_red",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#F09499",
+        "high_contrast": "#FF9C9C",
+        "light": "#CC4A50",
+        "recording_friendly": "#E3AEB1",
+        "system": "#F09499"
+      }
+    },
+    {
+      "allowedUse": "Terminal SGR color 15.",
+      "category": "color",
+      "description": "ANSI palette slot 15.",
+      "key": "color.terminal.ansi.bright_white",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#F1F3F5",
+        "high_contrast": "#FFFFFF",
+        "light": "#8B919B",
+        "recording_friendly": "#F4F5F6",
+        "system": "#F1F3F5"
+      }
+    },
+    {
+      "allowedUse": "Terminal SGR color 11.",
+      "category": "color",
+      "description": "ANSI palette slot 11.",
+      "key": "color.terminal.ansi.bright_yellow",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#F2C585",
+        "high_contrast": "#FFFF99",
+        "light": "#A15F00",
+        "recording_friendly": "#E1C696",
+        "system": "#F2C585"
+      }
+    },
+    {
+      "allowedUse": "Terminal SGR color 6.",
+      "category": "color",
+      "description": "ANSI palette slot 6.",
+      "key": "color.terminal.ansi.cyan",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#62C4D1",
+        "high_contrast": "#00FFFF",
+        "light": "#0E7282",
+        "recording_friendly": "#8CC5CC",
+        "system": "#62C4D1"
+      }
+    },
+    {
+      "allowedUse": "Terminal SGR color 2.",
+      "category": "color",
+      "description": "ANSI palette slot 2.",
+      "key": "color.terminal.ansi.green",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#6CCB8F",
+        "high_contrast": "#00FF66",
+        "light": "#1A7A45",
+        "recording_friendly": "#8BC3A4",
+        "system": "#6CCB8F"
+      }
+    },
+    {
+      "allowedUse": "Terminal SGR color 5.",
+      "category": "color",
+      "description": "ANSI palette slot 5.",
+      "key": "color.terminal.ansi.magenta",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#B69CF0",
+        "high_contrast": "#FF66FF",
+        "light": "#6E48C2",
+        "recording_friendly": "#B5A6D9",
+        "system": "#B69CF0"
+      }
+    },
+    {
+      "allowedUse": "Terminal SGR color 1.",
+      "category": "color",
+      "description": "ANSI palette slot 1.",
+      "key": "color.terminal.ansi.red",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#E5787A",
+        "high_contrast": "#FF6B6B",
+        "light": "#B8343A",
+        "recording_friendly": "#D99599",
+        "system": "#E5787A"
+      }
+    },
+    {
+      "allowedUse": "Terminal SGR color 7.",
+      "category": "color",
+      "description": "ANSI palette slot 7.",
+      "key": "color.terminal.ansi.white",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#C9CDD4",
+        "high_contrast": "#FFFFFF",
+        "light": "#626974",
+        "recording_friendly": "#C9CDD3",
+        "system": "#C9CDD4"
+      }
+    },
+    {
+      "allowedUse": "Terminal SGR color 3.",
+      "category": "color",
+      "description": "ANSI palette slot 3.",
+      "key": "color.terminal.ansi.yellow",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#E9B061",
+        "high_contrast": "#FFFF00",
+        "light": "#8F5300",
+        "recording_friendly": "#D6B47A",
+        "system": "#E9B061"
+      }
+    },
+    {
+      "allowedUse": "The terminal block, bar, and underline cursor.",
+      "category": "color",
+      "description": "Terminal cursor.",
+      "key": "color.terminal.cursor",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#E6E8EB",
+        "high_contrast": "#FFFF00",
+        "light": "#1A1D22",
+        "recording_friendly": "#F4F5F6",
+        "system": "#E6E8EB"
+      }
+    },
+    {
+      "allowedUse": "Terminal cells without an explicit color.",
+      "category": "color",
+      "description": "Default terminal foreground.",
+      "key": "color.terminal.fg",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#C9CDD4",
+        "high_contrast": "#FFFFFF",
+        "light": "#2A2E35",
+        "recording_friendly": "#C9CDD3",
+        "system": "#C9CDD4"
+      }
+    },
+    {
+      "allowedUse": "Placeholders, shortcut hints, and metadata. Meets 4.5:1 on chrome.",
+      "category": "color",
+      "description": "Lowest-emphasis readable text.",
+      "key": "color.text.faint",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#838993",
+        "high_contrast": "#D0D0D0",
+        "light": "#626974",
+        "recording_friendly": "#8E949D",
+        "system": "#838993"
+      }
+    },
+    {
+      "allowedUse": "Secondary columns, captions, and inactive tabs.",
       "category": "color",
       "description": "Muted application text.",
       "key": "color.text.muted",
       "reducedMotion": null,
       "values": {
-        "dark": "#909AA8",
-        "high_contrast": "#D6D6D6",
-        "light": "#6C7583",
-        "recording_friendly": "#9FA5AE",
-        "system": "#909AA8"
+        "dark": "#8C929C",
+        "high_contrast": "#E0E0E0",
+        "light": "#4F5661",
+        "recording_friendly": "#A3A8B0",
+        "system": "#8C929C"
       }
     },
     {
-      "allowedUse": "Body copy and headings.",
+      "allowedUse": "Names, values, and body copy.",
       "category": "color",
       "description": "Primary application text.",
       "key": "color.text.primary",
       "reducedMotion": null,
       "values": {
-        "dark": "#F3F5F7",
+        "dark": "#E6E8EB",
         "high_contrast": "#FFFFFF",
-        "light": "#171A21",
+        "light": "#1A1D22",
         "recording_friendly": "#F4F5F6",
-        "system": "#F3F5F7"
+        "system": "#E6E8EB"
       }
     },
     {
-      "allowedUse": "Supporting labels and copy.",
+      "allowedUse": "Technical values and dialog copy.",
       "category": "color",
       "description": "Secondary application text.",
       "key": "color.text.secondary",
       "reducedMotion": null,
       "values": {
-        "dark": "#B6BEC9",
+        "dark": "#B4B9C2",
         "high_contrast": "#FFFFFF",
-        "light": "#535B68",
-        "recording_friendly": "#C3C7CD",
-        "system": "#B6BEC9"
+        "light": "#3A404A",
+        "recording_friendly": "#C9CDD3",
+        "system": "#B4B9C2"
       }
     },
     {
@@ -432,24 +852,38 @@
       }
     },
     {
-      "allowedUse": "Compact controls that remain keyboard accessible.",
+      "allowedUse": "Small buttons in rows and cards.",
       "category": "dimension",
       "description": "Compact desktop control height.",
       "key": "control.height.compact",
       "reducedMotion": null,
       "values": {
-        "dark": "28",
-        "high_contrast": "28",
-        "light": "28",
-        "recording_friendly": "28",
-        "system": "28"
+        "dark": "22",
+        "high_contrast": "22",
+        "light": "22",
+        "recording_friendly": "22",
+        "system": "22"
       }
     },
     {
-      "allowedUse": "Standard desktop controls.",
+      "allowedUse": "Buttons, filter fields, and search fields.",
       "category": "dimension",
       "description": "Default desktop control height.",
       "key": "control.height.default",
+      "reducedMotion": null,
+      "values": {
+        "dark": "26",
+        "high_contrast": "26",
+        "light": "26",
+        "recording_friendly": "26",
+        "system": "26"
+      }
+    },
+    {
+      "allowedUse": "The quick-connect field.",
+      "category": "dimension",
+      "description": "Large control height.",
+      "key": "control.height.large",
       "reducedMotion": null,
       "values": {
         "dark": "36",
@@ -457,20 +891,6 @@
         "light": "36",
         "recording_friendly": "36",
         "system": "36"
-      }
-    },
-    {
-      "allowedUse": "Prominent or touch-compatible controls.",
-      "category": "dimension",
-      "description": "Large control height.",
-      "key": "control.height.large",
-      "reducedMotion": null,
-      "values": {
-        "dark": "44",
-        "high_contrast": "44",
-        "light": "44",
-        "recording_friendly": "44",
-        "system": "44"
       }
     },
     {
@@ -564,11 +984,11 @@
       "key": "focus.ring.offset",
       "reducedMotion": null,
       "values": {
-        "dark": "2",
+        "dark": "1",
         "high_contrast": "2",
-        "light": "2",
-        "recording_friendly": "2",
-        "system": "2"
+        "light": "1",
+        "recording_friendly": "1",
+        "system": "1"
       }
     },
     {
@@ -614,17 +1034,17 @@
       }
     },
     {
-      "allowedUse": "Dense toolbar and list-row icons.",
+      "allowedUse": "Close glyphs on tabs and panes.",
       "category": "dimension",
-      "description": "Compact icon size between small and default.",
+      "description": "Compact icon size.",
       "key": "icon.size.compact",
       "reducedMotion": null,
       "values": {
-        "dark": "15",
-        "high_contrast": "15",
-        "light": "15",
-        "recording_friendly": "15",
-        "system": "15"
+        "dark": "11",
+        "high_contrast": "11",
+        "light": "11",
+        "recording_friendly": "11",
+        "system": "11"
       }
     },
     {
@@ -634,46 +1054,32 @@
       "key": "icon.size.default",
       "reducedMotion": null,
       "values": {
-        "dark": "16",
-        "high_contrast": "16",
-        "light": "16",
-        "recording_friendly": "16",
-        "system": "16"
+        "dark": "14",
+        "high_contrast": "14",
+        "light": "14",
+        "recording_friendly": "14",
+        "system": "14"
       }
     },
     {
-      "allowedUse": "Status dots only.",
+      "allowedUse": "Status glyphs only.",
       "category": "dimension",
-      "description": "Small status-dot indicator size.",
+      "description": "Status glyph size.",
       "key": "icon.size.indicator",
       "reducedMotion": null,
       "values": {
-        "dark": "8",
-        "high_contrast": "8",
-        "light": "8",
-        "recording_friendly": "8",
-        "system": "8"
+        "dark": "7",
+        "high_contrast": "7",
+        "light": "7",
+        "recording_friendly": "7",
+        "system": "7"
       }
     },
     {
-      "allowedUse": "Large state illustrations without provider branding.",
+      "allowedUse": "Empty-state glyphs without provider branding.",
       "category": "dimension",
       "description": "Large icon size.",
       "key": "icon.size.large",
-      "reducedMotion": null,
-      "values": {
-        "dark": "24",
-        "high_contrast": "24",
-        "light": "24",
-        "recording_friendly": "24",
-        "system": "24"
-      }
-    },
-    {
-      "allowedUse": "Prominent controls.",
-      "category": "dimension",
-      "description": "Medium icon size.",
-      "key": "icon.size.medium",
       "reducedMotion": null,
       "values": {
         "dark": "20",
@@ -681,6 +1087,20 @@
         "light": "20",
         "recording_friendly": "20",
         "system": "20"
+      }
+    },
+    {
+      "allowedUse": "Host tile glyphs.",
+      "category": "dimension",
+      "description": "Medium icon size.",
+      "key": "icon.size.medium",
+      "reducedMotion": null,
+      "values": {
+        "dark": "16",
+        "high_contrast": "16",
+        "light": "16",
+        "recording_friendly": "16",
+        "system": "16"
       }
     },
     {
@@ -700,57 +1120,57 @@
     {
       "allowedUse": "Status and activity indicators.",
       "category": "dimension",
-      "description": "Status icon size adjacent to body labels.",
+      "description": "Box around a status glyph.",
       "key": "icon.size.status",
       "reducedMotion": null,
       "values": {
-        "dark": "17",
-        "high_contrast": "17",
-        "light": "17",
-        "recording_friendly": "17",
-        "system": "17"
+        "dark": "12",
+        "high_contrast": "12",
+        "light": "12",
+        "recording_friendly": "12",
+        "system": "12"
       }
     },
     {
       "allowedUse": "Attention status with text.",
       "category": "icon",
-      "description": "Exclamation diamond attention status icon.",
+      "description": "Filled diamond attention status icon.",
       "key": "icon.status.attention",
       "reducedMotion": null,
       "values": {
-        "dark": "exclamation_diamond",
-        "high_contrast": "exclamation_diamond",
-        "light": "exclamation_diamond",
-        "recording_friendly": "exclamation_diamond",
-        "system": "exclamation_diamond"
+        "dark": "diamond",
+        "high_contrast": "diamond",
+        "light": "diamond",
+        "recording_friendly": "diamond",
+        "system": "diamond"
       }
     },
     {
       "allowedUse": "Busy status with text.",
       "category": "icon",
-      "description": "Stepped spinner busy status icon.",
+      "description": "Stepped ring spinner busy status icon.",
       "key": "icon.status.busy",
       "reducedMotion": null,
       "values": {
-        "dark": "stepped_spinner",
-        "high_contrast": "stepped_spinner",
-        "light": "stepped_spinner",
-        "recording_friendly": "stepped_spinner",
-        "system": "stepped_spinner"
+        "dark": "ring_spinner",
+        "high_contrast": "ring_spinner",
+        "light": "ring_spinner",
+        "recording_friendly": "ring_spinner",
+        "system": "ring_spinner"
       }
     },
     {
       "allowedUse": "Done status with text.",
       "category": "icon",
-      "description": "Check circle done status icon.",
+      "description": "Filled circle done status icon.",
       "key": "icon.status.done",
       "reducedMotion": null,
       "values": {
-        "dark": "check_circle",
-        "high_contrast": "check_circle",
-        "light": "check_circle",
-        "recording_friendly": "check_circle",
-        "system": "check_circle"
+        "dark": "filled_circle",
+        "high_contrast": "filled_circle",
+        "light": "filled_circle",
+        "recording_friendly": "filled_circle",
+        "system": "filled_circle"
       }
     },
     {
@@ -784,43 +1204,43 @@
     {
       "allowedUse": "Offline status with text.",
       "category": "icon",
-      "description": "Broken link offline status icon.",
+      "description": "Dashed circle offline status icon.",
       "key": "icon.status.offline",
       "reducedMotion": null,
       "values": {
-        "dark": "broken_link",
-        "high_contrast": "broken_link",
-        "light": "broken_link",
-        "recording_friendly": "broken_link",
-        "system": "broken_link"
+        "dark": "dashed_circle",
+        "high_contrast": "dashed_circle",
+        "light": "dashed_circle",
+        "recording_friendly": "dashed_circle",
+        "system": "dashed_circle"
       }
     },
     {
       "allowedUse": "Unknown ownership status with text.",
       "category": "icon",
-      "description": "Question diamond orphaned status icon.",
+      "description": "Hollow diamond orphaned status icon.",
       "key": "icon.status.orphaned",
       "reducedMotion": null,
       "values": {
-        "dark": "question_diamond",
-        "high_contrast": "question_diamond",
-        "light": "question_diamond",
-        "recording_friendly": "question_diamond",
-        "system": "question_diamond"
+        "dark": "hollow_diamond",
+        "high_contrast": "hollow_diamond",
+        "light": "hollow_diamond",
+        "recording_friendly": "hollow_diamond",
+        "system": "hollow_diamond"
       }
     },
     {
       "allowedUse": "Permission denied status with text.",
       "category": "icon",
-      "description": "Lock permission-denied status icon.",
+      "description": "Hollow square permission-denied status icon.",
       "key": "icon.status.permission_denied",
       "reducedMotion": null,
       "values": {
-        "dark": "lock",
-        "high_contrast": "lock",
-        "light": "lock",
-        "recording_friendly": "lock",
-        "system": "lock"
+        "dark": "hollow_square",
+        "high_contrast": "hollow_square",
+        "light": "hollow_square",
+        "recording_friendly": "hollow_square",
+        "system": "hollow_square"
       }
     },
     {
@@ -830,11 +1250,11 @@
       "key": "icon.stroke.default",
       "reducedMotion": null,
       "values": {
-        "dark": "1.5",
+        "dark": "1.4",
         "high_contrast": "2",
-        "light": "1.5",
-        "recording_friendly": "1.5",
-        "system": "1.5"
+        "light": "1.4",
+        "recording_friendly": "1.4",
+        "system": "1.4"
       }
     },
     {
@@ -1048,17 +1468,59 @@
       }
     },
     {
+      "allowedUse": "Host cards in the Home grid.",
+      "category": "dimension",
+      "description": "Host card height.",
+      "key": "layout.card.height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "60",
+        "high_contrast": "60",
+        "light": "60",
+        "recording_friendly": "60",
+        "system": "60"
+      }
+    },
+    {
+      "allowedUse": "Host grid column sizing.",
+      "category": "dimension",
+      "description": "Host card minimum width.",
+      "key": "layout.card.minimum_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "280",
+        "high_contrast": "280",
+        "light": "280",
+        "recording_friendly": "280",
+        "system": "280"
+      }
+    },
+    {
+      "allowedUse": "The square mark at the start of a host card.",
+      "category": "dimension",
+      "description": "Host card tile size.",
+      "key": "layout.card.tile",
+      "reducedMotion": null,
+      "values": {
+        "dark": "36",
+        "high_contrast": "36",
+        "light": "36",
+        "recording_friendly": "36",
+        "system": "36"
+      }
+    },
+    {
       "allowedUse": "Desktop window chrome.",
       "category": "dimension",
-      "description": "Desktop top chrome height.",
+      "description": "Desktop title bar height.",
       "key": "layout.chrome.height",
       "reducedMotion": null,
       "values": {
-        "dark": "44",
-        "high_contrast": "44",
-        "light": "44",
-        "recording_friendly": "44",
-        "system": "44"
+        "dark": "38",
+        "high_contrast": "38",
+        "light": "38",
+        "recording_friendly": "38",
+        "system": "38"
       }
     },
     {
@@ -1066,6 +1528,34 @@
       "category": "dimension",
       "description": "Connection setup panel width.",
       "key": "layout.connect.panel_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "420",
+        "high_contrast": "420",
+        "light": "420",
+        "recording_friendly": "420",
+        "system": "420"
+      }
+    },
+    {
+      "allowedUse": "Host-key and multi-field dialogs.",
+      "category": "dimension",
+      "description": "Wide dialog width.",
+      "key": "layout.dialog.wide_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "460",
+        "high_contrast": "460",
+        "light": "460",
+        "recording_friendly": "460",
+        "system": "460"
+      }
+    },
+    {
+      "allowedUse": "Confirmation and form dialogs.",
+      "category": "dimension",
+      "description": "Standard dialog width.",
+      "key": "layout.dialog.width",
       "reducedMotion": null,
       "values": {
         "dark": "420",
@@ -1104,17 +1594,17 @@
       }
     },
     {
-      "allowedUse": "Legacy host library until responsive sidebar migration.",
+      "allowedUse": "Desktop sidebar.",
       "category": "dimension",
-      "description": "Current host-library sidebar width.",
+      "description": "Host library sidebar width.",
       "key": "layout.host_sidebar.width",
       "reducedMotion": null,
       "values": {
-        "dark": "220",
-        "high_contrast": "220",
-        "light": "220",
-        "recording_friendly": "220",
-        "system": "220"
+        "dark": "232",
+        "high_contrast": "232",
+        "light": "232",
+        "recording_friendly": "232",
+        "system": "232"
       }
     },
     {
@@ -1124,11 +1614,11 @@
       "key": "layout.inspector.default",
       "reducedMotion": null,
       "values": {
-        "dark": "320",
-        "high_contrast": "320",
-        "light": "320",
-        "recording_friendly": "320",
-        "system": "320"
+        "dark": "290",
+        "high_contrast": "290",
+        "light": "290",
+        "recording_friendly": "290",
+        "system": "290"
       }
     },
     {
@@ -1138,11 +1628,11 @@
       "key": "layout.inspector.maximum",
       "reducedMotion": null,
       "values": {
-        "dark": "480",
-        "high_contrast": "480",
-        "light": "480",
-        "recording_friendly": "480",
-        "system": "480"
+        "dark": "420",
+        "high_contrast": "420",
+        "light": "420",
+        "recording_friendly": "420",
+        "system": "420"
       }
     },
     {
@@ -1152,11 +1642,25 @@
       "key": "layout.inspector.minimum",
       "reducedMotion": null,
       "values": {
-        "dark": "280",
-        "high_contrast": "280",
-        "light": "280",
-        "recording_friendly": "280",
-        "system": "280"
+        "dark": "260",
+        "high_contrast": "260",
+        "light": "260",
+        "recording_friendly": "260",
+        "system": "260"
+      }
+    },
+    {
+      "allowedUse": "Host list rows and palette results.",
+      "category": "dimension",
+      "description": "List row height.",
+      "key": "layout.list.row_height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "32",
+        "high_contrast": "32",
+        "light": "32",
+        "recording_friendly": "32",
+        "system": "32"
       }
     },
     {
@@ -1176,15 +1680,15 @@
     {
       "allowedUse": "Desktop global palette positioning only.",
       "category": "dimension",
-      "description": "Global palette offset below the window chrome.",
+      "description": "Global palette offset from the top of the window.",
       "key": "layout.palette.offset_top",
       "reducedMotion": null,
       "values": {
-        "dark": "88",
-        "high_contrast": "88",
-        "light": "88",
-        "recording_friendly": "88",
-        "system": "88"
+        "dark": "50",
+        "high_contrast": "50",
+        "light": "50",
+        "recording_friendly": "50",
+        "system": "50"
       }
     },
     {
@@ -1194,11 +1698,25 @@
       "key": "layout.palette.width",
       "reducedMotion": null,
       "values": {
-        "dark": "760",
-        "high_contrast": "760",
-        "light": "760",
-        "recording_friendly": "760",
-        "system": "760"
+        "dark": "560",
+        "high_contrast": "560",
+        "light": "560",
+        "recording_friendly": "560",
+        "system": "560"
+      }
+    },
+    {
+      "allowedUse": "Pane headers inside split terminals.",
+      "category": "dimension",
+      "description": "Split pane header height.",
+      "key": "layout.pane_header.height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "28",
+        "high_contrast": "28",
+        "light": "28",
+        "recording_friendly": "28",
+        "system": "28"
       }
     },
     {
@@ -1213,6 +1731,20 @@
         "light": "6",
         "recording_friendly": "6",
         "system": "6"
+      }
+    },
+    {
+      "allowedUse": "The Home quick connect field.",
+      "category": "dimension",
+      "description": "Quick connect field height.",
+      "key": "layout.quick_connect.height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "36",
+        "high_contrast": "36",
+        "light": "36",
+        "recording_friendly": "36",
+        "system": "36"
       }
     },
     {
@@ -1250,11 +1782,11 @@
       "key": "layout.shell.compact_control_height",
       "reducedMotion": null,
       "values": {
-        "dark": "32",
-        "high_contrast": "32",
-        "light": "32",
-        "recording_friendly": "32",
-        "system": "32"
+        "dark": "26",
+        "high_contrast": "26",
+        "light": "26",
+        "recording_friendly": "26",
+        "system": "26"
       }
     },
     {
@@ -1264,11 +1796,11 @@
       "key": "layout.shell.icon_button_size",
       "reducedMotion": null,
       "values": {
-        "dark": "32",
-        "high_contrast": "32",
-        "light": "32",
-        "recording_friendly": "32",
-        "system": "32"
+        "dark": "24",
+        "high_contrast": "24",
+        "light": "24",
+        "recording_friendly": "24",
+        "system": "24"
       }
     },
     {
@@ -1306,11 +1838,11 @@
       "key": "layout.shell.navigation_row_height",
       "reducedMotion": null,
       "values": {
-        "dark": "36",
-        "high_contrast": "36",
-        "light": "36",
-        "recording_friendly": "36",
-        "system": "36"
+        "dark": "28",
+        "high_contrast": "28",
+        "light": "28",
+        "recording_friendly": "28",
+        "system": "28"
       }
     },
     {
@@ -1372,15 +1904,15 @@
     {
       "allowedUse": "Desktop shell toolbar actions only.",
       "category": "dimension",
-      "description": "Compact square toolbar action size.",
+      "description": "Toolbar button height.",
       "key": "layout.shell.toolbar_button_size",
       "reducedMotion": null,
       "values": {
-        "dark": "30",
-        "high_contrast": "30",
-        "light": "30",
-        "recording_friendly": "30",
-        "system": "30"
+        "dark": "24",
+        "high_contrast": "24",
+        "light": "24",
+        "recording_friendly": "24",
+        "system": "24"
       }
     },
     {
@@ -1390,11 +1922,11 @@
       "key": "layout.shell.traffic_light_size",
       "reducedMotion": null,
       "values": {
-        "dark": "9",
-        "high_contrast": "9",
-        "light": "9",
-        "recording_friendly": "9",
-        "system": "9"
+        "dark": "12",
+        "high_contrast": "12",
+        "light": "12",
+        "recording_friendly": "12",
+        "system": "12"
       }
     },
     {
@@ -1418,11 +1950,11 @@
       "key": "layout.sidebar.default",
       "reducedMotion": null,
       "values": {
-        "dark": "280",
-        "high_contrast": "280",
-        "light": "280",
-        "recording_friendly": "280",
-        "system": "280"
+        "dark": "232",
+        "high_contrast": "232",
+        "light": "232",
+        "recording_friendly": "232",
+        "system": "232"
       }
     },
     {
@@ -1432,11 +1964,11 @@
       "key": "layout.sidebar.maximum",
       "reducedMotion": null,
       "values": {
-        "dark": "420",
-        "high_contrast": "420",
-        "light": "420",
-        "recording_friendly": "420",
-        "system": "420"
+        "dark": "320",
+        "high_contrast": "320",
+        "light": "320",
+        "recording_friendly": "320",
+        "system": "320"
       }
     },
     {
@@ -1446,25 +1978,95 @@
       "key": "layout.sidebar.minimum",
       "reducedMotion": null,
       "values": {
-        "dark": "220",
-        "high_contrast": "220",
-        "light": "220",
-        "recording_friendly": "220",
-        "system": "220"
+        "dark": "200",
+        "high_contrast": "200",
+        "light": "200",
+        "recording_friendly": "200",
+        "system": "200"
       }
     },
     {
-      "allowedUse": "Legacy desktop status surfaces until screen migration.",
+      "allowedUse": "The draggable area around a one-pixel pane divider.",
       "category": "dimension",
-      "description": "Compact status surface height.",
+      "description": "Split divider hit area.",
+      "key": "layout.split.divider_hit",
+      "reducedMotion": null,
+      "values": {
+        "dark": "6",
+        "high_contrast": "6",
+        "light": "6",
+        "recording_friendly": "6",
+        "system": "6"
+      }
+    },
+    {
+      "allowedUse": "Split pane limits.",
+      "category": "dimension",
+      "description": "Maximum panes per terminal tab.",
+      "key": "layout.split.max_panes",
+      "reducedMotion": null,
+      "values": {
+        "dark": "4",
+        "high_contrast": "4",
+        "light": "4",
+        "recording_friendly": "4",
+        "system": "4"
+      }
+    },
+    {
+      "allowedUse": "Desktop status bar.",
+      "category": "dimension",
+      "description": "Status bar height.",
       "key": "layout.status.height",
       "reducedMotion": null,
       "values": {
-        "dark": "28",
-        "high_contrast": "28",
-        "light": "28",
-        "recording_friendly": "28",
-        "system": "28"
+        "dark": "26",
+        "high_contrast": "26",
+        "light": "26",
+        "recording_friendly": "26",
+        "system": "26"
+      }
+    },
+    {
+      "allowedUse": "Table rows in SFTP, known hosts, and logs.",
+      "category": "dimension",
+      "description": "Data table row height.",
+      "key": "layout.table.row_height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "30",
+        "high_contrast": "30",
+        "light": "30",
+        "recording_friendly": "30",
+        "system": "30"
+      }
+    },
+    {
+      "allowedUse": "Toolbars under the title bar.",
+      "category": "dimension",
+      "description": "View toolbar height.",
+      "key": "layout.toolbar.height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "40",
+        "high_contrast": "40",
+        "light": "40",
+        "recording_friendly": "40",
+        "system": "40"
+      }
+    },
+    {
+      "allowedUse": "Library toolbar dropdowns and host overlays only. Clears the toolbar row so a menu never covers its trigger.",
+      "category": "dimension",
+      "description": "Library toolbar menu offset from the top of the library pane.",
+      "key": "layout.toolbar_menu.offset_top",
+      "reducedMotion": null,
+      "values": {
+        "dark": "88",
+        "high_contrast": "88",
+        "light": "88",
+        "recording_friendly": "88",
+        "system": "88"
       }
     },
     {
@@ -1538,17 +2140,17 @@
       }
     },
     {
-      "allowedUse": "Desktop workspace headers.",
+      "allowedUse": "Desktop terminal tab headers.",
       "category": "dimension",
-      "description": "Workspace header height.",
+      "description": "Terminal tab header height.",
       "key": "layout.workspace_header.height",
       "reducedMotion": null,
       "values": {
-        "dark": "48",
-        "high_contrast": "48",
-        "light": "48",
-        "recording_friendly": "48",
-        "system": "48"
+        "dark": "36",
+        "high_contrast": "36",
+        "light": "36",
+        "recording_friendly": "36",
+        "system": "36"
       }
     },
     {
@@ -1706,10 +2308,24 @@
       }
     },
     {
-      "allowedUse": "Buttons, inputs, and compact controls.",
+      "allowedUse": "Buttons, inputs, menu items, tooltips, toasts, and callouts.",
       "category": "radius",
       "description": "Control corner radius.",
       "key": "radius.control",
+      "reducedMotion": null,
+      "values": {
+        "dark": "4",
+        "high_contrast": "4",
+        "light": "4",
+        "recording_friendly": "4",
+        "system": "4"
+      }
+    },
+    {
+      "allowedUse": "The command palette, dialogs, and menus.",
+      "category": "radius",
+      "description": "Floating surface corner radius.",
+      "key": "radius.dialog",
       "reducedMotion": null,
       "values": {
         "dark": "6",
@@ -1720,37 +2336,23 @@
       }
     },
     {
-      "allowedUse": "Modal dialogs.",
+      "allowedUse": "Host cards and host tiles.",
       "category": "radius",
-      "description": "Dialog corner radius.",
-      "key": "radius.dialog",
-      "reducedMotion": null,
-      "values": {
-        "dark": "12",
-        "high_contrast": "12",
-        "light": "12",
-        "recording_friendly": "12",
-        "system": "12"
-      }
-    },
-    {
-      "allowedUse": "Individual repeated panels and cards.",
-      "category": "radius",
-      "description": "Panel corner radius.",
+      "description": "Card corner radius.",
       "key": "radius.panel",
       "reducedMotion": null,
       "values": {
-        "dark": "8",
-        "high_contrast": "8",
-        "light": "8",
-        "recording_friendly": "8",
-        "system": "8"
+        "dark": "6",
+        "high_contrast": "6",
+        "light": "6",
+        "recording_friendly": "6",
+        "system": "6"
       }
     },
     {
-      "allowedUse": "Tags and status chips only.",
+      "allowedUse": "Toggles and count badges only.",
       "category": "radius",
-      "description": "Pill radius reserved for tags and status chips.",
+      "description": "Pill radius.",
       "key": "radius.pill",
       "reducedMotion": null,
       "values": {
@@ -1768,6 +2370,20 @@
       "key": "radius.progress",
       "reducedMotion": null,
       "values": {
+        "dark": "2",
+        "high_contrast": "2",
+        "light": "2",
+        "recording_friendly": "2",
+        "system": "2"
+      }
+    },
+    {
+      "allowedUse": "Segmented control segments only.",
+      "category": "radius",
+      "description": "Segment corner radius inside a segmented control.",
+      "key": "radius.segment",
+      "reducedMotion": null,
+      "values": {
         "dark": "3",
         "high_contrast": "3",
         "light": "3",
@@ -1776,17 +2392,17 @@
       }
     },
     {
-      "allowedUse": "Modal dialogs.",
+      "allowedUse": "Dialogs over the scrim.",
       "category": "shadow",
       "description": "Modal shadow.",
       "key": "shadow.modal",
       "reducedMotion": null,
       "values": {
-        "dark": "0/8/24/0/#00000066",
+        "dark": "0/16/40/0/#00000073",
         "high_contrast": "none",
-        "light": "0/8/24/0/#11131833",
-        "recording_friendly": "0/8/24/0/#00000052",
-        "system": "0/8/24/0/#00000066"
+        "light": "0/12/32/0/#1A1D2229",
+        "recording_friendly": "0/16/40/0/#00000066",
+        "system": "0/16/40/0/#00000073"
       }
     },
     {
@@ -1804,31 +2420,45 @@
       }
     },
     {
-      "allowedUse": "Popovers.",
+      "allowedUse": "Menus, the command palette, and dialogs.",
       "category": "shadow",
-      "description": "Popover shadow.",
+      "description": "Floating surface shadow.",
       "key": "shadow.popover",
       "reducedMotion": null,
       "values": {
-        "dark": "0/4/12/0/#0000004D",
+        "dark": "0/16/40/0/#00000073",
         "high_contrast": "none",
-        "light": "0/4/12/0/#11131829",
-        "recording_friendly": "0/4/12/0/#0000003D",
-        "system": "0/4/12/0/#0000004D"
+        "light": "0/12/32/0/#1A1D2229",
+        "recording_friendly": "0/16/40/0/#00000066",
+        "system": "0/16/40/0/#00000073"
       }
     },
     {
-      "allowedUse": "Menus and toolbar separators.",
+      "allowedUse": "Kept for compatibility. Resolves to no shadow.",
       "category": "shadow",
-      "description": "Subtle menu and toolbar separator shadow.",
+      "description": "Retired separator shadow. Panes separate with hairlines.",
       "key": "shadow.separator",
       "reducedMotion": null,
       "values": {
-        "dark": "0/1/2/0/#00000033",
+        "dark": "none",
         "high_contrast": "none",
-        "light": "0/1/2/0/#1113181F",
-        "recording_friendly": "0/1/2/0/#00000026",
-        "system": "0/1/2/0/#00000033"
+        "light": "none",
+        "recording_friendly": "none",
+        "system": "none"
+      }
+    },
+    {
+      "allowedUse": "Toasts and tooltips only.",
+      "category": "shadow",
+      "description": "Toast and tooltip shadow.",
+      "key": "shadow.toast",
+      "reducedMotion": null,
+      "values": {
+        "dark": "0/8/24/0/#00000059",
+        "high_contrast": "none",
+        "light": "0/6/18/0/#1A1D221F",
+        "recording_friendly": "0/8/24/0/#00000052",
+        "system": "0/8/24/0/#00000059"
       }
     },
     {
@@ -2154,31 +2784,45 @@
       }
     },
     {
+      "allowedUse": "Terminal viewport left and right padding only.",
+      "category": "spacing",
+      "description": "Terminal viewport horizontal padding.",
+      "key": "space.terminal.inline",
+      "reducedMotion": null,
+      "values": {
+        "dark": "16",
+        "high_contrast": "16",
+        "light": "16",
+        "recording_friendly": "16",
+        "system": "16"
+      }
+    },
+    {
       "allowedUse": "Terminal viewport padding only.",
       "category": "spacing",
       "description": "Terminal viewport padding.",
       "key": "space.terminal.padding",
       "reducedMotion": null,
       "values": {
-        "dark": "8",
-        "high_contrast": "8",
-        "light": "8",
-        "recording_friendly": "8",
-        "system": "8"
+        "dark": "10",
+        "high_contrast": "10",
+        "light": "10",
+        "recording_friendly": "10",
+        "system": "10"
       }
     },
     {
-      "allowedUse": "Desktop interactive controls.",
+      "allowedUse": "Desktop interactive controls. Smaller glyphs get invisible padding up to this size.",
       "category": "dimension",
-      "description": "Minimum desktop pointer target.",
+      "description": "Minimum desktop pointer target, WCAG 2.2 target size (minimum).",
       "key": "target.pointer.minimum",
       "reducedMotion": null,
       "values": {
-        "dark": "36",
-        "high_contrast": "36",
-        "light": "36",
-        "recording_friendly": "36",
-        "system": "36"
+        "dark": "24",
+        "high_contrast": "24",
+        "light": "24",
+        "recording_friendly": "24",
+        "system": "24"
       }
     },
     {
@@ -2314,11 +2958,11 @@
       "key": "type.activity.title",
       "reducedMotion": null,
       "values": {
-        "dark": "22/30/650",
-        "high_contrast": "22/30/650",
-        "light": "22/30/650",
-        "recording_friendly": "22/30/650",
-        "system": "22/30/650"
+        "dark": "16/22/600",
+        "high_contrast": "16/22/600",
+        "light": "16/22/600",
+        "recording_friendly": "16/22/600",
+        "system": "16/22/600"
       }
     },
     {
@@ -2326,20 +2970,6 @@
       "category": "typography",
       "description": "Default body typography.",
       "key": "type.body",
-      "reducedMotion": null,
-      "values": {
-        "dark": "14/20/400",
-        "high_contrast": "14/20/400",
-        "light": "14/20/400",
-        "recording_friendly": "14/20/400",
-        "system": "14/20/400"
-      }
-    },
-    {
-      "allowedUse": "Dense supporting copy.",
-      "category": "typography",
-      "description": "Small body typography.",
-      "key": "type.body.small",
       "reducedMotion": null,
       "values": {
         "dark": "13/18/400",
@@ -2350,17 +2980,59 @@
       }
     },
     {
+      "allowedUse": "Palette query input and dialog lead copy.",
+      "category": "typography",
+      "description": "Large body typography.",
+      "key": "type.body.large",
+      "reducedMotion": null,
+      "values": {
+        "dark": "14/20/400",
+        "high_contrast": "14/20/400",
+        "light": "14/20/400",
+        "recording_friendly": "14/20/400",
+        "system": "14/20/400"
+      }
+    },
+    {
+      "allowedUse": "Callout, banner, and empty-state copy.",
+      "category": "typography",
+      "description": "Relaxed body typography.",
+      "key": "type.body.relaxed",
+      "reducedMotion": null,
+      "values": {
+        "dark": "13/19/400",
+        "high_contrast": "13/19/400",
+        "light": "13/19/400",
+        "recording_friendly": "13/19/400",
+        "system": "13/19/400"
+      }
+    },
+    {
+      "allowedUse": "Dense supporting copy.",
+      "category": "typography",
+      "description": "Small body typography.",
+      "key": "type.body.small",
+      "reducedMotion": null,
+      "values": {
+        "dark": "12/17/400",
+        "high_contrast": "12/17/400",
+        "light": "12/17/400",
+        "recording_friendly": "12/17/400",
+        "system": "12/17/400"
+      }
+    },
+    {
       "allowedUse": "Compact metadata.",
       "category": "typography",
       "description": "Caption typography.",
       "key": "type.caption",
       "reducedMotion": null,
       "values": {
-        "dark": "12/16/500",
-        "high_contrast": "12/16/500",
-        "light": "12/16/500",
-        "recording_friendly": "12/16/500",
-        "system": "12/16/500"
+        "dark": "12/16/400",
+        "high_contrast": "12/16/400",
+        "light": "12/16/400",
+        "recording_friendly": "12/16/400",
+        "system": "12/16/400"
       }
     },
     {
@@ -2368,34 +3040,6 @@
       "category": "typography",
       "description": "Heading typography.",
       "key": "type.heading",
-      "reducedMotion": null,
-      "values": {
-        "dark": "20/28/650",
-        "high_contrast": "20/28/650",
-        "light": "20/28/650",
-        "recording_friendly": "20/28/650",
-        "system": "20/28/650"
-      }
-    },
-    {
-      "allowedUse": "Section headings.",
-      "category": "typography",
-      "description": "Small heading typography.",
-      "key": "type.heading.small",
-      "reducedMotion": null,
-      "values": {
-        "dark": "16/22/600",
-        "high_contrast": "16/22/600",
-        "light": "16/22/600",
-        "recording_friendly": "16/22/600",
-        "system": "16/22/600"
-      }
-    },
-    {
-      "allowedUse": "Control and row labels.",
-      "category": "typography",
-      "description": "Control label typography.",
-      "key": "type.label",
       "reducedMotion": null,
       "values": {
         "dark": "14/20/600",
@@ -2406,17 +3050,45 @@
       }
     },
     {
+      "allowedUse": "Section headings.",
+      "category": "typography",
+      "description": "Small heading typography.",
+      "key": "type.heading.small",
+      "reducedMotion": null,
+      "values": {
+        "dark": "13/18/600",
+        "high_contrast": "13/18/600",
+        "light": "13/18/600",
+        "recording_friendly": "13/18/600",
+        "system": "13/18/600"
+      }
+    },
+    {
+      "allowedUse": "Control and row labels.",
+      "category": "typography",
+      "description": "Control label typography.",
+      "key": "type.label",
+      "reducedMotion": null,
+      "values": {
+        "dark": "12/16/500",
+        "high_contrast": "12/16/500",
+        "light": "12/16/500",
+        "recording_friendly": "12/16/500",
+        "system": "12/16/500"
+      }
+    },
+    {
       "allowedUse": "Prominent compact metrics and pairing codes.",
       "category": "typography",
       "description": "Compact numeric metric typography.",
       "key": "type.metric",
       "reducedMotion": null,
       "values": {
-        "dark": "24/32/600",
-        "high_contrast": "24/32/600",
-        "light": "24/32/600",
-        "recording_friendly": "24/32/600",
-        "system": "24/32/600"
+        "dark": "20/24/600",
+        "high_contrast": "20/24/600",
+        "light": "20/24/600",
+        "recording_friendly": "20/24/600",
+        "system": "20/24/600"
       }
     },
     {
@@ -2426,11 +3098,11 @@
       "key": "type.micro",
       "reducedMotion": null,
       "values": {
-        "dark": "11/15/400",
-        "high_contrast": "11/15/400",
-        "light": "11/15/400",
-        "recording_friendly": "11/15/400",
-        "system": "11/15/400"
+        "dark": "11/14/400",
+        "high_contrast": "11/14/400",
+        "light": "11/14/400",
+        "recording_friendly": "11/14/400",
+        "system": "11/14/400"
       }
     },
     {
@@ -2454,11 +3126,11 @@
       "key": "type.terminal",
       "reducedMotion": null,
       "values": {
-        "dark": "14/18.9/400",
-        "high_contrast": "14/18.9/400",
-        "light": "14/18.9/400",
-        "recording_friendly": "14/18.9/400",
-        "system": "14/18.9/400"
+        "dark": "13/18.2/400",
+        "high_contrast": "13/18.2/400",
+        "light": "13/18.2/400",
+        "recording_friendly": "13/18.2/400",
+        "system": "13/18.2/400"
       }
     },
     {
@@ -2468,11 +3140,11 @@
       "key": "type.title",
       "reducedMotion": null,
       "values": {
-        "dark": "28/36/700",
-        "high_contrast": "28/36/700",
-        "light": "28/36/700",
-        "recording_friendly": "28/36/700",
-        "system": "28/36/700"
+        "dark": "20/28/600",
+        "high_contrast": "20/28/600",
+        "light": "20/28/600",
+        "recording_friendly": "20/28/600",
+        "system": "20/28/600"
       }
     },
     {

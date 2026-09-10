@@ -2318,7 +2318,7 @@ impl TermiRustApp {
         div()
             .id("hosts-overlay")
             .absolute()
-            .top(px(theme::PALETTE_OFFSET_TOP))
+            .top(px(theme::TOOLBAR_MENU_OFFSET_TOP))
             .right(right_offset)
             .on_mouse_down_out(cx.listener(|this, _, _, cx| {
                 this.open_toolbar_menu = None;

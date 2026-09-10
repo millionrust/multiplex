@@ -395,13 +395,13 @@ fn validate_statuses(
 ) -> Result<(), ContractError> {
     const EXPECTED: [(&str, &str); 8] = [
         ("attention", "diamond"),
-        ("busy", "filled_circle"),
-        ("done", "check_circle"),
+        ("busy", "ring_spinner"),
+        ("done", "filled_circle"),
         ("error", "octagon"),
         ("idle", "hollow_circle"),
-        ("offline", "broken_link"),
-        ("orphaned", "question_diamond"),
-        ("permission_denied", "lock"),
+        ("offline", "dashed_circle"),
+        ("orphaned", "hollow_diamond"),
+        ("permission_denied", "hollow_square"),
     ];
     let statuses = manifest
         .statuses
@@ -1086,14 +1086,14 @@ shape = "hollow_circle"
             1,
         );
         assert!(parse_manifest(wrong.as_bytes()).is_err());
-        let incomplete = source.replacen(", recording_friendly = \"#17191D\"", "", 1);
+        let incomplete = source.replacen(", recording_friendly = \"#202328\"", "", 1);
         assert!(parse_manifest(incomplete.as_bytes()).is_err());
     }
 
     #[test]
     fn tokens_reject_reference_cycles() {
         let (manifest, source) = production_manifest();
-        let key = "values = { system = \"#101318\"";
+        let key = "values = { system = \"#17191D\"";
         let cyclic = String::from_utf8(source)
             .expect("manifest is UTF-8")
             .replacen(key, "values = { system = \"$color.bg.canvas\"", 1);

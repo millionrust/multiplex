@@ -450,8 +450,8 @@ pub const HOST_MENU_WIDTH: f32 = HOST_SIDEBAR_WIDTH - HOST_CONTROL_HEIGHT;
 pub const HOST_MENU_NARROW_WIDTH: f32 = SHELL_TAB_LABEL_MAXIMUM - ICON_SIZE_MEDIUM;
 pub const HOST_MENU_WIDE_WIDTH: f32 = HOST_SIDEBAR_WIDTH + ICON_SIZE_MEDIUM;
 pub const HOST_BULK_GROUP_WIDTH: f32 = SHELL_TAB_LABEL_MAXIMUM - SHELL_TOOLBAR_BUTTON_SIZE;
-pub const HOST_OVERLAY_TOP: f32 = PALETTE_OFFSET_TOP + SPACE_DENSE;
-pub const HOST_OVERLAY_LOW_TOP: f32 = PALETTE_OFFSET_TOP + SPACE_9 - SPACE_2;
+pub const HOST_OVERLAY_TOP: f32 = TOOLBAR_MENU_OFFSET_TOP + SPACE_DENSE;
+pub const HOST_OVERLAY_LOW_TOP: f32 = TOOLBAR_MENU_OFFSET_TOP + SPACE_9 - SPACE_2;
 pub const HOST_OVERLAY_RIGHT_WIDE: f32 = HOST_SIDEBAR_WIDTH - ICON_SIZE_MEDIUM;
 pub const HOST_OVERLAY_RIGHT_NARROW: f32 = SPACE_8 + SPACE_1;
 pub const HOST_TOOLBAR_OFFSET_VIEW: f32 = SHELL_TAB_LABEL_MAXIMUM + SPACE_COMPACT;
@@ -530,6 +530,9 @@ pub const PALETTE_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
     .0;
 pub const PALETTE_OFFSET_TOP: f32 = DesignTokens::new(ThemeKind::System)
     .layout_palette_offset_top()
+    .0;
+pub const TOOLBAR_MENU_OFFSET_TOP: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_toolbar_menu_offset_top()
     .0;
 pub const WINDOW_DEFAULT_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
     .layout_window_default_width()

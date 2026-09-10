@@ -6,142 +6,142 @@ version = 1
 [[tokens]]
 key = "color.bg.canvas"
 category = "color"
-description = "Window and application canvas background."
-allowed_use = "Top-level application backgrounds."
-values = { system = "#101318", light = "#F7F8FA", dark = "#101318", high_contrast = "#000000", recording_friendly = "#17191D" }
+description = "Content pane and window ground."
+allowed_use = "Content panes and the window background."
+values = { system = "#17191D", light = "#FAFBFC", dark = "#17191D", high_contrast = "#000000", recording_friendly = "#202328" }
 
 [[tokens]]
 key = "color.bg.surface"
 category = "color"
-description = "Panel and card surface background."
-allowed_use = "Unraised application surfaces."
-values = { system = "#181C22", light = "#FFFFFF", dark = "#181C22", high_contrast = "#000000", recording_friendly = "#202329" }
+description = "Side pane and header surface."
+allowed_use = "Sidebar, inspector, tab and pane headers, and recessed fields."
+values = { system = "#14161A", light = "#F1F3F6", dark = "#14161A", high_contrast = "#000000", recording_friendly = "#1D2024" }
 
 [[tokens]]
 key = "color.bg.elevated"
 category = "color"
-description = "Menu, popover, and dialog background."
-allowed_use = "Raised application surfaces."
-values = { system = "#20252D", light = "#FFFFFF", dark = "#20252D", high_contrast = "#0A0A0A", recording_friendly = "#282C33" }
+description = "Floating object background."
+allowed_use = "Host cards, menus, the command palette, and dialogs."
+values = { system = "#1B1E23", light = "#FFFFFF", dark = "#1B1E23", high_contrast = "#0A0A0A", recording_friendly = "#25292F" }
 
 [[tokens]]
 key = "color.bg.terminal"
 category = "color"
-description = "Default terminal background."
+description = "Terminal background, equal to the canvas."
 allowed_use = "Terminal viewport only."
-values = { system = "#0B0D10", light = "#111318", dark = "#0B0D10", high_contrast = "#000000", recording_friendly = "#111318" }
+values = { system = "#17191D", light = "#FAFBFC", dark = "#17191D", high_contrast = "#000000", recording_friendly = "#202328" }
 
 [[tokens]]
 key = "color.text.primary"
 category = "color"
 description = "Primary application text."
-allowed_use = "Body copy and headings."
-values = { system = "#F3F5F7", light = "#171A21", dark = "#F3F5F7", high_contrast = "#FFFFFF", recording_friendly = "#F4F5F6" }
+allowed_use = "Names, values, and body copy."
+values = { system = "#E6E8EB", light = "#1A1D22", dark = "#E6E8EB", high_contrast = "#FFFFFF", recording_friendly = "#F4F5F6" }
 
 [[tokens]]
 key = "color.text.secondary"
 category = "color"
 description = "Secondary application text."
-allowed_use = "Supporting labels and copy."
-values = { system = "#B6BEC9", light = "#535B68", dark = "#B6BEC9", high_contrast = "#FFFFFF", recording_friendly = "#C3C7CD" }
+allowed_use = "Technical values and dialog copy."
+values = { system = "#B4B9C2", light = "#3A404A", dark = "#B4B9C2", high_contrast = "#FFFFFF", recording_friendly = "#C9CDD3" }
 
 [[tokens]]
 key = "color.text.muted"
 category = "color"
 description = "Muted application text."
-allowed_use = "Non-critical metadata."
-values = { system = "#909AA8", light = "#6C7583", dark = "#909AA8", high_contrast = "#D6D6D6", recording_friendly = "#9FA5AE" }
+allowed_use = "Secondary columns, captions, and inactive tabs."
+values = { system = "#8C929C", light = "#4F5661", dark = "#8C929C", high_contrast = "#E0E0E0", recording_friendly = "#A3A8B0" }
 
 [[tokens]]
 key = "color.border.default"
 category = "color"
-description = "Default control and divider border."
-allowed_use = "Controls and structural dividers."
-values = { system = "#343B46", light = "#D7DCE3", dark = "#343B46", high_contrast = "#FFFFFF", recording_friendly = "#474C55" }
+description = "Default pane and divider border."
+allowed_use = "Pane edges, the title bar, cards, and fields."
+values = { system = "#2A2E35", light = "#D6DAE0", dark = "#2A2E35", high_contrast = "#FFFFFF", recording_friendly = "#3A3F47" }
 
 [[tokens]]
 key = "color.border.strong"
 category = "color"
-description = "Strong selected or drop-target border."
-allowed_use = "Selection and drag targets."
-values = { system = "#657083", light = "#9AA4B2", dark = "#657083", high_contrast = "#FFFFFF", recording_friendly = "#777D87" }
+description = "Control border."
+allowed_use = "Buttons and form fields."
+values = { system = "#363A41", light = "#C4CAD2", dark = "#363A41", high_contrast = "#FFFFFF", recording_friendly = "#464C55" }
 
 [[tokens]]
 key = "color.action.primary"
 category = "color"
-description = "Primary action color."
-allowed_use = "Primary actions and links."
-values = { system = "#7EA2FF", light = "#2457D6", dark = "#7EA2FF", high_contrast = "#00FFFF", recording_friendly = "#8CA8E8" }
+description = "Accent color."
+allowed_use = "Links, the active navigation icon, toggles, and drop zones. Never a button fill."
+values = { system = "#74A7F2", light = "#2A64C8", dark = "#74A7F2", high_contrast = "#00FFFF", recording_friendly = "#8CA8E8" }
 
 [[tokens]]
 key = "color.action.primary_text"
 category = "color"
-description = "Text shown on the primary action color."
-allowed_use = "Primary action foreground only."
-values = { system = "#07132E", light = "#FFFFFF", dark = "#07132E", high_contrast = "#000000", recording_friendly = "#111318" }
+description = "Text shown on the accent color."
+allowed_use = "Accent foreground only."
+values = { system = "#0E1622", light = "#FFFFFF", dark = "#0E1622", high_contrast = "#000000", recording_friendly = "#111318" }
 
 [[tokens]]
 key = "color.focus"
 category = "color"
 description = "Keyboard focus outline."
 allowed_use = "Visible focus indication."
-values = { system = "#8FC7FF", light = "#005FCC", dark = "#8FC7FF", high_contrast = "#FFFF00", recording_friendly = "#FFFFFF" }
+values = { system = "#74A7F2", light = "#2A64C8", dark = "#74A7F2", high_contrast = "#FFFF00", recording_friendly = "#FFFFFF" }
 
 [[tokens]]
 key = "color.status.idle"
 category = "color"
 description = "Idle status color."
 allowed_use = "Idle state with icon and text."
-values = { system = "#98A2B3", light = "#667085", dark = "#98A2B3", high_contrast = "#FFFFFF", recording_friendly = "#B7BBC2" }
+values = { system = "#8C929C", light = "#4F5661", dark = "#8C929C", high_contrast = "#FFFFFF", recording_friendly = "#A3A8B0" }
 
 [[tokens]]
 key = "color.status.busy"
 category = "color"
 description = "Busy status color."
 allowed_use = "Busy state with icon and text."
-values = { system = "#7EA2FF", light = "#2457D6", dark = "#7EA2FF", high_contrast = "#00FFFF", recording_friendly = "#8CA8E8" }
+values = { system = "#74A7F2", light = "#2A64C8", dark = "#74A7F2", high_contrast = "#00FFFF", recording_friendly = "#8CA8E8" }
 
 [[tokens]]
 key = "color.status.done"
 category = "color"
 description = "Done status color."
 allowed_use = "Done state with icon and text."
-values = { system = "#4ED08A", light = "#137A4B", dark = "#4ED08A", high_contrast = "#00FF66", recording_friendly = "#8BC3A4" }
+values = { system = "#6CCB8F", light = "#1A7A45", dark = "#6CCB8F", high_contrast = "#00FF66", recording_friendly = "#8BC3A4" }
 
 [[tokens]]
 key = "color.status.attention"
 category = "color"
 description = "Attention status color."
 allowed_use = "Attention state with icon and text."
-values = { system = "#FFB35C", light = "#A65300", dark = "#FFB35C", high_contrast = "#FFFF00", recording_friendly = "#D6B47A" }
+values = { system = "#E9B061", light = "#8F5300", dark = "#E9B061", high_contrast = "#FFFF00", recording_friendly = "#D6B47A" }
 
 [[tokens]]
 key = "color.status.error"
 category = "color"
 description = "Error status color."
 allowed_use = "Error state with icon and text."
-values = { system = "#FF7B83", light = "#B4232A", dark = "#FF7B83", high_contrast = "#FF66FF", recording_friendly = "#D99599" }
+values = { system = "#E5787A", light = "#B8343A", dark = "#E5787A", high_contrast = "#FF66FF", recording_friendly = "#D99599" }
 
 [[tokens]]
 key = "color.status.offline"
 category = "color"
 description = "Offline status color."
 allowed_use = "Offline state with icon and text."
-values = { system = "#A7AFBA", light = "#5B6472", dark = "#A7AFBA", high_contrast = "#FFFFFF", recording_friendly = "#A7ABB1" }
+values = { system = "#838993", light = "#626974", dark = "#838993", high_contrast = "#FFFFFF", recording_friendly = "#8E949D" }
 
 [[tokens]]
 key = "color.selection"
 category = "color"
-description = "Selected row and terminal selection background."
-allowed_use = "Selected content."
-values = { system = "#253A69", light = "#DCE7FF", dark = "#253A69", high_contrast = "#0033FF", recording_friendly = "#39465F" }
+description = "Terminal text selection background."
+allowed_use = "Selected terminal text. Row selection uses color.bg.selected."
+values = { system = "#2B3B52", light = "#CFE0FA", dark = "#2B3B52", high_contrast = "#0033FF", recording_friendly = "#39465F" }
 
 [[tokens]]
 key = "color.overlay.scrim"
 category = "color"
 description = "Modal overlay scrim."
-allowed_use = "Modal separation only."
-values = { system = "#000000B3", light = "#11131899", dark = "#000000B3", high_contrast = "#000000E6", recording_friendly = "#000000D9" }
+allowed_use = "Behind the command palette and dialogs only."
+values = { system = "#08090B8C", light = "#1A1D2266", dark = "#08090B8C", high_contrast = "#000000E6", recording_friendly = "#000000B3" }
 
 [[tokens]]
 key = "color.window.close"
@@ -190,70 +190,70 @@ key = "type.caption"
 category = "typography"
 description = "Caption typography."
 allowed_use = "Compact metadata."
-values = { system = "12/16/500", light = "12/16/500", dark = "12/16/500", high_contrast = "12/16/500", recording_friendly = "12/16/500" }
+values = { system = "12/16/400", light = "12/16/400", dark = "12/16/400", high_contrast = "12/16/400", recording_friendly = "12/16/400" }
 
 [[tokens]]
 key = "type.body.small"
 category = "typography"
 description = "Small body typography."
 allowed_use = "Dense supporting copy."
-values = { system = "13/18/400", light = "13/18/400", dark = "13/18/400", high_contrast = "13/18/400", recording_friendly = "13/18/400" }
+values = { system = "12/17/400", light = "12/17/400", dark = "12/17/400", high_contrast = "12/17/400", recording_friendly = "12/17/400" }
 
 [[tokens]]
 key = "type.body"
 category = "typography"
 description = "Default body typography."
 allowed_use = "Application body copy."
-values = { system = "14/20/400", light = "14/20/400", dark = "14/20/400", high_contrast = "14/20/400", recording_friendly = "14/20/400" }
+values = { system = "13/18/400", light = "13/18/400", dark = "13/18/400", high_contrast = "13/18/400", recording_friendly = "13/18/400" }
 
 [[tokens]]
 key = "type.label"
 category = "typography"
 description = "Control label typography."
 allowed_use = "Control and row labels."
-values = { system = "14/20/600", light = "14/20/600", dark = "14/20/600", high_contrast = "14/20/600", recording_friendly = "14/20/600" }
+values = { system = "12/16/500", light = "12/16/500", dark = "12/16/500", high_contrast = "12/16/500", recording_friendly = "12/16/500" }
 
 [[tokens]]
 key = "type.heading.small"
 category = "typography"
 description = "Small heading typography."
 allowed_use = "Section headings."
-values = { system = "16/22/600", light = "16/22/600", dark = "16/22/600", high_contrast = "16/22/600", recording_friendly = "16/22/600" }
+values = { system = "13/18/600", light = "13/18/600", dark = "13/18/600", high_contrast = "13/18/600", recording_friendly = "13/18/600" }
 
 [[tokens]]
 key = "type.heading"
 category = "typography"
 description = "Heading typography."
 allowed_use = "Primary section headings."
-values = { system = "20/28/650", light = "20/28/650", dark = "20/28/650", high_contrast = "20/28/650", recording_friendly = "20/28/650" }
+values = { system = "14/20/600", light = "14/20/600", dark = "14/20/600", high_contrast = "14/20/600", recording_friendly = "14/20/600" }
 
 [[tokens]]
 key = "type.title"
 category = "typography"
 description = "Page title typography."
 allowed_use = "Top-level page titles."
-values = { system = "28/36/700", light = "28/36/700", dark = "28/36/700", high_contrast = "28/36/700", recording_friendly = "28/36/700" }
+values = { system = "20/28/600", light = "20/28/600", dark = "20/28/600", high_contrast = "20/28/600", recording_friendly = "20/28/600" }
 
 [[tokens]]
 key = "type.terminal"
 category = "typography"
 description = "Default terminal typography before user scaling."
 allowed_use = "Terminal viewport only; font size remains user-configurable."
-values = { system = "14/18.9/400", light = "14/18.9/400", dark = "14/18.9/400", high_contrast = "14/18.9/400", recording_friendly = "14/18.9/400" }
+values = { system = "13/18.2/400", light = "13/18.2/400", dark = "13/18.2/400", high_contrast = "13/18.2/400", recording_friendly = "13/18.2/400" }
 
 [[tokens]]
 key = "type.activity.title"
 category = "typography"
 description = "Compact Activity Center page title typography."
 allowed_use = "Activity Center title only."
-values = { system = "22/30/650", light = "22/30/650", dark = "22/30/650", high_contrast = "22/30/650", recording_friendly = "22/30/650" }
+values = { system = "16/22/600", light = "16/22/600", dark = "16/22/600", high_contrast = "16/22/600", recording_friendly = "16/22/600" }
 
 [[tokens]]
 key = "type.micro"
 category = "typography"
 description = "Micro metadata typography."
 allowed_use = "Space-constrained secondary metadata only."
-values = { system = "11/15/400", light = "11/15/400", dark = "11/15/400", high_contrast = "11/15/400", recording_friendly = "11/15/400" }
+values = { system = "11/14/400", light = "11/14/400", dark = "11/14/400", high_contrast = "11/14/400", recording_friendly = "11/14/400" }
 
 [[tokens]]
 key = "type.nano"
@@ -267,7 +267,7 @@ key = "type.metric"
 category = "typography"
 description = "Compact numeric metric typography."
 allowed_use = "Prominent compact metrics and pairing codes."
-values = { system = "24/32/600", light = "24/32/600", dark = "24/32/600", high_contrast = "24/32/600", recording_friendly = "24/32/600" }
+values = { system = "20/24/600", light = "20/24/600", dark = "20/24/600", high_contrast = "20/24/600", recording_friendly = "20/24/600" }
 
 [[tokens]]
 key = "space.0"
@@ -372,35 +372,35 @@ key = "space.terminal.padding"
 category = "spacing"
 description = "Terminal viewport padding."
 allowed_use = "Terminal viewport padding only."
-values = { system = "$space.3", light = "$space.3", dark = "$space.3", high_contrast = "$space.3", recording_friendly = "$space.3" }
+values = { system = "$space.compact", light = "$space.compact", dark = "$space.compact", high_contrast = "$space.compact", recording_friendly = "$space.compact" }
 
 [[tokens]]
 key = "control.height.compact"
 category = "dimension"
 description = "Compact desktop control height."
-allowed_use = "Compact controls that remain keyboard accessible."
-values = { system = "28", light = "28", dark = "28", high_contrast = "28", recording_friendly = "28" }
+allowed_use = "Small buttons in rows and cards."
+values = { system = "22", light = "22", dark = "22", high_contrast = "22", recording_friendly = "22" }
 
 [[tokens]]
 key = "control.height.default"
 category = "dimension"
 description = "Default desktop control height."
-allowed_use = "Standard desktop controls."
-values = { system = "36", light = "36", dark = "36", high_contrast = "36", recording_friendly = "36" }
+allowed_use = "Buttons, filter fields, and search fields."
+values = { system = "26", light = "26", dark = "26", high_contrast = "26", recording_friendly = "26" }
 
 [[tokens]]
 key = "control.height.large"
 category = "dimension"
 description = "Large control height."
-allowed_use = "Prominent or touch-compatible controls."
-values = { system = "44", light = "44", dark = "44", high_contrast = "44", recording_friendly = "44" }
+allowed_use = "The quick-connect field."
+values = { system = "36", light = "36", dark = "36", high_contrast = "36", recording_friendly = "36" }
 
 [[tokens]]
 key = "target.pointer.minimum"
 category = "dimension"
-description = "Minimum desktop pointer target."
-allowed_use = "Desktop interactive controls."
-values = { system = "36", light = "36", dark = "36", high_contrast = "36", recording_friendly = "36" }
+description = "Minimum desktop pointer target, WCAG 2.2 target size (minimum)."
+allowed_use = "Desktop interactive controls. Smaller glyphs get invisible padding up to this size."
+values = { system = "24", light = "24", dark = "24", high_contrast = "24", recording_friendly = "24" }
 
 [[tokens]]
 key = "target.touch.minimum"
@@ -421,49 +421,49 @@ key = "icon.size.default"
 category = "dimension"
 description = "Default icon size."
 allowed_use = "Controls and status icons."
-values = { system = "16", light = "16", dark = "16", high_contrast = "16", recording_friendly = "16" }
+values = { system = "14", light = "14", dark = "14", high_contrast = "14", recording_friendly = "14" }
 
 [[tokens]]
 key = "icon.size.medium"
 category = "dimension"
 description = "Medium icon size."
-allowed_use = "Prominent controls."
-values = { system = "20", light = "20", dark = "20", high_contrast = "20", recording_friendly = "20" }
+allowed_use = "Host tile glyphs."
+values = { system = "16", light = "16", dark = "16", high_contrast = "16", recording_friendly = "16" }
 
 [[tokens]]
 key = "icon.size.large"
 category = "dimension"
 description = "Large icon size."
-allowed_use = "Large state illustrations without provider branding."
-values = { system = "24", light = "24", dark = "24", high_contrast = "24", recording_friendly = "24" }
+allowed_use = "Empty-state glyphs without provider branding."
+values = { system = "20", light = "20", dark = "20", high_contrast = "20", recording_friendly = "20" }
 
 [[tokens]]
 key = "icon.size.compact"
 category = "dimension"
-description = "Compact icon size between small and default."
-allowed_use = "Dense toolbar and list-row icons."
-values = { system = "15", light = "15", dark = "15", high_contrast = "15", recording_friendly = "15" }
+description = "Compact icon size."
+allowed_use = "Close glyphs on tabs and panes."
+values = { system = "11", light = "11", dark = "11", high_contrast = "11", recording_friendly = "11" }
 
 [[tokens]]
 key = "icon.size.status"
 category = "dimension"
-description = "Status icon size adjacent to body labels."
+description = "Box around a status glyph."
 allowed_use = "Status and activity indicators."
-values = { system = "17", light = "17", dark = "17", high_contrast = "17", recording_friendly = "17" }
+values = { system = "12", light = "12", dark = "12", high_contrast = "12", recording_friendly = "12" }
 
 [[tokens]]
 key = "icon.size.indicator"
 category = "dimension"
-description = "Small status-dot indicator size."
-allowed_use = "Status dots only."
-values = { system = "8", light = "8", dark = "8", high_contrast = "8", recording_friendly = "8" }
+description = "Status glyph size."
+allowed_use = "Status glyphs only."
+values = { system = "7", light = "7", dark = "7", high_contrast = "7", recording_friendly = "7" }
 
 [[tokens]]
 key = "icon.stroke.default"
 category = "dimension"
 description = "Default icon stroke width."
 allowed_use = "Outline icons."
-values = { system = "1.5", light = "1.5", dark = "1.5", high_contrast = "2", recording_friendly = "1.5" }
+values = { system = "1.4", light = "1.4", dark = "1.4", high_contrast = "2", recording_friendly = "1.4" }
 
 [[tokens]]
 key = "layout.navigation.width"
@@ -475,72 +475,72 @@ values = { system = "52", light = "52", dark = "52", high_contrast = "52", recor
 [[tokens]]
 key = "layout.host_sidebar.width"
 category = "dimension"
-description = "Current host-library sidebar width."
-allowed_use = "Legacy host library until responsive sidebar migration."
-values = { system = "220", light = "220", dark = "220", high_contrast = "220", recording_friendly = "220" }
+description = "Host library sidebar width."
+allowed_use = "Desktop sidebar."
+values = { system = "232", light = "232", dark = "232", high_contrast = "232", recording_friendly = "232" }
 
 [[tokens]]
 key = "layout.chrome.height"
 category = "dimension"
-description = "Desktop top chrome height."
+description = "Desktop title bar height."
 allowed_use = "Desktop window chrome."
-values = { system = "44", light = "44", dark = "44", high_contrast = "44", recording_friendly = "44" }
+values = { system = "38", light = "38", dark = "38", high_contrast = "38", recording_friendly = "38" }
 
 [[tokens]]
 key = "layout.status.height"
 category = "dimension"
-description = "Compact status surface height."
-allowed_use = "Legacy desktop status surfaces until screen migration."
-values = { system = "28", light = "28", dark = "28", high_contrast = "28", recording_friendly = "28" }
+description = "Status bar height."
+allowed_use = "Desktop status bar."
+values = { system = "26", light = "26", dark = "26", high_contrast = "26", recording_friendly = "26" }
 
 [[tokens]]
 key = "layout.workspace_header.height"
 category = "dimension"
-description = "Workspace header height."
-allowed_use = "Desktop workspace headers."
-values = { system = "48", light = "48", dark = "48", high_contrast = "48", recording_friendly = "48" }
+description = "Terminal tab header height."
+allowed_use = "Desktop terminal tab headers."
+values = { system = "36", light = "36", dark = "36", high_contrast = "36", recording_friendly = "36" }
 
 [[tokens]]
 key = "layout.sidebar.minimum"
 category = "dimension"
 description = "Minimum context sidebar width."
 allowed_use = "Resizable desktop context sidebar."
-values = { system = "220", light = "220", dark = "220", high_contrast = "220", recording_friendly = "220" }
+values = { system = "200", light = "200", dark = "200", high_contrast = "200", recording_friendly = "200" }
 
 [[tokens]]
 key = "layout.sidebar.default"
 category = "dimension"
 description = "Default context sidebar width."
 allowed_use = "Resizable desktop context sidebar."
-values = { system = "280", light = "280", dark = "280", high_contrast = "280", recording_friendly = "280" }
+values = { system = "232", light = "232", dark = "232", high_contrast = "232", recording_friendly = "232" }
 
 [[tokens]]
 key = "layout.sidebar.maximum"
 category = "dimension"
 description = "Maximum context sidebar width."
 allowed_use = "Resizable desktop context sidebar."
-values = { system = "420", light = "420", dark = "420", high_contrast = "420", recording_friendly = "420" }
+values = { system = "320", light = "320", dark = "320", high_contrast = "320", recording_friendly = "320" }
 
 [[tokens]]
 key = "layout.inspector.minimum"
 category = "dimension"
 description = "Minimum inspector width."
 allowed_use = "Resizable desktop inspector."
-values = { system = "280", light = "280", dark = "280", high_contrast = "280", recording_friendly = "280" }
+values = { system = "260", light = "260", dark = "260", high_contrast = "260", recording_friendly = "260" }
 
 [[tokens]]
 key = "layout.inspector.default"
 category = "dimension"
 description = "Default inspector width."
 allowed_use = "Resizable desktop inspector."
-values = { system = "320", light = "320", dark = "320", high_contrast = "320", recording_friendly = "320" }
+values = { system = "290", light = "290", dark = "290", high_contrast = "290", recording_friendly = "290" }
 
 [[tokens]]
 key = "layout.inspector.maximum"
 category = "dimension"
 description = "Maximum inspector width."
 allowed_use = "Resizable desktop inspector."
-values = { system = "480", light = "480", dark = "480", high_contrast = "480", recording_friendly = "480" }
+values = { system = "420", light = "420", dark = "420", high_contrast = "420", recording_friendly = "420" }
 
 [[tokens]]
 key = "layout.window.minimum_width"
@@ -582,28 +582,28 @@ key = "layout.shell.compact_control_height"
 category = "dimension"
 description = "Compact shell toolbar and menu-row control height."
 allowed_use = "Desktop shell chrome and shared menu rows."
-values = { system = "32", light = "32", dark = "32", high_contrast = "32", recording_friendly = "32" }
+values = { system = "26", light = "26", dark = "26", high_contrast = "26", recording_friendly = "26" }
 
 [[tokens]]
 key = "layout.shell.icon_button_size"
 category = "dimension"
 description = "Square shell icon-button target size."
 allowed_use = "Desktop shell toolbar icon buttons."
-values = { system = "32", light = "32", dark = "32", high_contrast = "32", recording_friendly = "32" }
+values = { system = "24", light = "24", dark = "24", high_contrast = "24", recording_friendly = "24" }
 
 [[tokens]]
 key = "layout.shell.toolbar_button_size"
 category = "dimension"
-description = "Compact square toolbar action size."
+description = "Toolbar button height."
 allowed_use = "Desktop shell toolbar actions only."
-values = { system = "30", light = "30", dark = "30", high_contrast = "30", recording_friendly = "30" }
+values = { system = "24", light = "24", dark = "24", high_contrast = "24", recording_friendly = "24" }
 
 [[tokens]]
 key = "layout.shell.navigation_row_height"
 category = "dimension"
 description = "Primary navigation row height."
 allowed_use = "Desktop primary navigation rows only."
-values = { system = "36", light = "36", dark = "36", high_contrast = "36", recording_friendly = "36" }
+values = { system = "28", light = "28", dark = "28", high_contrast = "28", recording_friendly = "28" }
 
 [[tokens]]
 key = "layout.shell.tab_drop_minimum"
@@ -617,7 +617,7 @@ key = "layout.shell.traffic_light_size"
 category = "dimension"
 description = "Visible macOS traffic-light indicator diameter."
 allowed_use = "Custom desktop window controls only."
-values = { system = "9", light = "9", dark = "9", high_contrast = "9", recording_friendly = "9" }
+values = { system = "12", light = "12", dark = "12", high_contrast = "12", recording_friendly = "12" }
 
 [[tokens]]
 key = "layout.shell.tab_label_maximum"
@@ -666,13 +666,20 @@ key = "layout.palette.width"
 category = "dimension"
 description = "Maximum global palette surface width."
 allowed_use = "Desktop global palette only."
-values = { system = "760", light = "760", dark = "760", high_contrast = "760", recording_friendly = "760" }
+values = { system = "560", light = "560", dark = "560", high_contrast = "560", recording_friendly = "560" }
 
 [[tokens]]
 key = "layout.palette.offset_top"
 category = "dimension"
-description = "Global palette offset below the window chrome."
+description = "Global palette offset from the top of the window."
 allowed_use = "Desktop global palette positioning only."
+values = { system = "50", light = "50", dark = "50", high_contrast = "50", recording_friendly = "50" }
+
+[[tokens]]
+key = "layout.toolbar_menu.offset_top"
+category = "dimension"
+description = "Library toolbar menu offset from the top of the library pane."
+allowed_use = "Library toolbar dropdowns and host overlays only. Clears the toolbar row so a menu never covers its trigger."
 values = { system = "88", light = "88", dark = "88", high_contrast = "88", recording_friendly = "88" }
 
 [[tokens]]
@@ -883,21 +890,21 @@ key = "focus.ring.offset"
 category = "border"
 description = "Focus ring surface separation."
 allowed_use = "Keyboard focus indication."
-values = { system = "2", light = "2", dark = "2", high_contrast = "2", recording_friendly = "2" }
+values = { system = "1", light = "1", dark = "1", high_contrast = "2", recording_friendly = "1" }
 
 [[tokens]]
 key = "radius.control"
 category = "radius"
 description = "Control corner radius."
-allowed_use = "Buttons, inputs, and compact controls."
-values = { system = "6", light = "6", dark = "6", high_contrast = "6", recording_friendly = "6" }
+allowed_use = "Buttons, inputs, menu items, tooltips, toasts, and callouts."
+values = { system = "4", light = "4", dark = "4", high_contrast = "4", recording_friendly = "4" }
 
 [[tokens]]
 key = "radius.panel"
 category = "radius"
-description = "Panel corner radius."
-allowed_use = "Individual repeated panels and cards."
-values = { system = "8", light = "8", dark = "8", high_contrast = "8", recording_friendly = "8" }
+description = "Card corner radius."
+allowed_use = "Host cards and host tiles."
+values = { system = "6", light = "6", dark = "6", high_contrast = "6", recording_friendly = "6" }
 
 [[tokens]]
 key = "space.shell.dense"
@@ -930,15 +937,15 @@ values = { system = "18", light = "18", dark = "18", high_contrast = "18", recor
 [[tokens]]
 key = "radius.dialog"
 category = "radius"
-description = "Dialog corner radius."
-allowed_use = "Modal dialogs."
-values = { system = "12", light = "12", dark = "12", high_contrast = "12", recording_friendly = "12" }
+description = "Floating surface corner radius."
+allowed_use = "The command palette, dialogs, and menus."
+values = { system = "6", light = "6", dark = "6", high_contrast = "6", recording_friendly = "6" }
 
 [[tokens]]
 key = "radius.pill"
 category = "radius"
-description = "Pill radius reserved for tags and status chips."
-allowed_use = "Tags and status chips only."
+description = "Pill radius."
+allowed_use = "Toggles and count badges only."
 values = { system = "999", light = "999", dark = "999", high_contrast = "999", recording_friendly = "999" }
 
 [[tokens]]
@@ -946,6 +953,13 @@ key = "radius.progress"
 category = "radius"
 description = "Compact progress-track corner radius."
 allowed_use = "Inline progress indicators only."
+values = { system = "2", light = "2", dark = "2", high_contrast = "2", recording_friendly = "2" }
+
+[[tokens]]
+key = "radius.segment"
+category = "radius"
+description = "Segment corner radius inside a segmented control."
+allowed_use = "Segmented control segments only."
 values = { system = "3", light = "3", dark = "3", high_contrast = "3", recording_friendly = "3" }
 
 [[tokens]]
@@ -986,23 +1000,30 @@ values = { system = "none", light = "none", dark = "none", high_contrast = "none
 [[tokens]]
 key = "shadow.separator"
 category = "shadow"
-description = "Subtle menu and toolbar separator shadow."
-allowed_use = "Menus and toolbar separators."
-values = { system = "0/1/2/0/#00000033", light = "0/1/2/0/#1113181F", dark = "0/1/2/0/#00000033", high_contrast = "none", recording_friendly = "0/1/2/0/#00000026" }
+description = "Retired separator shadow. Panes separate with hairlines."
+allowed_use = "Kept for compatibility. Resolves to no shadow."
+values = { system = "none", light = "none", dark = "none", high_contrast = "none", recording_friendly = "none" }
 
 [[tokens]]
 key = "shadow.popover"
 category = "shadow"
-description = "Popover shadow."
-allowed_use = "Popovers."
-values = { system = "0/4/12/0/#0000004D", light = "0/4/12/0/#11131829", dark = "0/4/12/0/#0000004D", high_contrast = "none", recording_friendly = "0/4/12/0/#0000003D" }
+description = "Floating surface shadow."
+allowed_use = "Menus, the command palette, and dialogs."
+values = { system = "0/16/40/0/#00000073", light = "0/12/32/0/#1A1D2229", dark = "0/16/40/0/#00000073", high_contrast = "none", recording_friendly = "0/16/40/0/#00000066" }
 
 [[tokens]]
 key = "shadow.modal"
 category = "shadow"
 description = "Modal shadow."
-allowed_use = "Modal dialogs."
-values = { system = "0/8/24/0/#00000066", light = "0/8/24/0/#11131833", dark = "0/8/24/0/#00000066", high_contrast = "none", recording_friendly = "0/8/24/0/#00000052" }
+allowed_use = "Dialogs over the scrim."
+values = { system = "0/16/40/0/#00000073", light = "0/12/32/0/#1A1D2229", dark = "0/16/40/0/#00000073", high_contrast = "none", recording_friendly = "0/16/40/0/#00000066" }
+
+[[tokens]]
+key = "shadow.toast"
+category = "shadow"
+description = "Toast and tooltip shadow."
+allowed_use = "Toasts and tooltips only."
+values = { system = "0/8/24/0/#00000059", light = "0/6/18/0/#1A1D221F", dark = "0/8/24/0/#00000059", high_contrast = "none", recording_friendly = "0/8/24/0/#00000052" }
 
 [[tokens]]
 key = "icon.status.idle"
@@ -1014,23 +1035,23 @@ values = { system = "hollow_circle", light = "hollow_circle", dark = "hollow_cir
 [[tokens]]
 key = "icon.status.busy"
 category = "icon"
-description = "Stepped spinner busy status icon."
+description = "Stepped ring spinner busy status icon."
 allowed_use = "Busy status with text."
-values = { system = "stepped_spinner", light = "stepped_spinner", dark = "stepped_spinner", high_contrast = "stepped_spinner", recording_friendly = "stepped_spinner" }
+values = { system = "ring_spinner", light = "ring_spinner", dark = "ring_spinner", high_contrast = "ring_spinner", recording_friendly = "ring_spinner" }
 
 [[tokens]]
 key = "icon.status.done"
 category = "icon"
-description = "Check circle done status icon."
+description = "Filled circle done status icon."
 allowed_use = "Done status with text."
-values = { system = "check_circle", light = "check_circle", dark = "check_circle", high_contrast = "check_circle", recording_friendly = "check_circle" }
+values = { system = "filled_circle", light = "filled_circle", dark = "filled_circle", high_contrast = "filled_circle", recording_friendly = "filled_circle" }
 
 [[tokens]]
 key = "icon.status.attention"
 category = "icon"
-description = "Exclamation diamond attention status icon."
+description = "Filled diamond attention status icon."
 allowed_use = "Attention status with text."
-values = { system = "exclamation_diamond", light = "exclamation_diamond", dark = "exclamation_diamond", high_contrast = "exclamation_diamond", recording_friendly = "exclamation_diamond" }
+values = { system = "diamond", light = "diamond", dark = "diamond", high_contrast = "diamond", recording_friendly = "diamond" }
 
 [[tokens]]
 key = "icon.status.error"
@@ -1042,23 +1063,23 @@ values = { system = "octagon", light = "octagon", dark = "octagon", high_contras
 [[tokens]]
 key = "icon.status.offline"
 category = "icon"
-description = "Broken link offline status icon."
+description = "Dashed circle offline status icon."
 allowed_use = "Offline status with text."
-values = { system = "broken_link", light = "broken_link", dark = "broken_link", high_contrast = "broken_link", recording_friendly = "broken_link" }
+values = { system = "dashed_circle", light = "dashed_circle", dark = "dashed_circle", high_contrast = "dashed_circle", recording_friendly = "dashed_circle" }
 
 [[tokens]]
 key = "icon.status.orphaned"
 category = "icon"
-description = "Question diamond orphaned status icon."
+description = "Hollow diamond orphaned status icon."
 allowed_use = "Unknown ownership status with text."
-values = { system = "question_diamond", light = "question_diamond", dark = "question_diamond", high_contrast = "question_diamond", recording_friendly = "question_diamond" }
+values = { system = "hollow_diamond", light = "hollow_diamond", dark = "hollow_diamond", high_contrast = "hollow_diamond", recording_friendly = "hollow_diamond" }
 
 [[tokens]]
 key = "icon.status.permission_denied"
 category = "icon"
-description = "Lock permission-denied status icon."
+description = "Hollow square permission-denied status icon."
 allowed_use = "Permission denied status with text."
-values = { system = "lock", light = "lock", dark = "lock", high_contrast = "lock", recording_friendly = "lock" }
+values = { system = "hollow_square", light = "hollow_square", dark = "hollow_square", high_contrast = "hollow_square", recording_friendly = "hollow_square" }
 
 [[tokens]]
 key = "text.status.idle"
@@ -1287,6 +1308,321 @@ description = "Drag preview layer."
 allowed_use = "Drag previews only."
 values = { system = "700", light = "700", dark = "700", high_contrast = "700", recording_friendly = "700" }
 
+[[tokens]]
+key = "color.bg.chrome"
+category = "color"
+description = "Window chrome background."
+allowed_use = "The title bar, sidebar, toolbar, and status bar."
+values = { system = "#111316", light = "#E9ECF0", dark = "#111316", high_contrast = "#000000", recording_friendly = "#1A1C20" }
+
+[[tokens]]
+key = "color.bg.hover"
+category = "color"
+description = "Row and item hover background."
+allowed_use = "Hovered navigation items, rows, menu items, and tabs."
+values = { system = "#1C1F24", light = "#EDF0F3", dark = "#1C1F24", high_contrast = "#1A1A1A", recording_friendly = "#2A2E34" }
+
+[[tokens]]
+key = "color.bg.selected"
+category = "color"
+description = "Selected row and item background."
+allowed_use = "Selected navigation items, rows, segments, and the active tab."
+values = { system = "#23272E", light = "#E1E6ED", dark = "#23272E", high_contrast = "#0033FF", recording_friendly = "#30353D" }
+
+[[tokens]]
+key = "color.bg.control"
+category = "color"
+description = "Neutral control fill."
+allowed_use = "Default buttons, inputs, key caps, and segmented tracks."
+values = { system = "#23262B", light = "#FFFFFF", dark = "#23262B", high_contrast = "#000000", recording_friendly = "#2C3037" }
+
+[[tokens]]
+key = "color.bg.control_hover"
+category = "color"
+description = "Neutral control fill on hover."
+allowed_use = "Hovered default buttons and controls."
+values = { system = "#2A2E34", light = "#F2F4F7", dark = "#2A2E34", high_contrast = "#1A1A1A", recording_friendly = "#333841" }
+
+[[tokens]]
+key = "color.border.subtle"
+category = "color"
+description = "Quiet hairline between sibling regions."
+allowed_use = "Row dividers, pane separators, and card outlines."
+values = { system = "#22262C", light = "#E3E6EA", dark = "#22262C", high_contrast = "#8A8A8A", recording_friendly = "#30343B" }
+
+[[tokens]]
+key = "color.border.focus"
+category = "color"
+description = "Input border while the input holds focus."
+allowed_use = "Focused text inputs, paired with the focus ring."
+values = { system = "#4A5260", light = "#8F99A6", dark = "#4A5260", high_contrast = "#FFFF00", recording_friendly = "#6A7280" }
+
+[[tokens]]
+key = "color.text.faint"
+category = "color"
+description = "Lowest-emphasis readable text."
+allowed_use = "Placeholders, shortcut hints, and metadata. Meets 4.5:1 on chrome."
+values = { system = "#838993", light = "#626974", dark = "#838993", high_contrast = "#D0D0D0", recording_friendly = "#8E949D" }
+
+[[tokens]]
+key = "color.group.production"
+category = "color"
+description = "Production host group identity."
+allowed_use = "Group dots and tile marks, always with the group name."
+values = { system = "#74A7F2", light = "#2A64C8", dark = "#74A7F2", high_contrast = "#00FFFF", recording_friendly = "#8CA8E8" }
+
+[[tokens]]
+key = "color.group.staging"
+category = "color"
+description = "Staging host group identity."
+allowed_use = "Group dots and tile marks, always with the group name."
+values = { system = "#6CCB8F", light = "#1A7A45", dark = "#6CCB8F", high_contrast = "#00FF66", recording_friendly = "#8BC3A4" }
+
+[[tokens]]
+key = "color.group.lab"
+category = "color"
+description = "Lab host group identity."
+allowed_use = "Group dots and tile marks, always with the group name."
+values = { system = "#B69CF0", light = "#6E48C2", dark = "#B69CF0", high_contrast = "#FF66FF", recording_friendly = "#B5A6D9" }
+
+[[tokens]]
+key = "color.group.jump"
+category = "color"
+description = "Jump host group identity."
+allowed_use = "Group dots and tile marks, always with the group name."
+values = { system = "#B4B9C2", light = "#4F5661", dark = "#B4B9C2", high_contrast = "#FFFFFF", recording_friendly = "#C9CDD3" }
+
+[[tokens]]
+key = "color.terminal.fg"
+category = "color"
+description = "Default terminal foreground."
+allowed_use = "Terminal cells without an explicit color."
+values = { system = "#C9CDD4", light = "#2A2E35", dark = "#C9CDD4", high_contrast = "#FFFFFF", recording_friendly = "#C9CDD3" }
+
+[[tokens]]
+key = "color.terminal.cursor"
+category = "color"
+description = "Terminal cursor."
+allowed_use = "The terminal block, bar, and underline cursor."
+values = { system = "#E6E8EB", light = "#1A1D22", dark = "#E6E8EB", high_contrast = "#FFFF00", recording_friendly = "#F4F5F6" }
+
+[[tokens]]
+key = "color.terminal.ansi.black"
+category = "color"
+description = "ANSI palette slot 0."
+allowed_use = "Terminal SGR color 0."
+values = { system = "#1B1E23", light = "#1A1D22", dark = "#1B1E23", high_contrast = "#000000", recording_friendly = "#25292F" }
+
+[[tokens]]
+key = "color.terminal.ansi.red"
+category = "color"
+description = "ANSI palette slot 1."
+allowed_use = "Terminal SGR color 1."
+values = { system = "#E5787A", light = "#B8343A", dark = "#E5787A", high_contrast = "#FF6B6B", recording_friendly = "#D99599" }
+
+[[tokens]]
+key = "color.terminal.ansi.green"
+category = "color"
+description = "ANSI palette slot 2."
+allowed_use = "Terminal SGR color 2."
+values = { system = "#6CCB8F", light = "#1A7A45", dark = "#6CCB8F", high_contrast = "#00FF66", recording_friendly = "#8BC3A4" }
+
+[[tokens]]
+key = "color.terminal.ansi.yellow"
+category = "color"
+description = "ANSI palette slot 3."
+allowed_use = "Terminal SGR color 3."
+values = { system = "#E9B061", light = "#8F5300", dark = "#E9B061", high_contrast = "#FFFF00", recording_friendly = "#D6B47A" }
+
+[[tokens]]
+key = "color.terminal.ansi.blue"
+category = "color"
+description = "ANSI palette slot 4."
+allowed_use = "Terminal SGR color 4."
+values = { system = "#74A7F2", light = "#2A64C8", dark = "#74A7F2", high_contrast = "#66B3FF", recording_friendly = "#8CA8E8" }
+
+[[tokens]]
+key = "color.terminal.ansi.magenta"
+category = "color"
+description = "ANSI palette slot 5."
+allowed_use = "Terminal SGR color 5."
+values = { system = "#B69CF0", light = "#6E48C2", dark = "#B69CF0", high_contrast = "#FF66FF", recording_friendly = "#B5A6D9" }
+
+[[tokens]]
+key = "color.terminal.ansi.cyan"
+category = "color"
+description = "ANSI palette slot 6."
+allowed_use = "Terminal SGR color 6."
+values = { system = "#62C4D1", light = "#0E7282", dark = "#62C4D1", high_contrast = "#00FFFF", recording_friendly = "#8CC5CC" }
+
+[[tokens]]
+key = "color.terminal.ansi.white"
+category = "color"
+description = "ANSI palette slot 7."
+allowed_use = "Terminal SGR color 7."
+values = { system = "#C9CDD4", light = "#626974", dark = "#C9CDD4", high_contrast = "#FFFFFF", recording_friendly = "#C9CDD3" }
+
+[[tokens]]
+key = "color.terminal.ansi.bright_black"
+category = "color"
+description = "ANSI palette slot 8."
+allowed_use = "Terminal SGR color 8."
+values = { system = "#5A6069", light = "#4F5661", dark = "#5A6069", high_contrast = "#9A9A9A", recording_friendly = "#6A7280" }
+
+[[tokens]]
+key = "color.terminal.ansi.bright_red"
+category = "color"
+description = "ANSI palette slot 9."
+allowed_use = "Terminal SGR color 9."
+values = { system = "#F09499", light = "#CC4A50", dark = "#F09499", high_contrast = "#FF9C9C", recording_friendly = "#E3AEB1" }
+
+[[tokens]]
+key = "color.terminal.ansi.bright_green"
+category = "color"
+description = "ANSI palette slot 10."
+allowed_use = "Terminal SGR color 10."
+values = { system = "#8ADBA7", light = "#228A52", dark = "#8ADBA7", high_contrast = "#7DFFAE", recording_friendly = "#A6D3BA" }
+
+[[tokens]]
+key = "color.terminal.ansi.bright_yellow"
+category = "color"
+description = "ANSI palette slot 11."
+allowed_use = "Terminal SGR color 11."
+values = { system = "#F2C585", light = "#A15F00", dark = "#F2C585", high_contrast = "#FFFF99", recording_friendly = "#E1C696" }
+
+[[tokens]]
+key = "color.terminal.ansi.bright_blue"
+category = "color"
+description = "ANSI palette slot 12."
+allowed_use = "Terminal SGR color 12."
+values = { system = "#95BCF6", light = "#3F76D6", dark = "#95BCF6", high_contrast = "#A6D2FF", recording_friendly = "#A9BFEE" }
+
+[[tokens]]
+key = "color.terminal.ansi.bright_magenta"
+category = "color"
+description = "ANSI palette slot 13."
+allowed_use = "Terminal SGR color 13."
+values = { system = "#CAB5F5", light = "#8160CF", dark = "#CAB5F5", high_contrast = "#FF9CFF", recording_friendly = "#C8BCE3" }
+
+[[tokens]]
+key = "color.terminal.ansi.bright_cyan"
+category = "color"
+description = "ANSI palette slot 14."
+allowed_use = "Terminal SGR color 14."
+values = { system = "#86D6E0", light = "#13879A", dark = "#86D6E0", high_contrast = "#99FFFF", recording_friendly = "#A8D4DA" }
+
+[[tokens]]
+key = "color.terminal.ansi.bright_white"
+category = "color"
+description = "ANSI palette slot 15."
+allowed_use = "Terminal SGR color 15."
+values = { system = "#F1F3F5", light = "#8B919B", dark = "#F1F3F5", high_contrast = "#FFFFFF", recording_friendly = "#F4F5F6" }
+
+[[tokens]]
+key = "type.body.large"
+category = "typography"
+description = "Large body typography."
+allowed_use = "Palette query input and dialog lead copy."
+values = { system = "14/20/400", light = "14/20/400", dark = "14/20/400", high_contrast = "14/20/400", recording_friendly = "14/20/400" }
+
+[[tokens]]
+key = "type.body.relaxed"
+category = "typography"
+description = "Relaxed body typography."
+allowed_use = "Callout, banner, and empty-state copy."
+values = { system = "13/19/400", light = "13/19/400", dark = "13/19/400", high_contrast = "13/19/400", recording_friendly = "13/19/400" }
+
+[[tokens]]
+key = "space.terminal.inline"
+category = "spacing"
+description = "Terminal viewport horizontal padding."
+allowed_use = "Terminal viewport left and right padding only."
+values = { system = "16", light = "16", dark = "16", high_contrast = "16", recording_friendly = "16" }
+
+[[tokens]]
+key = "layout.toolbar.height"
+category = "dimension"
+description = "View toolbar height."
+allowed_use = "Toolbars under the title bar."
+values = { system = "40", light = "40", dark = "40", high_contrast = "40", recording_friendly = "40" }
+
+[[tokens]]
+key = "layout.pane_header.height"
+category = "dimension"
+description = "Split pane header height."
+allowed_use = "Pane headers inside split terminals."
+values = { system = "28", light = "28", dark = "28", high_contrast = "28", recording_friendly = "28" }
+
+[[tokens]]
+key = "layout.dialog.width"
+category = "dimension"
+description = "Standard dialog width."
+allowed_use = "Confirmation and form dialogs."
+values = { system = "420", light = "420", dark = "420", high_contrast = "420", recording_friendly = "420" }
+
+[[tokens]]
+key = "layout.dialog.wide_width"
+category = "dimension"
+description = "Wide dialog width."
+allowed_use = "Host-key and multi-field dialogs."
+values = { system = "460", light = "460", dark = "460", high_contrast = "460", recording_friendly = "460" }
+
+[[tokens]]
+key = "layout.table.row_height"
+category = "dimension"
+description = "Data table row height."
+allowed_use = "Table rows in SFTP, known hosts, and logs."
+values = { system = "30", light = "30", dark = "30", high_contrast = "30", recording_friendly = "30" }
+
+[[tokens]]
+key = "layout.list.row_height"
+category = "dimension"
+description = "List row height."
+allowed_use = "Host list rows and palette results."
+values = { system = "32", light = "32", dark = "32", high_contrast = "32", recording_friendly = "32" }
+
+[[tokens]]
+key = "layout.card.height"
+category = "dimension"
+description = "Host card height."
+allowed_use = "Host cards in the Home grid."
+values = { system = "60", light = "60", dark = "60", high_contrast = "60", recording_friendly = "60" }
+
+[[tokens]]
+key = "layout.card.tile"
+category = "dimension"
+description = "Host card tile size."
+allowed_use = "The square mark at the start of a host card."
+values = { system = "36", light = "36", dark = "36", high_contrast = "36", recording_friendly = "36" }
+
+[[tokens]]
+key = "layout.card.minimum_width"
+category = "dimension"
+description = "Host card minimum width."
+allowed_use = "Host grid column sizing."
+values = { system = "280", light = "280", dark = "280", high_contrast = "280", recording_friendly = "280" }
+
+[[tokens]]
+key = "layout.quick_connect.height"
+category = "dimension"
+description = "Quick connect field height."
+allowed_use = "The Home quick connect field."
+values = { system = "36", light = "36", dark = "36", high_contrast = "36", recording_friendly = "36" }
+
+[[tokens]]
+key = "layout.split.divider_hit"
+category = "dimension"
+description = "Split divider hit area."
+allowed_use = "The draggable area around a one-pixel pane divider."
+values = { system = "6", light = "6", dark = "6", high_contrast = "6", recording_friendly = "6" }
+
+[[tokens]]
+key = "layout.split.max_panes"
+category = "dimension"
+description = "Maximum panes per terminal tab."
+allowed_use = "Split pane limits."
+values = { system = "4", light = "4", dark = "4", high_contrast = "4", recording_friendly = "4" }
+
 [[statuses]]
 kind = "idle"
 color = "color.status.idle"
@@ -1299,14 +1635,14 @@ kind = "busy"
 color = "color.status.busy"
 icon = "icon.status.busy"
 text = "text.status.busy"
-shape = "filled_circle"
+shape = "ring_spinner"
 
 [[statuses]]
 kind = "done"
 color = "color.status.done"
 icon = "icon.status.done"
 text = "text.status.done"
-shape = "check_circle"
+shape = "filled_circle"
 
 [[statuses]]
 kind = "attention"
@@ -1327,18 +1663,18 @@ kind = "offline"
 color = "color.status.offline"
 icon = "icon.status.offline"
 text = "text.status.offline"
-shape = "broken_link"
+shape = "dashed_circle"
 
 [[statuses]]
 kind = "orphaned"
 color = "color.status.attention"
 icon = "icon.status.orphaned"
 text = "text.status.orphaned"
-shape = "question_diamond"
+shape = "hollow_diamond"
 
 [[statuses]]
 kind = "permission_denied"
 color = "color.status.error"
 icon = "icon.status.permission_denied"
 text = "text.status.permission_denied"
-shape = "lock"
+shape = "hollow_square"

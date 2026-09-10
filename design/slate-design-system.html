@@ -1,0 +1,1284 @@
+<title>Slate Design System</title>
+<meta name="description" content="Tokens, components, and Rust handoff for TermiRust's Slate interface.">
+<style>
+  :root {
+    --p-bg: #17191D; --p-panel: #14161A; --p-raised: #1B1E23; --p-hover: #1C1F24; --p-sel: #23272E;
+    --p-line: #2A2E35; --p-line2: #22262C; --p-text: #E6E8EB; --p-text2: #B4B9C2; --p-muted: #8C929C; --p-faint: #838993;
+    --p-accent: #74A7F2; --p-good: #6CCB8F; --p-warn: #E9B061; --p-bad: #E5787A; --p-code: #1B1E23;
+    --ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, Cantarell, "Noto Sans", sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, "DejaVu Sans Mono", monospace;
+    color-scheme: dark;
+
+    --s-chrome: #111316; --s-surface: #14161A; --s-canvas: #17191D; --s-elevated: #1B1E23; --s-hover: #1C1F24; --s-selected: #23272E;
+    --s-control: #23262B; --s-control-hover: #2A2E34; --s-terminal: #17191D; --s-scrim: #08090B8C;
+    --s-b-subtle: #22262C; --s-b-default: #2A2E35; --s-b-strong: #363A41; --s-b-focus: #4A5260; --s-bw: 1px;
+    --s-t1: #E6E8EB; --s-t2: #B4B9C2; --s-t3: #8C929C; --s-t4: #838993;
+    --s-accent: #74A7F2; --s-on-accent: #0E1622; --s-focus: #74A7F2; --s-sel: #2B3B52;
+    --s-live: #6CCB8F; --s-busy: #74A7F2; --s-warn: #E9B061; --s-err: #E5787A; --s-idle: #8C929C; --s-off: #838993;
+    --s-g-prod: #74A7F2; --s-g-stage: #6CCB8F; --s-g-lab: #B69CF0; --s-g-jump: #B4B9C2;
+    --s-tfg: #C9CDD4; --s-tcur: #E6E8EB;
+    --s-a1: #E5787A; --s-a2: #6CCB8F; --s-a3: #E9B061; --s-a4: #74A7F2; --s-a5: #B69CF0; --s-a6: #62C4D1; --s-a8: #5A6069;
+    --s-shadow-pop: 0 16px 40px #00000073; --s-shadow-toast: 0 8px 24px #00000059;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --p-bg: #FAFBFC; --p-panel: #F1F3F6; --p-raised: #FFFFFF; --p-hover: #EDF0F3; --p-sel: #E1E6ED;
+      --p-line: #D6DAE0; --p-line2: #E3E6EA; --p-text: #1A1D22; --p-text2: #3A404A; --p-muted: #4F5661; --p-faint: #626974;
+      --p-accent: #2A64C8; --p-good: #1A7A45; --p-warn: #8F5300; --p-bad: #B8343A; --p-code: #F1F3F6;
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="light"] {
+    --p-bg: #FAFBFC; --p-panel: #F1F3F6; --p-raised: #FFFFFF; --p-hover: #EDF0F3; --p-sel: #E1E6ED;
+    --p-line: #D6DAE0; --p-line2: #E3E6EA; --p-text: #1A1D22; --p-text2: #3A404A; --p-muted: #4F5661; --p-faint: #626974;
+    --p-accent: #2A64C8; --p-good: #1A7A45; --p-warn: #8F5300; --p-bad: #B8343A; --p-code: #F1F3F6;
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] { color-scheme: dark; }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 64px; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { transition: none !important; animation: none !important; } }
+  body { margin: 0; background: var(--p-bg); color: var(--p-text); font-family: var(--ui); font-size: 14px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  a { color: var(--p-accent); text-underline-offset: 3px; }
+  a:hover { text-decoration-thickness: 2px; }
+  :focus-visible { outline: 2px solid var(--p-accent); outline-offset: 2px; border-radius: 3px; }
+  code, .mono { font-family: var(--mono); font-size: 0.86em; }
+  code { background: var(--p-code); border: 1px solid var(--p-line2); border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
+  pre { margin: 0; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; background: var(--p-code); border: 1px solid var(--p-line); border-radius: 6px; padding: 14px 16px; overflow-x: auto; color: var(--p-text2); }
+  pre code { background: none; border: 0; padding: 0; white-space: pre; font-size: inherit; }
+
+  .shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; }
+  .rail { position: sticky; top: 0; height: 100vh; overflow-y: auto; background: var(--p-panel); border-right: 1px solid var(--p-line); padding: 18px 10px 32px; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px 18px; }
+  .brand-mark { width: 22px; height: 22px; border-radius: 5px; background: var(--p-sel); border: 1px solid var(--p-line); display: grid; place-items: center; color: var(--p-accent); }
+  .brand-name { font-weight: 650; font-size: 14px; letter-spacing: -0.005em; }
+  .brand-ver { font-size: 11px; color: var(--p-faint); margin-left: auto; font-family: var(--mono); }
+  .rail h4 { margin: 16px 8px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--p-faint); }
+  .rail a { display: flex; align-items: center; height: 28px; padding: 0 8px; border-radius: 4px; color: var(--p-text2); text-decoration: none; font-size: 13px; }
+  .rail a:hover { background: var(--p-hover); color: var(--p-text); }
+  .rail a.on { background: var(--p-sel); color: var(--p-text); }
+  .main { min-width: 0; }
+  .topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 14px; height: 48px; padding: 0 32px; background: color-mix(in srgb, var(--p-bg) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--p-line2); }
+  .topbar .crumbs { font-size: 13px; color: var(--p-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .topbar .crumbs b { color: var(--p-text); font-weight: 500; }
+  .grow { flex: 1; }
+  .themepick { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--p-muted); }
+  .seg-p { display: flex; padding: 2px; border-radius: 4px; background: var(--p-panel); border: 1px solid var(--p-line); }
+  .seg-p button { appearance: none; border: 0; background: transparent; color: var(--p-muted); font: inherit; font-size: 12px; height: 24px; padding: 0 10px; border-radius: 3px; cursor: pointer; }
+  .seg-p button:hover { color: var(--p-text); }
+  .seg-p button[aria-pressed="true"] { background: var(--p-sel); color: var(--p-text); }
+  .content { max-width: 1080px; padding: 0 32px 120px; }
+  section.ds { padding-top: 56px; }
+  section.ds > h2 { margin: 0 0 6px; font-size: 26px; line-height: 1.25; font-weight: 650; letter-spacing: -0.015em; text-wrap: balance; }
+  section.ds > .lede { margin: 0 0 24px; max-width: 68ch; color: var(--p-text2); font-size: 15px; }
+  h3 { margin: 40px 0 6px; font-size: 17px; font-weight: 600; letter-spacing: -0.005em; text-wrap: balance; }
+  h3 + p, .note { max-width: 68ch; color: var(--p-text2); margin: 0 0 14px; }
+  .note { font-size: 13px; color: var(--p-muted); }
+  .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--p-faint); margin: 0 0 8px; }
+  .hero { padding: 48px 0 8px; border-bottom: 1px solid var(--p-line2); }
+  .hero h1 { margin: 0 0 12px; font-size: 40px; line-height: 1.1; font-weight: 700; letter-spacing: -0.025em; text-wrap: balance; }
+  .hero p { margin: 0 0 20px; max-width: 64ch; font-size: 16px; color: var(--p-text2); }
+  .facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--p-line2); margin-top: 28px; }
+  .facts div { padding: 14px 16px 18px 0; }
+  .facts b { display: block; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .facts span { font-size: 12px; color: var(--p-muted); }
+  .principles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; margin-top: 8px; }
+  .principles div { padding: 14px 0; border-top: 1px solid var(--p-line2); }
+  .principles b { display: block; font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+  .principles span { font-size: 13px; color: var(--p-text2); }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--p-line); border-radius: 6px; margin: 12px 0 8px; background: var(--p-raised); }
+  table.t { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  table.t th { text-align: left; font-weight: 500; font-size: 11.5px; color: var(--p-faint); padding: 9px 12px; border-bottom: 1px solid var(--p-line); white-space: nowrap; background: var(--p-panel); }
+  table.t td { padding: 8px 12px; border-bottom: 1px solid var(--p-line2); vertical-align: middle; color: var(--p-text2); }
+  table.t tr:last-child td { border-bottom: 0; }
+  table.t td.k { font-family: var(--mono); font-size: 12px; color: var(--p-text); white-space: nowrap; }
+  table.t td.v { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  .sw { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11.5px; white-space: nowrap; }
+  .sw i { width: 16px; height: 16px; border-radius: 3px; border: 1px solid var(--p-line); flex: none; }
+  .tag { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 3px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap; }
+  .tag.new { color: var(--p-accent); background: color-mix(in srgb, var(--p-accent) 14%, transparent); }
+  .tag.chg { color: var(--p-warn); background: color-mix(in srgb, var(--p-warn) 14%, transparent); }
+  .tag.same { color: var(--p-muted); background: var(--p-hover); }
+  .ratio { font-family: var(--mono); font-size: 11.5px; white-space: nowrap; }
+  .ratio.pass { color: var(--p-good); } .ratio.low { color: var(--p-warn); }
+
+  .stage { background: var(--s-canvas); color: var(--s-t1); border: 1px solid var(--p-line); border-radius: 6px; padding: 24px; margin: 12px 0 10px; font-family: var(--ui); font-size: 13px; line-height: 18px; overflow-x: auto; }
+  .stage.surface { background: var(--s-surface); }
+  .stage.chrome { background: var(--s-chrome); padding: 0; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+  .col { display: flex; flex-direction: column; gap: 8px; }
+  .cap { font-size: 11px; color: var(--s-t4); font-family: var(--mono); margin-top: 6px; }
+  .cell-demo { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+  .grid-demo { display: grid; gap: 20px 24px; }
+  .specs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 32px; }
+  @media (max-width: 1100px) { .specs { grid-template-columns: minmax(0, 1fr); } }
+
+  /* ---------- Slate specimen components (every value is a --s token) ---------- */
+  .s-btn { height: 26px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 4px; font: 500 12px/16px var(--ui); color: var(--s-t1); background: var(--s-control); border: var(--s-bw) solid var(--s-b-strong); white-space: nowrap; cursor: default; }
+  .s-btn:hover, .s-btn.is-hover { background: var(--s-control-hover); border-color: color-mix(in srgb, var(--s-b-strong) 70%, var(--s-t3)); }
+  .s-btn.is-press { background: var(--s-control-hover); transform: translateY(0.5px); box-shadow: inset 0 1px 0 #0000002E; }
+  .s-btn.is-focus { outline: 2px solid var(--s-focus); outline-offset: 1px; }
+  .s-btn.is-off { opacity: 0.4; }
+  .s-btn.strong { font-weight: 600; }
+  .s-btn.sm { height: 22px; padding: 0 8px; }
+  .s-btn.lg { height: 32px; padding: 0 14px; font-size: 13px; }
+  .s-btn.danger { color: var(--s-err); }
+  .s-btn svg { color: var(--s-t3); }
+  .s-tbtn { height: 24px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 4px; font: 400 12px/16px var(--ui); color: var(--s-t3); }
+  .s-tbtn:hover, .s-tbtn.is-hover { background: var(--s-control); color: var(--s-t1); }
+  .s-tbtn.is-on { background: var(--s-control); color: var(--s-warn); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--s-warn) 30%, var(--s-b-default)); }
+  .s-tbtn.is-act { background: var(--s-control); color: var(--s-t1); box-shadow: inset 0 0 0 1px var(--s-b-strong); }
+  .s-ibtn { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--s-t3); }
+  .s-ibtn:hover, .s-ibtn.is-hover { background: var(--s-control); color: var(--s-t1); }
+  .s-ibtn.is-on { background: var(--s-control); color: var(--s-t1); box-shadow: inset 0 0 0 1px var(--s-b-strong); }
+  .ico { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+  .ico.i12 { width: 12px; height: 12px; } .ico.i16 { width: 16px; height: 16px; }
+  .s-input { width: 240px; height: 26px; display: inline-flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 4px; background: var(--s-surface); border: var(--s-bw) solid var(--s-b-default); color: var(--s-t4); font: 12px/16px var(--ui); }
+  .s-input.field { height: 30px; font-size: 13px; background: var(--s-surface); border-color: var(--s-b-strong); padding: 0 10px; }
+  .s-input.qc { width: 100%; max-width: 560px; height: 36px; border-radius: 6px; font-size: 13px; padding: 0 5px 0 12px; }
+  .s-input .val { color: var(--s-t1); }
+  .s-input.is-focus { border-color: var(--s-b-focus); }
+  .s-input.is-err { border-color: var(--s-err); }
+  .s-input.is-off { opacity: 0.45; }
+  .caret { display: inline-block; width: 1px; height: 15px; background: var(--s-t1); margin-left: -6px; }
+  .s-kbd { height: 18px; display: inline-flex; align-items: center; padding: 0 5px; border-radius: 4px; border: var(--s-bw) solid var(--s-b-default); font: 11px/14px var(--ui); color: var(--s-t3); }
+  .s-seg { display: inline-flex; padding: 2px; border-radius: 4px; background: var(--s-surface); border: var(--s-bw) solid var(--s-b-default); }
+  .s-seg span { height: 22px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 3px; font: 12px/16px var(--ui); color: var(--s-t3); }
+  .s-seg span.on { background: var(--s-control-hover); color: var(--s-t1); }
+  .s-toggle { width: 30px; height: 18px; border-radius: 999px; background: var(--s-b-default); position: relative; display: inline-block; flex: none; }
+  .s-toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 999px; background: var(--s-t3); transition: left 160ms cubic-bezier(0.2, 0, 0, 1); }
+  .s-toggle.on { background: color-mix(in srgb, var(--s-accent) 60%, transparent); }
+  .s-toggle.on::after { left: 14px; background: var(--s-t1); }
+  .s-flts { display: inline-flex; gap: 14px; }
+  .s-flt { font: 12px/16px var(--ui); color: var(--s-t4); }
+  .s-flt.on { color: var(--s-t1); }
+  .dot { width: 7px; height: 7px; border-radius: 999px; flex: none; display: inline-block; box-sizing: border-box; }
+  .dot.live { background: var(--s-live); } .dot.busy { background: var(--s-busy); } .dot.idle { border: 1.5px solid var(--s-idle); }
+  .dot.warn { background: var(--s-warn); border-radius: 1px; transform: rotate(45deg); } .dot.off { border: 1.5px dashed var(--s-off); }
+  .dot.fail { background: var(--s-err); } .dot.ended { background: var(--s-b-strong); }
+  .s-st { display: inline-flex; align-items: center; gap: 7px; font: 12px/16px var(--ui); }
+</style>
+
+<div class="shell">
+  <nav class="rail" aria-label="Sections">
+    <div class="brand"><span class="brand-mark"><svg class="ico i12" viewBox="0 0 16 16"><path d="M3.5 3h9A1.5 1.5 0 0 1 14 4.5v7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-7A1.5 1.5 0 0 1 3.5 3zM5 7l2 1.5L5 10M8.5 10.5H11"></path></svg></span><span class="brand-name">Slate</span><span class="brand-ver">v1 draft</span></div>
+    <h4>Start</h4>
+    <a href="#overview">Overview</a>
+    <a href="#principles">Principles</a>
+    <h4>Foundations</h4>
+    <a href="#color">Color</a>
+    <a href="#terminal-color">Terminal palette</a>
+    <a href="#type">Typography</a>
+    <a href="#space">Spacing</a>
+    <a href="#shape">Radius and borders</a>
+    <a href="#depth">Elevation and layers</a>
+    <a href="#motion">Motion</a>
+    <a href="#icons">Icons</a>
+    <a href="#status">Status system</a>
+    <h4>Layout</h4>
+    <a href="#window">Window anatomy</a>
+    <a href="#splits">Split panes</a>
+    <h4>Components</h4>
+    <a href="#buttons">Buttons</a>
+    <a href="#inputs">Inputs</a>
+    <a href="#selection-controls">Selection controls</a>
+    <a href="#tabs">Tabs and navigation</a>
+    <a href="#cards">Host card</a>
+    <a href="#rows">Tables and lists</a>
+    <a href="#inspector">Inspector</a>
+    <a href="#terminal-pane">Terminal pane</a>
+    <a href="#overlays">Palette and dialogs</a>
+    <a href="#menus">Menus and tooltips</a>
+    <a href="#feedback">Toasts and banners</a>
+    <a href="#empty">Empty states</a>
+    <h4>Guidance</h4>
+    <a href="#writing">Writing</a>
+    <a href="#a11y">Accessibility</a>
+    <a href="#shortcuts">Shortcuts</a>
+    <h4>Build</h4>
+    <a href="#changes">Token changes</a>
+    <a href="#rust">Rust handoff</a>
+  </nav>
+
+  <div class="main" id="ds">
+    <div class="topbar">
+      <div class="crumbs">TermiRust <span style="color: var(--p-faint);">/</span> <b id="crumb-now">Slate Design System</b></div>
+      <div class="grow"></div>
+      <div class="themepick"><span id="theme-label">Specimen theme</span>
+        <div class="seg-p" role="group" aria-labelledby="theme-label" id="theme-seg">
+          <button type="button" id="th-dark" data-th="dark" aria-pressed="true">Dark</button>
+          <button type="button" id="th-light" data-th="light" aria-pressed="false">Light</button>
+          <button type="button" id="th-hc" data-th="hc" aria-pressed="false">High contrast</button>
+          <button type="button" id="th-rec" data-th="rec" aria-pressed="false">Recording</button>
+        </div>
+      </div>
+    </div>
+    <div class="content">
+<style>
+  .s-titlebar { height: 38px; display: flex; align-items: stretch; background: var(--s-chrome); border-bottom: var(--s-bw) solid var(--s-b-default); }
+  .s-lights { display: flex; align-items: center; gap: 8px; padding: 0 18px 0 14px; border-right: var(--s-bw) solid var(--s-b-default); }
+  .s-lights i { width: 12px; height: 12px; border-radius: 999px; display: block; }
+  .s-ctab { height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 14px; font: 13px/18px var(--ui); color: var(--s-t3); border-right: var(--s-bw) solid var(--s-b-default); white-space: nowrap; }
+  .s-ctab.fixed { padding-right: 14px; }
+  .s-ctab.is-hover { color: var(--s-t1); }
+  .s-ctab.on { background: var(--s-canvas); color: var(--s-t1); height: 39px; margin-bottom: -1px; }
+  .s-ctab.drop { box-shadow: inset 2px 0 0 var(--s-accent); }
+  .s-ccount { font-size: 11px; color: var(--s-t4); }
+  .s-cx { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--s-t4); }
+  .s-cx.is-hover { background: var(--s-control-hover); color: var(--s-t1); }
+  .s-nav { width: 216px; display: flex; flex-direction: column; gap: 1px; }
+  .s-navi { height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 4px; font: 13px/18px var(--ui); color: var(--s-t2); }
+  .s-navi.tool { color: var(--s-t3); }
+  .s-navi.is-hover { background: var(--s-hover); color: var(--s-t1); }
+  .s-navi.on { background: var(--s-selected); color: var(--s-t1); }
+  .s-navi.on svg { color: var(--s-accent); }
+  .s-navi .bdg { margin-left: auto; font-size: 12px; color: var(--s-t3); }
+  .s-sechead { padding: 12px 8px 4px; font: 600 12px/16px var(--ui); color: var(--s-t4); }
+  .s-toolbar { height: 40px; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 16px; border-bottom: var(--s-bw) solid var(--s-b-subtle); background: var(--s-canvas); }
+  .s-crumb { font: 13px/18px var(--ui); color: var(--s-t3); white-space: nowrap; }
+  .s-crumb b { font-weight: 400; color: var(--s-t1); }
+  .s-crumb i { font-style: normal; color: var(--s-b-strong); margin: 0 6px; }
+  .s-card { position: relative; width: 300px; height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-radius: 6px; background: var(--s-elevated); border: var(--s-bw) solid var(--s-b-subtle); }
+  .s-card.is-hover { background: color-mix(in srgb, var(--s-elevated) 70%, var(--s-control-hover)); border-color: var(--s-b-default); }
+  .s-card.sel { background: var(--s-selected); border-color: color-mix(in srgb, var(--s-b-strong) 80%, var(--s-t4)); }
+  .s-tile { width: 36px; height: 36px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex: none; }
+  .s-cmeta { flex: 1; min-width: 0; }
+  .s-cname { font: 600 13px/18px var(--ui); color: var(--s-t1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .s-csub { font: 12px/16px var(--ui); color: var(--s-t3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .s-table { width: 100%; min-width: 640px; }
+  .s-tr { height: 30px; display: grid; grid-template-columns: 150px 220px 100px minmax(0, 1fr) 90px 76px; align-items: center; padding: 0 12px 0 16px; font: 13px/18px var(--ui); color: var(--s-t1); }
+  .s-tr.head { height: 28px; font-size: 12px; color: var(--s-t4); border-bottom: var(--s-bw) solid var(--s-b-subtle); }
+  .s-tr.is-hover { background: var(--s-hover); }
+  .s-tr.sel { background: var(--s-selected); }
+  .s-tr > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 12px; }
+  .s-tr .m { font-family: var(--mono); font-size: 12px; color: var(--s-t2); }
+  .s-tr .d { color: var(--s-t3); }
+  .s-lsect { padding: 14px 16px 6px; font: 600 12px/16px var(--ui); color: var(--s-t3); }
+  .s-insp { width: 290px; background: var(--s-surface); border: var(--s-bw) solid var(--s-b-default); border-radius: 0; }
+  .s-ihead { height: 40px; display: flex; align-items: center; gap: 9px; padding: 0 8px 0 16px; border-bottom: var(--s-bw) solid var(--s-b-subtle); font: 600 13px/18px var(--ui); }
+  .s-kv { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; padding: 6px 16px; font: 12px/16px var(--ui); }
+  .s-kv span:first-child { color: var(--s-t4); }
+  .s-callout { margin: 0 16px 14px; padding: 10px 12px; border-radius: 4px; font: 12px/17px var(--ui); color: var(--s-warn); background: color-mix(in srgb, var(--s-warn) 8%, var(--s-surface)); border: var(--s-bw) solid color-mix(in srgb, var(--s-warn) 28%, var(--s-b-default)); }
+  .s-term { background: var(--s-terminal); border: var(--s-bw) solid var(--s-b-default); font: 13px/18.2px var(--mono); color: var(--s-tfg); }
+  .s-twhead { height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 16px; background: var(--s-surface); border-bottom: var(--s-bw) solid var(--s-b-subtle); font: 12px/16px var(--ui); color: var(--s-t1); white-space: nowrap; }
+  .s-twhead .sub { color: var(--s-t4); }
+  .s-phead { height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 4px 0 12px; font: 12px/16px var(--ui); color: var(--s-t3); border-bottom: var(--s-bw) solid var(--s-b-subtle); white-space: nowrap; }
+  .s-phead.on { background: var(--s-hover); color: var(--s-t1); }
+  .s-tlines { padding: 10px 16px 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .s-cursor { display: inline-block; width: 0.6em; height: 1.1em; vertical-align: -0.2em; background: var(--s-tcur); }
+  .s-banner { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 16px; font: 12px/16px var(--ui); border-bottom: var(--s-bw) solid var(--s-b-subtle); }
+  .s-split { position: relative; height: 230px; background: var(--s-terminal); border: var(--s-bw) solid var(--s-b-default); }
+  .s-pane { position: absolute; box-sizing: border-box; overflow: hidden; }
+  .s-drop { position: absolute; background: color-mix(in srgb, var(--s-accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--s-accent) 70%, transparent); border-radius: 4px; }
+  .s-divider { position: absolute; width: 6px; top: 0; bottom: 0; cursor: col-resize; }
+  .s-divider i { position: absolute; left: 2px; top: 0; bottom: 0; width: 2px; background: var(--s-accent); display: block; }
+  .s-overlay { position: relative; background: var(--s-canvas); border-radius: 6px; overflow: hidden; }
+  .s-scrim { position: absolute; inset: 0; background: var(--s-scrim); }
+  .s-palette { position: relative; width: 560px; max-width: 100%; background: var(--s-elevated); border: var(--s-bw) solid color-mix(in srgb, var(--s-b-strong) 80%, var(--s-b-default)); border-radius: 6px; box-shadow: var(--s-shadow-pop); overflow: hidden; }
+  .s-pin { height: 42px; display: flex; align-items: center; padding: 0 14px; border-bottom: var(--s-bw) solid var(--s-b-default); font: 14px/20px var(--ui); color: var(--s-t1); }
+  .s-pitem { height: 32px; display: flex; align-items: center; gap: 10px; padding: 0 14px; font: 13px/18px var(--ui); color: var(--s-t2); white-space: nowrap; }
+  .s-pitem.on { background: var(--s-selected); color: var(--s-t1); }
+  .s-pitem .kind { width: 56px; font-size: 11px; color: var(--s-t4); flex: none; }
+  .s-pitem .hint { margin-left: auto; font-size: 12px; color: var(--s-t4); overflow: hidden; text-overflow: ellipsis; }
+  .s-dialog { position: relative; width: 420px; max-width: 100%; background: var(--s-elevated); border: var(--s-bw) solid color-mix(in srgb, var(--s-b-strong) 80%, var(--s-b-default)); border-radius: 6px; box-shadow: var(--s-shadow-pop); }
+  .s-dhead { padding: 16px 16px 4px; font: 600 14px/20px var(--ui); color: var(--s-t1); }
+  .s-dbody { padding: 8px 16px 4px; display: flex; flex-direction: column; gap: 12px; }
+  .s-dtext { font: 13px/19px var(--ui); color: var(--s-t2); }
+  .s-flabel { font: 12px/16px var(--ui); color: var(--s-t3); margin-bottom: 6px; }
+  .s-dfoot { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 16px 16px; }
+  .s-menu { width: 212px; padding: 4px; background: var(--s-elevated); border: var(--s-bw) solid color-mix(in srgb, var(--s-b-strong) 80%, var(--s-b-default)); border-radius: 6px; box-shadow: var(--s-shadow-pop); }
+  .s-mi { height: 26px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 4px; font: 13px/18px var(--ui); color: var(--s-t1); }
+  .s-mi .sc { margin-left: auto; font-size: 11px; color: var(--s-t4); }
+  .s-mi.on { background: var(--s-selected); }
+  .s-mi.danger { color: var(--s-err); }
+  .s-mi.off { color: var(--s-t4); }
+  .s-msep { height: 1px; margin: 4px 2px; background: var(--s-b-subtle); }
+  .s-tip { display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 8px; border-radius: 4px; background: var(--s-control); border: var(--s-bw) solid var(--s-b-strong); font: 12px/16px var(--ui); color: var(--s-t1); box-shadow: var(--s-shadow-toast); }
+  .s-toast { display: inline-flex; align-items: center; gap: 10px; max-width: 420px; padding: 9px 12px; border-radius: 4px; background: var(--s-control); border: var(--s-bw) solid var(--s-b-strong); box-shadow: var(--s-shadow-toast); font: 12px/16px var(--ui); color: var(--s-t1); }
+  .s-status { height: 26px; display: flex; align-items: center; gap: 14px; padding: 0 12px 0 8px; background: var(--s-chrome); border-top: var(--s-bw) solid var(--s-b-default); font: 12px/16px var(--ui); color: var(--s-t3); }
+  .s-empty { padding: 40px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+  .s-empty b { font: 600 14px/20px var(--ui); color: var(--s-t1); }
+  .s-empty span { font: 13px/19px var(--ui); color: var(--s-t3); max-width: 420px; margin-bottom: 8px; }
+  .s-scroll { width: 8px; height: 90px; border-radius: 4px; background: transparent; position: relative; }
+  .s-scroll i { position: absolute; left: 0; right: 0; top: 14px; height: 38px; border-radius: 4px; background: var(--s-b-default); display: block; }
+  .anat { position: relative; border: 1px solid var(--p-line); border-radius: 6px; background: var(--s-canvas); overflow: hidden; }
+  .dim { position: absolute; font: 10.5px/12px var(--mono); color: var(--s-accent); background: color-mix(in srgb, var(--s-canvas) 80%, transparent); padding: 1px 4px; border-radius: 3px; white-space: nowrap; }
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: minmax(0, 1fr); }
+    .rail { position: static; height: auto; display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 2px; padding: 10px 12px; border-right: 0; border-bottom: 1px solid var(--p-line); }
+    .rail h4, .brand { display: none; }
+    .rail a { flex: none; }
+    .topbar { padding: 0 16px; }
+    .themepick #theme-label { display: none; }
+    .content { padding: 0 16px 80px; }
+    .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .principles { grid-template-columns: minmax(0, 1fr); }
+    .hero h1 { font-size: 32px; }
+  }
+</style>
+
+      <header class="hero" id="overview">
+        <p class="eyebrow">TermiRust interface system</p>
+        <h1>Slate</h1>
+        <p>Slate is the visual system for the TermiRust desktop client. Every surface is a flat pane split by hairlines, type sits at 12 and 13 px, and color is saved for state. This page is the source for the token file and the Rust component library. Each value below maps to a key in <code>design/tokens.toml</code>.</p>
+        <p class="note" style="margin: 0;">Specimens on this page render from the same token data they document. Use <b>Specimen theme</b> at the top to preview Dark, Light, High contrast, and Recording. The System theme follows the OS and resolves to Dark or Light.</p>
+        <div class="facts">
+          <div><b id="fact-tokens">0</b><span>Tokens specified</span></div>
+          <div><b id="fact-changed">0</b><span>Changed from the current file</span></div>
+          <div><b id="fact-new">0</b><span>New keys</span></div>
+          <div><b>4 + System</b><span>Themes</span></div>
+        </div>
+      </header>
+
+      <section class="ds" id="principles">
+        <h2>Principles</h2>
+        <p class="lede">Six rules decide the close calls. When a component spec and a principle disagree, the principle wins and the spec gets fixed.</p>
+        <div class="principles">
+          <div><b>Panes, not cards</b><span>Regions are full-bleed and split by 1 px hairlines. Only things you can pick up or open, like host cards, dialogs, and menus, get a fill and a radius.</span></div>
+          <div><b>Color means state</b><span>Neutrals carry the interface. Green, amber, red, and blue appear only when something is live, needs attention, failed, or is busy. The accent never fills a button.</span></div>
+          <div><b>Weight over hue</b><span>The primary action is the same neutral button as the others, set in semibold. Hierarchy comes from type weight and position, not from colored fills.</span></div>
+          <div><b>Dense, never cramped</b><span>Rows are 28 to 32 px, controls 22 to 26 px, and body text 13 px. Pointer targets stay at least 24 px, and nothing essential falls below 4.5:1 contrast.</span></div>
+          <div><b>The terminal is the hero</b><span>Chrome recedes around terminal panes. Panes get the most space, the most stable geometry, and no decoration that moves while output streams.</span></div>
+          <div><b>Shape plus color</b><span>Every status has a glyph shape and a text label as well as a color, so state survives color blindness, grayscale recordings, and high-contrast mode.</span></div>
+        </div>
+      </section>
+
+      <section class="ds" id="color">
+        <h2>Color</h2>
+        <p class="lede">Semantic tokens only. Components never reference a hex value. Each token lists its value in every theme, its role, and, for text and status tokens, the measured contrast against the surface it sits on in the previewed theme.</p>
+        <div id="color-tables"></div>
+        <h3>Group tints</h3>
+        <p>Host tiles take the group color for the glyph and the same color at 14% opacity for the tile fill. Groups are a user-facing grouping, so they sit outside the status system and never imply health.</p>
+        <div class="stage"><div class="row" id="group-tiles"></div></div>
+      </section>
+
+      <section class="ds" id="terminal-color">
+        <h2>Terminal palette</h2>
+        <p class="lede">The 16 ANSI colors, foreground, cursor, and selection. Normal colors reuse the status hues so a green <code>200</code> in a log reads the same as a green Live dot. Bright colors are lifted about 12% in lightness.</p>
+        <div id="ansi-table"></div>
+        <div class="stage" style="padding: 0;"><div class="s-term" style="border: 0;"><div class="s-tlines" id="ansi-sample"></div></div></div>
+      </section>
+
+      <section class="ds" id="type">
+        <h2>Typography</h2>
+        <p class="lede">Two families, both system faces, so the app matches the OS and needs no bundled fonts. UI text uses <code>system-ui</code>: SF Pro on macOS, Segoe UI Variable on Windows, and the desktop default on Linux. Terminal and technical text use <code>system-monospace</code>: SF Mono, Cascadia Mono, or DejaVu Sans Mono.</p>
+        <div id="type-table"></div>
+        <p class="note">Sizes are logical pixels. Line heights snap to whole pixels except the terminal, which uses a 1.4 ratio so cell height scales with the font-size setting.</p>
+      </section>
+
+      <section class="ds" id="space">
+        <h2>Spacing</h2>
+        <p class="lede">A 4 px base with a 2 px half-step for optical fixes. Components take spacing from this scale. The named tokens at the bottom are the few measured exceptions the shell needs.</p>
+        <div id="space-table"></div>
+      </section>
+
+      <section class="ds" id="shape">
+        <h2>Radius and borders</h2>
+        <p class="lede">Radii stay small so panes read as one surface. Controls are 4 px, floating objects are 6 px, and pills are reserved for toggles and counts. Borders are 1 px everywhere except High contrast, where every hairline becomes 2 px.</p>
+        <div id="shape-table"></div>
+        <div class="stage"><div class="row" id="radius-demo"></div></div>
+      </section>
+
+      <section class="ds" id="depth">
+        <h2>Elevation and layers</h2>
+        <p class="lede">Panes never cast shadows. Elevation is only for things that float above the panes: menus, the palette, dialogs, tooltips, and toasts. Layer order is fixed so a toast can never hide a security prompt.</p>
+        <div id="depth-table"></div>
+        <div id="z-table"></div>
+      </section>
+
+      <section class="ds" id="motion">
+        <h2>Motion</h2>
+        <p class="lede">Motion confirms an action and then gets out of the way. Nothing animates while terminal output streams, and everything drops to instant when the OS asks for reduced motion.</p>
+        <div id="motion-table"></div>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Interaction</th><th>Duration</th><th>Easing</th><th>Property</th></tr></thead><tbody>
+          <tr><td>Hover and pressed fills</td><td class="v">motion.fast · 100ms</td><td class="v">easing.standard</td><td>background, border color</td></tr>
+          <tr><td>Toggle knob, segment switch, tab change</td><td class="v">motion.normal · 160ms</td><td class="v">easing.standard</td><td>transform, background</td></tr>
+          <tr><td>Palette, dialog, menu open</td><td class="v">motion.slow · 240ms</td><td class="v">easing.standard</td><td>opacity 0 to 1, 4 px rise</td></tr>
+          <tr><td>Palette, dialog, menu close</td><td class="v">motion.fast · 100ms</td><td class="v">easing.exit</td><td>opacity only</td></tr>
+          <tr><td>Divider drag, pane resize, terminal output</td><td class="v">motion.instant · 0ms</td><td class="v">none</td><td>Follows the pointer or the stream directly</td></tr>
+          <tr><td>Busy status, progress</td><td class="v">motion.progress · 900ms</td><td class="v">linear, stepped</td><td>Stepped spinner, never a smooth sweep</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="ds" id="icons">
+        <h2>Icons</h2>
+        <p class="lede">Line icons on a 16 unit grid with a 1.4 stroke, round caps, and round joins. Icons inherit text color. They take the accent only when they mark the active item. Rendered at 12, 14, or 16 px.</p>
+        <div class="stage surface"><div class="grid-demo" id="icon-grid" style="grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));"></div></div>
+        <div id="icon-size-table"></div>
+      </section>
+
+      <section class="ds" id="status">
+        <h2>Status system</h2>
+        <p class="lede">Eight kinds cover every state the app reports, from hosts and sessions to agents and devices. Each kind is a triple of shape, color token, and label, so no state is communicated by color alone. The glyph is 7 px inside a 12 px box and sits 7 px before its label.</p>
+        <div id="status-table"></div>
+        <h3>Connection states</h3>
+        <p>Hosts and sessions map their lifecycle onto the status kinds. The label is the word the interface shows.</p>
+        <div class="stage"><div class="row" id="conn-states" style="gap: 12px 28px;"></div></div>
+      </section>
+      <section class="ds" id="window">
+        <h2>Window anatomy</h2>
+        <p class="lede">The default window is 1280 by 840 and the minimum is 960 by 640. Fixed bars take their height from layout tokens. Everything between them is panes. The diagram is drawn to scale.</p>
+        <div class="anat" style="aspect-ratio: 1280 / 840;">
+          <div style="position: absolute; left: 0; right: 0; top: 0; height: 4.524%; background: var(--s-chrome); border-bottom: 1px solid var(--s-b-default);"></div>
+          <div style="position: absolute; left: 0; top: 4.524%; bottom: 3.095%; width: 18.125%; background: var(--s-surface); border-right: 1px solid var(--s-b-default);"></div>
+          <div style="position: absolute; left: 18.125%; right: 22.656%; top: 4.524%; height: 4.762%; border-bottom: 1px solid var(--s-b-subtle);"></div>
+          <div style="position: absolute; left: 18.125%; right: 22.656%; top: 9.286%; height: 4.286%; border-bottom: 1px solid var(--s-b-subtle);"></div>
+          <div style="position: absolute; right: 0; top: 4.524%; bottom: 3.095%; width: 22.656%; background: var(--s-surface); border-left: 1px solid var(--s-b-default);"></div>
+          <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 3.095%; background: var(--s-chrome); border-top: 1px solid var(--s-b-default);"></div>
+          <div style="position: absolute; left: 19.4%; right: 24%; top: 16%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.2%;">
+            <div style="aspect-ratio: 346 / 60; border-radius: 4px; background: var(--s-elevated); border: 1px solid var(--s-b-subtle);"></div>
+            <div style="aspect-ratio: 346 / 60; border-radius: 4px; background: var(--s-elevated); border: 1px solid var(--s-b-subtle);"></div>
+            <div style="aspect-ratio: 346 / 60; border-radius: 4px; background: var(--s-elevated); border: 1px solid var(--s-b-subtle);"></div>
+            <div style="aspect-ratio: 346 / 60; border-radius: 4px; background: var(--s-selected); border: 1px solid var(--s-b-strong);"></div>
+          </div>
+          <span class="dim" style="left: 20%; top: 0.6%;">Title bar · layout.chrome.height 38</span>
+          <span class="dim" style="left: 1%; top: 45%;">Sidebar · 232</span>
+          <span class="dim" style="left: 19.4%; top: 5.6%;">Quick connect · 36 control</span>
+          <span class="dim" style="left: 19.4%; top: 10.2%;">Toolbar row · 30</span>
+          <span class="dim" style="right: 1%; top: 45%;">Inspector · 290</span>
+          <span class="dim" style="left: 20%; bottom: 0.3%;">Status bar · layout.status.height 26</span>
+          <span class="dim" style="left: 40%; top: 45%;">Content · canvas</span>
+        </div>
+        <div id="layout-table"></div>
+      </section>
+
+      <section class="ds" id="splits">
+        <h2>Split panes</h2>
+        <p class="lede">Each terminal tab holds a binary split tree of up to four panes. Split right or Split down opens another session to the same host. Panes can be dragged between positions, and dividers resize them.</p>
+        <div class="stage" style="padding: 16px;">
+          <div class="s-split">
+            <div class="s-pane" style="left: 0; top: 0; width: 55%; height: 100%;">
+              <div class="s-phead on"><span class="dot live"></span>prod-api-1<span style="color: var(--s-t4);">2h 14m</span></div>
+              <div class="s-tlines" style="font: 12px/16.8px var(--mono); color: var(--s-tfg);"><span style="color: var(--s-a2);">deploy@prod-api-1</span>:<span style="color: var(--s-a4);">~</span>$ uptime
+ 14:32:07 up 12 days,  3:41,  1 user
+<span style="color: var(--s-a2);">deploy@prod-api-1</span>:<span style="color: var(--s-a4);">~</span>$ <span class="s-cursor"></span></div>
+            </div>
+            <div class="s-pane" style="left: 55%; top: 0; width: 45%; height: 50%; border-left: var(--s-bw) solid var(--s-b-default);">
+              <div class="s-phead"><span class="dot live"></span>prod-api-1<span style="color: var(--s-t4);">4m</span></div>
+              <div class="s-drop" style="left: 50%; top: 28px; right: 6px; bottom: 6px;"></div>
+            </div>
+            <div class="s-pane" style="left: 55%; top: 50%; width: 45%; height: 50%; border-left: var(--s-bw) solid var(--s-b-default); border-top: var(--s-bw) solid var(--s-b-default);">
+              <div class="s-phead"><span class="dot busy"></span>staging-web<span style="color: var(--s-t4);">just now</span></div>
+            </div>
+            <div class="s-divider" style="left: calc(55% - 3px);"><i></i></div>
+          </div>
+          <p class="cap">Focused pane has the lit header. The divider shows its 2 px accent line while hovered or dragged. The shaded box is the drop zone for a tab dragged onto the right half of a pane.</p>
+        </div>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Rule</th><th>Value</th><th>Notes</th></tr></thead><tbody>
+          <tr><td>Maximum panes per tab</td><td class="v">4</td><td>Existing <code>MAX_SPLIT_PANES</code>. Split actions disable at the cap and explain why in a toast.</td></tr>
+          <tr><td>Split ratio range</td><td class="v">0.15 to 0.85</td><td>Stops a pane from collapsing under 15% of its parent.</td></tr>
+          <tr><td>Divider hit area</td><td class="v">6 px</td><td>Centered on the 1 px pane border. Cursor is col-resize or row-resize.</td></tr>
+          <tr><td>Divider highlight</td><td class="v">2 px · color.action.primary</td><td>Shown on hover and for the whole drag.</td></tr>
+          <tr><td>Pane header</td><td class="v">28 px · shown at 2+ panes</td><td>Drag handle for rearranging. Holds the status glyph, name, duration, Move to own tab, and Close.</td></tr>
+          <tr><td>Drop zones</td><td class="v">Nearest edge · half pane</td><td>Accent at 14% fill, 70% border, 4 px radius, inset by the header. Pointer events off.</td></tr>
+          <tr><td>Drop targets</td><td class="v">Pane edge · tab · empty title bar</td><td>Pane edge splits there. A tab moves the pane into that tab. The empty title bar gives the pane its own tab.</td></tr>
+          <tr><td>Focus</td><td class="v">One focused pane per tab</td><td>Unfocused panes dim terminal text to 60%. Input and Broadcast target the focused pane.</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="ds" id="buttons">
+        <p class="eyebrow">Components</p>
+        <h2>Buttons</h2>
+        <p class="lede">One neutral button in two weights, plus quiet toolbar and icon buttons. The strong weight marks the main action on a surface. There should be at most one per surface.</p>
+        <div class="stage">
+          <div class="grid-demo" style="grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));">
+            <div class="cell-demo"><span class="s-btn">Open Fleet</span><span class="cap">Default</span></div>
+            <div class="cell-demo"><span class="s-btn strong"><svg class="ico i12" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>New Host</span><span class="cap">Strong · with icon</span></div>
+            <div class="cell-demo"><span class="s-btn sm">Connect</span><span class="cap">Small · 22</span></div>
+            <div class="cell-demo"><span class="s-btn danger">Close 3 sessions</span><span class="cap">Destructive</span></div>
+            <div class="cell-demo"><span class="s-tbtn"><svg class="ico i12" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5"></rect><path d="M8 3v10"></path></svg>Split right</span><span class="cap">Toolbar</span></div>
+            <div class="cell-demo"><span class="s-tbtn is-on"><svg class="ico i12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="1.5"></circle><path d="M5 5a4.2 4.2 0 0 0 0 6M11 5a4.2 4.2 0 0 1 0 6"></path></svg>Broadcasting to 2 panes</span><span class="cap">Toolbar · armed</span></div>
+            <div class="cell-demo"><span class="s-ibtn"><svg class="ico" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></span><span class="cap">Icon</span></div>
+            <div class="cell-demo"><span class="s-ibtn is-on"><svg class="ico" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5"></rect><path d="M6 3v10"></path></svg></span><span class="cap">Icon · on</span></div>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="grid-demo" style="grid-template-columns: repeat(5, minmax(96px, 1fr));">
+            <div class="cell-demo"><span class="s-btn strong">Add host</span><span class="cap">Rest</span></div>
+            <div class="cell-demo"><span class="s-btn strong is-hover">Add host</span><span class="cap">Hover</span></div>
+            <div class="cell-demo"><span class="s-btn strong is-press">Add host</span><span class="cap">Pressed</span></div>
+            <div class="cell-demo"><span class="s-btn strong is-focus">Add host</span><span class="cap">Keyboard focus</span></div>
+            <div class="cell-demo"><span class="s-btn strong is-off">Add host</span><span class="cap">Disabled · 40%</span></div>
+          </div>
+        </div>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Property</th><th>Button</th><th>Toolbar button</th><th>Icon button</th></tr></thead><tbody>
+          <tr><td>Height</td><td class="v">26 · small 22 · control.height.default</td><td class="v">24</td><td class="v">24 × 24</td></tr>
+          <tr><td>Padding</td><td class="v">0 10 · small 0 8</td><td class="v">0 8</td><td class="v">centered</td></tr>
+          <tr><td>Radius</td><td class="v">radius.control · 4</td><td class="v">4</td><td class="v">4</td></tr>
+          <tr><td>Type</td><td class="v">type.label · 12/16 500 · strong 600</td><td class="v">type.caption · 12/16 400</td><td class="v">none</td></tr>
+          <tr><td>Fill</td><td class="v">color.bg.control → control_hover</td><td class="v">transparent → color.bg.control</td><td class="v">transparent → color.bg.control</td></tr>
+          <tr><td>Border</td><td class="v">1 px color.border.strong</td><td class="v">none · armed: inset ring</td><td class="v">none · on: inset ring</td></tr>
+          <tr><td>Text</td><td class="v">color.text.primary · danger: color.status.error</td><td class="v">color.text.muted → primary</td><td class="v">color.text.muted → primary</td></tr>
+          <tr><td>Icon</td><td class="v">12 px · color.text.muted · gap 6</td><td class="v">12 px · gap 6</td><td class="v">14 px</td></tr>
+          <tr><td>Focus</td><td class="v" colspan="3">2 px color.focus ring, 1 px offset, keyboard focus only</td></tr>
+          <tr><td>Disabled</td><td class="v" colspan="3">40% opacity, no hover, removed from the tab order, tooltip explains why when possible</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="ds" id="inputs">
+        <h2>Inputs</h2>
+        <p class="lede">Four text fields share one anatomy. The field sits on the surface color so it reads as a recess. Placeholder text uses the faint text token, and focus changes the border.</p>
+        <div class="stage">
+          <div class="col" style="gap: 18px;">
+            <div class="cell-demo"><div class="s-input qc"><svg class="ico" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg><span class="val">root@203.0.113.9</span><span style="flex: 1;"></span><span style="font-size: 12px; color: var(--s-t4);">Enter connects without saving</span><span class="s-btn strong">Connect</span></div><span class="cap">Quick connect · 36 · radius.panel</span></div>
+            <div class="row" style="gap: 24px;">
+              <div class="cell-demo"><div class="s-input" style="width: 280px; background: var(--s-canvas);"><svg class="ico" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg><span style="flex: 1;">Search hosts or run a command</span><span class="s-kbd">⌘K</span></div><span class="cap">Title bar search · opens the palette</span></div>
+              <div class="cell-demo"><div class="s-input" style="width: 190px;"><svg class="ico i12" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>Filter hosts</div><span class="cap">Filter · 26</span></div>
+            </div>
+            <div class="row" style="gap: 24px; align-items: flex-start;">
+              <div class="cell-demo"><span class="s-flabel">Name</span><div class="s-input field"><span class="val">web-3</span><span class="caret"></span></div><span class="cap">Field · rest</span></div>
+              <div class="cell-demo"><span class="s-flabel">Address</span><div class="s-input field is-focus mono"><span class="val">deploy@10.0.4.23:22</span></div><span class="cap">Field · focus</span></div>
+              <div class="cell-demo"><span class="s-flabel">Address</span><div class="s-input field is-err mono"><span class="val">deploy@</span></div><span style="font-size: 12px; color: var(--s-err);">Enter the address as user@host or user@host:port.</span></div>
+              <div class="cell-demo"><span class="s-flabel">Port</span><div class="s-input field is-off" style="width: 96px;"><span class="val">22</span></div><span class="cap">Field · disabled</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Property</th><th>Value</th></tr></thead><tbody>
+          <tr><td>Heights</td><td class="v">filter and search 26 · form field 30 · quick connect 36</td></tr>
+          <tr><td>Fill</td><td class="v">color.bg.surface · title bar search uses color.bg.canvas to stand off the chrome</td></tr>
+          <tr><td>Border</td><td class="v">1 px color.border.default · form field color.border.strong · focus color.border.focus · error color.status.error</td></tr>
+          <tr><td>Text</td><td class="v">value color.text.primary · placeholder color.text.faint · label type.caption color.text.muted, 6 px above</td></tr>
+          <tr><td>Leading icon</td><td class="v">12 or 14 px · color.text.faint · 8 px gap</td></tr>
+          <tr><td>Error message</td><td class="v">type.caption · color.status.error · below the field · says how to fix it</td></tr>
+          <tr><td>Keys</td><td class="v">Enter submits · Escape clears the quick-connect field or closes the dialog · ⌘K from anywhere opens the palette</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="ds" id="selection-controls">
+        <h2>Selection controls</h2>
+        <p class="lede">Segmented controls pick one option from a small set. Toggles flip a setting right away. Filter tabs narrow a list without a container. Key caps show a shortcut next to its action.</p>
+        <div class="stage">
+          <div class="grid-demo" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));">
+            <div class="cell-demo"><span class="s-seg"><span>12</span><span class="on">13</span><span>14</span><span>15</span></span><span class="cap">Segmented · text</span></div>
+            <div class="cell-demo"><span class="s-seg"><span class="on"><svg class="ico i12" viewBox="0 0 16 16"><path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z"></path></svg></span><span><svg class="ico i12" viewBox="0 0 16 16"><path d="M3 4h10M3 8h10M3 12h10"></path></svg></span></span><span class="cap">Segmented · icon</span></div>
+            <div class="cell-demo"><span class="row" style="gap: 12px;"><span class="s-toggle on"></span><span class="s-toggle"></span></span><span class="cap">Toggle · on, off</span></div>
+            <div class="cell-demo"><span class="s-flts"><span class="s-flt on">All</span><span class="s-flt">Production</span><span class="s-flt">Staging</span><span class="s-flt">Lab</span></span><span class="cap">Filter tabs</span></div>
+            <div class="cell-demo"><span class="row" style="gap: 6px;"><span class="s-kbd">⌘K</span><span class="s-kbd">⌘⇧B</span><span class="s-kbd">⌘⌥→</span></span><span class="cap">Key caps</span></div>
+          </div>
+        </div>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Control</th><th>Spec</th></tr></thead><tbody>
+          <tr><td>Segmented</td><td class="v">track 2 px padding, color.bg.surface, 1 px border.default, radius 4 · segment 22 high, 0 10 padding, radius 3 · on: color.bg.control_hover, text.primary</td></tr>
+          <tr><td>Toggle</td><td class="v">30 × 18 track, radius pill · 14 px knob, 2 px inset · off: border.default track, text.muted knob · on: accent at 60%, text.primary knob · knob moves in motion.normal</td></tr>
+          <tr><td>Filter tabs</td><td class="v">type.caption · 14 px gap · text.faint → secondary on hover → primary when on · no underline, no pill</td></tr>
+          <tr><td>Key cap</td><td class="v">18 high, 0 5 padding, radius 4, 1 px border.default, 11/14 text.muted · macOS glyphs ⌘ ⌥ ⇧ ⌃, Ctrl+ spelled out on Linux and Windows</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="ds" id="tabs">
+        <h2>Tabs and navigation</h2>
+        <p class="lede">The title bar holds Home and one tab per terminal workspace. The active tab shares the content color and drops its bottom border, so it reads as the top of the pane below. The sidebar is a plain list, and its active item is the only place the accent colors an icon.</p>
+        <div class="stage chrome">
+          <div class="s-titlebar">
+            <div class="s-lights"><i style="background: #FF5F57;"></i><i style="background: #FEBC2E;"></i><i style="background: #28C840;"></i></div>
+            <div class="s-ctab fixed"><svg class="ico" viewBox="0 0 16 16"><path d="M2.5 7.5L8 3l5.5 4.5M4 6.5V13h8V6.5M6.5 13V9.5h3V13"></path></svg>Home</div>
+            <div class="s-ctab on"><span class="dot live"></span>prod-api-1<span class="s-ccount">3</span><span class="s-cx"><svg class="ico i12" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"></path></svg></span></div>
+            <div class="s-ctab is-hover"><span class="dot live"></span>staging-web<span class="s-cx is-hover"><svg class="ico i12" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"></path></svg></span></div>
+            <div class="s-ctab drop"><span class="dot fail"></span>gpu-lab-01<span class="s-cx"><svg class="ico i12" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"></path></svg></span></div>
+            <div style="flex: 1; min-width: 40px;"></div>
+            <div style="display: flex; align-items: center; padding-right: 10px;"><span class="s-ibtn"><svg class="ico" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></span></div>
+          </div>
+          <div class="s-toolbar"><span class="s-crumb">Home<i>/</i><b>All hosts</b></span><span class="s-flts"><span class="s-flt on">All</span><span class="s-flt">Production</span><span class="s-flt">Staging</span></span></div>
+          <div style="display: flex; background: var(--s-canvas);">
+            <div style="background: var(--s-surface); border-right: var(--s-bw) solid var(--s-b-default); padding: 8px;">
+              <div class="s-nav">
+                <div class="s-navi on"><svg class="ico" viewBox="0 0 16 16"><path d="M2.5 7.5L8 3l5.5 4.5M4 6.5V13h8V6.5M6.5 13V9.5h3V13"></path></svg>Home</div>
+                <div class="s-navi is-hover"><svg class="ico" viewBox="0 0 16 16"><path d="M2 8h3l2-5 2 10 2-5h3"></path></svg>Activity</div>
+                <div class="s-navi"><svg class="ico" viewBox="0 0 16 16"><path d="M3.5 2.5h9a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1zM3.5 9.5h9a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1z"></path></svg>Sessions<span class="bdg">3</span></div>
+                <div class="s-sechead">Tools</div>
+                <div class="s-navi tool"><svg class="ico" viewBox="0 0 16 16"><path d="M6 4L3 8l3 4M10 4l3 4-3 4"></path></svg>Snippets</div>
+              </div>
+            </div>
+            <div style="flex: 1;"></div>
+          </div>
+          <div class="s-status"><span class="s-ibtn is-on" style="width: 22px; height: 22px;"><svg class="ico" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5"></rect><path d="M6 3v10"></path></svg></span><span class="s-st"><span class="dot live"></span>3 live</span><span class="s-st" style="color: var(--s-warn);"><span class="dot warn"></span>1 needs attention</span><span style="flex: 1;"></span><span>Vault synced</span><span>Keep-alive 30s</span></div>
+        </div>
+        <p class="cap" style="color: var(--p-faint);">Left to right: fixed Home tab, active tab with a pane count, hovered tab, and a tab showing the drop-target marker while a pane is dragged over it.</p>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Part</th><th>Spec</th></tr></thead><tbody>
+          <tr><td>Title bar</td><td class="v">38 high, color.bg.chrome, 1 px border.default below · traffic lights 12 px, 8 gap, 14 left inset · empty area drags the window, double-click opens a local terminal</td></tr>
+          <tr><td>Title bar tab</td><td class="v">38 high, 0 10 0 14 padding, 8 gap, type.body · text.muted → primary · active: bg.canvas, 39 high to cover the border · 1 px border.default right edge · label max 160 then ellipsis</td></tr>
+          <tr><td>Tab extras</td><td class="v">7 px status glyph of the focused pane · pane count 11 px text.faint when 2+ · close 18 × 18, 11 px glyph, hover control_hover · drop marker 2 px accent inset on the left edge</td></tr>
+          <tr><td>Overflow</td><td class="v">Tabs scroll horizontally with no scrollbar. The active tab scrolls into view.</td></tr>
+          <tr><td>Sidebar</td><td class="v">232 wide, color.bg.surface, 8 px list padding, 1 px gap · header row 40 high, type.caption 600</td></tr>
+          <tr><td>Sidebar item</td><td class="v">28 high, 0 8 padding, 8 gap, radius 4, type.body · text.secondary, tools text.muted · hover bg.hover · active bg.selected, text.primary, icon accent · badge 12 px text.muted, right aligned</td></tr>
+          <tr><td>Toolbar</td><td class="v">40 high, 0 8 0 16 padding, 12 gap, 1 px border.subtle below · breadcrumb type.body, separator text in border.strong, current item text.primary</td></tr>
+          <tr><td>Status bar</td><td class="v">26 high, color.bg.chrome, 1 px border.default above, 14 gap, type.caption text.muted · left: sidebar toggle, live count, attention · right: vault and keep-alive</td></tr>
+        </tbody></table></div>
+      </section>
+      <section class="ds" id="cards">
+        <h2>Host card</h2>
+        <p class="lede">The only card in the system, because a host is an object you pick up and open. Cards sit in a grid of three, or two while the inspector is open, with 8 px gaps.</p>
+        <div class="stage">
+          <div class="grid-demo" style="grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;">
+            <div class="cell-demo"><div class="s-card"><div class="s-tile" style="background: color-mix(in srgb, var(--s-g-prod) 14%, transparent); color: var(--s-g-prod);"><svg class="ico i16" viewBox="0 0 16 16"><path d="M3.5 2.5h9a1 1 0 0 1 1 1V7h-11V3.5a1 1 0 0 1 1-1zM2.5 7h11v3.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM5 4.8h.5M5 9.3h.5M6.5 13.5h3M8 11.5v2"></path></svg></div><div class="s-cmeta"><div class="s-cname">prod-api-2</div><div class="s-csub">deploy · Production</div></div></div><span class="cap">Rest · idle hosts show no status</span></div>
+            <div class="cell-demo"><div class="s-card is-hover"><div class="s-tile" style="background: color-mix(in srgb, var(--s-g-prod) 14%, transparent); color: var(--s-g-prod);"><svg class="ico i16" viewBox="0 0 16 16"><path d="M3.5 2.5h9a1 1 0 0 1 1 1V7h-11V3.5a1 1 0 0 1 1-1zM2.5 7h11v3.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM5 4.8h.5M5 9.3h.5M6.5 13.5h3M8 11.5v2"></path></svg></div><div class="s-cmeta"><div class="s-cname">prod-api-1</div><div class="s-csub">deploy · Production</div></div><span class="s-btn sm">Open</span></div><span class="cap">Hover · action replaces status</span></div>
+            <div class="cell-demo"><div class="s-card sel"><div class="s-tile" style="background: color-mix(in srgb, var(--s-g-prod) 14%, transparent); color: var(--s-g-prod);"><svg class="ico i16" viewBox="0 0 16 16"><path d="M3.5 2.5h9a1 1 0 0 1 1 1V7h-11V3.5a1 1 0 0 1 1-1zM2.5 7h11v3.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM5 4.8h.5M5 9.3h.5M6.5 13.5h3M8 11.5v2"></path></svg></div><div class="s-cmeta"><div class="s-cname">db-primary</div><div class="s-csub">ops · Production · via bastion</div></div><span class="s-btn sm">Review</span></div><span class="cap">Selected · opens the inspector</span></div>
+            <div class="cell-demo"><div class="s-card"><div class="s-tile" style="background: color-mix(in srgb, var(--s-g-stage) 14%, transparent); color: var(--s-g-stage);"><svg class="ico i16" viewBox="0 0 16 16"><path d="M3.5 2.5h9a1 1 0 0 1 1 1V7h-11V3.5a1 1 0 0 1 1-1zM2.5 7h11v3.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM5 4.8h.5M5 9.3h.5M6.5 13.5h3M8 11.5v2"></path></svg></div><div class="s-cmeta"><div class="s-cname">staging-web</div><div class="s-csub">deploy · Staging</div></div><span class="s-st" style="color: var(--s-live);"><span class="dot live"></span>Live</span></div><span class="cap">Live</span></div>
+            <div class="cell-demo"><div class="s-card"><div class="s-tile" style="background: color-mix(in srgb, var(--s-g-lab) 16%, transparent); color: var(--s-g-lab);"><svg class="ico i16" viewBox="0 0 16 16"><path d="M3.5 2.5h9a1 1 0 0 1 1 1V7h-11V3.5a1 1 0 0 1 1-1zM2.5 7h11v3.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM5 4.8h.5M5 9.3h.5M6.5 13.5h3M8 11.5v2"></path></svg></div><div class="s-cmeta"><div class="s-cname">gpu-lab-01</div><div class="s-csub">ops · Lab</div></div><span class="s-st" style="color: var(--s-off);"><span class="dot off"></span>Offline</span></div><span class="cap">Offline</span></div>
+            <div class="cell-demo"><div class="s-card"><div class="s-tile" style="background: var(--s-control); color: var(--s-t2);"><svg class="ico i16" viewBox="0 0 16 16"><path d="M3.5 3.5h9a1 1 0 0 1 1 1V10h-11V4.5a1 1 0 0 1 1-1zM1.5 12.5h13M5.5 6l1.5 1.2L5.5 8.4M8.2 8.4h2"></path></svg></div><div class="s-cmeta"><div class="s-cname">Local shell</div><div class="s-csub">zsh · starts in your home folder</div></div></div><span class="cap">Local profile</span></div>
+          </div>
+        </div>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Part</th><th>Spec</th></tr></thead><tbody>
+          <tr><td>Card</td><td class="v">60 high, 0 12 padding, 12 gap, radius.panel 6, color.bg.elevated, 1 px border.subtle · hover border.default · selected bg.selected and a strong border</td></tr>
+          <tr><td>Tile</td><td class="v">36 × 36, radius 6, server glyph 16 px · fill: group color at 14% (Lab 16%) · local: bg.control with text.secondary glyph</td></tr>
+          <tr><td>Name</td><td class="v">type.heading.small · 13/18 600 · text.primary · one line, ellipsis</td></tr>
+          <tr><td>Subtitle</td><td class="v">type.caption · text.muted · user · group · via jump host · port when not 22 · separator " · "</td></tr>
+          <tr><td>Status</td><td class="v">Shown only when not idle · status glyph and label, type.caption, status color</td></tr>
+          <tr><td>Action</td><td class="v">Small button, absolute right 12 · visible on hover or selection, where it replaces the status · label Open, Connect, or Review</td></tr>
+          <tr><td>Interaction</td><td class="v">Click selects · double-click or action connects · Enter on a focused card connects · arrow keys move through the grid</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="ds" id="rows">
+        <h2>Tables and lists</h2>
+        <p class="lede">Rows are the default way to show many things. They have no zebra striping and no row borders. Hover and selection fills separate them, and a single hairline sits under the header.</p>
+        <div class="stage" style="padding: 8px 0;">
+          <div class="s-table">
+            <div class="s-tr head"><span>Name</span><span>Address</span><span>Group</span><span>Status</span><span>Last active</span><span></span></div>
+            <div class="s-tr sel"><span style="font-weight: 600;">prod-api-1</span><span class="m">deploy@10.0.4.21:22</span><span class="d">Production</span><span class="s-st" style="color: var(--s-live);"><span class="dot live"></span>Live</span><span class="d">Now</span><span style="justify-self: end;"><span class="s-btn sm">Open</span></span></div>
+            <div class="s-tr is-hover"><span>prod-api-2</span><span class="m">deploy@10.0.4.22:22</span><span class="d">Production</span><span class="s-st" style="color: var(--s-idle);"><span class="dot idle"></span>Idle</span><span class="d">3h ago</span><span style="justify-self: end;"><span class="s-btn sm">Connect</span></span></div>
+            <div class="s-tr"><span>db-primary</span><span class="m">ops@10.0.8.5 via bastion</span><span class="d">Production</span><span class="s-st" style="color: var(--s-warn);"><span class="dot warn"></span>Host key changed</span><span class="d">Yesterday</span><span></span></div>
+            <div class="s-lsect">Local</div>
+            <div class="s-tr"><span>Local shell</span><span class="m">Local · zsh</span><span class="d">Local</span><span class="s-st" style="color: var(--s-idle);"><span class="dot idle"></span>Ready</span><span class="d">—</span><span></span></div>
+          </div>
+        </div>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Part</th><th>Spec</th></tr></thead><tbody>
+          <tr><td>Header row</td><td class="v">28 high · type.caption text.faint · 1 px border.subtle below · sentence case, never uppercase</td></tr>
+          <tr><td>Table row</td><td class="v">30 high · list row 32 · 0 12 0 16 padding · type.body · hover bg.hover · selected bg.selected and a 600 name</td></tr>
+          <tr><td>Cells</td><td class="v">12 px right padding, one line, ellipsis · technical values in mono 12 text.secondary · secondary columns text.muted</td></tr>
+          <tr><td>Row action</td><td class="v">Small button, right aligned, visible on hover or selection · double-clicking it never also triggers the row</td></tr>
+          <tr><td>Section header</td><td class="v">14 0 6 16 padding · type.caption 600 text.muted</td></tr>
+          <tr><td>Narrow mode</td><td class="v">With the inspector open, the least important column drops out entirely. It is never squeezed to a sliver.</td></tr>
+          <tr><td>Long lists</td><td class="v">Virtualized past 200 rows · 8 px scrollbar, thumb border.default, radius 4, no track</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="ds" id="inspector">
+        <h2>Inspector</h2>
+        <p class="lede">A right-hand pane for the selected object. It is read first and edited second, so it holds label and value pairs, the main actions, and any warning.</p>
+        <div class="stage" style="display: flex; gap: 24px; align-items: flex-start;">
+          <div class="s-insp">
+            <div class="s-ihead"><span class="dot warn"></span>db-primary<span style="flex: 1;"></span><span class="s-ibtn"><svg class="ico i12" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"></path></svg></span></div>
+            <div style="padding: 12px 16px 4px; font-size: 12px; color: var(--s-warn);">Host key changed</div>
+            <div style="padding: 4px 0;">
+              <div class="s-kv"><span>Address</span><span>10.0.8.5:22</span></div>
+              <div class="s-kv"><span>User</span><span>ops</span></div>
+              <div class="s-kv"><span>Jump host</span><span>bastion</span></div>
+              <div class="s-kv"><span>Identity</span><span>ops_ed25519</span></div>
+            </div>
+            <div style="display: flex; gap: 8px; padding: 12px 16px;"><span class="s-btn strong">Review</span></div>
+            <div class="s-callout">The key this host presented does not match the pinned key. Review it before connecting.</div>
+          </div>
+          <div class="s-scroll" title="Scrollbar"><i></i></div>
+        </div>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Part</th><th>Spec</th></tr></thead><tbody>
+          <tr><td>Pane</td><td class="v">290 default, 260 to 420 resizable · color.bg.surface · 1 px border.default on the left · scrolls on its own</td></tr>
+          <tr><td>Header</td><td class="v">40 high · status glyph, name type.heading.small, close icon button</td></tr>
+          <tr><td>Pairs</td><td class="v">92 px label column, 10 gap, 6 16 padding · label text.faint, value text.primary, one line</td></tr>
+          <tr><td>Actions</td><td class="v">12 16 padding, 8 gap · the first action is strong</td></tr>
+          <tr><td>Warning callout</td><td class="v">10 12 padding, radius 4 · attention at 8% over the surface, border attention at 28% · text in the attention color · states the problem and the next step</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="ds" id="terminal-pane">
+        <h2>Terminal pane</h2>
+        <p class="lede">The terminal ground is the canvas color, so a pane and the app around it read as one surface. Output fills from the top and scrolls to follow new lines. Long lines wrap at the pane edge.</p>
+        <div class="stage" style="padding: 0;">
+          <div class="s-term" style="border: 0;">
+            <div class="s-twhead"><span class="dot live"></span><b style="font-weight: 600;">prod-api-1</b><span class="sub">deploy@10.0.4.21:22 · 2h 14m</span><span style="flex: 1;"></span><span class="s-tbtn"><svg class="ico i12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="1.5"></circle><path d="M5 5a4.2 4.2 0 0 0 0 6M11 5a4.2 4.2 0 0 1 0 6"></path></svg>Broadcast</span><span class="s-tbtn">Split right</span><span class="s-tbtn">Split down</span></div>
+            <div class="s-tlines"><span style="color: var(--s-a2);">deploy@prod-api-1</span>:<span style="color: var(--s-a4);">~</span>$ systemctl status orders-api --no-pager
+<span style="color: var(--s-a2);">●</span> orders-api.service - Orders API
+     Active: <span style="color: var(--s-a2);">active (running)</span> since Tue 2026-09-08 09:14:02 UTC; 2 days ago
+<span style="color: var(--s-a2);">deploy@prod-api-1</span>:<span style="color: var(--s-a4);">~</span>$ tail -n 2 /var/log/orders-api/access.log
+<span style="color: var(--s-a8);">10.0.2.31</span>  POST  /v1/checkout   <span style="color: var(--s-a2);">201</span>   42ms
+<span style="color: var(--s-a8);">10.0.2.31</span>  GET   /v1/cart/5521  <span style="color: var(--s-a3);">404</span>    6ms
+<span style="color: var(--s-a2);">deploy@prod-api-1</span>:<span style="color: var(--s-a4);">~</span>$ grep -c <span style="background: var(--s-sel); color: var(--s-t1);">checkout</span> access.log
+1,284
+<span style="color: var(--s-a2);">deploy@prod-api-1</span>:<span style="color: var(--s-a4);">~</span>$ <span class="s-cursor"></span></div>
+          </div>
+        </div>
+        <div class="stage" style="padding: 0;">
+          <div class="s-term" style="border: 0;">
+            <div class="s-banner" style="color: var(--s-err); background: color-mix(in srgb, var(--s-err) 7%, var(--s-terminal));"><span style="flex: 1;">Could not connect to gpu-lab-01. The connection timed out.</span><span class="s-btn sm">Reconnect</span></div>
+            <div class="s-tlines" style="color: var(--s-a1);">ssh: connect to host gpu-01.lab port 22: Operation timed out</div>
+          </div>
+        </div>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Part</th><th>Spec</th></tr></thead><tbody>
+          <tr><td>Ground and text</td><td class="v">color.bg.terminal · foreground terminal.fg · type.terminal 13/18.2 mono · font size is a user setting from 12 to 15</td></tr>
+          <tr><td>Padding</td><td class="v">10 16 · space.terminal.padding stays in the grid math so columns stay whole</td></tr>
+          <tr><td>Cursor</td><td class="v">Block 0.6 em wide in terminal.cursor · focused pane only · unfocused panes show a hollow block</td></tr>
+          <tr><td>Selection</td><td class="v">color.selection behind the text, which keeps its color · copy on select is a user setting</td></tr>
+          <tr><td>Tab header</td><td class="v">36 high, color.bg.surface, 1 px border.subtle below · name 600 · address and duration text.faint · Broadcast, Split right, Split down on the right</td></tr>
+          <tr><td>Failure banner</td><td class="v">Error at 7% over the terminal · type.caption error text · one sentence with the reason · Reconnect for SSH, Restart for local shells</td></tr>
+          <tr><td>Ended session</td><td class="v">Same banner in text.muted over bg.hover · "The session to NAME ended." · no red, because ending is normal</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="ds" id="overlays">
+        <h2>Palette and dialogs</h2>
+        <p class="lede">Overlays sit on a scrim, take the elevated fill and the popover shadow, and trap focus until they close. Escape closes every overlay, and focus returns to where it was.</p>
+        <div class="stage" style="padding: 0;">
+          <div class="s-overlay" style="height: 330px;">
+            <div class="s-scrim"></div>
+            <div style="position: absolute; left: 50%; top: 24px; transform: translateX(-50%); width: min(560px, calc(100% - 32px));">
+              <div class="s-palette">
+                <div class="s-pin">prod<span class="caret" style="margin-left: 1px;"></span></div>
+                <div style="padding: 4px 0;">
+                  <div class="s-pitem on"><span class="kind">Host</span>Open prod-api-1<span class="hint mono">deploy@10.0.4.21:22</span></div>
+                  <div class="s-pitem"><span class="kind">Host</span>Connect to prod-api-2<span class="hint mono">deploy@10.0.4.22:22</span></div>
+                  <div class="s-pitem"><span class="kind">Host</span>Connect to prod-worker-1<span class="hint mono">deploy@10.0.4.31:22</span></div>
+                  <div class="s-pitem"><span class="kind">Snippet</span>Service status<span class="hint mono">systemctl status orders-api</span></div>
+                  <div class="s-pitem"><span class="kind">Go to</span>Projects<span class="hint"></span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="stage" style="padding: 0;">
+          <div class="s-overlay" style="height: 300px;">
+            <div class="s-scrim"></div>
+            <div style="position: absolute; left: 50%; top: 32px; transform: translateX(-50%); width: min(460px, calc(100% - 32px));">
+              <div class="s-dialog" style="width: 100%;">
+                <div class="s-dhead" style="color: var(--s-warn);">Host key changed for db-primary</div>
+                <div class="s-dbody">
+                  <div class="s-dtext">The key presented by 10.0.8.5 does not match the key you pinned on August 14. If nobody rotated this key, someone may be intercepting the connection.</div>
+                  <div class="mono" style="display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px; font-size: 12px; padding: 8px 10px; border-radius: 4px; background: var(--s-surface); border: var(--s-bw) solid var(--s-b-default);"><span style="color: var(--s-t4);">Pinned</span><span style="color: var(--s-t2);">SHA256:b8Uo…T4kd</span><span style="color: var(--s-t4);">Presented</span><span style="color: var(--s-warn);">SHA256:9fQe…Xa2L</span></div>
+                </div>
+                <div class="s-dfoot"><span class="s-btn">Cancel</span><span class="s-btn strong">Trust new key and connect</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Part</th><th>Palette</th><th>Dialog</th></tr></thead><tbody>
+          <tr><td>Size and place</td><td class="v">560 wide · 50 from the top of the window · centered</td><td class="v">420 wide, 460 for security dialogs · 110 from the top · centered</td></tr>
+          <tr><td>Surface</td><td class="v" colspan="2">color.bg.elevated · 1 px border between strong and default · radius.dialog 6 · shadow.popover · scrim color.overlay.scrim</td></tr>
+          <tr><td>Header</td><td class="v">42 input, type.body.large 14 · no title</td><td class="v">16 16 4 padding · type.heading 14/20 600 · security titles in the attention color</td></tr>
+          <tr><td>Body</td><td class="v">Rows 32 high, 0 14 padding · kind column 56 px, 11 px text.faint · hint right aligned, 240 max, ellipsis · 9 results, most relevant first</td><td class="v">8 16 4 padding, 12 gap · type.body.large 13/19 text.secondary · fingerprints in mono on a recessed block</td></tr>
+          <tr><td>Footer</td><td class="v">none</td><td class="v">Right aligned, 8 gap, 14 16 16 padding · Cancel first, then the strong action named for what it does</td></tr>
+          <tr><td>Keys</td><td class="v">Arrows move · Enter runs · Escape closes · hover moves the highlight</td><td class="v">Enter submits forms · Escape and scrim click cancel · Tab cycles inside</td></tr>
+          <tr><td>Stacking</td><td class="v" colspan="2">One overlay at a time. ⌘K does nothing while a dialog is open. Security prompts sit above everything at z.security_prompt.</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="ds" id="menus">
+        <h2>Menus and tooltips</h2>
+        <p class="lede">Context menus hold the actions for a tab or a pane. Tooltips name icon-only controls and explain why something is disabled. Neither ever holds the only way to do something.</p>
+        <div class="stage" style="display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start;">
+          <div class="s-menu">
+            <div class="s-mi on">Duplicate<span class="sc">⌘D</span></div>
+            <div class="s-mi">Duplicate in new window</div>
+            <div class="s-mi">Rename</div>
+            <div class="s-msep"></div>
+            <div class="s-mi">Split right</div>
+            <div class="s-mi off">Split down<span class="sc">4 panes max</span></div>
+            <div class="s-msep"></div>
+            <div class="s-mi danger">Close tab<span class="sc">⌘W</span></div>
+          </div>
+          <div class="col" style="gap: 14px;">
+            <span class="s-tip">Move to its own tab</span>
+            <span class="s-tip">Broadcast input<span class="s-kbd">⌘⇧B</span></span>
+            <span class="s-tip" style="max-width: 260px; height: auto; padding: 6px 8px;">Split is off because this tab already has four panes.</span>
+          </div>
+        </div>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Part</th><th>Spec</th></tr></thead><tbody>
+          <tr><td>Menu</td><td class="v">212 wide for panes, 238 for workspaces · 4 px padding · bg.elevated, radius 6, shadow.popover, z.dropdown</td></tr>
+          <tr><td>Menu item</td><td class="v">26 high, 0 8 padding, radius 4, type.body · highlight bg.selected · shortcut 11 px text.faint on the right · destructive items in the error color, always last</td></tr>
+          <tr><td>Separator</td><td class="v">1 px border.subtle with 4 px space above and below · groups actions by consequence</td></tr>
+          <tr><td>Disabled item</td><td class="v">text.faint · the reason sits in the shortcut slot</td></tr>
+          <tr><td>Tooltip</td><td class="v">24 high, 0 8 padding, radius 4, bg.control, 1 px border.strong, type.caption · 500 ms delay, instant once one is showing · z.tooltip · wraps at 260</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="ds" id="feedback">
+        <h2>Toasts and banners</h2>
+        <p class="lede">Toasts confirm something that already happened. Banners report a state that is still true. Neither asks a question, because questions belong in dialogs.</p>
+        <div class="stage" style="display: flex; flex-direction: column; gap: 14px; align-items: flex-start;">
+          <span class="s-toast">Pinned the host key for ci-runner-1 on first connection.</span>
+          <span class="s-toast">Sent to prod-api-1.</span>
+          <div class="s-callout" style="margin: 0; max-width: 460px;">This host did not respond on its last attempt. Connecting will retry.</div>
+        </div>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Part</th><th>Spec</th></tr></thead><tbody>
+          <tr><td>Toast</td><td class="v">bottom right, 14 from the edge, 12 above the status bar · 9 12 padding, radius 4, bg.control, 1 px border.strong, shadow.toast · type.caption · 420 max · 2.8 s, one at a time, the newest replaces the last · z.toast</td></tr>
+          <tr><td>Toast copy</td><td class="v">Past tense and specific: "Added web-3." · no "Success!" · never the only record of an error, which also goes to Logs</td></tr>
+          <tr><td>Callout</td><td class="v">Inside a pane, full width of its column · attention and error variants · the problem, then what to do</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="ds" id="empty">
+        <h2>Empty states</h2>
+        <p class="lede">An empty view says what will appear here and offers the one action that fills it. It never shows an illustration or a joke.</p>
+        <div class="stage"><div class="s-empty"><b>No open sessions</b><span>Open a host from Home, or double-click the top bar to open a local terminal.</span><span class="s-btn">New local terminal</span></div></div>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Part</th><th>Spec</th></tr></thead><tbody>
+          <tr><td>Layout</td><td class="v">Centered in the pane, 56 top padding, 8 gap · title type.heading 14/20 600 · body 13/19 text.muted, 420 max · one default button</td></tr>
+          <tr><td>No results</td><td class="v">Inline, left aligned where the rows would be: "Nothing matches this search." with a Clear search and filters link</td></tr>
+        </tbody></table></div>
+      </section>
+      <section class="ds" id="writing">
+        <p class="eyebrow">Guidance</p>
+        <h2>Writing</h2>
+        <p class="lede">The interface speaks like a careful operator: short, specific, and calm. It names things the way people see them on screen.</p>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Rule</th><th>Write</th><th>Not</th></tr></thead><tbody>
+          <tr><td>Sentence case everywhere except proper names</td><td>New host · Known Hosts (a place name)</td><td>NEW HOST · New Host Dialog</td></tr>
+          <tr><td>Buttons say exactly what happens</td><td>Trust new key and connect</td><td>OK · Continue · Yes</td></tr>
+          <tr><td>Confirmations are past tense and specific</td><td>Added web-3.</td><td>Success! · Done</td></tr>
+          <tr><td>Errors give the cause and the fix</td><td>Enter the address as user@host or user@host:port.</td><td>Invalid input · Something went wrong</td></tr>
+          <tr><td>Security copy states the risk plainly</td><td>If nobody rotated this key, someone may be intercepting the connection.</td><td>Warning: potential MITM detected!!</td></tr>
+          <tr><td>Empty states say what will appear and how</td><td>Open a host from Home, or double-click the top bar to open a local terminal.</td><td>Nothing here yet 🎉</td></tr>
+          <tr><td>States use the same word everywhere</td><td>Live · Idle · Offline · Host key changed · Failed · Ended</td><td>Online in one place and Connected in another</td></tr>
+          <tr><td>Durations and times</td><td>2h 14m · just now · 3h ago · Yesterday · Sep 2</td><td>134 minutes · 2026-09-09T09:14Z</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="ds" id="a11y">
+        <h2>Accessibility</h2>
+        <p class="lede">Accessibility is part of each token rather than a separate mode. The contrast columns in <a href="#color">Color</a> are measured live for the previewed theme.</p>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Area</th><th>Requirement</th></tr></thead><tbody>
+          <tr><td>Text contrast</td><td>Every text and status token reaches 4.5:1 on canvas, surface, elevated, and chrome in all four themes. Faint text is never placed on bg.selected, where it drops to 4.3:1.</td></tr>
+          <tr><td>Non-text contrast</td><td>Focus rings and status glyphs reach 3:1 against their surface. Hairline borders are decorative, so every control is also identified by its label and fill, never by its outline alone. High contrast makes borders white and doubles them to 2 px.</td></tr>
+          <tr><td>Focus</td><td>A 2 px focus ring, offset 1 px, shows on keyboard focus only. Overlays trap focus and return it on close. Terminal panes show focus with the lit header and the solid cursor.</td></tr>
+          <tr><td>Targets</td><td>Pointer targets are at least 24 × 24, meeting WCAG 2.2 target size (minimum). Row actions and close buttons get invisible padding up to 24. The mobile apps keep 44.</td></tr>
+          <tr><td>State</td><td>Status always pairs a shape and a label with its color. Selection uses a fill plus a weight change, never color alone.</td></tr>
+          <tr><td>Motion</td><td>The OS reduced-motion setting drops every duration to motion.instant. The busy spinner steps instead of sweeping.</td></tr>
+          <tr><td>Screen readers</td><td>Rows expose name, address, and status in that order. Tabs report their pane count. Toasts are polite live-region announcements. Security dialogs are assertive.</td></tr>
+          <tr><td>Recording theme</td><td>Lower saturation and lifted darks so screen recordings and video calls keep status colors apart after compression.</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="ds" id="shortcuts">
+        <h2>Shortcuts</h2>
+        <p class="lede">Current bindings from the desktop app. Menus and tooltips show them in key caps. On Linux and Windows, ⌘ becomes Ctrl.</p>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Keys</th><th>Action</th><th>Scope</th></tr></thead><tbody>
+          <tr><td class="v">⌘K</td><td>Open the command palette</td><td>Anywhere except while a dialog is open</td></tr>
+          <tr><td class="v">⌘N</td><td>New host</td><td>Anywhere</td></tr>
+          <tr><td class="v">⌘T</td><td>New local terminal tab</td><td>Anywhere · same as double-clicking the empty title bar</td></tr>
+          <tr><td class="v">⌘W</td><td>Close the current tab</td><td>Terminal tabs</td></tr>
+          <tr><td class="v">⌘D</td><td>Duplicate the focused pane into a split</td><td>Terminal tabs · respects the four-pane cap</td></tr>
+          <tr><td class="v">⌘⇧B</td><td>Broadcast input to every pane in the tab</td><td>Terminal tabs with two or more live panes</td></tr>
+          <tr><td class="v">⌘F</td><td>Search the terminal</td><td>Focused pane</td></tr>
+          <tr><td class="v">⌘⇧L</td><td>Clear the terminal</td><td>Focused pane</td></tr>
+          <tr><td class="v">⌘⌥← · ⌘⌥→</td><td>Previous or next tab</td><td>Anywhere</td></tr>
+          <tr><td class="v">⌘1 to ⌘7</td><td>Activity, Projects, Home, Sessions, SFTP, Remote Devices, Settings</td><td>Anywhere · see the open decision below</td></tr>
+          <tr><td class="v">⌘L · ⌘⇧F · ⌘⇧T</td><td>Logs · Files · show or hide files</td><td>Anywhere</td></tr>
+          <tr><td class="v">⇧PageUp · ⇧PageDown</td><td>Scroll terminal history</td><td>Focused pane</td></tr>
+        </tbody></table></div>
+        <p class="note">Open decision: Home is first in the sidebar but bound to ⌘3. Renumbering to match the sidebar order changes muscle memory, so it needs a call before the shell is rebuilt.</p>
+      </section>
+
+      <section class="ds" id="changes">
+        <p class="eyebrow">Build</p>
+        <h2>Token changes</h2>
+        <p class="lede">Every key that is new or whose dark value differs from today's <code>design/tokens.toml</code>. Applying these is step one of the Rust work. The generated contract and the design-token gate then flag every hard-coded value that no longer matches.</p>
+        <div class="row" style="gap: 8px; margin-bottom: 4px;"><span class="tag new">New</span><span class="note" style="margin: 0;">key does not exist yet</span><span class="tag chg" style="margin-left: 12px;">Changed</span><span class="note" style="margin: 0;">key exists with a different value</span></div>
+        <div id="changes-table"></div>
+      </section>
+
+      <section class="ds" id="rust">
+        <h2>Rust handoff</h2>
+        <p class="lede">Slate becomes a styled component crate on top of gpui-base, fed by the token contract the app already generates. It replaces gpui-component, which today only supplies buttons, inputs, scroll areas, and layout helpers.</p>
+        <h3>Prerequisite</h3>
+        <p>gpui-base 0.6 builds on the <code>gpui-pre</code> 0.3 snapshots, not the <code>gpui</code> 0.2.2 crate the desktop app uses now. The GPUI upgrade has to land first, in its own spike branch, before any Slate component can depend on gpui-base.</p>
+        <h3>Where it lives</h3>
+        <pre><code>design/tokens.toml                 values from this page, all five themes
+crates/termirust-ui-contract       generates DesignTokens (unchanged pipeline)
+crates/termirust-slate             NEW · styled components on gpui-base
+  src/tokens.rs                    active theme lookup, gpui color and size helpers
+  src/button.rs  input.rs  segmented.rs  toggle.rs  kbd.rs  status.rs
+  src/title_bar.rs  sidebar.rs  toolbar.rs  status_bar.rs
+  src/host_card.rs  table.rs  inspector.rs
+  src/palette.rs  dialog.rs  menu.rs  tooltip.rs  toast.rs  empty.rs
+  src/terminal/{pane.rs, pane_header.rs, split.rs, banner.rs}
+crates/termirust-desktop           screens compose termirust-slate, no raw hex</code></pre>
+        <h3>Component map</h3>
+        <p>Backing modules are from gpui-kit 0.6.1 <code>crates/base/src</code>. Their exact APIs still need checking during the spike.</p>
+        <div id="map-table"></div>
+        <h3>API shape</h3>
+        <p>Builders in the gpui style, tokens resolved from the active theme, and no styling escape hatches on the public surface. A screen that needs a new look needs a new variant here first.</p>
+        <pre><code>// A strong neutral button with a leading icon
+Button::new("new-host")
+    .label("New Host")
+    .icon(Icon::Plus)
+    .weight(ButtonWeight::Strong)          // Default | Strong
+    .size(ControlSize::Default)            // Small 22 | Default 26 | Large 36
+    .on_click(cx.listener(|this, _, window, cx| this.open_new_host(window, cx)))
+
+// Status is always glyph + label + token color
+StatusGlyph::new(StatusKind::Done).label("Live")
+
+// Terminal tab body: app-owned split tree, Slate draws panes and dividers
+SplitPanes::new(workspace.split_tree())
+    .max_panes(MAX_SPLIT_PANES)            // 4
+    .ratio_range(0.15..=0.85)
+    .pane(|pane, window, cx| TerminalPane::new(pane).into_any_element())
+    .on_resize(cx.listener(Self::resize_split))
+    .on_drop(cx.listener(Self::drop_into_split))   // edge + source (tab or pane)</code></pre>
+        <h3>Build order</h3>
+        <p>Each step ships behind the existing screens and is verified by the design-token and localization gates before the next starts.</p>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Step</th><th>Scope</th><th>Done when</th></tr></thead><tbody>
+          <tr><td class="v">1 · Tokens</td><td>Apply the changes table to design/tokens.toml and regenerate the contract.</td><td>Generated contract is current and the token gate reports no new literals.</td></tr>
+          <tr><td class="v">2 · GPUI spike</td><td>Move the app to gpui-pre 0.3 and add gpui-base.</td><td>Workspace checks and tests pass, and the Rust 1.88 policy is either met or amended.</td></tr>
+          <tr><td class="v">3 · Primitives</td><td>Button, icon and toolbar buttons, input, segmented, toggle, key cap, status glyph.</td><td>Storybook-style gallery screen renders every state on this page.</td></tr>
+          <tr><td class="v">4 · Shell</td><td>Title bar tabs, sidebar, toolbar, status bar, Home.</td><td>Home and navigation match this page at 1280 × 840 in all themes.</td></tr>
+          <tr><td class="v">5 · Data views</td><td>Host card, tables and lists, inspector, empty states.</td><td>Home, Sessions, Known Hosts, and Logs run on Slate.</td></tr>
+          <tr><td class="v">6 · Overlays</td><td>Palette, dialogs, menus, tooltips, toasts.</td><td>Focus trap, Escape, and focus return pass the accessibility harness.</td></tr>
+          <tr><td class="v">7 · Terminal</td><td>Pane, pane header, banners, split panes with drag and drop and resizing.</td><td>Split, move, detach, and resize work with four panes and no frame drops while output streams.</td></tr>
+          <tr><td class="v">8 · Cleanup</td><td>Remove gpui-component and every remaining raw color.</td><td>No gpui_component imports and a zero-literal token audit.</td></tr>
+        </tbody></table></div>
+      </section>
+    </div>
+  </div>
+</div>
+<style>
+  .g { width: 7px; height: 7px; display: inline-block; flex: none; box-sizing: border-box; }
+  .g-done { border-radius: 999px; background: var(--s-live); }
+  .g-busy { border-radius: 999px; border: 1.5px solid var(--s-busy); border-right-color: transparent; animation: gspin 900ms steps(8) infinite; }
+  .g-idle { border-radius: 999px; border: 1.5px solid var(--s-idle); }
+  .g-attention { background: var(--s-warn); border-radius: 1px; transform: rotate(45deg); width: 6px; height: 6px; }
+  .g-error { background: var(--s-err); clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%); }
+  .g-offline { border-radius: 999px; border: 1.5px dashed var(--s-off); }
+  .g-orphaned { border: 1.5px solid var(--s-warn); border-radius: 1px; transform: rotate(45deg); width: 6px; height: 6px; }
+  .g-denied { border: 1.5px solid var(--s-err); border-radius: 1.5px; }
+  @keyframes gspin { to { transform: rotate(360deg); } }
+  .gbox { width: 12px; height: 12px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  .typespec { color: var(--p-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px; display: block; }
+  .bar { height: 10px; background: color-mix(in srgb, var(--p-accent) 55%, transparent); border-radius: 2px; display: block; min-width: 1px; }
+  .rbox { width: 72px; height: 48px; background: var(--s-elevated); border: var(--s-bw) solid var(--s-b-strong); display: flex; align-items: flex-end; padding: 6px; font: 11px/14px var(--mono); color: var(--s-t3); }
+  .iconcell { display: flex; align-items: center; gap: 10px; font: 12px/16px var(--mono); color: var(--s-t3); }
+  .iconcell svg { color: var(--s-t1); }
+</style>
+<script>
+(function () {
+  var TH = ['dark', 'light', 'hc', 'rec'];
+  var THN = { dark: 'Dark', light: 'Light', hc: 'High contrast', rec: 'Recording' };
+  var IDX = { dark: 0, light: 1, hc: 2, rec: 3 };
+
+  var COLORS = [
+    { g: 'Surfaces', note: 'Five neutral steps from chrome to control. Each step is about 1.5% lighter than the one before in Dark, so panes separate by edge, not by contrast.', items: [
+      ['color.bg.chrome', '--s-chrome', ['#111316', '#E9ECF0', '#000000', '#1A1C20'], null, 'Title bar and status bar'],
+      ['color.bg.surface', '--s-surface', ['#14161A', '#F1F3F6', '#000000', '#1D2024'], '#181C22', 'Sidebar, inspector, tab and pane headers, field fill'],
+      ['color.bg.canvas', '--s-canvas', ['#17191D', '#FAFBFC', '#000000', '#202328'], '#101318', 'Content panes and the window ground'],
+      ['color.bg.elevated', '--s-elevated', ['#1B1E23', '#FFFFFF', '#0A0A0A', '#25292F'], '#20252D', 'Host cards, palette, dialogs, menus'],
+      ['color.bg.hover', '--s-hover', ['#1C1F24', '#EDF0F3', '#1A1A1A', '#2A2E34'], null, 'Row and item hover'],
+      ['color.bg.selected', '--s-selected', ['#23272E', '#E1E6ED', '#0033FF', '#30353D'], null, 'Selected row, active sidebar item, palette highlight'],
+      ['color.bg.control', '--s-control', ['#23262B', '#FFFFFF', '#000000', '#2C3037'], null, 'Button fill, tooltip, toast'],
+      ['color.bg.control_hover', '--s-control-hover', ['#2A2E34', '#F2F4F7', '#1A1A1A', '#333841'], null, 'Button hover, active segment'],
+      ['color.bg.terminal', '--s-terminal', ['#17191D', '#FAFBFC', '#000000', '#202328'], '#0B0D10', 'Terminal ground, equal to canvas'],
+      ['color.overlay.scrim', '--s-scrim', ['#08090B8C', '#1A1D2266', '#000000E6', '#000000B3'], '#000000B3', 'Behind the palette and dialogs']
+    ] },
+    { g: 'Borders', note: 'Hairlines separate regions. They are decorative, so controls are identified by label and fill, never by border alone.', items: [
+      ['color.border.subtle', '--s-b-subtle', ['#22262C', '#E3E6EA', '#8A8A8A', '#30343B'], null, 'Header rules and inner dividers'],
+      ['color.border.default', '--s-b-default', ['#2A2E35', '#D6DAE0', '#FFFFFF', '#3A3F47'], '#343B46', 'Pane edges, title bar, cards, fields'],
+      ['color.border.strong', '--s-b-strong', ['#363A41', '#C4CAD2', '#FFFFFF', '#464C55'], '#657083', 'Buttons and form fields'],
+      ['color.border.focus', '--s-b-focus', ['#4A5260', '#8F99A6', '#FFFF00', '#6A7280'], null, 'Focused field border']
+    ] },
+    { g: 'Text', note: 'Four steps. Contrast is the lowest ratio across canvas, surface, elevated, and chrome, because text can land on any of them.', items: [
+      ['color.text.primary', '--s-t1', ['#E6E8EB', '#1A1D22', '#FFFFFF', '#F4F5F6'], '#F3F5F7', 'Names, values, body copy', 'text'],
+      ['color.text.secondary', '--s-t2', ['#B4B9C2', '#3A404A', '#FFFFFF', '#C9CDD3'], '#B6BEC9', 'Technical values, dialog copy', 'text'],
+      ['color.text.muted', '--s-t3', ['#8C929C', '#4F5661', '#E0E0E0', '#A3A8B0'], '#909AA8', 'Secondary columns, captions, inactive tabs', 'text'],
+      ['color.text.faint', '--s-t4', ['#838993', '#626974', '#D0D0D0', '#8E949D'], null, 'Column headers, hints, placeholders', 'text']
+    ] },
+    { g: 'Accent and focus', note: 'One accent, used for focus, links, the active sidebar icon, toggles, and drop targets. It never fills a button.', items: [
+      ['color.action.primary', '--s-accent', ['#74A7F2', '#2A64C8', '#00FFFF', '#8CA8E8'], '#7EA2FF', 'Links, active icon, toggle track, drop zones', 'text'],
+      ['color.action.primary_text', '--s-on-accent', ['#0E1622', '#FFFFFF', '#000000', '#111318'], '#07132E', 'Text on an accent fill', 'on'],
+      ['color.focus', '--s-focus', ['#74A7F2', '#2A64C8', '#FFFF00', '#FFFFFF'], '#8FC7FF', 'Keyboard focus ring', 'ui'],
+      ['color.selection', '--s-sel', ['#2B3B52', '#CFE0FA', '#0033FF', '#39465F'], '#253A69', 'Terminal text selection']
+    ] },
+    { g: 'Status', note: 'Status hues are separate from the accent even where they share a value. Busy and the accent are both blue because both mean in progress.', items: [
+      ['color.status.done', '--s-live', ['#6CCB8F', '#1A7A45', '#00FF66', '#8BC3A4'], '#4ED08A', 'Live, connected, succeeded', 'text'],
+      ['color.status.busy', '--s-busy', ['#74A7F2', '#2A64C8', '#00FFFF', '#8CA8E8'], '#7EA2FF', 'Connecting, running', 'text'],
+      ['color.status.attention', '--s-warn', ['#E9B061', '#8F5300', '#FFFF00', '#D6B47A'], '#FFB35C', 'Needs review, host key changed', 'text'],
+      ['color.status.error', '--s-err', ['#E5787A', '#B8343A', '#FF66FF', '#D99599'], '#FF7B83', 'Failed, refused', 'text'],
+      ['color.status.idle', '--s-idle', ['#8C929C', '#4F5661', '#FFFFFF', '#A3A8B0'], '#98A2B3', 'Idle, ready, ended', 'text'],
+      ['color.status.offline', '--s-off', ['#838993', '#626974', '#FFFFFF', '#8E949D'], '#A7AFBA', 'Offline, unreachable', 'text']
+    ] },
+    { g: 'Groups', note: 'Glyph color for host tiles. The tile fill is the same value at 14% opacity.', items: [
+      ['color.group.production', '--s-g-prod', ['#74A7F2', '#2A64C8', '#00FFFF', '#8CA8E8'], null, 'Production hosts'],
+      ['color.group.staging', '--s-g-stage', ['#6CCB8F', '#1A7A45', '#00FF66', '#8BC3A4'], null, 'Staging hosts'],
+      ['color.group.lab', '--s-g-lab', ['#B69CF0', '#6E48C2', '#FF66FF', '#B5A6D9'], null, 'Lab hosts'],
+      ['color.group.jump', '--s-g-jump', ['#B4B9C2', '#4F5661', '#FFFFFF', '#C9CDD3'], null, 'Jump hosts and quick connections']
+    ] },
+    { g: 'Window controls', note: 'Unchanged. The app draws its own traffic lights, so they follow the platform colors.', items: [
+      ['color.window.close', null, ['#FF5F57', '#FF5F57', '#FF66FF', '#D99599'], '#FF5F57', 'Close'],
+      ['color.window.minimize', null, ['#FEBC2E', '#FEBC2E', '#FFFF00', '#D6B47A'], '#FEBC2E', 'Minimize'],
+      ['color.window.zoom', null, ['#28C840', '#28C840', '#00FF66', '#8BC3A4'], '#28C840', 'Zoom']
+    ] }
+  ];
+
+  var ANSI_NAMES = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white', 'bright_black', 'bright_red', 'bright_green', 'bright_yellow', 'bright_blue', 'bright_magenta', 'bright_cyan', 'bright_white'];
+  var ANSI = {
+    dark: { c: ['#1B1E23', '#E5787A', '#6CCB8F', '#E9B061', '#74A7F2', '#B69CF0', '#62C4D1', '#C9CDD4', '#5A6069', '#F09499', '#8ADBA7', '#F2C585', '#95BCF6', '#CAB5F5', '#86D6E0', '#F1F3F5'], fg: '#C9CDD4', cur: '#E6E8EB' },
+    light: { c: ['#1A1D22', '#B8343A', '#1A7A45', '#8F5300', '#2A64C8', '#6E48C2', '#0E7282', '#626974', '#4F5661', '#CC4A50', '#228A52', '#A15F00', '#3F76D6', '#8160CF', '#13879A', '#8B919B'], fg: '#2A2E35', cur: '#1A1D22' },
+    hc: { c: ['#000000', '#FF6B6B', '#00FF66', '#FFFF00', '#66B3FF', '#FF66FF', '#00FFFF', '#FFFFFF', '#9A9A9A', '#FF9C9C', '#7DFFAE', '#FFFF99', '#A6D2FF', '#FF9CFF', '#99FFFF', '#FFFFFF'], fg: '#FFFFFF', cur: '#FFFF00' },
+    rec: { c: ['#25292F', '#D99599', '#8BC3A4', '#D6B47A', '#8CA8E8', '#B5A6D9', '#8CC5CC', '#C9CDD3', '#6A7280', '#E3AEB1', '#A6D3BA', '#E1C696', '#A9BFEE', '#C8BCE3', '#A8D4DA', '#F4F5F6'], fg: '#C9CDD3', cur: '#F4F5F6' }
+  };
+
+  var TYPE = [
+    ['font.ui.family', 'system-ui', 'system-ui', 'All interface text', 'SF Pro · Segoe UI Variable · desktop default', 'ui'],
+    ['font.mono.family', 'system-monospace', 'system-monospace', 'Terminal, addresses, fingerprints, commands', 'SF Mono · Cascadia Mono · DejaVu Sans Mono', 'mono'],
+    ['type.title', '20/28/600', '28/36/700', 'Rare page titles', 'Known Hosts', 'ui'],
+    ['type.activity.title', '16/22/600', '22/30/650', 'Activity headline', 'Two hosts need attention', 'ui'],
+    ['type.metric', '20/24/600', '24/32/600', 'Counters', '12', 'ui'],
+    ['type.heading', '14/20/600', '20/28/650', 'Dialog and empty-state titles', 'Host key changed for db-primary', 'ui'],
+    ['type.heading.small', '13/18/600', '16/22/600', 'Names, selected rows, pane titles', 'prod-api-1', 'ui'],
+    ['type.body.large', '14/20/400', null, 'Palette input', 'Search hosts, actions, snippets, or places', 'ui'],
+    ['type.body', '13/18/400', '14/20/400', 'Default UI text: rows, sidebar, tabs', 'Connect to prod-api-2', 'ui'],
+    ['type.body.relaxed', '13/19/400', null, 'Multi-line prose in dialogs and empty states', 'The key presented by 10.0.8.5 does not match the key you pinned.', 'ui'],
+    ['type.body.small', '12/17/400', '13/18/400', 'Help text under settings', 'Sends an SSH keep-alive so idle sessions survive NAT timeouts.', 'ui'],
+    ['type.label', '12/16/500', '14/20/600', 'Button labels · strong buttons use 600', 'New Host', 'ui'],
+    ['type.caption', '12/16/400', '12/16/500', 'Captions, toolbars, table headers, status bar', 'deploy · Production · via bastion', 'ui'],
+    ['type.micro', '11/14/400', '11/15/400', 'Key caps, palette kinds, pane counts', '⌘K  Host  3', 'ui'],
+    ['type.nano', '10/14/400', '10/14/400', 'Dense badges only', 'v1 draft', 'ui'],
+    ['type.terminal', '13/18.2/400', '14/18.9/400', 'Terminal cells · line height 1.4 × size', 'deploy@prod-api-1:~$ uptime', 'mono']
+  ];
+
+  var SPACE = [
+    ['space.0', '0', '0', 'Flush joins'], ['space.1', '2', '2', 'Optical nudges, glyph offsets'], ['space.2', '4', '4', 'Toolbar button gaps, segment track padding'],
+    ['space.3', '8', '8', 'Icon to label, card grid gap, list padding'], ['space.4', '12', '12', 'Card padding, toolbar gap, cell right padding'],
+    ['space.5', '16', '16', 'Row inset, dialog padding, terminal inline inset'], ['space.6', '24', '24', 'Section spacing inside a pane'],
+    ['space.7', '32', '32', 'Space around empty states'], ['space.8', '48', '48', 'Page-level spacing'], ['space.9', '64', '64', 'Rare large offsets'],
+    ['space.micro', '3', '3', 'Hairline-adjacent nudges'], ['space.fine', '5', '5', 'Key cap padding'], ['space.dense', '6', '6', 'Icon to label inside buttons'],
+    ['space.compact', '10', '10', 'Button padding, callout padding'], ['space.terminal.padding', '10', '8', 'Terminal vertical inset'], ['space.terminal.inline', '16', null, 'Terminal horizontal inset']
+  ];
+
+  var SHAPE = [
+    ['radius.control', '4', '6', 'Buttons, inputs, menu items, tooltips, toasts, callouts'], ['radius.segment', '3', null, 'Segments inside a segmented control'],
+    ['radius.panel', '6', '8', 'Host cards and tiles'], ['radius.dialog', '6', '12', 'Palette, dialogs, menus'], ['radius.pill', '999', '999', 'Toggles only'],
+    ['radius.progress', '2', '3', 'Progress bars'], ['border.hairline', '1 · 2 in High contrast', '1', 'Every divider and outline'], ['border.emphasis', '2', '2', 'Divider drag line, tab drop marker'],
+    ['focus.ring.width', '2', '2', 'Keyboard focus ring'], ['focus.ring.offset', '1', '2', 'Gap between a control and its ring']
+  ];
+
+  var DEPTH = [
+    ['elevation.none', '0', '0', 'Panes, bars, rows'], ['elevation.separator', '1', '1', 'Kept for compatibility. Slate uses hairlines instead'],
+    ['elevation.popover', '2', '2', 'Menus, palette, tooltips, toasts'], ['elevation.modal', '3', '3', 'Dialogs'],
+    ['shadow.none', 'none', 'none', 'Panes'], ['shadow.separator', 'none', '0/1/2/0/#00000033', 'Retired, hairlines separate panes'],
+    ['shadow.popover', '0/16/40/0/#00000073 · light 0/12/32/0/#1A1D2229', '0/4/12/0/#0000004D', 'Menus, palette, dialogs'],
+    ['shadow.modal', '0/16/40/0/#00000073 · light 0/12/32/0/#1A1D2229', '0/8/24/0/#00000066', 'Dialogs, over the scrim'],
+    ['shadow.toast', '0/8/24/0/#00000059 · light 0/6/18/0/#1A1D221F', null, 'Toasts and tooltips']
+  ];
+  var ZS = [['z.base', '0'], ['z.sticky', '10'], ['z.dropdown', '100'], ['z.popover', '200'], ['z.toast', '300'], ['z.modal_scrim', '400'], ['z.modal', '410'], ['z.security_prompt', '500'], ['z.tooltip', '600'], ['z.drag', '700']];
+  var MOTION = [
+    ['motion.instant', '0ms', '0ms', 'Drags, resizes, terminal output, reduced motion'], ['motion.fast', '100ms', '100ms', 'Hover and pressed fills, overlay close'],
+    ['motion.normal', '160ms', '160ms', 'Toggle knob, segment and tab change'], ['motion.slow', '240ms', '240ms', 'Overlay open'],
+    ['motion.progress', '900ms', '900ms', 'One spinner revolution, eight steps'], ['easing.standard', '0.2/0/0/1', '0.2/0/0/1', 'Everything that enters or moves'],
+    ['easing.exit', '0.4/0/1/1', '0.4/0/1/1', 'Things that leave']
+  ];
+  var ICONSIZE = [
+    ['icon.size.indicator', '7', '8', 'Status glyph'], ['icon.size.compact', '11', '15', 'Close glyph on tabs and panes'], ['icon.size.small', '12', '12', 'Button and toolbar icons'],
+    ['icon.size.status', '12', '17', 'Box around a status glyph'], ['icon.size.default', '14', '16', 'Sidebar, menus, icon buttons'], ['icon.size.medium', '16', '20', 'Host tile glyph'],
+    ['icon.size.large', '20', '24', 'Empty-state glyph'], ['icon.stroke.default', '1.4', '1.5', 'Stroke on the 16-unit grid']
+  ];
+  var LAYOUT = [
+    ['layout.window.default_width', '1280', '1280', 'Default window'], ['layout.window.default_height', '840', '840', 'Default window'],
+    ['layout.window.minimum_width', '960', '960', 'Minimum window'], ['layout.window.minimum_height', '640', '640', 'Minimum window'],
+    ['layout.chrome.height', '38', '44', 'Title bar'], ['layout.status.height', '26', '28', 'Status bar'],
+    ['layout.host_sidebar.width', '232', '220', 'Sidebar'], ['layout.sidebar.default', '232', '280', 'Sidebar default'], ['layout.sidebar.minimum', '200', '220', 'Sidebar minimum'], ['layout.sidebar.maximum', '320', '420', 'Sidebar maximum'],
+    ['layout.inspector.default', '290', '320', 'Inspector default'], ['layout.inspector.minimum', '260', '280', 'Inspector minimum'], ['layout.inspector.maximum', '420', '480', 'Inspector maximum'],
+    ['layout.toolbar.height', '40', null, 'Toolbar under a view title'], ['layout.workspace_header.height', '36', '48', 'Terminal tab header'], ['layout.pane_header.height', '28', null, 'Pane header at 2+ panes'],
+    ['layout.shell.navigation_row_height', '28', '36', 'Sidebar item'], ['layout.shell.icon_button_size', '24', '32', 'Icon button'], ['layout.shell.toolbar_button_size', '24', '30', 'Toolbar button height'],
+    ['layout.shell.compact_control_height', '26', '32', 'Compact control'], ['layout.shell.traffic_light_size', '12', '9', 'Traffic light diameter'], ['layout.shell.tab_label_maximum', '160', '160', 'Tab label before ellipsis'],
+    ['layout.shell.pane_menu_width', '212', '212', 'Pane menu'], ['layout.shell.workspace_menu_width', '238', '238', 'Workspace menu'],
+    ['layout.palette.width', '560', '760', 'Command palette'], ['layout.palette.offset_top', '50', '88', 'Palette distance from the window top'],
+    ['layout.dialog.width', '420', null, 'Dialog'], ['layout.dialog.wide_width', '460', null, 'Security dialog'],
+    ['layout.table.row_height', '30', null, 'Table row'], ['layout.list.row_height', '32', null, 'List row'],
+    ['layout.card.height', '60', null, 'Host card'], ['layout.card.tile', '36', null, 'Host tile'], ['layout.card.minimum_width', '280', null, 'Host card before the grid drops a column'],
+    ['layout.quick_connect.height', '36', null, 'Quick connect field'], ['layout.split.divider_hit', '6', null, 'Divider grab area'], ['layout.split.max_panes', '4', null, 'Panes per tab'],
+    ['control.height.compact', '22', '28', 'Small button'], ['control.height.default', '26', '36', 'Button, filter, search'], ['control.height.large', '36', '44', 'Quick connect'],
+    ['target.pointer.minimum', '24', '36', 'Pointer target, WCAG 2.2 target size (minimum)'], ['target.touch.minimum', '44', '44', 'Mobile touch target']
+  ];
+  var STATUS = [
+    ['idle', 'g-idle', 'color.status.idle', 'hollow circle', 'hollow_circle', 'Idle · Ready · Ended'],
+    ['busy', 'g-busy', 'color.status.busy', 'stepped ring spinner', 'filled_circle', 'Connecting · Running'],
+    ['done', 'g-done', 'color.status.done', 'filled circle', 'check_circle', 'Live · Done'],
+    ['attention', 'g-attention', 'color.status.attention', 'diamond', 'diamond', 'Host key changed · Needs review'],
+    ['error', 'g-error', 'color.status.error', 'octagon', 'octagon', 'Failed · Refused'],
+    ['offline', 'g-offline', 'color.status.offline', 'dashed circle', 'broken_link', 'Offline · Unreachable'],
+    ['orphaned', 'g-orphaned', 'color.status.attention', 'hollow diamond', 'question_diamond', 'Orphaned session'],
+    ['permission_denied', 'g-denied', 'color.status.error', 'hollow square', 'lock', 'Permission denied']
+  ];
+  var CONN = [['g-busy', '--s-busy', 'Connecting'], ['g-done', '--s-live', 'Live'], ['g-idle', '--s-idle', 'Idle'], ['g-attention', '--s-warn', 'Host key changed'], ['g-error', '--s-err', 'Failed'], ['g-offline', '--s-off', 'Offline'], ['g-idle', '--s-idle', 'Ended']];
+  var MAP = [
+    ['Button · ToolbarButton · IconButton', 'button.rs', 'Neutral fill, strong weight, armed and on states, token sizes'],
+    ['TextInput · SearchField · QuickConnect', 'input/', 'Recessed fill, focus border, leading icon, trailing key cap or action'],
+    ['Segmented', 'toggle_group.rs', 'Track and segment tokens, icon segments'],
+    ['Toggle', 'switch.rs', 'Pill track, accent at 60% when on'],
+    ['KeyCap', 'none · text element', 'Platform glyphs, Ctrl+ spelling off macOS'],
+    ['StatusGlyph', 'none · custom paint', 'Eight shapes from StatusKind, label, token color'],
+    ['TitleBar · TitleBarTab', 'tabs.rs', 'Traffic lights, fixed Home tab, pane counts, drag to reorder, double-click to open a terminal'],
+    ['Sidebar', 'actions.rs for key bindings', 'Section headers, accent active icon, badges, ⌘1 to ⌘7'],
+    ['Toolbar · Breadcrumb · FilterTabs · StatusBar', 'none · layout only', 'Heights, gaps, separators'],
+    ['HostCard · HostGrid', 'virtual_list.rs past 200 hosts', 'Group tiles, hover action, grid keyboard navigation'],
+    ['Table · ListRow', 'table.rs · virtual_list.rs', 'Header rule, hover and selected fills, dropped columns in narrow mode'],
+    ['Inspector', 'resizable/', 'Label and value pairs, callout, 260 to 420 resize'],
+    ['CommandPalette', 'popover.rs · focus_trap.rs · virtual_list.rs', 'Kind column, hints, ranking, ⌘K guard while a dialog is open'],
+    ['Dialog · SecurityDialog', 'dialog.rs · alert_dialog.rs · focus_trap.rs', 'Scrim, attention title, fingerprint block, focus return'],
+    ['Menu', 'popup.rs · positioner.rs', 'Shortcut slot, destructive last, disabled reason'],
+    ['Tooltip', 'tooltip.rs', 'Delay, key cap slot, 260 wrap'],
+    ['Toast', 'toast.rs', 'Single slot, bottom right, 2.8 s'],
+    ['Scrollbar', 'scrollbar.rs', '8 px thumb, no track'],
+    ['SplitPanes', 'resizable/resize_handle.rs', 'Keeps the app-owned split tree, four-pane cap, edge drop zones, move and detach. The dock/ tiles model was considered but does not match the persisted SplitNode.'],
+    ['TerminalPane · PaneHeader · Banner', 'none · app-owned renderer', 'Header, cursor states, failure and ended banners'],
+    ['Motion', 'motion.rs', 'Token durations, reduced-motion switch']
+  ];
+  var ICONS = [
+    ['home', 'M2.5 7.5L8 3l5.5 4.5M4 6.5V13h8V6.5M6.5 13V9.5h3V13'], ['activity', 'M2 8h3l2-5 2 10 2-5h3'],
+    ['projects', 'M2 4.5A1.5 1.5 0 0 1 3.5 3H6l1.5 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5z'],
+    ['sessions', 'M3.5 2.5h9a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1zM3.5 9.5h9a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1z'],
+    ['sftp', 'M2 4.5A1.5 1.5 0 0 1 3.5 3H6l1.5 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5zM8 7v4M6.5 9.5L8 11l1.5-1.5'],
+    ['file', 'M4 2h5l3 3v9H4zM9 2v3h3'], ['devices', 'M14 8A6 6 0 1 1 2 8a6 6 0 0 1 12 0zM2 8h12M8 2c2.2 2 2.2 10 0 12M8 2c-2.2 2-2.2 10 0 12'],
+    ['settings', 'M10 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4'],
+    ['presets', 'M3 4h2.2M7.8 4H13M3 8h5.7M11.3 8H13M3 12h1.2M6.8 12H13M7.8 4a1.3 1.3 0 1 1-2.6 0 1.3 1.3 0 0 1 2.6 0zM11.3 8a1.3 1.3 0 1 1-2.6 0 1.3 1.3 0 0 1 2.6 0zM6.8 12a1.3 1.3 0 1 1-2.6 0 1.3 1.3 0 0 1 2.6 0z'],
+    ['vault', 'M3.5 3h9A1.5 1.5 0 0 1 14 4.5v7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-7A1.5 1.5 0 0 1 3.5 3zM10.2 8a2.2 2.2 0 1 1-4.4 0 2.2 2.2 0 0 1 4.4 0z'],
+    ['key', 'M7.5 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0zM7.5 8H14M11.5 8v2M13.5 8v1.5'], ['snippets', 'M6 4L3 8l3 4M10 4l3 4-3 4'],
+    ['known-hosts', 'M8 2l5 2v4c0 3-2.2 5-5 6-2.8-1-5-3-5-6V4z'], ['logs', 'M5.5 4H13M5.5 8H13M5.5 12H13M2.8 4h.4M2.8 8h.4M2.8 12h.4'],
+    ['server', 'M3.5 2.5h9a1 1 0 0 1 1 1V7h-11V3.5a1 1 0 0 1 1-1zM2.5 7h11v3.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM5 4.8h.5M5 9.3h.5M6.5 13.5h3M8 11.5v2'],
+    ['local', 'M3.5 3.5h9a1 1 0 0 1 1 1V10h-11V4.5a1 1 0 0 1 1-1zM1.5 12.5h13M5.5 6l1.5 1.2L5.5 8.4M8.2 8.4h2'],
+    ['terminal', 'M3.5 3h9A1.5 1.5 0 0 1 14 4.5v7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-7A1.5 1.5 0 0 1 3.5 3zM5 7l2 1.5L5 10M8.5 10.5H11'],
+    ['search', 'M11.5 7a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0zM10.5 10.5L14 14'], ['plus', 'M8 3v10M3 8h10'], ['close', 'M4 4l8 8M12 4l-8 8'],
+    ['split-right', 'M3.5 3h9A1.5 1.5 0 0 1 14 4.5v7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-7A1.5 1.5 0 0 1 3.5 3zM8 3v10'],
+    ['split-down', 'M3.5 3h9A1.5 1.5 0 0 1 14 4.5v7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-7A1.5 1.5 0 0 1 3.5 3zM2 8h12'],
+    ['broadcast', 'M9.5 8a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zM5 5a4.2 4.2 0 0 0 0 6M11 5a4.2 4.2 0 0 1 0 6'],
+    ['detach', 'M9 3h4v4M13 3L8 8M11 9.5V13H3V5h3.5'], ['grid', 'M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z'], ['list', 'M3 4h10M3 8h10M3 12h10'],
+    ['sidebar', 'M3.5 3h9A1.5 1.5 0 0 1 14 4.5v7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-7A1.5 1.5 0 0 1 3.5 3zM6 3v10']
+  ];
+
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function lin(c) { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+  function lum(h) { h = h.replace('#', ''); return 0.2126 * lin(parseInt(h.slice(0, 2), 16)) + 0.7152 * lin(parseInt(h.slice(2, 4), 16)) + 0.0722 * lin(parseInt(h.slice(4, 6), 16)); }
+  function contrast(a, b) { var x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+  function tagFor(val, was) {
+    if (was === null || was === undefined) return '<span class="tag new">New</span>';
+    if (String(was) !== String(val)) return '<span class="tag chg">Changed</span>';
+    return '<span class="tag same">Same</span>';
+  }
+  function sw(v) { return '<span class="sw"><i style="background:' + v + '"></i>' + v + '</span>'; }
+  function table(head, rows) { return '<div class="tablewrap"><table class="t"><thead><tr>' + head.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody></table></div>'; }
+  function findColor(key) { var out = null; COLORS.forEach(function (g) { g.items.forEach(function (it) { if (it[0] === key) out = it; }); }); return out; }
+
+  var theme = 'dark';
+  try { var saved = localStorage.getItem('slate-ds-theme'); if (saved && IDX[saved] !== undefined) theme = saved; } catch (e) { }
+
+  function renderColors() {
+    var i = IDX[theme];
+    var grounds = ['color.bg.canvas', 'color.bg.surface', 'color.bg.elevated', 'color.bg.chrome'].map(function (k) { return findColor(k)[2][i]; });
+    var accent = findColor('color.action.primary')[2][i];
+    var html = '';
+    COLORS.forEach(function (grp) {
+      html += '<h3>' + grp.g + '</h3><p>' + grp.note + '</p>';
+      html += table(['Token', 'Dark', 'Light', 'High contrast', 'Recording', 'Role', 'Contrast · ' + THN[theme], ''], grp.items.map(function (it) {
+        var v = it[2][i], ratio = '';
+        if (it[5] === 'text') { var m = Math.min.apply(null, grounds.map(function (g) { return contrast(v, g); })); ratio = '<span class="ratio ' + (m >= 4.5 ? 'pass' : 'low') + '">' + m.toFixed(2) + ':1 ' + (m >= 4.5 ? 'AA' : 'below AA') + '</span>'; }
+        else if (it[5] === 'ui') { var u = contrast(v, grounds[0]); ratio = '<span class="ratio ' + (u >= 3 ? 'pass' : 'low') + '">' + u.toFixed(2) + ':1 UI</span>'; }
+        else if (it[5] === 'on') { var o = contrast(v, accent); ratio = '<span class="ratio ' + (o >= 4.5 ? 'pass' : 'low') + '">' + o.toFixed(2) + ':1 on accent</span>'; }
+        else ratio = '<span class="note" style="margin:0">—</span>';
+        return '<tr><td class="k">' + it[0] + '</td>' + it[2].map(function (x) { return '<td>' + sw(x) + '</td>'; }).join('') + '<td>' + esc(it[4]) + '</td><td>' + ratio + '</td><td>' + tagFor(it[2][0], it[3]) + '</td></tr>';
+      }));
+    });
+    $('color-tables').innerHTML = html;
+    var gt = [['Production', '--s-g-prod', '14%'], ['Staging', '--s-g-stage', '14%'], ['Lab', '--s-g-lab', '16%'], ['Jump', '--s-g-jump', '12%']];
+    $('group-tiles').innerHTML = gt.map(function (g) {
+      return '<div class="cell-demo" style="align-items:center"><div class="s-tile" style="background:color-mix(in srgb, var(' + g[1] + ') ' + g[2] + ', transparent);color:var(' + g[1] + ')"><svg class="ico i16" viewBox="0 0 16 16"><path d="' + ICONS[14][1] + '"></path></svg></div><span class="cap">' + g[0] + '</span></div>';
+    }).join('') + '<div class="cell-demo" style="align-items:center"><div class="s-tile" style="background:var(--s-control);color:var(--s-t2)"><svg class="ico i16" viewBox="0 0 16 16"><path d="' + ICONS[15][1] + '"></path></svg></div><span class="cap">Local</span></div>';
+  }
+
+  function renderAnsi() {
+    var rows = ANSI_NAMES.map(function (n, k) {
+      return '<tr><td class="k">terminal.ansi.' + n + '</td><td class="v">' + k + '</td>' + TH.map(function (t) { return '<td>' + sw(ANSI[t].c[k]) + '</td>'; }).join('') + '<td><span class="tag new">New</span></td></tr>';
+    });
+    rows.push('<tr><td class="k">terminal.fg</td><td class="v">—</td>' + TH.map(function (t) { return '<td>' + sw(ANSI[t].fg) + '</td>'; }).join('') + '<td><span class="tag new">New</span></td></tr>');
+    rows.push('<tr><td class="k">terminal.cursor</td><td class="v">—</td>' + TH.map(function (t) { return '<td>' + sw(ANSI[t].cur) + '</td>'; }).join('') + '<td><span class="tag new">New</span></td></tr>');
+    $('ansi-table').innerHTML = table(['Token', 'Index', 'Dark', 'Light', 'High contrast', 'Recording', ''], rows);
+    var a = ANSI[theme].c, fg = ANSI[theme].fg;
+    function c(k, s) { return '<span style="color:' + a[k] + '">' + esc(s) + '</span>'; }
+    var line1 = a.slice(0, 8).map(function (col, k) { return '<span style="color:' + col + '">' + ANSI_NAMES[k].padEnd(8, ' ') + '</span>'; }).join('');
+    var line2 = a.slice(8).map(function (col, k) { return '<span style="color:' + col + '">' + ANSI_NAMES[k].padEnd(8, ' ') + '</span>'; }).join('');
+    $('ansi-sample').style.color = fg;
+    $('ansi-sample').innerHTML = line1 + '\n' + line2 + '\n\n' + c(2, 'deploy@prod-api-1') + ':' + c(4, '~') + '$ git log --oneline -2\n' + c(3, 'a41c9e2') + ' Tighten checkout retry window\n' + c(3, 'e07b1d5') + ' Cache product tiles at the edge\n' + c(2, 'deploy@prod-api-1') + ':' + c(4, '~') + '$ ls\n' + 'deploy.sh  ' + c(4, 'logs') + '  ' + c(4, 'releases') + '  ' + c(8, '.env.production') + '\n' + c(1, 'bash: deplyo: command not found') + '\n' + c(2, 'deploy@prod-api-1') + ':' + c(4, '~') + '$ <span class="s-cursor" style="background:' + ANSI[theme].cur + '"></span>';
+  }
+
+  function renderStatic() {
+    $('type-table').innerHTML = table(['Token', 'Specimen', 'Size / line / weight', 'Role', 'Was', ''], TYPE.map(function (t) {
+      var sp = t[1].split('/'), fam = t[5] === 'mono' ? 'var(--mono)' : 'var(--ui)';
+      var style = sp.length === 3 ? 'font-family:' + fam + ';font-size:' + sp[0] + 'px;line-height:' + sp[1] + 'px;font-weight:' + sp[2] : 'font-family:' + fam + ';font-size:13px';
+      return '<tr><td class="k">' + t[0] + '</td><td><span class="typespec" style="' + style + '">' + esc(t[4]) + '</span></td><td class="v">' + t[1] + '</td><td>' + esc(t[3]) + '</td><td class="v">' + (t[2] || '—') + '</td><td>' + tagFor(t[1], t[2]) + '</td></tr>';
+    }));
+    $('space-table').innerHTML = table(['Token', 'Value', 'Scale', 'Use', ''], SPACE.map(function (s) {
+      return '<tr><td class="k">' + s[0] + '</td><td class="v">' + s[1] + '</td><td style="width:180px"><span class="bar" style="width:' + (parseFloat(s[1]) * 2) + 'px"></span></td><td>' + esc(s[3]) + '</td><td>' + tagFor(s[1], s[2]) + '</td></tr>';
+    }));
+    $('shape-table').innerHTML = table(['Token', 'Value', 'Was', 'Use', ''], SHAPE.map(function (s) {
+      return '<tr><td class="k">' + s[0] + '</td><td class="v">' + s[1] + '</td><td class="v">' + (s[2] || '—') + '</td><td>' + esc(s[3]) + '</td><td>' + tagFor(s[1].split(' ')[0], s[2]) + '</td></tr>';
+    }));
+    $('radius-demo').innerHTML = [['3', 'segment'], ['4', 'control'], ['6', 'panel · dialog'], ['999', 'pill']].map(function (r) {
+      return '<div class="cell-demo"><div class="rbox" style="border-radius:' + (r[0] === '999' ? '999px' : r[0] + 'px') + ';' + (r[0] === '999' ? 'width:72px;height:28px;align-items:center;justify-content:center' : '') + '">' + r[0] + '</div><span class="cap">' + r[1] + '</span></div>';
+    }).join('');
+    $('depth-table').innerHTML = table(['Token', 'Value', 'Was', 'Use', ''], DEPTH.map(function (d) {
+      return '<tr><td class="k">' + d[0] + '</td><td class="v">' + esc(d[1]) + '</td><td class="v">' + (d[2] || '—') + '</td><td>' + esc(d[3]) + '</td><td>' + tagFor(d[1].split(' ')[0], d[2]) + '</td></tr>';
+    })) + '<p class="note">High contrast drops every shadow and relies on the 2 px borders instead.</p>';
+    $('z-table').innerHTML = table(['Layer', 'Value', ''], ZS.map(function (z) { return '<tr><td class="k">' + z[0] + '</td><td class="v">' + z[1] + '</td><td><span class="tag same">Same</span></td></tr>'; }));
+    $('motion-table').innerHTML = table(['Token', 'Value', 'Use', ''], MOTION.map(function (m) { return '<tr><td class="k">' + m[0] + '</td><td class="v">' + m[1] + '</td><td>' + esc(m[3]) + '</td><td>' + tagFor(m[1], m[2]) + '</td></tr>'; }));
+    $('icon-grid').innerHTML = ICONS.map(function (ic) { return '<div class="iconcell"><svg class="ico i16" viewBox="0 0 16 16"><path d="' + ic[1] + '"></path></svg>' + ic[0] + '</div>'; }).join('');
+    $('icon-size-table').innerHTML = table(['Token', 'Value', 'Was', 'Use', ''], ICONSIZE.map(function (s) { return '<tr><td class="k">' + s[0] + '</td><td class="v">' + s[1] + '</td><td class="v">' + s[2] + '</td><td>' + esc(s[3]) + '</td><td>' + tagFor(s[1], s[2]) + '</td></tr>'; }));
+    $('status-table').innerHTML = table(['Kind', 'Glyph', 'Color token', 'Slate shape', 'Was', 'Labels', ''], STATUS.map(function (s) {
+      var changed = s[3].replace(/ /g, '_') !== s[4];
+      return '<tr><td class="k">' + s[0] + '</td><td><span class="stage" style="display:inline-flex;padding:6px 8px;margin:0;border-radius:4px"><span class="gbox"><span class="g ' + s[1] + '"></span></span></span></td><td class="v">' + s[2] + '</td><td>' + s[3] + '</td><td class="v">' + s[4] + '</td><td>' + esc(s[5]) + '</td><td>' + (changed ? '<span class="tag chg">Changed</span>' : '<span class="tag same">Same</span>') + '</td></tr>';
+    }));
+    $('conn-states').innerHTML = CONN.map(function (c) { return '<span class="s-st" style="color:var(' + c[1] + ')"><span class="gbox"><span class="g ' + c[0] + '"></span></span>' + c[2] + '</span>'; }).join('');
+    $('layout-table').innerHTML = table(['Token', 'Value', 'Was', 'Use', ''], LAYOUT.map(function (l) { return '<tr><td class="k">' + l[0] + '</td><td class="v">' + l[1] + '</td><td class="v">' + (l[2] || '—') + '</td><td>' + esc(l[3]) + '</td><td>' + tagFor(l[1], l[2]) + '</td></tr>'; }));
+    $('map-table').innerHTML = table(['Slate component', 'gpui-base module', 'What Slate adds'], MAP.map(function (m) { return '<tr><td style="color:var(--p-text);white-space:nowrap">' + esc(m[0]) + '</td><td class="v">' + esc(m[1]) + '</td><td>' + esc(m[2]) + '</td></tr>'; }));
+  }
+
+  function renderChanges() {
+    var rows = [], total = 0, changed = 0, added = 0;
+    function add(key, now, was) {
+      total++;
+      if (was === null || was === undefined) { added++; rows.push('<tr><td class="k">' + key + '</td><td class="v">—</td><td class="v">' + esc(now) + '</td><td><span class="tag new">New</span></td></tr>'); }
+      else if (String(was) !== String(now)) { changed++; rows.push('<tr><td class="k">' + key + '</td><td class="v">' + esc(was) + '</td><td class="v">' + esc(now) + '</td><td><span class="tag chg">Changed</span></td></tr>'); }
+    }
+    COLORS.forEach(function (g) { g.items.forEach(function (it) { add(it[0], it[2][0], it[3]); }); });
+    ANSI_NAMES.forEach(function (n, k) { add('terminal.ansi.' + n, ANSI.dark.c[k], null); });
+    add('terminal.fg', ANSI.dark.fg, null); add('terminal.cursor', ANSI.dark.cur, null);
+    TYPE.forEach(function (t) { add(t[0], t[1], t[2]); });
+    SPACE.forEach(function (s) { add(s[0], s[1], s[2]); });
+    SHAPE.forEach(function (s) { add(s[0], s[1].split(' ')[0], s[2]); });
+    DEPTH.forEach(function (d) { add(d[0], d[1].split(' ')[0], d[2]); });
+    ZS.forEach(function (z) { add(z[0], z[1], z[1]); });
+    MOTION.forEach(function (m) { add(m[0], m[1], m[2]); });
+    ICONSIZE.forEach(function (s) { add(s[0], s[1], s[2]); });
+    LAYOUT.forEach(function (l) { add(l[0], l[1], l[2]); });
+    $('changes-table').innerHTML = table(['Key', 'Current dark', 'Slate dark', ''], rows) + '<p class="note">Status shapes change separately in the <code>[[statuses]]</code> block. See <a href="#status">Status system</a>.</p>';
+    $('fact-tokens').textContent = total; $('fact-changed').textContent = changed; $('fact-new').textContent = added;
+  }
+
+  function applyTheme(t) {
+    theme = t;
+    var i = IDX[t], ds = $('ds');
+    COLORS.forEach(function (g) { g.items.forEach(function (it) { if (it[1]) ds.style.setProperty(it[1], it[2][i]); }); });
+    var a = ANSI[t];
+    [1, 2, 3, 4, 5, 6, 8].forEach(function (k) { ds.style.setProperty('--s-a' + k, a.c[k]); });
+    ds.style.setProperty('--s-tfg', a.fg); ds.style.setProperty('--s-tcur', a.cur);
+    ds.style.setProperty('--s-bw', t === 'hc' ? '2px' : '1px');
+    ds.style.setProperty('--s-shadow-pop', t === 'hc' ? 'none' : t === 'light' ? '0 12px 32px #1A1D2229' : '0 16px 40px #00000073');
+    ds.style.setProperty('--s-shadow-toast', t === 'hc' ? 'none' : t === 'light' ? '0 6px 18px #1A1D221F' : '0 8px 24px #00000059');
+    Array.prototype.forEach.call(document.querySelectorAll('#theme-seg button'), function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-th') === t ? 'true' : 'false'); });
+    try { localStorage.setItem('slate-ds-theme', t); } catch (e) { }
+    renderColors(); renderAnsi();
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('#theme-seg button'), function (b) { b.addEventListener('click', function () { applyTheme(b.getAttribute('data-th')); }); });
+  renderStatic(); renderChanges(); applyTheme(theme);
+
+  var links = Array.prototype.slice.call(document.querySelectorAll('.rail a'));
+  var byId = {}; links.forEach(function (l) { byId[l.getAttribute('href').slice(1)] = l; });
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        var l = byId[en.target.id]; if (!l) return;
+        links.forEach(function (x) { x.classList.remove('on'); }); l.classList.add('on');
+        $('crumb-now').textContent = l.textContent;
+      });
+    }, { rootMargin: '-45% 0px -50% 0px' });
+    Object.keys(byId).forEach(function (id) { var el = document.getElementById(id); if (el) io.observe(el); });
+  }
+})();
+</script>
