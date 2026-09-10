@@ -11,10 +11,13 @@
 		006FA436F83154FCB17E2A5E /* GeneratedTerminalCellWidth.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE5577D1581F88666316B5F0 /* GeneratedTerminalCellWidth.swift */; };
 		00DC68D847EAA6431EC2AF40 /* OpenSSHPrivateKeyParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6607B45E761A907718C7B501 /* OpenSSHPrivateKeyParser.swift */; };
 		0187101A4F70C33D4E063D20 /* TerminalAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 296A8C3A317C5ECF8CB3439A /* TerminalAcceptanceTests.swift */; };
+		01E6CA77F435F2B6CE10DBD7 /* TermiRustReplicationSecurity.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE46284FAD736FCBADBE491A /* TermiRustReplicationSecurity.xcframework */; };
+		034AD326A8BB2267989C9CFB /* ReplicationKeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F90D333CE5E73E308BC2695 /* ReplicationKeychainStore.swift */; };
 		0842825D1B1A44C19B1E4509 /* TermiRustMobileCrypto.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6DD9DB903CBD0DE616F7B7E4 /* TermiRustMobileCrypto.xcframework */; };
 		0A7590D7E393493CB6F678FD /* AppleControllerRouteCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93124ABD5704C86D689C6B56 /* AppleControllerRouteCoordinator.swift */; };
 		0B902263DAB53899FA02F6A5 /* ControllerRemoteRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9E768178327CD2896B0371F /* ControllerRemoteRoute.swift */; };
 		0CD35E18DDA691D2A6450F2A /* mobile-cross-route-acceptance-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 6AD282CBDD90BF824CBC1910 /* mobile-cross-route-acceptance-v1.json */; };
+		0FA605ED6702CB632508DDA7 /* EnrollmentRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5345E0FEC3299E45F394BA0C /* EnrollmentRepository.swift */; };
 		11B42406FC878DBE6DBDCD09 /* MobileVaultImporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EE76EC7D67CB1EAE446215D /* MobileVaultImporterTests.swift */; };
 		11DE6D4B812FCAB2549D352A /* terminal-conformance-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 8469494854C891EFB7A1F62A /* terminal-conformance-v1.json */; };
 		12A5A4F3F309524684539EEF /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 8F7C73A723AFCB7818FF79FB /* NIOCore */; };
@@ -32,13 +35,16 @@
 		38C73FA0B03B285F469013E7 /* MobileRouteContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE77A14B5817F4A38B3F57F0 /* MobileRouteContractTests.swift */; };
 		3CBC437CC8FD2A7CAFE1CCDA /* EncryptedVaultStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 277131147B3185EC9831827E /* EncryptedVaultStore.swift */; };
 		3EFF07897B04FDA7E0BB9B82 /* MobileVaultModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FD0C7D7FEBD3CB7E9E482B /* MobileVaultModels.swift */; };
+		441B16E03D4863C9CDE18415 /* EnrollmentViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC277EA4805C5A5D45284C24 /* EnrollmentViewModel.swift */; };
 		4554DFF015C84A481D396F06 /* ControllerWriterControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8836B5648A2FB0D8897C5F7D /* ControllerWriterControl.swift */; };
 		4A941F3981452211D5E78F12 /* AppleRelayControllerTransportLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 812E68F83F94F4A2DD3CD385 /* AppleRelayControllerTransportLiveTests.swift */; };
 		4BB82480F92834CDF72A902D /* mobile-route-contract-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = B820A5D658D609799EC6CC7C /* mobile-route-contract-v1.json */; };
 		4DE7BEE9BED018F20891B4B9 /* ControllerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA020905FCA3B0895422D575 /* ControllerViewModel.swift */; };
 		4F6A15013CC0F979AC488612 /* DirectSSHIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35651BFBF6D6A54BB8ECCD66 /* DirectSSHIntegrationTests.swift */; };
 		55746CDCCC86711B59D27FF8 /* terminal-interactive-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 1C1E7DCEBF6D425DCE83CEEA /* terminal-interactive-v1.json */; };
+		56ED0C248BE291FB0945CBA9 /* ReplicationCustodyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9FE8A3B280B02C30AF0B071 /* ReplicationCustodyTests.swift */; };
 		5B6E6EF3C90E8AD989362F7D /* TerminalInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 340634489256C66C5BA35498 /* TerminalInteractionTests.swift */; };
+		5C3D5C9E44DD7CB4F15A203D /* ReplicationDocumentReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55B9F9D4A45EB9BC8D19AACC /* ReplicationDocumentReaderTests.swift */; };
 		5FDD3AC5075BF49968505C12 /* MobileSSHSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8080B6D16BFE0ADEE7114B0B /* MobileSSHSession.swift */; };
 		635BC172E2D861D53D25D06A /* terminal-acceptance-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 59FF87EDAB4C4C33227940A4 /* terminal-acceptance-v1.json */; };
 		656CF7568650C8FA3684BE09 /* MobileDeviceIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C3EDF911ECDB4FEBCA941E8 /* MobileDeviceIdentityStore.swift */; };
@@ -56,6 +62,7 @@
 		8999D7D40482A28A2DC06AEE /* ControllerBindingConformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5EED30009CAECFDB014CB0F /* ControllerBindingConformanceTests.swift */; };
 		8AF002781B0FC922621AE40B /* ControllerRemoteRouteConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BB413BC50EEE5867C533DE8 /* ControllerRemoteRouteConfiguration.swift */; };
 		90B03BA0136A9B4E35151F23 /* BoundedTerminalBufferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E63D1988FD59BCF8486812 /* BoundedTerminalBufferTests.swift */; };
+		90D2386ADD12230937FDB5FB /* TermiRustReplicationSecurity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F8A73060A2F2CB2C2B9A13A /* TermiRustReplicationSecurity.swift */; };
 		9492F234F348A4D0F4E26CCC /* TerminalInputEncoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7132D479444ADF7486E77018 /* TerminalInputEncoding.swift */; };
 		95322AEB55F110F954149897 /* ControllerPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA63124BE85CD3F731534E4C /* ControllerPresentation.swift */; };
 		968B6E9F01DA1A92575E0A35 /* Crypto in Frameworks */ = {isa = PBXBuildFile; productRef = 003E451655DE70492275F55A /* Crypto */; };
@@ -76,11 +83,13 @@
 		C2A05DA308882B343BC98D3B /* TerminalAcceptance.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCD2AA45226B7A2132C61464 /* TerminalAcceptance.swift */; };
 		C2B72EDE31D500D5BD8D4D94 /* MobileRouteContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57E4611CBFB4855809D086F6 /* MobileRouteContract.swift */; };
 		C34D36BE18BC66E39BB20D3B /* HostListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92D39B67AFDC7D7C61741A03 /* HostListView.swift */; };
+		C547A0E3F342FE12D09D99AD /* EnrollmentUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B363EC0A932278FE9F938DD /* EnrollmentUITests.swift */; };
 		C5BAA9DE89A477E8EDBF6395 /* terminal-conformance-v2.json in Resources */ = {isa = PBXBuildFile; fileRef = 10648273CFCFBD06CD01ACA3 /* terminal-conformance-v2.json */; };
 		CA1638BF93C47BE16A206B13 /* ControllerReadOnlyTerminalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39F2ECD181B74FAB21D7A682 /* ControllerReadOnlyTerminalTests.swift */; };
 		CAAF48322DB451D14F70287D /* UniversalSessionGoldenPathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED017EE6CA078EB56D2B75D9 /* UniversalSessionGoldenPathTests.swift */; };
 		CAF4E104F7145C32B80EB057 /* ControllerQRCodeScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D5283F9C9C5C0322F38E46C /* ControllerQRCodeScanner.swift */; };
 		CC94246F576586CCE0B4663D /* ControllerKeychainBlobStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17E88D0BA032D6C65164F74E /* ControllerKeychainBlobStore.swift */; };
+		CD221BF2A149DFF96A165841 /* EnrollmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000FB7B80D5C444D65B8A924 /* EnrollmentView.swift */; };
 		CF19CCC1721C06ACDE6305A0 /* BoundedTerminalBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 211167AA57A499461175EBFA /* BoundedTerminalBuffer.swift */; };
 		D056CFA9C2DD3AAA806615A8 /* ControllerPairingFleetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B61FB3E50D5A511492D5C02 /* ControllerPairingFleetTests.swift */; };
 		D1DA172736D59EED427F817E /* TerminalConformanceV2Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB1F176CEE7530958483AE9D /* TerminalConformanceV2Tests.swift */; };
@@ -92,9 +101,11 @@
 		E3C0525DDB2A9AEF9D9C2A5C /* NativeMobileVaultDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB27C662BBB0427BE57EAD95 /* NativeMobileVaultDecryptor.swift */; };
 		E6B48065F3DFFAE60DF55301 /* TermiRustControllerSecurity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BE28279348591AEB341AE8D /* TermiRustControllerSecurity.swift */; };
 		E89E0397FB0D7FD81C595E09 /* ControllerFleetCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 961259E09EB8448FEC2BD91E /* ControllerFleetCacheTests.swift */; };
+		EC6A9535CFA6010A4109D33D /* ReplicationDocumentReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1898E822B7664B9F9183440D /* ReplicationDocumentReader.swift */; };
 		F0F6F22ED785C9BEA81E10F1 /* ControllerTerminalInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3E11BE5BC0BF55360124E4 /* ControllerTerminalInputView.swift */; };
 		F1044EA7B6FDD02A9EABAF7C /* TerminalBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C651FFCD87A3634799CA663F /* TerminalBuffer.swift */; };
 		F9170B64BB23CA3EF084EABF /* universal-session-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 0BB16F651E78CEA014BAC41F /* universal-session-v1.json */; };
+		FB6634C7E4DF4B6A967CB71A /* EnrollmentWorkflowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 938B1ACAB594425CA571469D /* EnrollmentWorkflowTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -105,9 +116,17 @@
 			remoteGlobalIDString = 8BB149ECB3860B51DED20059;
 			remoteInfo = TermiRustMobile;
 		};
+		E9B306A1E619DD48416290E3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B7DD9FE9A058D582F64E8172 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8BB149ECB3860B51DED20059;
+			remoteInfo = TermiRustMobile;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		000FB7B80D5C444D65B8A924 /* EnrollmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnrollmentView.swift; sourceTree = "<group>"; };
 		00196E38312C036FCD3CD034 /* ControllerRouteCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerRouteCredentialStore.swift; sourceTree = "<group>"; };
 		02192D208584BF947DEC5276 /* ControllerTerminalViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerTerminalViewModelTests.swift; sourceTree = "<group>"; };
 		08E27FF0C2A5E569ED541A98 /* SSHControllerTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHControllerTransport.swift; sourceTree = "<group>"; };
@@ -118,6 +137,7 @@
 		0D52C3569C68C273CCD11319 /* TerminalSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSessionView.swift; sourceTree = "<group>"; };
 		10648273CFCFBD06CD01ACA3 /* terminal-conformance-v2.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "terminal-conformance-v2.json"; sourceTree = "<group>"; };
 		17E88D0BA032D6C65164F74E /* ControllerKeychainBlobStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerKeychainBlobStore.swift; sourceTree = "<group>"; };
+		1898E822B7664B9F9183440D /* ReplicationDocumentReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplicationDocumentReader.swift; sourceTree = "<group>"; };
 		1BF6D1B918897A64090C33C7 /* ControllerRouteConfigurationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerRouteConfigurationStore.swift; sourceTree = "<group>"; };
 		1C1E7DCEBF6D425DCE83CEEA /* terminal-interactive-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "terminal-interactive-v1.json"; sourceTree = "<group>"; };
 		1E45128AD706AEC225C1F294 /* TerminalInteraction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInteraction.swift; sourceTree = "<group>"; };
@@ -127,16 +147,21 @@
 		277131147B3185EC9831827E /* EncryptedVaultStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncryptedVaultStore.swift; sourceTree = "<group>"; };
 		296A8C3A317C5ECF8CB3439A /* TerminalAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAcceptanceTests.swift; sourceTree = "<group>"; };
 		2BE28279348591AEB341AE8D /* TermiRustControllerSecurity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermiRustControllerSecurity.swift; sourceTree = "<group>"; };
+		2F90D333CE5E73E308BC2695 /* ReplicationKeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplicationKeychainStore.swift; sourceTree = "<group>"; };
 		340634489256C66C5BA35498 /* TerminalInteractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInteractionTests.swift; sourceTree = "<group>"; };
 		35651BFBF6D6A54BB8ECCD66 /* DirectSSHIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectSSHIntegrationTests.swift; sourceTree = "<group>"; };
 		39F2ECD181B74FAB21D7A682 /* ControllerReadOnlyTerminalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerReadOnlyTerminalTests.swift; sourceTree = "<group>"; };
+		3B363EC0A932278FE9F938DD /* EnrollmentUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnrollmentUITests.swift; sourceTree = "<group>"; };
 		3BB413BC50EEE5867C533DE8 /* ControllerRemoteRouteConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerRemoteRouteConfiguration.swift; sourceTree = "<group>"; };
 		3D3E11BE5BC0BF55360124E4 /* ControllerTerminalInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerTerminalInputView.swift; sourceTree = "<group>"; };
 		45ADAEE8F8C761105B93C634 /* ControllerTerminalViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerTerminalViewModel.swift; sourceTree = "<group>"; };
 		4A401F88097A4050D1187C33 /* UnifiedRouteLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedRouteLifecycleTests.swift; sourceTree = "<group>"; };
 		4AD7FB361793CCA61A329A6E /* AppleSSHControllerTransportLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSSHControllerTransportLiveTests.swift; sourceTree = "<group>"; };
 		4B61FB3E50D5A511492D5C02 /* ControllerPairingFleetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerPairingFleetTests.swift; sourceTree = "<group>"; };
+		503149A3DD61E9EB4C573024 /* TermiRustMobileUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TermiRustMobileUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		50FB13028C2D8BE39B1B6BEF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		5345E0FEC3299E45F394BA0C /* EnrollmentRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnrollmentRepository.swift; sourceTree = "<group>"; };
+		55B9F9D4A45EB9BC8D19AACC /* ReplicationDocumentReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplicationDocumentReaderTests.swift; sourceTree = "<group>"; };
 		57E4611CBFB4855809D086F6 /* MobileRouteContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileRouteContract.swift; sourceTree = "<group>"; };
 		59FF87EDAB4C4C33227940A4 /* terminal-acceptance-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "terminal-acceptance-v1.json"; sourceTree = "<group>"; };
 		65E63E0CD0058EC2B95291EA /* ControllerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerModels.swift; sourceTree = "<group>"; };
@@ -155,8 +180,10 @@
 		8836B5648A2FB0D8897C5F7D /* ControllerWriterControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerWriterControl.swift; sourceTree = "<group>"; };
 		88ED49DA30BE70BA0E0093B3 /* MobileCrossRouteAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileCrossRouteAcceptanceTests.swift; sourceTree = "<group>"; };
 		8AE2126D151AC4C903C6094B /* ControllerReadOnlyTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerReadOnlyTerminalView.swift; sourceTree = "<group>"; };
+		8F8A73060A2F2CB2C2B9A13A /* TermiRustReplicationSecurity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermiRustReplicationSecurity.swift; sourceTree = "<group>"; };
 		92D39B67AFDC7D7C61741A03 /* HostListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostListView.swift; sourceTree = "<group>"; };
 		93124ABD5704C86D689C6B56 /* AppleControllerRouteCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleControllerRouteCoordinator.swift; sourceTree = "<group>"; };
+		938B1ACAB594425CA571469D /* EnrollmentWorkflowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnrollmentWorkflowTests.swift; sourceTree = "<group>"; };
 		9602C2DB16DA29C6C9736CE0 /* terminal-interaction-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "terminal-interaction-v1.json"; sourceTree = "<group>"; };
 		961259E09EB8448FEC2BD91E /* ControllerFleetCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerFleetCacheTests.swift; sourceTree = "<group>"; };
 		99F06B966AD6B19BF477A024 /* RelayControllerTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayControllerTransport.swift; sourceTree = "<group>"; };
@@ -180,16 +207,19 @@
 		C651FFCD87A3634799CA663F /* TerminalBuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalBuffer.swift; sourceTree = "<group>"; };
 		C71FF821F9BC71B9C9F14692 /* ControllerReadOnlyAttach.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerReadOnlyAttach.swift; sourceTree = "<group>"; };
 		C82BE73314E8B1CDAC19DF92 /* ControllerRetryPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerRetryPolicy.swift; sourceTree = "<group>"; };
+		CE46284FAD736FCBADBE491A /* TermiRustReplicationSecurity.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = TermiRustReplicationSecurity.xcframework; path = Replication/TermiRustReplicationSecurity.xcframework; sourceTree = "<group>"; };
 		DA16ACD0D263656AC038DB1F /* TmuxBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxBootstrap.swift; sourceTree = "<group>"; };
 		DB3530D0D1EF49F4483F0D0C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		DC34F0E3B404895E7409A163 /* ControllerFleetCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerFleetCache.swift; sourceTree = "<group>"; };
 		EA020905FCA3B0895422D575 /* ControllerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerViewModel.swift; sourceTree = "<group>"; };
 		EB1F176CEE7530958483AE9D /* TerminalConformanceV2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalConformanceV2Tests.swift; sourceTree = "<group>"; };
+		EC277EA4805C5A5D45284C24 /* EnrollmentViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnrollmentViewModel.swift; sourceTree = "<group>"; };
 		ED017EE6CA078EB56D2B75D9 /* UniversalSessionGoldenPathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UniversalSessionGoldenPathTests.swift; sourceTree = "<group>"; };
 		EE77A14B5817F4A38B3F57F0 /* MobileRouteContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileRouteContractTests.swift; sourceTree = "<group>"; };
 		EFF4D03BE0E942591F6EEC4A /* KeychainSecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainSecretStore.swift; sourceTree = "<group>"; };
 		F6E63D1988FD59BCF8486812 /* BoundedTerminalBufferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoundedTerminalBufferTests.swift; sourceTree = "<group>"; };
 		F9E768178327CD2896B0371F /* ControllerRemoteRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerRemoteRoute.swift; sourceTree = "<group>"; };
+		F9FE8A3B280B02C30AF0B071 /* ReplicationCustodyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplicationCustodyTests.swift; sourceTree = "<group>"; };
 		FCD2AA45226B7A2132C61464 /* TerminalAcceptance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAcceptance.swift; sourceTree = "<group>"; };
 		FE5577D1581F88666316B5F0 /* GeneratedTerminalCellWidth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedTerminalCellWidth.swift; sourceTree = "<group>"; };
 		FEEB51D37AAC5C3B9050E6F0 /* TermiRustMobileTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TermiRustMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -206,6 +236,7 @@
 				968B6E9F01DA1A92575E0A35 /* Crypto in Frameworks */,
 				0842825D1B1A44C19B1E4509 /* TermiRustMobileCrypto.xcframework in Frameworks */,
 				1496F409B977283CBB781841 /* TermiRustControllerSecurity.xcframework in Frameworks */,
+				01E6CA77F435F2B6CE10DBD7 /* TermiRustReplicationSecurity.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -220,6 +251,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		1D0E461F1105148EBEAAEDAF /* TermiRustMobileUITests */ = {
+			isa = PBXGroup;
+			children = (
+				3B363EC0A932278FE9F938DD /* EnrollmentUITests.swift */,
+			);
+			path = TermiRustMobileUITests;
+			sourceTree = "<group>";
+		};
 		31E357C43FC18557569973DC /* TermiRustMobile */ = {
 			isa = PBXGroup;
 			children = (
@@ -234,6 +273,7 @@
 			children = (
 				BFCBCA3644B906F6E55A4C86 /* TermiRustControllerSecurity.xcframework */,
 				6DD9DB903CBD0DE616F7B7E4 /* TermiRustMobileCrypto.xcframework */,
+				CE46284FAD736FCBADBE491A /* TermiRustReplicationSecurity.xcframework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -243,6 +283,7 @@
 			children = (
 				A01D81A3386AE96F20F17AB5 /* TermiRustMobile.app */,
 				FEEB51D37AAC5C3B9050E6F0 /* TermiRustMobileTests.xctest */,
+				503149A3DD61E9EB4C573024 /* TermiRustMobileUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -304,6 +345,7 @@
 				00196E38312C036FCD3CD034 /* ControllerRouteCredentialStore.swift */,
 				EFF4D03BE0E942591F6EEC4A /* KeychainSecretStore.swift */,
 				0C3EDF911ECDB4FEBCA941E8 /* MobileDeviceIdentityStore.swift */,
+				2F90D333CE5E73E308BC2695 /* ReplicationKeychainStore.swift */,
 			);
 			name = Security;
 			path = TermiRustMobile/Security;
@@ -323,6 +365,26 @@
 			);
 			name = Terminal;
 			path = TermiRustMobile/Terminal;
+			sourceTree = "<group>";
+		};
+		B2AB085CEE5FD96A4DDFF72D /* Enrollment */ = {
+			isa = PBXGroup;
+			children = (
+				5345E0FEC3299E45F394BA0C /* EnrollmentRepository.swift */,
+				000FB7B80D5C444D65B8A924 /* EnrollmentView.swift */,
+				EC277EA4805C5A5D45284C24 /* EnrollmentViewModel.swift */,
+			);
+			name = Enrollment;
+			path = TermiRustMobile/Enrollment;
+			sourceTree = "<group>";
+		};
+		B58D7D0FB88302CE45718E63 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				8F8A73060A2F2CB2C2B9A13A /* TermiRustReplicationSecurity.swift */,
+			);
+			name = Sources;
+			path = Replication/Sources;
 			sourceTree = "<group>";
 		};
 		B6886CEBB1BBA374F3F9F79D /* Models */ = {
@@ -370,9 +432,12 @@
 				02192D208584BF947DEC5276 /* ControllerTerminalViewModelTests.swift */,
 				1EB20052E78613D8BC81E141 /* ControllerWriterTests.swift */,
 				35651BFBF6D6A54BB8ECCD66 /* DirectSSHIntegrationTests.swift */,
+				938B1ACAB594425CA571469D /* EnrollmentWorkflowTests.swift */,
 				88ED49DA30BE70BA0E0093B3 /* MobileCrossRouteAcceptanceTests.swift */,
 				EE77A14B5817F4A38B3F57F0 /* MobileRouteContractTests.swift */,
 				7EE76EC7D67CB1EAE446215D /* MobileVaultImporterTests.swift */,
+				F9FE8A3B280B02C30AF0B071 /* ReplicationCustodyTests.swift */,
+				55B9F9D4A45EB9BC8D19AACC /* ReplicationDocumentReaderTests.swift */,
 				296A8C3A317C5ECF8CB3439A /* TerminalAcceptanceTests.swift */,
 				6613EB256CEB11627A9B8B66 /* TerminalConformanceV1Tests.swift */,
 				EB1F176CEE7530958483AE9D /* TerminalConformanceV2Tests.swift */,
@@ -381,6 +446,15 @@
 				ED017EE6CA078EB56D2B75D9 /* UniversalSessionGoldenPathTests.swift */,
 			);
 			path = TermiRustMobileTests;
+			sourceTree = "<group>";
+		};
+		DF0F2D825B83AE6E597CA70F /* ReplicationTransport */ = {
+			isa = PBXGroup;
+			children = (
+				1898E822B7664B9F9183440D /* ReplicationDocumentReader.swift */,
+			);
+			name = ReplicationTransport;
+			path = TermiRustMobile/ReplicationTransport;
 			sourceTree = "<group>";
 		};
 		EA70891C41F601296B2C45A0 /* Fixtures */ = {
@@ -425,15 +499,19 @@
 			children = (
 				EEE6917552CEBB7F67B65F3B /* App */,
 				69C856F4F28C70A927E464B5 /* Controller */,
+				B2AB085CEE5FD96A4DDFF72D /* Enrollment */,
 				EA70891C41F601296B2C45A0 /* Fixtures */,
 				FF680700BB06A093CEAE2984 /* Generated */,
 				B6886CEBB1BBA374F3F9F79D /* Models */,
 				EC089C6721327E7CE7C21F38 /* Relay */,
+				DF0F2D825B83AE6E597CA70F /* ReplicationTransport */,
 				9551AC611E1546B624C7790D /* Security */,
+				B58D7D0FB88302CE45718E63 /* Sources */,
 				7989BF7346EAA9A5B4CFEC10 /* SSH */,
 				A4BCA14E3EB843D3BF11244E /* Terminal */,
 				31E357C43FC18557569973DC /* TermiRustMobile */,
 				CCC1708406BAB5C307C75403 /* TermiRustMobileTests */,
+				1D0E461F1105148EBEAAEDAF /* TermiRustMobileUITests */,
 				7EB103D386A0A21A9F51493C /* Vault */,
 				8C6D014A573360C3C92A83B3 /* ViewModels */,
 				B74E324A6D1D878CD3FE4556 /* Views */,
@@ -477,6 +555,24 @@
 			productReference = A01D81A3386AE96F20F17AB5 /* TermiRustMobile.app */;
 			productType = "com.apple.product-type.application";
 		};
+		EBF57C6FEA19F4072673BEF0 /* TermiRustMobileUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CD5E01F3630CCDB0FB050BCD /* Build configuration list for PBXNativeTarget "TermiRustMobileUITests" */;
+			buildPhases = (
+				B68D2E1393B55DF756A04463 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A52433B7BF06EC743B05733D /* PBXTargetDependency */,
+			);
+			name = TermiRustMobileUITests;
+			packageProductDependencies = (
+			);
+			productName = TermiRustMobileUITests;
+			productReference = 503149A3DD61E9EB4C573024 /* TermiRustMobileUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		FCA0E6EC4D0EC7F65956EBCA /* TermiRustMobileTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 03F761B885A4B9E7F7645407 /* Build configuration list for PBXNativeTarget "TermiRustMobileTests" */;
@@ -507,6 +603,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					EBF57C6FEA19F4072673BEF0 = {
+						TestTargetID = 8BB149ECB3860B51DED20059;
+					};
 				};
 			};
 			buildConfigurationList = 9933BC238D154EF00583C036 /* Build configuration list for PBXProject "TermiRustMobile" */;
@@ -530,6 +629,7 @@
 			targets = (
 				8BB149ECB3860B51DED20059 /* TermiRustMobile */,
 				FCA0E6EC4D0EC7F65956EBCA /* TermiRustMobileTests */,
+				EBF57C6FEA19F4072673BEF0 /* TermiRustMobileUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -565,6 +665,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		B68D2E1393B55DF756A04463 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C547A0E3F342FE12D09D99AD /* EnrollmentUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		D7EA32D6C23AED2059018C91 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -581,9 +689,12 @@
 				A414E1BCA5235F102E33F6A8 /* ControllerTerminalViewModelTests.swift in Sources */,
 				9EA398E918762D8923338E08 /* ControllerWriterTests.swift in Sources */,
 				4F6A15013CC0F979AC488612 /* DirectSSHIntegrationTests.swift in Sources */,
+				FB6634C7E4DF4B6A967CB71A /* EnrollmentWorkflowTests.swift in Sources */,
 				2ECB54360A02B93EE52B2E24 /* MobileCrossRouteAcceptanceTests.swift in Sources */,
 				38C73FA0B03B285F469013E7 /* MobileRouteContractTests.swift in Sources */,
 				11B42406FC878DBE6DBDCD09 /* MobileVaultImporterTests.swift in Sources */,
+				56ED0C248BE291FB0945CBA9 /* ReplicationCustodyTests.swift in Sources */,
+				5C3D5C9E44DD7CB4F15A203D /* ReplicationDocumentReaderTests.swift in Sources */,
 				0187101A4F70C33D4E063D20 /* TerminalAcceptanceTests.swift in Sources */,
 				BE4EBED45208D33F158CBC33 /* TerminalConformanceV1Tests.swift in Sources */,
 				D1DA172736D59EED427F817E /* TerminalConformanceV2Tests.swift in Sources */,
@@ -619,6 +730,9 @@
 				4DE7BEE9BED018F20891B4B9 /* ControllerViewModel.swift in Sources */,
 				4554DFF015C84A481D396F06 /* ControllerWriterControl.swift in Sources */,
 				3CBC437CC8FD2A7CAFE1CCDA /* EncryptedVaultStore.swift in Sources */,
+				0FA605ED6702CB632508DDA7 /* EnrollmentRepository.swift in Sources */,
+				CD221BF2A149DFF96A165841 /* EnrollmentView.swift in Sources */,
+				441B16E03D4863C9CDE18415 /* EnrollmentViewModel.swift in Sources */,
 				006FA436F83154FCB17E2A5E /* GeneratedTerminalCellWidth.swift in Sources */,
 				C34D36BE18BC66E39BB20D3B /* HostListView.swift in Sources */,
 				98E1CFC243A43C8FBDCFFB87 /* HostListViewModel.swift in Sources */,
@@ -634,9 +748,12 @@
 				00DC68D847EAA6431EC2AF40 /* OpenSSHPrivateKeyParser.swift in Sources */,
 				AE436BA7DDF91FD54C091DD6 /* PairedHostStore.swift in Sources */,
 				35ED5FDC6E85CC897AB16B62 /* RelayControllerTransport.swift in Sources */,
+				EC6A9535CFA6010A4109D33D /* ReplicationDocumentReader.swift in Sources */,
+				034AD326A8BB2267989C9CFB /* ReplicationKeychainStore.swift in Sources */,
 				1942F8158A5733E3E4B2FD71 /* SSHControllerTransport.swift in Sources */,
 				E6B48065F3DFFAE60DF55301 /* TermiRustControllerSecurity.swift in Sources */,
 				2B24DEAFB6911BFC68CC526D /* TermiRustMobileApp.swift in Sources */,
+				90D2386ADD12230937FDB5FB /* TermiRustReplicationSecurity.swift in Sources */,
 				C2A05DA308882B343BC98D3B /* TerminalAcceptance.swift in Sources */,
 				F1044EA7B6FDD02A9EABAF7C /* TerminalBuffer.swift in Sources */,
 				A7016DD06887878E00C9219C /* TerminalGrid.swift in Sources */,
@@ -650,6 +767,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		A52433B7BF06EC743B05733D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8BB149ECB3860B51DED20059 /* TermiRustMobile */;
+			targetProxy = E9B306A1E619DD48416290E3 /* PBXContainerItemProxy */;
+		};
 		B9ADD38D5A3B67FBF20A782F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 8BB149ECB3860B51DED20059 /* TermiRustMobile */;
@@ -815,6 +937,25 @@
 			};
 			name = Release;
 		};
+		B5F0805BF61D2498A73C9491 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.termirust.mobile.uitests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = TermiRustMobile;
+			};
+			name = Release;
+		};
 		CF64E1BB608060F3BE27A85F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -823,6 +964,7 @@
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"Frameworks\"",
+					"\"Replication\"",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Scan a TermiRust Desktop pairing code without saving camera images.";
@@ -843,6 +985,25 @@
 			};
 			name = Release;
 		};
+		DC943FA95B58E2AE0CEB0B8A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.termirust.mobile.uitests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = TermiRustMobile;
+			};
+			name = Debug;
+		};
 		ECDA52149C18485223533C09 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -851,6 +1012,7 @@
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"Frameworks\"",
+					"\"Replication\"",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Scan a TermiRust Desktop pairing code without saving camera images.";
@@ -897,6 +1059,15 @@
 			buildConfigurations = (
 				4D157F7FEA7E25B34537CC39 /* Debug */,
 				A91F8FED36AFECD8F212E89E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CD5E01F3630CCDB0FB050BCD /* Build configuration list for PBXNativeTarget "TermiRustMobileUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DC943FA95B58E2AE0CEB0B8A /* Debug */,
+				B5F0805BF61D2498A73C9491 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

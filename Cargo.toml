@@ -23,6 +23,7 @@ members = [
     "crates/termirust-relay-client",
     "crates/termirust-relay-protocol",
     "crates/termirust-relay-server",
+    "crates/termirust-replication-bindings",
     "crates/termirust-replication-security",
     "crates/termirust-session-host",
     "crates/termirust-slate",

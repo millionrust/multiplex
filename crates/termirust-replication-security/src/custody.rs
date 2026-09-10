@@ -328,6 +328,35 @@ impl<B: ReplicationSecretBackend> ReplicationSecretVault<B> {
         self.store_epoch_key_with_entropy(key, &mut OsReplicationEntropy)
     }
 
+    /// Allocate an opaque reference without creating custody, for write-ahead journals.
+    pub fn prepare_epoch_reference(
+        &self,
+        epoch: ReplicationKeyEpoch,
+    ) -> Result<ReplicationSecretRef, ReplicationSecretCustodyError> {
+        ReplicationSecretRef::generate(
+            ReplicationSecretKind::EpochKey,
+            Some(epoch),
+            &mut OsReplicationEntropy,
+        )
+    }
+
+    /// Create only; an existing reference must never be overwritten or adopted.
+    pub fn store_epoch_key_at(
+        &self,
+        reference: &ReplicationSecretRef,
+        key: &ReplicationEpochKey,
+    ) -> Result<(), ReplicationSecretCustodyError> {
+        require_reference(
+            reference,
+            ReplicationSecretKind::EpochKey,
+            Some(key.epoch()),
+        )?;
+        let bytes = Zeroizing::new(key.copy_for_secret_storage());
+        let encoded = encode_secret(ReplicationSecretKind::EpochKey, Some(key.epoch()), &bytes);
+        self.backend.put(reference, &encoded)?;
+        Ok(())
+    }
+
     pub fn store_epoch_key_with_entropy(
         &self,
         key: &ReplicationEpochKey,

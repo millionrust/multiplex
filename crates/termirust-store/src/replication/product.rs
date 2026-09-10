@@ -25,13 +25,16 @@ use termirust_replication_security::{
     ReplicationHistoricalKeyIndex, ReplicationHistoricalKeyLimit, ReplicationKeyWrapContext,
     ReplicationKeyWrappingError, ReplicationOperationKind, ReplicationSealContext,
     ReplicationSecretBackend, ReplicationSecretCustodyError, ReplicationSecretRef,
-    ReplicationSecretVault, WrappedReplicationEpochKey, bootstrap_replication_authority,
-    enroll_replication_device, generate_replication_authority_private_key,
-    generate_replication_device_private_key, open as open_envelope,
-    open_wrapped_replication_epoch_key, revoke_replication_device, rotate_replication_epoch,
-    seal_delete, seal_put,
+    ReplicationSecretStoreError, ReplicationSecretVault, WrappedReplicationEpochKey,
+    bootstrap_replication_authority, enroll_replication_device,
+    generate_replication_authority_private_key, generate_replication_device_private_key,
+    open as open_envelope, open_wrapped_replication_epoch_key, revoke_replication_device,
+    rotate_replication_epoch, seal_delete, seal_put,
 };
 use uuid::Uuid;
+
+mod reviewed_transfer;
+pub use reviewed_transfer::ReplicationTransferReview;
 
 use crate::{AtomicWriter as _, SystemAtomicWriter};
 
@@ -628,6 +631,13 @@ struct StoredPendingEnrollment {
 struct StoredEnrollmentTransaction {
     format_version: u16,
     epoch_reference_hex: String,
+    /// Legacy journals were published only after successful custody creation.
+    #[serde(default, skip_serializing_if = "custody_is_confirmed")]
+    custody_prepared: bool,
+}
+
+fn custody_is_confirmed(prepared: &bool) -> bool {
+    !prepared
 }
 
 #[derive(Deserialize, Serialize)]
@@ -758,6 +768,17 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
         read_pending_enrollment(root.as_ref())?
             .request
             .into_request()
+    }
+
+    /// Resolve only an existing activation journal. Never accept a bundle, prepare
+    /// an identity, or continue an unrelated deletion/authority transaction.
+    pub fn recover_pending_enrollment(
+        root: impl Into<PathBuf>,
+        backend: B,
+    ) -> Result<(), ReplicationProductError> {
+        let root = root.into();
+        validate_existing_directory(&root)?;
+        recover_enrollment_activation(&root, &ReplicationSecretVault::new(backend))
     }
 
     pub fn cancel_pending_enrollment(
@@ -1191,10 +1212,11 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
             authority.key_epoch(),
             &wrapped,
         )?;
-        let epoch_reference = vault.store_epoch_key(&epoch_key)?;
-        let transaction = StoredEnrollmentTransaction {
+        let epoch_reference = vault.prepare_epoch_reference(epoch_key.epoch())?;
+        let mut transaction = StoredEnrollmentTransaction {
             format_version: PRODUCT_FORMAT_VERSION,
             epoch_reference_hex: encode_hex(&epoch_reference.to_bytes()),
+            custody_prepared: true,
         };
         write_canonical_file(
             &root.join(ENROLLMENT_TRANSACTION_FILE),
@@ -1202,8 +1224,15 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
             MAX_PRODUCT_TRANSACTION_BYTES as usize,
             "write enrollment transaction",
         )?;
-        let mut profile_written = false;
-        let activation = (|| {
+        vault.store_epoch_key_at(&epoch_reference, &epoch_key)?;
+        transaction.custody_prepared = false;
+        write_canonical_file(
+            &root.join(ENROLLMENT_TRANSACTION_FILE),
+            &transaction,
+            MAX_PRODUCT_TRANSACTION_BYTES as usize,
+            "confirm enrollment custody",
+        )?;
+        let activation: Result<(), ReplicationProductError> = (|| {
             let historical = ReplicationHistoricalKeyIndex::from_retained(
                 ReplicationHistoricalKeyLimit::new(MAX_REPLICATION_RETAINED_EPOCH_KEYS)?,
                 [epoch_reference.clone()],
@@ -1224,7 +1253,6 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
                 authority_state_hex: encode_hex(&bundle.authority_state),
             };
             write_profile(&root.join(PRODUCT_PROFILE_FILE), &profile)?;
-            profile_written = true;
             remove_regular_file_if_present(
                 &root.join(PENDING_ENROLLMENT_FILE),
                 "remove pending enrollment",
@@ -1236,17 +1264,9 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
             sync_directory(&root)?;
             Ok(())
         })();
-        if let Err(error) = activation {
-            if !profile_written {
-                let _ = vault.delete(&epoch_reference);
-                let _ = remove_owned_directory(&root.join(PRODUCT_REPOSITORY_DIR));
-                let _ = remove_regular_file_if_present(
-                    &root.join(ENROLLMENT_TRANSACTION_FILE),
-                    "remove enrollment transaction",
-                );
-            }
-            return Err(error);
-        }
+        // A publication error can occur after rename. Keep the journal and custody
+        // so recovery can inspect the actual commit state before deleting anything.
+        activation?;
         drop(_lock);
         Self::open(root, vault.into_backend())
     }
@@ -2032,6 +2052,14 @@ fn recover_enrollment_activation<B: ReplicationSecretBackend>(
         return Ok(());
     }
     let _lock = ProductAdvisoryLock::acquire(&root.join(PRODUCT_LOCK_FILE))?;
+    if !reject_unsafe_file_if_present(&transaction_path)? {
+        return Ok(());
+    }
+    for marker in [PRODUCT_TRANSACTION_FILE, DELETION_TRANSACTION_FILE] {
+        if reject_unsafe_file_if_present(&root.join(marker))? {
+            return Err(ReplicationStoreError::RecoveryRequired.into());
+        }
+    }
     let bytes = read_bounded_regular_file(
         &transaction_path,
         MAX_PRODUCT_TRANSACTION_BYTES,
@@ -2044,7 +2072,32 @@ fn recover_enrollment_activation<B: ReplicationSecretBackend>(
     }
     let epoch_reference =
         ReplicationSecretRef::from_bytes(&decode_hex(&transaction.epoch_reference_hex)?)?;
+    if epoch_reference.key_epoch().is_none() {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+    if transaction.custody_prepared {
+        // A failed create may have committed, or collided with existing custody.
+        // Without confirmation, never delete or adopt the referenced secret.
+        if path_exists(&root.join(PRODUCT_PROFILE_FILE))?
+            || path_exists(&root.join(PRODUCT_REPOSITORY_DIR))?
+        {
+            return Err(ReplicationStoreError::RecoveryRequired.into());
+        }
+        read_pending_enrollment(root)?;
+        match vault.backend().get(&epoch_reference) {
+            Err(ReplicationSecretStoreError::Missing) => {
+                remove_regular_file_if_present(
+                    &transaction_path,
+                    "remove unused enrollment intent",
+                )?;
+                return sync_directory(root);
+            }
+            Err(error) => return Err(ReplicationSecretCustodyError::from(error).into()),
+            Ok(_) => return Err(ReplicationStoreError::RecoveryRequired.into()),
+        }
+    }
     if reject_unsafe_file_if_present(&root.join(PRODUCT_PROFILE_FILE))? {
+        validate_committed_enrollment(root, vault, &epoch_reference)?;
         remove_regular_file_if_present(
             &root.join(PENDING_ENROLLMENT_FILE),
             "remove pending enrollment",
@@ -2058,6 +2111,76 @@ fn recover_enrollment_activation<B: ReplicationSecretBackend>(
     vault.delete(&epoch_reference)?;
     remove_regular_file_if_present(&transaction_path, "remove enrollment transaction")?;
     sync_directory(root)
+}
+
+// A published profile is a commit marker only while its member custody is usable.
+// Keep the journal and pending request intact if validation or key access fails.
+fn validate_committed_enrollment<B: ReplicationSecretBackend>(
+    root: &Path,
+    vault: &ReplicationSecretVault<B>,
+    epoch_reference: &ReplicationSecretRef,
+) -> Result<(), ReplicationProductError> {
+    let profile = read_profile(&root.join(PRODUCT_PROFILE_FILE))?;
+    for marker in [PRODUCT_TRANSACTION_FILE, DELETION_TRANSACTION_FILE] {
+        if reject_unsafe_file_if_present(&root.join(marker))? {
+            return Err(ReplicationStoreError::RecoveryRequired.into());
+        }
+    }
+    let workspace = ReplicationWorkspaceId::new(profile.workspace_id)
+        .map_err(|_| ReplicationProductError::InvalidProfile)?;
+    let replica = ReplicationReplicaId::new(profile.local_replica_id)
+        .map_err(|_| ReplicationProductError::InvalidProfile)?;
+    SharedFolderSlot::new(profile.transport_slot)
+        .map_err(|_| ReplicationProductError::InvalidProfile)?;
+    validate_existing_directory(Path::new(&profile.shared_folder))?;
+    let authority = ReplicationAuthorityState::from_canonical_bytes(&decode_hex(
+        &profile.authority_state_hex,
+    )?)?;
+    let device = authority
+        .device(&replica)
+        .filter(|device| device.status() == ReplicationAuthorityDeviceStatus::Active)
+        .ok_or(ReplicationProductError::InvalidProfile)?;
+    if authority.workspace_id() != &workspace
+        || epoch_reference.key_epoch() != Some(authority.key_epoch())
+    {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+    validate_existing_directory(&root.join(PRODUCT_REPOSITORY_DIR))?;
+    let repository = ReplicationRepository::open(root.join(PRODUCT_REPOSITORY_DIR))?;
+    let snapshot = repository.load(&workspace, &authority.replication_policy()?)?;
+    if snapshot.source != super::ReplicationRepositorySource::Primary || snapshot.retirement_pending
+    {
+        return Err(ReplicationStoreError::RecoveryRequired.into());
+    }
+    if snapshot.custody.authority_reference().is_some()
+        || snapshot.custody.historical().current_epoch() != authority.key_epoch()
+        || snapshot
+            .custody
+            .historical()
+            .reference_for(authority.key_epoch())?
+            != epoch_reference
+    {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+    let private = vault.load_device_key(snapshot.custody.device_reference())?;
+    if &private.public_key() != device.public_key() {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+    vault.load_epoch_key(epoch_reference, authority.key_epoch())?;
+    if reject_unsafe_file_if_present(&root.join(PENDING_ENROLLMENT_FILE))? {
+        let pending = read_pending_enrollment(root)?;
+        let reference =
+            ReplicationSecretRef::from_bytes(&decode_hex(&pending.device_reference_hex)?)?;
+        let request = pending.request.into_request()?;
+        if reference != *snapshot.custody.device_reference()
+            || request.replica_id() != &replica
+            || request.public_key() != device.public_key()
+            || pending.shared_folder != profile.shared_folder
+        {
+            return Err(ReplicationProductError::EnrollmentMismatch);
+        }
+    }
+    Ok(())
 }
 
 fn path_exists(path: &Path) -> Result<bool, ReplicationProductError> {

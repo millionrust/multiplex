@@ -53,3 +53,23 @@ cd apps/ios
 Use `./scripts/verify-ios-unified-routes.sh --require-runtime` in release CI. Without an
 eligible iOS destination, the default gate performs strict Swift 6 source and lifecycle
 test type-checks and reports the missing runtime instead of claiming a device build.
+
+## Replication Custody Framework
+
+The app target includes a separate generated replication binding and Keychain
+adapter. This is secret custody only, not an enrollment or synchronization UI.
+The verified artifacts are under `Replication/`, separate from Controller and SSH.
+To rebuild them from the repository root on macOS:
+
+```bash
+python3 scripts/ios-replication-artifacts.py build
+python3 scripts/ios-replication-artifacts.py sync --write
+python3 scripts/ios-replication-artifacts.py sync
+python3 scripts/test-ios-replication-custody.py --simulator <available-simulator-UDID>
+```
+
+The builder uses pinned Rust/UniFFI and Rust LLVM symbol inspection, builds Apple
+targets serially, and publishes only a complete verified set. The test runner
+builds the production app and runs real-framework Keychain tests. It requires an
+explicit simulator, uses unique fixture services, and shuts down the selected
+simulator afterward only when the runner booted it. It never clears app data.

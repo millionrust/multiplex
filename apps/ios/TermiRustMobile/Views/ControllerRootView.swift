@@ -4,6 +4,7 @@ import UIKit
 struct ControllerRootView: View {
     @ObservedObject var viewModel: ControllerViewModel
     @State private var showingPairing = false
+    @State private var showingEnrollment = false
     @State private var showingForgetConfirmation = false
     @State private var showingHostDetails = false
     @State private var showingSSHConfiguration = false
@@ -38,6 +39,13 @@ struct ControllerRootView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button("Enrollment") { showingEnrollment = true }
+                    } label: {
+                        Label("Device actions", systemImage: "ellipsis.circle")
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
                     Button { showingPairing = true } label: {
                         Label("Pair Host", systemImage: "plus")
                     }
@@ -58,6 +66,7 @@ struct ControllerRootView: View {
             )
         }
         .navigationSplitViewStyle(.balanced)
+        .sheet(isPresented: $showingEnrollment) { EnrollmentView() }
         .sheet(isPresented: $showingPairing) {
             PairHostView(viewModel: viewModel, isPresented: $showingPairing)
         }

@@ -6,6 +6,9 @@
 # into apps/ by scripts/sync/*)
 /dist/
 
+# Generated Xcode project for the iOS provider-access fixture
+/apps/ios/ProviderAccessFixture/*.xcodeproj/
+
 # Local tooling state
 .claude/settings.local.json
 .DS_Store

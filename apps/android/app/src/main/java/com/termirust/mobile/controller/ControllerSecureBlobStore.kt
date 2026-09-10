@@ -10,6 +10,7 @@ import android.util.AtomicFile
 import androidx.annotation.RequiresApi
 import com.termirust.controller.security.SecureBlobStore
 import java.io.File
+import java.io.FileNotFoundException
 import java.security.KeyStore
 import java.security.MessageDigest
 import javax.crypto.AEADBadTagException
@@ -30,9 +31,25 @@ class ControllerSecureBlobStore(
     override fun load(keyId: String): ByteArray? {
         validateKeyId(keyId)
         val file = AtomicFile(fileFor(keyId))
-        if (!file.baseFile.exists()) return null
-        val payload = runCatching { file.readFully() }.getOrElse {
-            throw ControllerSecretException.Unavailable(it)
+        val payload = try {
+            // openRead restores a committed backup before opening the base file.
+            file.openRead().use { input ->
+                val buffer = ByteArray(MAX_PAYLOAD_BYTES + 1)
+                var count = 0
+                while (count < buffer.size) {
+                    val read = input.read(buffer, count, buffer.size - count)
+                    if (read < 0) break
+                    count += read
+                }
+                buffer.copyOf(count)
+            }
+        } catch (error: FileNotFoundException) {
+            if (!file.baseFile.exists() && !File(file.baseFile.path + ".bak").exists()) {
+                return null
+            }
+            throw ControllerSecretException.Unavailable(error)
+        } catch (error: Exception) {
+            throw ControllerSecretException.Unavailable(error)
         }
         if (payload.size !in MIN_PAYLOAD_BYTES..MAX_PAYLOAD_BYTES || payload[0] != FORMAT_VERSION) {
             throw ControllerSecretException.Corrupt
@@ -41,7 +58,7 @@ class ControllerSecureBlobStore(
             val iv = payload.copyOfRange(1, 1 + IV_BYTES)
             val ciphertext = payload.copyOfRange(1 + IV_BYTES, payload.size)
             val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(128, iv))
+            cipher.init(Cipher.DECRYPT_MODE, secretKey(createIfMissing = false), GCMParameterSpec(128, iv))
             cipher.updateAAD(keyId.encodeToByteArray())
             cipher.doFinal(ciphertext)
         } catch (error: KeyPermanentlyInvalidatedException) {
@@ -83,14 +100,16 @@ class ControllerSecureBlobStore(
     override fun delete(keyId: String) {
         validateKeyId(keyId)
         val file = fileFor(keyId)
-        if (file.exists() && !file.delete()) {
+        AtomicFile(file).delete()
+        if (file.exists() || File(file.path + ".bak").exists() || File(file.path + ".new").exists()) {
             throw ControllerSecretException.Unavailable(null)
         }
     }
 
-    private fun secretKey(): SecretKey {
+    private fun secretKey(createIfMissing: Boolean = true): SecretKey {
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (keyStore.getEntry(alias, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
+        if (!createIfMissing) throw ControllerSecretException.Unavailable(null)
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             generateStrongBoxKey()
         } else {

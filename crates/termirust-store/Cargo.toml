@@ -21,10 +21,10 @@ sha2 = "0.10"
 termirust-domain = { version = "0.1.0", path = "../termirust-domain" }
 termirust-replication-security = { version = "0.1.0", path = "../termirust-replication-security" }
 uuid = { version = "1.22", features = ["v4"] }
+zeroize = "=1.8.2"
 
 [dev-dependencies]
 tempfile = "3.27"
-zeroize = "=1.8.2"
 
 [[bench]]
 name = "artifact_ingest"

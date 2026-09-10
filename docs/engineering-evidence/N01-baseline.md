@@ -1,7 +1,62 @@
 # N01 Deterministic Cross-Repository Baseline
 
-**Evidence date:** 2026-09-01
-**Status:** Complete
+**Latest verification:** 2026-09-07
+**Status:** Local baseline and individual live checks passed
+
+## Monorepo Reverification
+
+The original 2026-09-01 evidence below is historical. Swift and Kotlin now live in
+`mobile/ios` and `mobile/android` within this repository. The current verification
+started at `013c9a8` and resumed after an interruption.
+
+Before the interruption, these commands passed:
+
+- `cargo fmt --check` and `cargo check --workspace --all-targets`
+- the exact stalled-handshake cancellation test, 50 consecutive runs
+- `./scripts/auto-test.sh`: 665 desktop tests passed, 4 ignored, plus 9 integration
+  tests; Clippy and diff hygiene completed
+- `./scripts/verify-product-model.sh --local`: workspace tests/docs/policy,
+  synchronized fixtures, route contracts, strict Swift 6 verification and generic
+  device build, Android unit tests/debug APK, and diff hygiene all passed
+
+The first local verifier attempt failed on an obsolete Android string-resource
+assertion before Gradle ran. Commit `183a91f` checks the current Sessions resource
+and gives every structural assertion a named failure message. The corrected full
+local verifier passed. Runtime-only steps were explicitly skipped in local mode.
+
+The interrupted `--live` invocation has no aggregate completion result. On
+2026-09-07, its remaining scripts were invoked individually. Docker initially was
+unavailable; Docker Desktop was started and the desktop fixture was rerun.
+
+| Live script | Result on retry |
+|---|---|
+| `verify-desktop-host-golden-run.sh` | PASS: bundled desktop local/SSH restore, Host replay/control/revocation, owned-resource cleanup |
+| `test-mobile-ios-direct-ssh.sh` | PASS: iOS simulator SSH/tmux reconnect |
+| `test-mobile-android-direct-ssh.sh` | PASS after test correction described below |
+| `test-mobile-android-controller-host.sh` | PASS: Android emulator pairing, terminal lifecycle, reconnect, revocation |
+| `test-mobile-controller-ssh-transports.sh` | PASS: native Android and iOS SSH Controller transports |
+| `test-mobile-controller-relay-transport.sh` | PASS: native iOS relay connection and reconnect |
+| `test-mobile-android-relay-transport.sh` | PASS: Android emulator relay connection and reconnect |
+| `verify-controller-lan.sh` | PASS |
+| `test-controller-ssh.sh` | PASS |
+
+The Android SSH smoke initially disconnected after observing a session-name
+substring that could arrive before its marker write completed. Commit `01e7fb5`
+requires an acknowledgement emitted only after the expected tmux session is
+confirmed and the marker is written. Reconnect must preserve both the marker and
+the shell environment. A concurrent Gradle invocation invalidated an intermediate
+run's output directory; the isolated rerun passed. No timeout was increased.
+
+Final cleanup found no running Docker containers or test-owned verifier, relay,
+or Controller fixture processes. Temporary live SSH credential properties were
+removed. The Gradle daemon started by the checks was stopped. Free disk space was
+17 GiB; stale generated Xcode caches were cleared to maintain the requested
+15 GiB floor. No application source or user data was removed for disk cleanup.
+
+These results do not claim physical-device UX approval, Windows/Linux execution,
+store publication, or completion of the entire engineering roadmap.
+
+## Historical 2026-09-01 Evidence
 
 ## Scope
 

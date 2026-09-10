@@ -9,6 +9,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 
+mod replicated_host;
+pub use replicated_host::{
+    ReplicatedHostReview, ReplicatedHostReviewError, review_replicated_host,
+};
+
 pub const MOBILE_VAULT_SCHEMA_VERSION: u16 = 1;
 pub const ENCRYPTED_MOBILE_VAULT_VERSION: u16 = 1;
 pub const MOBILE_DEVICE_WRAPPING_ALGORITHM: &str = "x25519-xsalsa20poly1305";
