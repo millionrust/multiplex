@@ -6,12 +6,16 @@ import plistlib
 from pathlib import Path
 import shutil
 import signal
+import sys
 import tempfile
 import threading
-from owned_process import run_owned
 
-ROOT = Path(__file__).resolve().parents[1]
-IOS = ROOT / "mobile/ios"
+# Shared process helpers live beside the artifact builders.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
+from owned_process import run_owned  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[2]
+IOS = ROOT / "apps/ios"
 
 
 def run(*args, cwd=ROOT, check=True, raw=False):

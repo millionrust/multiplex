@@ -6,16 +6,16 @@
 ## Monorepo Reverification
 
 The original 2026-09-01 evidence below is historical. Swift and Kotlin now live in
-`mobile/ios` and `mobile/android` within this repository. The current verification
+`apps/ios` and `apps/android` within this repository. The current verification
 started at `013c9a8` and resumed after an interruption.
 
 Before the interruption, these commands passed:
 
 - `cargo fmt --check` and `cargo check --workspace --all-targets`
 - the exact stalled-handshake cancellation test, 50 consecutive runs
-- `./scripts/auto-test.sh`: 665 desktop tests passed, 4 ignored, plus 9 integration
+- `./scripts/test/auto.sh`: 665 desktop tests passed, 4 ignored, plus 9 integration
   tests; Clippy and diff hygiene completed
-- `./scripts/verify-product-model.sh --local`: workspace tests/docs/policy,
+- `./scripts/verify/product-model.sh --local`: workspace tests/docs/policy,
   synchronized fixtures, route contracts, strict Swift 6 verification and generic
   device build, Android unit tests/debug APK, and diff hygiene all passed
 

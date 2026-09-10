@@ -39,7 +39,7 @@ keyboard and accessibility coverage separately from model proof.
 
 ## Test Work
 
-`python3 scripts/test-ios-enrollment.py` creates and removes only an owned simulator,
+`python3 scripts/test/ios-enrollment.py` creates and removes only an owned simulator,
 uses the real app target and Keychain, and exports xcresult summaries/screenshots
 under ignored `dist/mobile/c05-evidence`. It refuses startup below 18 GiB free.
 While running, it monitors space every two seconds and cancels its owned process
@@ -97,7 +97,7 @@ distinct test cases. Both owned simulators were removed successfully.
 Final regression command:
 
 ```sh
-python3 scripts/test-ios-replication-custody.py --simulator 7F76A1D5-5CC3-44DD-8883-DA554B851C99
+python3 scripts/test/ios-replication-custody.py --simulator 7F76A1D5-5CC3-44DD-8883-DA554B851C99
 ```
 
 PASS: production generic iOS device build (`CODE_SIGNING_ALLOWED=NO`), then 21

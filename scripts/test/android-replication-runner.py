@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 
 SPEC = importlib.util.spec_from_file_location(
-    "replication_runner", Path(__file__).with_name("test-android-replication-custody.py")
+    "replication_runner", Path(__file__).with_name("android-replication-custody.py")
 )
 runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(runner)

@@ -76,16 +76,16 @@ is not repaired here. No aggregate whole-product green claim is made.
 cargo test --locked -p termirust-replication-bindings
 cargo test --locked -p termirust-store --test replication_product
 cargo clippy --locked -p termirust-replication-bindings --all-targets -- -D warnings
-bash scripts/test-swift-replication-bindings.sh
-python3 scripts/ios-replication-artifacts.py build
-python3 scripts/ios-replication-artifacts.py sync --write
-python3 scripts/ios-replication-artifacts.py sync
-python3 scripts/test-ios-replication-custody.py --simulator 7F76A1D5-5CC3-44DD-8883-DA554B851C99
-bash scripts/build-mobile-replication-bindings.sh --android
-bash scripts/sync-mobile-replication-bindings.sh --android --write
-bash scripts/sync-mobile-replication-bindings.sh --android --check
-bash scripts/test-android-replication-custody.sh --avd Pixel_9
-ANDROID_HOME="$HOME/Library/Android/sdk" ./mobile/android/gradlew -p mobile/android testDebugUnitTest lintDebug --no-daemon
+bash scripts/test/swift-replication-bindings.sh
+python3 scripts/build/ios-replication-artifacts.py build
+python3 scripts/build/ios-replication-artifacts.py sync --write
+python3 scripts/build/ios-replication-artifacts.py sync
+python3 scripts/test/ios-replication-custody.py --simulator 7F76A1D5-5CC3-44DD-8883-DA554B851C99
+bash scripts/build/mobile-replication-bindings.sh --android
+bash scripts/sync/mobile-replication-bindings.sh --android --write
+bash scripts/sync/mobile-replication-bindings.sh --android --check
+bash scripts/test/android-replication-custody.sh --avd Pixel_9
+ANDROID_HOME="$HOME/Library/Android/sdk" ./mobile/android/gradlew -p apps/android testDebugUnitTest lintDebug --no-daemon
 git diff --check
 ```
 

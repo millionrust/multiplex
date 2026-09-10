@@ -62,10 +62,10 @@ The verified artifacts are under `Replication/`, separate from Controller and SS
 To rebuild them from the repository root on macOS:
 
 ```bash
-python3 scripts/ios-replication-artifacts.py build
-python3 scripts/ios-replication-artifacts.py sync --write
-python3 scripts/ios-replication-artifacts.py sync
-python3 scripts/test-ios-replication-custody.py --simulator <available-simulator-UDID>
+python3 scripts/build/ios-replication-artifacts.py build
+python3 scripts/build/ios-replication-artifacts.py sync --write
+python3 scripts/build/ios-replication-artifacts.py sync
+python3 scripts/test/ios-replication-custody.py --simulator <available-simulator-UDID>
 ```
 
 The builder uses pinned Rust/UniFFI and Rust LLVM symbol inspection, builds Apple

@@ -9,9 +9,13 @@ import time
 import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
-from owned_process import run_owned
 
-spec = importlib.util.spec_from_file_location("artifacts", Path(__file__).with_name("mobile-replication-artifacts.py"))
+# The builder under test and its process helpers live in scripts/build.
+BUILD = Path(__file__).resolve().parents[1] / "build"
+sys.path.insert(0, str(BUILD))
+from owned_process import run_owned  # noqa: E402
+
+spec = importlib.util.spec_from_file_location("artifacts", BUILD / "mobile-replication-artifacts.py")
 artifacts = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(artifacts)
 

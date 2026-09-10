@@ -10,9 +10,9 @@ import signal
 import tempfile
 from owned_process import run_owned
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "dist/mobile/replication"
-DEST = ROOT / "mobile/android/app/src/main/replication"
+DEST = ROOT / "apps/android/app/src/main/replication"
 STEM = "termirust_replication_bindings"
 ABIS = {
     "aarch64-linux-android": ("arm64-v8a", "aarch64-linux-android", "AArch64"),

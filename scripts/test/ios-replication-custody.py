@@ -4,11 +4,15 @@ import json
 from pathlib import Path
 import shutil
 import signal
+import sys
 import tempfile
-from owned_process import run_owned
 
-ROOT = Path(__file__).resolve().parents[1]
-IOS = ROOT / "mobile/ios"
+# Shared process helpers live beside the artifact builders.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
+from owned_process import run_owned  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[2]
+IOS = ROOT / "apps/ios"
 
 
 def run(*args, cwd=ROOT):
@@ -30,7 +34,7 @@ def main():
         raise RuntimeError("Selected simulator is unavailable")
     if shutil.disk_usage(ROOT).free < 16 * 1024**3:
         raise RuntimeError("At least 16 GiB free required")
-    run("python3", "scripts/ios-replication-artifacts.py", "sync")
+    run("python3", "scripts/build/ios-replication-artifacts.py", "sync")
     run("xcodegen", "generate", "--spec", "project.yml", cwd=IOS)
     common = ("xcodebuild", "-project", "TermiRustMobile.xcodeproj", "-scheme", "TermiRustMobile", "-configuration", "Debug")
     owned_boot = device["state"] == "Shutdown"

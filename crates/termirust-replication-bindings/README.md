@@ -37,7 +37,7 @@ contract with an in-memory store, including recreation, exact deletion, collisio
 storage errors, malformed references, wrong key roles, and corrupt secret envelopes.
 These tests do not establish Keychain/Keystore or desktop/mobile sync coverage.
 
-On macOS, `bash scripts/test-swift-replication-bindings.sh` generates Swift and Kotlin
+On macOS, `bash scripts/test/swift-replication-bindings.sh` generates Swift and Kotlin
 bindings and compiles/runs a Swift callback round trip against the native Rust
 library. It uses in-memory storage, not Keychain, and does not compile or run Kotlin.
 
@@ -48,9 +48,9 @@ idempotent deletion, invalid accounts, and corrupt envelope lengths. Access-fail
 mapping is tested with status constants, not by locking the user's device.
 
 The Apple source lives at
-`mobile/ios/TermiRustMobile/Security/ReplicationKeychainStore.swift`. It is compiled
+`apps/ios/TermiRustMobile/Security/ReplicationKeychainStore.swift`. It is compiled
 by this conformance runner and the iOS app target, using the separately packaged
-`mobile/ios/Replication` framework. It uses a replication-only service, disables
+`apps/ios/Replication` framework. It uses a replication-only service, disables
 synchronization, and selects `WhenUnlockedThisDeviceOnly`. iPhone lifecycle and
 backup/restore behavior require separate device qualification.
 

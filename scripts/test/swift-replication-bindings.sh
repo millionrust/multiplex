@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 if [[ $# -gt 1 || ( $# -eq 1 && "$1" != --keychain ) ]]; then
-  printf 'Usage: bash scripts/test-swift-replication-bindings.sh [--keychain]\n' >&2
+  printf 'Usage: bash scripts/test/swift-replication-bindings.sh [--keychain]\n' >&2
   exit 1
 fi
 if [[ "$(uname -s)" != Darwin ]]; then

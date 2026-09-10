@@ -11,11 +11,15 @@ import socket
 import subprocess
 import tempfile
 import time
+import sys
 import uuid
 import zipfile
-from owned_process import run_owned
 
-ROOT = Path(__file__).resolve().parents[1]
+# Shared process helpers live beside the artifact builders.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
+from owned_process import run_owned  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[2]
 APP = "com.termirust.mobile"
 TEST_APP = APP + ".test/androidx.test.runner.AndroidJUnitRunner"
 TEST_CLASS = APP + ".replication.ReplicationCustodyInstrumentedTest"
@@ -129,17 +133,17 @@ def main():
                 shell("input", "keyevent", "KEYCODE_ENTER")
                 time.sleep(1)
             print("RUN: verifying Android package and native custody", flush=True)
-            result = command(str(ROOT / "mobile/android/gradlew"), "-p", str(ROOT / "mobile/android"),
+            result = command(str(ROOT / "apps/android/gradlew"), "-p", str(ROOT / "apps/android"),
                              "assembleDebug", "assembleDebugAndroidTest", "--no-daemon", "--console=plain", timeout=900,
                              minimum_free_bytes=16 * 1024**3)
             print(result.stdout, flush=True)
-            apk = ROOT / "mobile/android/app/build/outputs/apk/debug/app-debug.apk"
-            tests = ROOT / "mobile/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+            apk = ROOT / "apps/android/app/build/outputs/apk/debug/app-debug.apk"
+            tests = ROOT / "apps/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
             with zipfile.ZipFile(apk) as archive:
                 for abi in ("arm64-v8a", "armeabi-v7a", "x86", "x86_64"):
                     name = f"lib/{abi}/libtermirust_replication_bindings.so"
                     actual = hashlib.sha256(archive.read(name)).hexdigest()
-                    source = ROOT / "mobile/android/app/src/main/replication/jniLibs" / abi / "libtermirust_replication_bindings.so"
+                    source = ROOT / "apps/android/app/src/main/replication/jniLibs" / abi / "libtermirust_replication_bindings.so"
                     if actual != hashlib.sha256(source.read_bytes()).hexdigest():
                         raise RuntimeError("APK native custody checksum differs from verified artifact")
             command(adb, "-s", serial, "install", "-r", str(apk))

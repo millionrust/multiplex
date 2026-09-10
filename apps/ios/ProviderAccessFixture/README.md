@@ -14,7 +14,7 @@ Test-only XcodeGen project; not a dependency of TermiRustMobile or its release s
 Run from the repository root:
 
 ```sh
-python3 scripts/test-ios-enrollment.py --provider-picker
+python3 scripts/test/ios-enrollment.py --provider-picker
 ```
 
 The runner creates/deletes only its disposable simulator, installs both fixture apps

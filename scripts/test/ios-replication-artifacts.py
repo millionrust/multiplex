@@ -3,11 +3,15 @@ import importlib.util
 import json
 from pathlib import Path
 import plistlib
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location("ios_artifacts", Path(__file__).with_name("ios-replication-artifacts.py"))
+# The builder under test and its process helpers live in scripts/build.
+BUILD = Path(__file__).resolve().parents[1] / "build"
+sys.path.insert(0, str(BUILD))
+spec = importlib.util.spec_from_file_location("ios_artifacts", BUILD / "ios-replication-artifacts.py")
 artifacts = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(artifacts)
 

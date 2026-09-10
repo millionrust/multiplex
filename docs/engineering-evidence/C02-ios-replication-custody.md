@@ -19,7 +19,7 @@ No commits or pushes. Retain at least 15 GiB free; serialize native builds.
 
 ## Implementation
 
-- `mobile/ios/Replication` owns generated Swift, the static XCFramework, provenance,
+- `apps/ios/Replication` owns generated Swift, the static XCFramework, provenance,
   and a SHA-256 inventory as one staged artifact set.
 - `project.yml` and its regenerated Xcode project include the existing
   `ReplicationKeychainStore` and generated binding in the production app target.
@@ -38,13 +38,13 @@ No commits or pushes. Retain at least 15 GiB free; serialize native builds.
 ## Commands And Observations
 
 ```sh
-python3 scripts/ios-replication-artifacts.py build
-python3 scripts/ios-replication-artifacts.py sync --write
-python3 scripts/ios-replication-artifacts.py sync
-python3 scripts/test-ios-replication-custody.py --simulator 7F76A1D5-5CC3-44DD-8883-DA554B851C99
-python3 scripts/test-ios-replication-artifacts.py
-python3 scripts/test-mobile-replication-artifacts.py
-bash scripts/sync-mobile-replication-bindings.sh --android --check
+python3 scripts/build/ios-replication-artifacts.py build
+python3 scripts/build/ios-replication-artifacts.py sync --write
+python3 scripts/build/ios-replication-artifacts.py sync
+python3 scripts/test/ios-replication-custody.py --simulator 7F76A1D5-5CC3-44DD-8883-DA554B851C99
+python3 scripts/test/ios-replication-artifacts.py
+python3 scripts/test/mobile-replication-artifacts.py
+bash scripts/sync/mobile-replication-bindings.sh --android --check
 cargo test --locked -p termirust-replication-bindings
 cargo clippy --locked -p termirust-replication-bindings --all-targets -- -D warnings
 git diff --check

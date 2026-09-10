@@ -37,7 +37,7 @@ and physical accessibility behavior must be reported separately if not exercised
 
 ## Verification
 
-`bash scripts/test-android-replication-custody.sh --avd Pixel_9`:
+`bash scripts/test/android-replication-custody.sh --avd Pixel_9`:
 
 - 26 instrumentation test invocations passed, zero skipped, on API 37 arm64-v8a
   with 16 KiB pages. The APK's four replication ABI payloads were checksum-verified;
@@ -53,7 +53,7 @@ and physical accessibility behavior must be reported separately if not exercised
 - Owned read-only emulator stopped; fixture directories and aliases removed. No
   personal device was locked, no application data cleared, and no app uninstalled.
 
-`ANDROID_HOME="$HOME/Library/Android/sdk" ./mobile/android/gradlew -p mobile/android testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug --no-daemon`:
+`ANDROID_HOME="$HOME/Library/Android/sdk" ./mobile/android/gradlew -p apps/android testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug --no-daemon`:
 
 - Build succeeded. JVM XML reports: 81 tests, 77 passed, four skipped, zero failures
   or errors. All five new enrollment ViewModel tests passed, including duplicate-action
