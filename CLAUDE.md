@@ -78,7 +78,10 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
   Rust integration tests live inside each crate.
 - `scripts/` is grouped by verb: `verify/`, `test/`, `build/`, `sync/`, `bench/`,
   `run/`, `dev/`. Every script resolves the repo root two levels up.
-- `design/` and `locales/` are consumed by `termirust-ui-contract`; `docs/` holds
+- `design/` and `locales/` are consumed by `termirust-ui-contract`. `design/` also
+  holds the Slate design references: `slate-design-system.html` (every token,
+  component spec, and the Rust handoff) and `termirust-design-system.html` (the
+  interactive TermiRust prototype). `docs/` holds
   guides, ADRs under `decisions/`, and evidence under `completion-evidence/` and
   `engineering-evidence/`; `tools/` holds excluded spike workspaces; `dist/` is
   ignored build output.
@@ -103,6 +106,25 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
   context redaction, worktree ownership, and dependency scheduling.
 - [crates/termirust-desktop/src/ui/theme.rs](crates/termirust-desktop/src/ui/theme.rs)
   - App color system and layout constants.
+- `crates/termirust-slate/` — Slate, the styled component library the desktop app will move to.
+  - Built on `gpui-base` 0.6 (behavior: focus, keyboard, overlays, accessibility) over the
+    `gpui-pre` 0.3 snapshots, which coexist in the workspace with the app's `gpui` 0.2.2.
+    The desktop app cannot use Slate until it migrates from `gpui` 0.2 / `gpui-component`
+    to `gpui-pre` + `gpui-base`.
+  - [theme.rs](crates/termirust-slate/src/theme.rs) resolves `DesignTokens` into GPUI colors,
+    sizes, type, and shadows per `ThemeChoice`, installs them as a global, and projects them
+    onto `gpui_base::Theme` so base inputs share the palette. Components read only from it.
+  - [icon.rs](crates/termirust-slate/src/icon.rs) generates the 16-unit stroke icon set and the
+    eight status glyph shapes as SVG; serve them with `SlateAssets` (or `with_fallback`).
+  - Primitives: `button.rs`, `controls.rs` (Segmented, Toggle, FilterTabs), `input.rs`,
+    `kbd.rs`, `status.rs`, `tooltip.rs`. Shell: `shell.rs`. Data views: `data.rs`.
+    Overlays: `overlay.rs` (menus, palette, dialogs, toasts, banners). Terminal chrome:
+    `terminal.rs`. `split.rs` holds the `SplitNode` tree (four-pane cap, 0.15–0.85 ratios)
+    and `SplitPanes`, which draws dividers and edge drop zones.
+  - Callbacks follow GPUI's `Fn(&Event, &mut Window, &mut App)` shape so `cx.listener` fits.
+  - [examples/gallery.rs](crates/termirust-slate/examples/gallery.rs) renders every
+    component and state in a working shell; `SLATE_THEME`, `SLATE_TAB`, `SLATE_OVERLAY`,
+    and `SLATE_SCROLL` start it in a given state for screenshots.
 - [crates/termirust-desktop/src/terminal.rs](crates/termirust-desktop/src/terminal.rs)
   - VT state wrapper around `vt100`: snapshot generation, scrollback access, selection extraction, bracketed-paste and mouse-mode inspection.
 - [crates/termirust-desktop/src/ssh.rs](crates/termirust-desktop/src/ssh.rs)
@@ -136,7 +158,13 @@ cargo fmt
 cargo check
 cargo run            # debug build; use --release for performance testing
 cargo test --workspace --all-targets --locked   # everything, as CI runs it
+cargo run -p termirust-slate --example gallery  # Slate component gallery
+cargo run -p termirust-ui-contract --bin generate-tokens  # after editing design/tokens.toml
 ```
+
+The Docker-backed SSH/SFTP tests bind-mount files from `tests/fixtures/`, so they need a
+local Docker daemon; with `DOCKER_HOST` pointing at a remote machine the mounts resolve on
+that machine and the fixtures fail to start.
 
 On macOS, GPUI may need access to the system shader cache during first compile/run.
 
