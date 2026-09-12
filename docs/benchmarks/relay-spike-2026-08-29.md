@@ -11,7 +11,7 @@ This is a release-build, in-process loopback model of the proposed relay state m
 - Samples: 10 runs for every pair-count/duty-cycle combination
 - Pair counts: 1, 10, 100, 1,000 (two logical endpoints per pair)
 - Workloads: idle; interactive (1 KiB each pair plus sampled 64 KiB frames); burst (1 KiB each pair, 64 KiB each pair, sampled 1 MiB frames)
-- Raw reproducible output: `target/relay-spike/relay-spike-report.json` from `scripts/run-relay-spike.sh`
+- Raw reproducible output: `target/relay-spike/relay-spike-report.json` from `scripts/run/relay-spike.sh`
 
 ## Results
 

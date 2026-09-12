@@ -40,7 +40,7 @@ transaction or all concurrent mutations during application.
 - `cargo test replication::tests --bin termirust`: 4 passed.
 - `cargo test -p termirust-store --test replication_product`: 11 passed, including
   enrollment cancellation, restart recovery, rotation, revocation, and deletion.
-- `python3 scripts/clippy-changed.py`: changed Rust lines passed.
+- `python3 scripts/dev/clippy-changed.py`: changed Rust lines passed.
 - `cargo fmt --check` and `git diff --check`: passed.
 
 ## Remaining Acceptance Work
@@ -92,7 +92,7 @@ keys. They validate key roles before accessing or deleting native storage.
   error propagation, malformed/wrong-role references, corrupt data).
 - Package Clippy with `-D warnings` passed.
 - Swift and Kotlin bindings generated successfully.
-- `bash scripts/test-swift-replication-bindings.sh` passed a compiled Swift callback
+- `bash scripts/test/swift-replication-bindings.sh` passed a compiled Swift callback
   round trip against the Rust library.
 
 The boundary is now packaged on Android through C01, with four verified ABI
@@ -154,7 +154,7 @@ replication-only Keychain service. `SecItemAdd` rejects collisions without repla
 an existing secret. Reads validate the typed envelope length; deletion targets only
 the supplied service/account and distinguishes already absent from access failure.
 
-`bash scripts/test-swift-replication-bindings.sh --keychain` passed on macOS using
+`bash scripts/test/swift-replication-bindings.sh --keychain` passed on macOS using
 Swift 6 language mode:
 
 - existing in-memory Swift/Rust conformance;

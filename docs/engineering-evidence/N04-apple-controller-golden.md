@@ -37,7 +37,7 @@ The live Controller command is:
 
 ```bash
 TERMIRUST_IOS_DESTINATION='<exact Xcode destination>' \
-  ./scripts/test-mobile-ios-controller-host.sh
+  ./scripts/test/mobile-ios-controller-host.sh
 ```
 
 It builds the real Rust `termirust-session-host` and a bounded Controller fixture,
@@ -94,7 +94,7 @@ in the repository.
 | Controller route-contract verifier with required runtime | PASS |
 | Rust Controller listener test suite after human-confirmation timeout fix | PASS, 37 total |
 | N02 bundled desktop/Host golden run after Host backend change | PASS |
-| `./scripts/verify-product-model.sh --local` | PASS |
+| `./scripts/verify/product-model.sh --local` | PASS |
 | Rust, Swift, and Kotlin diff hygiene | PASS |
 
 The structured Xcode summaries recorded during the run are:

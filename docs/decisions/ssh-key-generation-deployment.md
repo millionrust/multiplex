@@ -47,5 +47,5 @@ and time.
 
 ## Verification
 
-Run `./scripts/verify-ssh-key-lifecycle.sh`. Live acceptance requires Docker and OpenSSH
+Run `./scripts/verify/ssh-key-lifecycle.sh`. Live acceptance requires Docker and OpenSSH
 `ssh-keygen`; the script fails rather than silently claiming those checks on an unavailable host.

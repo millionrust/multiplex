@@ -53,7 +53,7 @@ fn run() -> Result<(), String> {
             "--help" | "-h" => {
                 println!(
                     "Usage: verify-design-tokens --all-ui --no-new-baseline\n\
-                     Or: verify-design-tokens --paths src/ui/a.rs,src/ui/b.rs --zero-legacy\n\
+                     Or: verify-design-tokens --paths crates/termirust-desktop/src/ui/a.rs,crates/termirust-desktop/src/ui/b.rs --zero-legacy\n\
                      Or: verify-design-tokens --surface vault-keys-snippets --zero-legacy\n\
                      Or: verify-design-tokens --surface terminal-chrome --zero-legacy-except terminal-grid-metrics\n\
                      Baseline maintenance requires TERMIRUST_MAINTENANCE_ALLOW_BASELINE_WRITE=1."

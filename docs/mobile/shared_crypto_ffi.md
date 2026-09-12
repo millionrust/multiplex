@@ -42,7 +42,7 @@ Build and copy the shared crypto artifacts into the native mobile applications w
 
 ```bash
 cd /Users/jacob/Projects/terminal
-scripts/sync-mobile-ffi-artifacts.sh all
+scripts/sync/mobile-ffi-artifacts.sh all
 ```
 
 Use `ios` or `android` instead of `all` to refresh one platform.
@@ -64,7 +64,7 @@ Build the XCFramework:
 
 ```bash
 cd /Users/jacob/Projects/terminal
-scripts/build-mobile-ffi-ios.sh
+scripts/build/mobile-ffi-ios.sh
 ```
 
 The script installs missing Rust iOS targets, builds the device and simulator static libraries, and writes:
@@ -77,10 +77,10 @@ Copy or sync that generated framework into the iOS application before
 opening Xcode. Prefer the sync helper above, or run:
 
 ```bash
-rm -rf mobile/ios/Frameworks/TermiRustMobileCrypto.xcframework
+rm -rf apps/ios/Frameworks/TermiRustMobileCrypto.xcframework
 cp -R \
   dist/mobile/ios/TermiRustMobileCrypto.xcframework \
-  mobile/ios/Frameworks/
+  apps/ios/Frameworks/
 ```
 
 If Xcode reports `There is no XCFramework found`, rerun the build script and
@@ -99,7 +99,7 @@ Build JNI libraries:
 
 ```bash
 cd /Users/jacob/Projects/terminal
-scripts/build-mobile-ffi-android.sh
+scripts/build/mobile-ffi-android.sh
 ```
 
 The script installs missing Rust Android targets, finds the local Android NDK, and writes:
@@ -108,14 +108,14 @@ The script installs missing Rust Android targets, finds the local Android NDK, a
 dist/mobile/android/jniLibs/
 ```
 
-Copy or sync those ABI folders into `mobile/android/app/src/main/jniLibs/`.
+Copy or sync those ABI folders into `apps/android/app/src/main/jniLibs/`.
 Prefer the sync helper above, or run:
 
 ```bash
-rm -rf mobile/android/app/src/main/jniLibs
+rm -rf apps/android/app/src/main/jniLibs
 cp -R \
   dist/mobile/android/jniLibs \
-  mobile/android/app/src/main/
+  apps/android/app/src/main/
 ```
 
 ## Verification
@@ -130,13 +130,13 @@ cargo build -p termirust-mobile-ffi
 Broader local mobile MVP checks:
 
 ```bash
-scripts/verify-mobile-mvp.sh
+scripts/verify/mobile-mvp.sh
 ```
 
 Direct SSH/tmux smoke tests for both mobile apps:
 
 ```bash
-scripts/verify-mobile-mvp.sh --live-ssh
+scripts/verify/mobile-mvp.sh --live-ssh
 ```
 
 The live smoke mode requires Docker Desktop to be running, or `TERMIRUST_MOBILE_TEST_SSH_*` variables pointing at a reachable SSH host.

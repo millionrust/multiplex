@@ -56,46 +56,88 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
 - Settings view for appearance theme, terminal font, default local shell, workspace restore, history limits, and import/export.
 - TOFU known-host pinning; Known Hosts view supports deleting pinned host keys.
 - Keychain view shows imported key type, public key availability, and an "Add Key File" picker.
-- Build/distribution metadata for cargo-bundle (macOS .app, Linux deb/rpm) lives in `Cargo.toml`; per-platform release flow is in `docs/building.md`.
+- Build/distribution metadata for cargo-bundle (macOS .app, Linux deb/rpm) lives in `crates/termirust-desktop/Cargo.toml`; per-platform release flow is in `docs/building.md`.
 
 ## Explicitly out of scope right now
 
 - drag-reordering split panes
 - remote team / multiplayer features (shared-folder vault sync is the only sync that exists)
 
+## Repository layout
+
+- Root `Cargo.toml` is a virtual workspace manifest; `default-members` points at
+  `crates/termirust-desktop` (package name `termirust`), so plain `cargo run` /
+  `cargo check` / `cargo test` from the root target the desktop app. Use `--workspace`
+  for every crate. Shared version and `rust-version` live in `[workspace.package]`.
+- `crates/` holds every workspace member, including the desktop app, CLI, TUI, MCP,
+  relay, session host, mobile FFI, and contract crates.
+- `apps/ios` (Swift) and `apps/android` (Kotlin) are the native mobile applications;
+  their FFI libraries are built by `scripts/build/` and copied in by `scripts/sync/`.
+- `tests/` is shared cross-crate test material only: `fixtures/`, the `support/`
+  module included via `#[path]`, `ui/` audit inventories, and `swift/` runners.
+  Rust integration tests live inside each crate.
+- `scripts/` is grouped by verb: `verify/`, `test/`, `build/`, `sync/`, `bench/`,
+  `run/`, `dev/`. Every script resolves the repo root two levels up.
+- `design/` and `locales/` are consumed by `termirust-ui-contract`. `design/` also
+  holds the Slate design references: `slate-design-system.html` (every token,
+  component spec, and the Rust handoff) and `termirust-design-system.html` (the
+  interactive TermiRust prototype). `docs/` holds
+  guides, ADRs under `decisions/`, and evidence under `completion-evidence/` and
+  `engineering-evidence/`; `tools/` holds excluded spike workspaces; `dist/` is
+  ignored build output.
+
 ## Important architecture
 
-- [src/main.rs](src/main.rs)
+- [crates/termirust-desktop/src/main.rs](crates/termirust-desktop/src/main.rs)
   - Bootstraps GPUI, redirects logs to a file, restores the saved window bounds/display, registers the embedded asset source, and opens the main window.
-- [src/platform_mac.rs](src/platform_mac.rs)
+- [crates/termirust-desktop/src/platform_mac.rs](crates/termirust-desktop/src/platform_mac.rs)
   - macOS window-control interop: disables the OS title-bar drag so the chrome tabs stay usable, and starts native window drags from the chrome's empty area.
-- [src/assets.rs](src/assets.rs)
+- [crates/termirust-desktop/src/assets.rs](crates/termirust-desktop/src/assets.rs)
   - Embedded SVG asset source for the app chrome and custom Phosphor-style icons.
-- `src/ui/app/` — main application state and UI, split across modules:
-  - [mod.rs](src/ui/app/mod.rs) — `TermiRustApp` state, event loop, recursive split tree, window-bounds persistence.
-  - [chrome.rs](src/ui/app/chrome.rs) — top chrome: tab strip, traffic lights, tab context menu.
-  - [workspace.rs](src/ui/app/workspace.rs) — terminal pane rendering, split layout, SFTP files view.
-  - [editor.rs](src/ui/app/editor.rs) / [hosts.rs](src/ui/app/hosts.rs) / [library.rs](src/ui/app/library.rs) — host editor and library.
-  - [connect.rs](src/ui/app/connect.rs) / [sftp.rs](src/ui/app/sftp.rs) / [palette.rs](src/ui/app/palette.rs) / [overlay.rs](src/ui/app/overlay.rs) / [types.rs](src/ui/app/types.rs).
-  - [canvas.rs](src/ui/app/canvas.rs) — canvas geometry, interaction, terminal and
+- `crates/termirust-desktop/src/ui/app/` — main application state and UI, split across modules:
+  - [mod.rs](crates/termirust-desktop/src/ui/app/mod.rs) — `TermiRustApp` state, event loop, recursive split tree, window-bounds persistence.
+  - [chrome.rs](crates/termirust-desktop/src/ui/app/chrome.rs) — top chrome: tab strip, traffic lights, tab context menu.
+  - [workspace.rs](crates/termirust-desktop/src/ui/app/workspace.rs) — terminal pane rendering, split layout, SFTP files view.
+  - [editor.rs](crates/termirust-desktop/src/ui/app/editor.rs) / [hosts.rs](crates/termirust-desktop/src/ui/app/hosts.rs) / [library.rs](crates/termirust-desktop/src/ui/app/library.rs) — host editor and library.
+  - [connect.rs](crates/termirust-desktop/src/ui/app/connect.rs) / [sftp.rs](crates/termirust-desktop/src/ui/app/sftp.rs) / [palette.rs](crates/termirust-desktop/src/ui/app/palette.rs) / [overlay.rs](crates/termirust-desktop/src/ui/app/overlay.rs) / [types.rs](crates/termirust-desktop/src/ui/app/types.rs).
+  - [canvas.rs](crates/termirust-desktop/src/ui/app/canvas.rs) — canvas geometry, interaction, terminal and
     agent nodes, links, worktree controls, and orchestration UI.
-- `src/agents/` — safe process launch, normalized protocols, provider adapters,
+- `crates/termirust-desktop/src/agents/` — safe process launch, normalized protocols, provider adapters,
   context redaction, worktree ownership, and dependency scheduling.
-- [src/ui/theme.rs](src/ui/theme.rs)
+- [crates/termirust-desktop/src/ui/theme.rs](crates/termirust-desktop/src/ui/theme.rs)
   - App color system and layout constants.
-- [src/terminal.rs](src/terminal.rs)
+- `crates/termirust-slate/` — Slate, the styled component library the desktop app will move to.
+  - Built on `gpui-base` 0.6 (behavior: focus, keyboard, overlays, accessibility) over the
+    `gpui-pre` 0.3 snapshots, which coexist in the workspace with the app's `gpui` 0.2.2.
+    The desktop app cannot use Slate until it migrates from `gpui` 0.2 / `gpui-component`
+    to `gpui-pre` + `gpui-base`.
+  - [theme.rs](crates/termirust-slate/src/theme.rs) resolves `DesignTokens` into GPUI colors,
+    sizes, type, and shadows per `ThemeChoice`, installs them as a global, and projects them
+    onto `gpui_base::Theme` so base inputs share the palette. Components read only from it.
+  - [icon.rs](crates/termirust-slate/src/icon.rs) generates the 16-unit stroke icon set and the
+    eight status glyph shapes as SVG; serve them with `SlateAssets` (or `with_fallback`).
+  - Primitives: `button.rs`, `controls.rs` (Segmented, Toggle, FilterTabs), `input.rs`,
+    `kbd.rs`, `status.rs`, `tooltip.rs`. Shell: `shell.rs`. Data views: `data.rs`.
+    Overlays: `overlay.rs` (menus, palette, dialogs, toasts, banners). Terminal chrome:
+    `terminal.rs`. `split.rs` holds the `SplitNode` tree (four-pane cap, 0.15–0.85 ratios)
+    and `SplitPanes`, which draws dividers and edge drop zones.
+  - Callbacks follow GPUI's `Fn(&Event, &mut Window, &mut App)` shape so `cx.listener` fits.
+  - [examples/gallery.rs](crates/termirust-slate/examples/gallery.rs) renders every
+    component and state in a working shell; `SLATE_THEME`, `SLATE_TAB`, `SLATE_OVERLAY`,
+    and `SLATE_SCROLL` start it in a given state for screenshots.
+- [crates/termirust-desktop/src/terminal.rs](crates/termirust-desktop/src/terminal.rs)
   - VT state wrapper around `vt100`: snapshot generation, scrollback access, selection extraction, bracketed-paste and mouse-mode inspection.
-- [src/ssh.rs](src/ssh.rs)
+- [crates/termirust-desktop/src/ssh.rs](crates/termirust-desktop/src/ssh.rs)
   - SSH runtime thread and Tokio event loop: shell open, PTY allocation, raw input/output, and remote resize.
-- [src/local.rs](src/local.rs)
+- [crates/termirust-desktop/src/local.rs](crates/termirust-desktop/src/local.rs)
   - Local PTY shell sessions (started in the user's home directory).
-- [src/sftp.rs](src/sftp.rs)
+- [crates/termirust-desktop/src/sftp.rs](crates/termirust-desktop/src/sftp.rs)
   - SFTP runtime backing the remote-files view.
-- [src/credentials.rs](src/credentials.rs)
+- [crates/termirust-desktop/src/credentials.rs](crates/termirust-desktop/src/credentials.rs)
   - System credential-store (keyring) access for saved passwords.
-- [src/models.rs](src/models.rs)
+- [crates/termirust-desktop/src/models.rs](crates/termirust-desktop/src/models.rs)
   - Saved host models, draft parsing, connect-request generation, and persisted window bounds.
-- [src/storage.rs](src/storage.rs)
+- [crates/termirust-desktop/src/storage.rs](crates/termirust-desktop/src/storage.rs)
   - Saved state persistence, TOFU known-host pinning, startup import of local `~/.ssh` identities, and host import from `~/.ssh/config`.
 
 ## State model notes
@@ -115,7 +157,14 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
 cargo fmt
 cargo check
 cargo run            # debug build; use --release for performance testing
+cargo test --workspace --all-targets --locked   # everything, as CI runs it
+cargo run -p termirust-slate --example gallery  # Slate component gallery
+cargo run -p termirust-ui-contract --bin generate-tokens  # after editing design/tokens.toml
 ```
+
+The Docker-backed SSH/SFTP tests bind-mount files from `tests/fixtures/`, so they need a
+local Docker daemon; with `DOCKER_HOST` pointing at a remote machine the mounts resolve on
+that machine and the fixtures fail to start.
 
 On macOS, GPUI may need access to the system shader cache during first compile/run.
 

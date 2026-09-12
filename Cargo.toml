@@ -1,117 +1,48 @@
-[package]
-name = "termirust"
-version = "0.1.0"
-edition = "2024"
-rust-version.workspace = true
-description = "Native desktop SSH client built with GPUI"
-authors = ["TermiRust contributors"]
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/jacobsam/terminal"
-readme = "README.md"
-default-run = "termirust"
+# Virtual workspace manifest. The desktop application lives in
+# crates/termirust-desktop and is the default member, so `cargo run`,
+# `cargo check`, and `cargo test` from the repository root keep targeting it.
 
 [workspace]
+resolver = "3"
+default-members = ["crates/termirust-desktop"]
 members = [
     "crates/termirust-accessibility-macos",
     "crates/termirust-browser",
     "crates/termirust-cli",
     "crates/termirust-client",
-    "crates/termirust-controller-security",
-    "crates/termirust-controller-listener",
     "crates/termirust-controller-bindings",
-    "crates/termirust-domain",
+    "crates/termirust-controller-listener",
+    "crates/termirust-controller-security",
+    "crates/termirust-desktop",
     "crates/termirust-diagnostics",
+    "crates/termirust-domain",
     "crates/termirust-host-protocol",
-    "crates/termirust-session-host",
-    "crates/termirust-mobile-ffi",
     "crates/termirust-mcp",
+    "crates/termirust-mobile-ffi",
     "crates/termirust-protocol",
-    "crates/termirust-relay-protocol",
     "crates/termirust-relay-client",
+    "crates/termirust-relay-protocol",
     "crates/termirust-relay-server",
-    "crates/termirust-replication-security",
     "crates/termirust-replication-bindings",
+    "crates/termirust-replication-security",
+    "crates/termirust-session-host",
+    "crates/termirust-slate",
     "crates/termirust-store",
     "crates/termirust-tui",
     "crates/termirust-ui-contract",
     "crates/termirust-update-trust",
 ]
-resolver = "3"
+# Standalone spike workspaces with their own lockfiles and policy files.
+exclude = [
+    "tools/browser-engine-spike",
+    "tools/relay-spike",
+]
 
 [workspace.package]
+version = "0.1.0"
 # The locked all-target dependency graph requires Rust 1.88. Development and
 # CI use the newer pinned toolchain declared in rust-toolchain.toml.
 rust-version = "1.88"
-
-[package.metadata.bundle]
-name = "TermiRust"
-identifier = "com.termirust.desktop"
-icon = ["assets/icons/app.png", "assets/icons/app@2x.png"]
-copyright = "Copyright (c) 2025 TermiRust contributors"
-category = "DeveloperTool"
-short_description = "Native desktop SSH client"
-long_description = """
-TermiRust is a native desktop SSH client with vault management,
-SFTP browsing, port forwarding, jump host chains, snippets,
-broadcast input, and more.
-"""
-osx_minimum_system_version = "12.0"
-osx_url_schemes = ["termirust"]
-deb_depends = ["libssl3", "libxkbcommon0"]
-
-[dependencies]
-aes-gcm-siv = "0.11"
-anyhow = "1.0"
-argon2 = "0.5"
-base64 = "0.22"
-chrono = { version = "0.4", default-features = false }
-dirs = "6.0"
-gpui = { version = "0.2.2", features = ["runtime_shaders", "test-support"] }
-gpui-component = "0.5.1"
-image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
-keyring = { version = "3.6.2", default-features = false, features = ["apple-native", "windows-native", "linux-native-sync-persistent", "crypto-rust"] }
-libc = "0.2"
-portable-pty = "0.9"
-qrcode = { version = "0.14", default-features = false }
-rand = "0.8"
-rfd = "0.15"
-russh = { version = "0.57", default-features = false, features = ["ring", "rsa"] }
-russh-sftp = "2.1.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-sha2 = "0.10"
-smallvec = "1.15"
-termirust-protocol = { version = "0.1.0", path = "crates/termirust-protocol" }
-termirust-domain = { version = "0.1.0", path = "crates/termirust-domain" }
-termirust-diagnostics = { version = "0.1.0", path = "crates/termirust-diagnostics" }
-termirust-client = { version = "0.1.0", path = "crates/termirust-client" }
-termirust-cli = { version = "0.1.0", path = "crates/termirust-cli" }
-termirust-controller-security = { version = "0.1.0", path = "crates/termirust-controller-security" }
-termirust-controller-listener = { version = "0.1.0", path = "crates/termirust-controller-listener" }
-termirust-host-protocol = { version = "0.1.0", path = "crates/termirust-host-protocol" }
-termirust-relay-client = { version = "0.1.0", path = "crates/termirust-relay-client" }
-termirust-session-host = { version = "0.1.0", path = "crates/termirust-session-host" }
-termirust-store = { version = "0.1.0", path = "crates/termirust-store", features = ["os-keyring"] }
-termirust-ui-contract = { version = "0.1.0", path = "crates/termirust-ui-contract" }
-tokio = { version = "1", features = ["io-std", "io-util", "net", "rt", "signal", "sync", "time"] }
-tokio-util = { version = "0.7", features = ["rt"] }
-uuid = { version = "1.22", features = ["v4"] }
-vt100 = "0.16.2"
-zeroize = "=1.8.2"
-
-[target.'cfg(target_os = "macos")'.dependencies]
-block = "0.1"
-objc = "0.2"
-termirust-accessibility-macos = { version = "0.1.0", path = "crates/termirust-accessibility-macos" }
-
-[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
-# 4.18 raises MSRV above the workspace contract; keep 4.17 pinned until N14
-# qualification moves the whole workspace together.
-notify-rust = { version = "=4.17.0" }
-
-[dev-dependencies]
-tempfile = "3.27"
-unicode-width = "=0.2.2"
 
 [profile.dev]
 opt-level = 1

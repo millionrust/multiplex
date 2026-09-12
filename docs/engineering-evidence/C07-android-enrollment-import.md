@@ -121,11 +121,11 @@ artifacts have not been regenerated for this extension.
 
 Android verification on 2026-09-08:
 
-- `bash scripts/build-mobile-replication-bindings.sh --android`: passed all four
+- `bash scripts/build/mobile-replication-bindings.sh --android`: passed all four
   architectures, pinned UniFFI/NDK checks, required exports and 16 KiB alignment.
-- `bash scripts/sync-mobile-replication-bindings.sh --android --write` and `--check`:
+- `bash scripts/sync/mobile-replication-bindings.sh --android --write` and `--check`:
   complete set promoted; packaged inventory matches verified output.
-- `python3 scripts/test-android-replication-custody.py --avd Pixel_9`: passed 26
+- `python3 scripts/test/android-replication-custody.py --avd Pixel_9`: passed 26
   instrumentation executions, zero skipped: eleven custody cases; four existing
   enrollment UI cases at each of phone, tablet and landscape sizes; three separate
   prepare/reopen/cleanup process invocations. API 37, arm64-v8a, 16 KiB pages.
@@ -200,7 +200,7 @@ repeated reload is not claimed to recover such a transaction.
 Verification command:
 
 ```sh
-ANDROID_HOME="$HOME/Library/Android/sdk" ./mobile/android/gradlew -p mobile/android testDebugUnitTest assembleDebug assembleDebugAndroidTest --no-daemon --console=plain
+ANDROID_HOME="$HOME/Library/Android/sdk" ./mobile/android/gradlew -p apps/android testDebugUnitTest assembleDebug assembleDebugAndroidTest --no-daemon --console=plain
 ```
 
 PASS: both debug APKs built. JVM XML reports 85 cases, 81 passed, zero failures/errors,
@@ -234,10 +234,10 @@ The Android native artifact builder and the Android runner's Gradle build use a
 safeguard, not a guarantee against disk writes by other applications or detached
 processes outside the owned group. Existing emulator startup still requires 17 GiB.
 
-`python3 scripts/test-mobile-replication-artifacts.py` passed seven tests: existing
+`python3 scripts/test/mobile-replication-artifacts.py` passed seven tests: existing
 artifact rollback/isolation and timeout cases, plus prelaunch low-space rejection,
 a simulated space drop stopping a parent/child group, and output/exit-code retention.
-`bash scripts/build-mobile-replication-bindings.sh --android` then correctly failed
+`bash scripts/build/mobile-replication-bindings.sh --android` then correctly failed
 the real preflight before launching even its first rustc metadata command. This is
 verified refusal, not a successful native rebuild. `git diff --check` passed.
 No cache, source, application data or unrelated process was deleted or stopped.
@@ -317,10 +317,10 @@ and JNI libraries match the verified output. iOS artifacts were not regenerated.
 
 Commands completed:
 
-- `bash scripts/build-mobile-replication-bindings.sh --android`
-- `bash scripts/sync-mobile-replication-bindings.sh --android --write`
-- `bash scripts/sync-mobile-replication-bindings.sh --android --check`
-- `python3 scripts/test-android-replication-custody.py --avd Pixel_9`
+- `bash scripts/build/mobile-replication-bindings.sh --android`
+- `bash scripts/sync/mobile-replication-bindings.sh --android --write`
+- `bash scripts/sync/mobile-replication-bindings.sh --android --check`
+- `python3 scripts/test/android-replication-custody.py --avd Pixel_9`
 
 The final runner result is 32 executions, zero failures/skips: eleven JNI/real
 Keystore tests, six UI cases at each of phone/tablet/landscape sizes, and three
@@ -414,7 +414,7 @@ ownership, selection/confirmation, abandoned preview, cancelled review and uncer
 apply without automatic retry. The complete JVM report contains 90 cases across 20
 suites: 86 passed, four existing live-SSH skips, zero failures/errors.
 
-`python3 scripts/test-android-replication-custody.py --avd Pixel_9` passed 38
+`python3 scripts/test/android-replication-custody.py --avd Pixel_9` passed 38
 executions: eleven real JNI/Keystore cases, eight UI cases at each of phone, tablet
 and landscape sizes, and three separate prepare/reopen/cleanup process runs. API 37,
 arm64-v8a, 16384-byte pages. New native discovery calls prove rejection before
@@ -499,7 +499,7 @@ between epoch-key storage and initial journal publication. Do not claim C07 comp
 Run from the repository root:
 
 ```sh
-python3 scripts/test-android-replication-custody.py --avd Pixel_9 --enrollment-only
+python3 scripts/test/android-replication-custody.py --avd Pixel_9 --enrollment-only
 ```
 
 The runner now exchanges a real Android-generated pending request with
@@ -547,7 +547,7 @@ An intermediate successful run captured the acceptance screen before Compose sho
 the configured state. The test now asserts the visible configured heading and waits
 for Compose idle before capture. The entire fixture passed again. Final accepted and
 imported screenshots were inspected and show the expected states without clipping;
-evidence is in `dist/mobile/c07-evidence`.
+evidence is in `docs/engineering-evidence/C07-android-enrollment-import/c07-evidence`.
 
 Focused Rust custody tests passed all 13 cases. Android JVM tests passed 88 cases,
 with four existing live-SSH skips, and lint passed. Fixture generation and the touched
@@ -585,7 +585,7 @@ test evidence, credentials and user emulator data were preserved.
 Rerun with sufficient disk headroom and an isolated available AVD:
 
 ```sh
-python3 scripts/test-android-replication-custody.py --avd <isolated-avd> --enrollment-only --system-picker
+python3 scripts/test/android-replication-custody.py --avd <isolated-avd> --enrollment-only --system-picker
 ```
 
 ### Follow-Up Compilation and Resource-Guard Checks
@@ -596,12 +596,12 @@ invocation lacked `ANDROID_HOME`; rerunning with the installed SDK path succeede
 `testDebugUnitTest lintDebug` also passed: 92 JVM cases, 88 passed, four existing
 live-SSH skips, zero failures/errors; lint has zero errors and 26 warnings.
 
-`python3 scripts/test-mobile-replication-artifacts.py` passed seven cases, and
-`sh scripts/sync-mobile-replication-bindings.sh --android --check` confirmed the
+`python3 scripts/test/mobile-replication-artifacts.py` passed seven cases, and
+`sh scripts/sync/mobile-replication-bindings.sh --android --check` confirmed the
 packaged bindings match verified output. No Rust implementation or ABI was changed
 in this follow-up.
 
-Added `scripts/test-android-replication-runner.py`: three simulated checks pass for
+Added `scripts/test/android-replication-runner.py`: three simulated checks pass for
 low-space startup refusal, cleanup of only the owned emulator after space drops
 during boot, and rejection of picker mode without enrollment mode. These tests never
 build, launch an emulator, install an APK or touch a device. They are resource-guard
@@ -618,11 +618,11 @@ activation crash boundaries also remain open; compile success does not close the
 The following full run passed on API 37, arm64-v8a, 16384-byte pages:
 
 ```sh
-CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 python3 scripts/test-android-replication-custody.py --avd Pixel_9 --enrollment-only --system-picker
+CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 python3 scripts/test/android-replication-custody.py --avd Pixel_9 --enrollment-only --system-picker
 ```
 
 All 14 executions passed with zero skips. Results and accepted/imported screenshots
-are in `dist/mobile/c07-picker-evidence`. The screenshots show the configured heading
+are in `docs/engineering-evidence/C07-android-enrollment-import/c07-picker-evidence`. The screenshots show the configured heading
 and imported fixture label/endpoint without content clipping. These use the test's
 MaterialTheme, not a full production-theme/accessibility qualification.
 
@@ -681,7 +681,7 @@ pending request. Restored read access allows explicit recovery and repeat recove
 succeed. Assertions require zero secure-store creation/deletion calls, unchanged
 profile/repository bytes, unchanged ciphertext digests, and removal of only the pending
 request and enrollment journal. Subsequent system-picker host import, reopening and
-missing-wrapping-key refusal all pass. Results are in `dist/mobile/c07-picker-evidence`.
+missing-wrapping-key refusal all pass. Results are in `docs/engineering-evidence/C07-android-enrollment-import/c07-picker-evidence`.
 
 An earlier attempt failed during initial request preparation, before the new recovery
 stages; fixture cleanup succeeded. A fresh guarded run passed all 16 stages. This does
@@ -719,7 +719,7 @@ after a real Keystore write preserves ciphertext and journal across a process st
 The fixture then deletes only its own injected ambiguous key to allow later tests to
 proceed. **That deletion is fixture cleanup, not an implemented user recovery flow.**
 The remaining rollback, committed-finalization, picker enrollment/import, reopen and
-lost-key checks all pass. Updated evidence is in `dist/mobile/c07-picker-evidence`.
+lost-key checks all pass. Updated evidence is in `docs/engineering-evidence/C07-android-enrollment-import/c07-picker-evidence`.
 
 The initial source test run caught canonical legacy-journal incompatibility; omitting
 the confirmed flag fixed it. Eight custody-contract, 22 product-service and 13 binding

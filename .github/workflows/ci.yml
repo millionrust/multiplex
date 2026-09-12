@@ -45,24 +45,24 @@ jobs:
         run: command -v tmux >/dev/null 2>&1 || brew install tmux
 
       - name: Verify generated design-token contract
-        run: ./scripts/verify-design-tokens.sh --all-ui --no-new-baseline
+        run: ./scripts/verify/design-tokens.sh --all-ui --no-new-baseline
 
       - name: Verify localization contract and copy policy
-        run: ./scripts/verify-localization.sh --locales en-US,en-XA,ar-XB --no-new-baseline
+        run: ./scripts/verify/localization.sh --locales en-US,en-XA,ar-XB --no-new-baseline
 
       - name: Verify fail-closed release contract
-        run: ./scripts/verify-release-workflow.sh
+        run: ./scripts/verify/release-workflow.sh
 
       - name: Verify Rust workspace
         env:
           TERMIRUST_CLIPPY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: ./scripts/verify-rust.sh workspace
+        run: ./scripts/verify/rust.sh workspace
 
       - name: Repeat local tmux regression
-        run: ./scripts/repeat-test.sh 25 local::tests::local_tmux_session_survives_disconnect_and_reattaches
+        run: ./scripts/test/repeat.sh 25 local::tests::local_tmux_session_survives_disconnect_and_reattaches
 
       - name: Repeat canvas tmux capability regression
-        run: ./scripts/repeat-test.sh 25 ui::app::tests::canvas_persistent_local_terminal_opens_or_explains_missing_tmux
+        run: ./scripts/test/repeat.sh 25 ui::app::tests::canvas_persistent_local_terminal_opens_or_explains_missing_tmux
 
   msrv:
     name: Rust 1.88 MSRV
@@ -148,8 +148,8 @@ jobs:
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
         run: |
-          mobile/android/scripts/verify-android-unified-routes.sh
-          mobile/android/gradlew -p mobile/android lintDebug --console=plain
+          apps/android/scripts/verify-android-unified-routes.sh
+          apps/android/gradlew -p apps/android lintDebug --console=plain
 
   ios:
     name: native iOS and iPadOS application
@@ -161,4 +161,4 @@ jobs:
         run: brew install xcodegen
 
       - name: Verify Swift 6 contracts and generic application build
-        run: mobile/ios/scripts/verify-ios-unified-routes.sh
+        run: apps/ios/scripts/verify-ios-unified-routes.sh

@@ -8,5 +8,5 @@ these directives may execute.
 Run:
 
 ```sh
-./scripts/test-controller-ssh.sh --fixture tests/fixtures/ssh-controller
+./scripts/test/controller-ssh.sh --fixture tests/fixtures/ssh-controller
 ```

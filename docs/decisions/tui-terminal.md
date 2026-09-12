@@ -71,7 +71,7 @@ ownership.
 Run:
 
 ```sh
-./scripts/verify-tui-terminal.sh
+./scripts/verify/tui-terminal.sh
 ```
 
 The suite covers ordering, stale identity, gaps, exit retention, leader and paste

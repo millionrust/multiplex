@@ -6,16 +6,16 @@
 ## Monorepo Reverification
 
 The original 2026-09-01 evidence below is historical. Swift and Kotlin now live in
-`mobile/ios` and `mobile/android` within this repository. The current verification
+`apps/ios` and `apps/android` within this repository. The current verification
 started at `013c9a8` and resumed after an interruption.
 
 Before the interruption, these commands passed:
 
 - `cargo fmt --check` and `cargo check --workspace --all-targets`
 - the exact stalled-handshake cancellation test, 50 consecutive runs
-- `./scripts/auto-test.sh`: 665 desktop tests passed, 4 ignored, plus 9 integration
+- `./scripts/test/auto.sh`: 665 desktop tests passed, 4 ignored, plus 9 integration
   tests; Clippy and diff hygiene completed
-- `./scripts/verify-product-model.sh --local`: workspace tests/docs/policy,
+- `./scripts/verify/product-model.sh --local`: workspace tests/docs/policy,
   synchronized fixtures, route contracts, strict Swift 6 verification and generic
   device build, Android unit tests/debug APK, and diff hygiene all passed
 
@@ -108,8 +108,8 @@ All listed commands exited `0` on their final run:
 | stalled-handshake cancellation test, 50 consecutive exact runs | PASS, 50/50 |
 | SFTP module tests | PASS, 23/23; Docker cases explicitly self-skipped |
 | discovery cache-cancellation test, 20 consecutive exact runs | PASS, 20/20 |
-| `./scripts/auto-test.sh` | PASS; tests and Clippy reached |
-| `./scripts/verify-product-model.sh --local` | PASS |
+| `./scripts/test/auto.sh` | PASS; tests and Clippy reached |
+| `./scripts/verify/product-model.sh --local` | PASS |
 | Swift `./scripts/verify-ios-unified-routes.sh` | PASS source/lifecycle type-check; runtime SKIPPED |
 | Kotlin `./scripts/verify-android-unified-routes.sh` | PASS unit tests and debug APK |
 | `git diff --check` in Rust, Swift, and Kotlin repositories | PASS |
@@ -147,7 +147,7 @@ Warnings remain visible and are not suppressed by N01:
 - future-incompatibility notices: `block 0.1.6` and `proc-macro-error2 2.0.1`
 
 No warning introduced on the changed Rust lines was reported by
-`scripts/clippy-changed.py`.
+`scripts/dev/clippy-changed.py`.
 
 ## Repository And Cleanup State
 

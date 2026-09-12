@@ -28,10 +28,10 @@ Date: 2026-09-03
 ## Local Evidence
 
 ```text
-./scripts/verify-release-workflow.sh
+./scripts/verify/release-workflow.sh
 PASS
 
-./scripts/verify-release-package.sh target/debug
+./scripts/verify/release-package.sh target/debug
 PASS: desktop application and all required sidecars are present
 
 cargo build --release --locked \
@@ -40,7 +40,7 @@ cargo build --release --locked \
 cargo bundle --release
 # Stage termirust-cli, termirust-session-host, termirust-mcp,
 # termirust-mcp-authorize, and termirust-relay beside the app executable.
-./scripts/verify-release-package.sh target/release/bundle/osx/TermiRust.app/Contents/MacOS
+./scripts/verify/release-package.sh target/release/bundle/osx/TermiRust.app/Contents/MacOS
 PASS: release package contains the desktop application and all required sidecars
 
 target/release/bundle/osx/TermiRust.app/Contents/MacOS/termirust-cli --help
@@ -63,7 +63,7 @@ cargo clippy -p termirust-store --all-targets \
   --target x86_64-pc-windows-msvc --locked -- -D warnings
 PASS from macOS with the Windows standard library target
 
-./scripts/verify-controller-security-vectors.sh --check
+./scripts/verify/controller-security-vectors.sh --check
 PASS after the dependency lock changed
 ```
 

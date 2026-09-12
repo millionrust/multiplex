@@ -36,7 +36,7 @@ These results validate the local server core and task/queue model. They do not c
 ## Reproduce
 
 ```sh
-./scripts/bench-relay-core.sh --loopback-only --pairs 1,10,100 --runs 10
+./scripts/bench/relay-core.sh --loopback-only --pairs 1,10,100 --runs 10
 ```
 
 The script rejects noncanonical pair/run settings for completion evidence, validates schema/counts/sockets/zero-content-storage, and enforces the thresholds above.

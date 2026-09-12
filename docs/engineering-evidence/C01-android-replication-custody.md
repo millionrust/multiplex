@@ -28,9 +28,9 @@ does not make mobile enrollment or synchronization usable yet.
 Commands:
 
 ```sh
-bash scripts/build-mobile-replication-bindings.sh --android
-bash scripts/sync-mobile-replication-bindings.sh --android --write
-bash scripts/sync-mobile-replication-bindings.sh --android --check
+bash scripts/build/mobile-replication-bindings.sh --android
+bash scripts/sync/mobile-replication-bindings.sh --android --write
+bash scripts/sync/mobile-replication-bindings.sh --android --check
 ```
 
 All four ABI slices build serially with Rust 1.97.1, UniFFI 0.32.0, NDK
@@ -49,7 +49,7 @@ There are still four standard ABI directories and standard APK `lib/<abi>` entri
 Gradle preserves the already-stripped Rust bytes, allowing the runner to compare
 every APK library's SHA-256 directly to its verified input.
 
-`python3 scripts/test-mobile-replication-artifacts.py`: four tests passed, covering
+`python3 scripts/test/mobile-replication-artifacts.py`: four tests passed, covering
 incomplete/tampered artifacts, rollback after a simulated publication failure,
 preservation of an unrelated Controller sentinel, and bounded child-process cleanup.
 This does not claim power-loss durability for the developer artifact-promotion step.
@@ -90,7 +90,7 @@ and [native filesystem APIs](https://developer.android.com/reference/android/sys
 ## Device Proof
 
 ```sh
-bash scripts/test-android-replication-custody.sh --avd Pixel_9
+bash scripts/test/android-replication-custody.sh --avd Pixel_9
 ```
 
 Three complete runs passed **13 tests each, zero skipped** (10 custody tests plus
@@ -152,7 +152,7 @@ now preserves the release bytes. Those incomplete runs are not counted as passes
 
 ## Canonical Baseline Failure
 
-`./scripts/verify-product-model.sh --local` exited 101 in the workspace Rust-test
+`./scripts/verify/product-model.sh --local` exited 101 in the workspace Rust-test
 step. The failing test is
 `termirust-controller-security::fixture_locks_transport_keys_last_sequence_and_document_checksums`,
 at `crates/termirust-controller-security/tests/golden_vectors.rs:175`.

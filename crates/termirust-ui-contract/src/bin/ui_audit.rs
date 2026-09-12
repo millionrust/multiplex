@@ -455,7 +455,7 @@ fn run_audit(arguments: &[String]) -> Result<(), String> {
     surfaces.remove("cross-screen");
     let mut surface_results = BTreeMap::new();
     for surface in surfaces {
-        let status = Command::new(root.join("scripts/verify-ui-surface.sh"))
+        let status = Command::new(root.join("scripts/verify/ui-surface.sh"))
             .current_dir(&root)
             .args([
                 "--surface",
@@ -474,7 +474,7 @@ fn run_audit(arguments: &[String]) -> Result<(), String> {
             if status.success() { "pass" } else { "fail" }.to_string(),
         );
     }
-    let harness_status = Command::new(root.join("scripts/verify-accessibility-harness.sh"))
+    let harness_status = Command::new(root.join("scripts/verify/accessibility-harness.sh"))
         .current_dir(&root)
         .args(["--platform", "macos", "--locale", "en-US,en-XA,ar-XB"])
         .status()

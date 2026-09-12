@@ -60,5 +60,5 @@ out of scope.
 
 ## Verification
 
-Run `./scripts/verify-sftp-transfer-manager.sh`. Live acceptance requires Docker and fails rather
+Run `./scripts/verify/sftp-transfer-manager.sh`. Live acceptance requires Docker and fails rather
 than silently claiming Docker coverage when it is unavailable.

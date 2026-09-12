@@ -20,8 +20,8 @@ provider polling, credential migration, or automatic mutation of existing replic
 ## Fixtures and Commands
 
 ```sh
-python3 scripts/test-android-replication-custody.py --avd Pixel_9 --provider-only
-python3 scripts/test-ios-replication-custody.py --simulator 7F76A1D5-5CC3-44DD-8883-DA554B851C99 --provider-only
+python3 scripts/test/android-replication-custody.py --avd Pixel_9 --provider-only
+python3 scripts/test/ios-replication-custody.py --simulator 7F76A1D5-5CC3-44DD-8883-DA554B851C99 --provider-only
 ```
 
 The Android runner keeps its existing packaged-library checksum checks and owned
@@ -55,7 +55,7 @@ were removed and the existing simulator returned to shutdown without erasing dat
 Additional regression command:
 
 ```sh
-ANDROID_HOME="$HOME/Library/Android/sdk" ./mobile/android/gradlew -p mobile/android testDebugUnitTest lintDebug processReleaseMainManifest --no-daemon --console=plain
+ANDROID_HOME="$HOME/Library/Android/sdk" ./mobile/android/gradlew -p apps/android testDebugUnitTest lintDebug processReleaseMainManifest --no-daemon --console=plain
 ```
 
 PASS: lint and manifest generation; JVM XML reports 81 cases, 77 passed, zero
@@ -114,14 +114,14 @@ no source, credential, user app data or build cache was deleted in this follow-u
 
 ## iOS Local Picker Integration
 
-`mobile/ios/ProviderAccessFixture` is a separate test-only XcodeGen project. A donor
+`apps/ios/ProviderAccessFixture` is a separate test-only XcodeGen project. A donor
 app exposes synthetic JSON through Apple's local Files provider; a reader app uses
 the real open-in-place picker and the production reader source, without any custody
 or enrollment facade. The UI test requires a positive security-scope probe and a URL
 outside the reader container, releases the probe, reads via the production actor,
 then cancels a subsequent picker and reselects after an app restart.
 
-Run with `python3 scripts/test-ios-enrollment.py --provider-picker`. It uses an owned
+Run with `python3 scripts/test/ios-enrollment.py --provider-picker`. It uses an owned
 disposable simulator and retains counts/screenshots under ignored dist/mobile/c06-picker.
 The first run failed before selection because the built donor plist omitted
 UIFileSharingEnabled despite the generated build setting. An explicit fixture plist
@@ -147,7 +147,7 @@ fixture apps are confined to the separate test project; production has no depend
 on them. The runner removed only its owned simulator.
 
 The shared runner's original path was then rerun with
-`python3 scripts/test-ios-enrollment.py`: PASS, ten tests and zero failures/skips.
+`python3 scripts/test/ios-enrollment.py`: PASS, ten tests and zero failures/skips.
 Results: `dist/mobile/c05-evidence/iPhone-17-Pro/C7909712-359F-4754-BD6B-16FDC130BA7E/results.json`.
 This is phone enrollment regression evidence, not a fresh iPad qualification.
 

@@ -21,7 +21,7 @@ The following gates passed on macOS arm64:
 Run the same set with:
 
 ```bash
-./scripts/verify-launch-qualification.sh --automated
+./scripts/verify/launch-qualification.sh --automated
 ```
 
 The consolidated command passed after the N14 release-workflow and native-notification changes.
@@ -33,7 +33,7 @@ and did not start a partial soak.
 The bounded endurance runner refuses durations shorter than 48 hours:
 
 ```bash
-./scripts/soak-session-relay.sh --hours 48
+./scripts/run/soak-session-relay.sh --hours 48
 ```
 
 Sustained libFuzzer runs, 48-hour Session/relay endurance, Android and iOS physical-device

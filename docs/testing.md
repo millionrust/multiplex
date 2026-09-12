@@ -3,7 +3,7 @@
 Use the automated smoke script before committing or before checking a new build manually:
 
 ```bash
-./scripts/auto-test.sh
+./scripts/test/auto.sh
 ```
 
 It runs:
@@ -17,19 +17,19 @@ It runs:
 The Rust baseline also runs the capability-scoped read-only MCP gate. Run it directly with:
 
 ```bash
-./scripts/verify-mcp-readonly.sh
+./scripts/verify/mcp-readonly.sh
 ```
 
 The separately approved action surface has an additional gate:
 
 ```bash
-./scripts/verify-mcp-actions.sh
+./scripts/verify/mcp-actions.sh
 ```
 
 The isolated browser policy, artifact, hostile-page, and opt-in live Chrome gates run with:
 
 ```bash
-./scripts/verify-browser-capability.sh
+./scripts/verify/browser-capability.sh
 ```
 
 If Chrome/Chromium is unavailable, its live portion prints `SKIPPED(browser)` while the unit,
@@ -40,7 +40,7 @@ MCP-contract, strict Clippy, and static containment checks still run.
 Run the bounded automated qualification matrix with:
 
 ```bash
-./scripts/verify-launch-qualification.sh --automated
+./scripts/verify/launch-qualification.sh --automated
 ```
 
 This adds crash/recovery matrices, update-trust attacks, protocol fuzz smoke, Session stress,
@@ -53,7 +53,7 @@ physical-device and non-macOS platform journeys documented in
 The bounded endurance runner refuses durations below 48 hours:
 
 ```bash
-./scripts/soak-session-relay.sh --hours 48
+./scripts/run/soak-session-relay.sh --hours 48
 ```
 
 ## Cross-Repository Product Baseline
@@ -62,7 +62,7 @@ Run the deterministic Rust, Swift, and Kotlin product-model baseline from this
 repository with:
 
 ```bash
-./scripts/verify-product-model.sh --local
+./scripts/verify/product-model.sh --local
 ```
 
 `--local` is the default when no mode is supplied. It runs the Rust workspace
@@ -81,7 +81,7 @@ evidence that live SSH ran.
 To require disposable real SSH and Controller smokes, use:
 
 ```bash
-./scripts/verify-product-model.sh --live
+./scripts/verify/product-model.sh --live
 ```
 
 Live mode first runs the complete local baseline. It requires a working Docker
@@ -100,7 +100,7 @@ or environment values. The current evidence records and known limitations are in
 On macOS with Docker Desktop running and `cargo-bundle` installed, run:
 
 ```bash
-./scripts/verify-desktop-host-golden-run.sh
+./scripts/verify/desktop-host-golden-run.sh
 ```
 
 This N02 gate uses only disposable local fixtures. It:
@@ -126,13 +126,13 @@ pass. Its evidence record is
 With one authorized Android device connected, run:
 
 ```bash
-./scripts/test-mobile-android-controller-host.sh --serial <adb-serial>
+./scripts/test/mobile-android-controller-host.sh --serial <adb-serial>
 ```
 
 To use a named emulator instead, run:
 
 ```bash
-./scripts/test-mobile-android-controller-host.sh --avd Pixel_9
+./scripts/test/mobile-android-controller-host.sh --avd Pixel_9
 ```
 
 With neither option, the script uses the sole authorized device or starts the
@@ -153,13 +153,13 @@ processes, and guarded temporary files. See
 The iOS simulator relay transport gate is:
 
 ```bash
-./scripts/test-mobile-controller-relay-transport.sh
+./scripts/test/mobile-controller-relay-transport.sh
 ```
 
 The equivalent Android emulator or attached-device gate is:
 
 ```bash
-./scripts/test-mobile-android-relay-transport.sh --avd Pixel_9
+./scripts/test/mobile-android-relay-transport.sh --avd Pixel_9
 ```
 
 Both gates use a disposable TLS relay and Rust echo Host, open two fresh native mobile
@@ -376,7 +376,7 @@ TERMIRUST_TEST_SSH_HOST=localhost \
 TERMIRUST_TEST_SSH_USER="$(whoami)" \
 TERMIRUST_TEST_SSH_PORT=22 \
 TERMIRUST_TEST_SSH_KEY="$HOME/.ssh/termirust_test_key" \
-./scripts/auto-test.sh
+./scripts/test/auto.sh
 ```
 
 If you use your normal SSH agent or default key, omit `TERMIRUST_TEST_SSH_KEY`.
@@ -388,14 +388,14 @@ This smoke check proves the target is reachable and authenticated before you tes
 The older SSH-only packaged-app smoke remains available for focused debugging:
 
 ```bash
-./scripts/test-real-app-ssh-ax.sh
+./scripts/test/real-app-ssh-ax.sh
 ```
 
 If the release binary is already up to date and you just want to rerun the
 desktop smoke faster, you can reuse it with:
 
 ```bash
-TERMIRUST_SKIP_RELEASE_BUILD=1 ./scripts/test-real-app-ssh-ax.sh
+TERMIRUST_SKIP_RELEASE_BUILD=1 ./scripts/test/real-app-ssh-ax.sh
 ```
 
 That narrower smoke path:

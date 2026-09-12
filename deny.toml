@@ -47,6 +47,11 @@ allow = [
     "Unlicense",
     "Zlib",
 ]
+# Permissive BSD-style license. libbz2-rs-sys arrives through gpui-pre's
+# async_zip bzip2 support, which the Slate component crate pulls in.
+exceptions = [
+    { allow = ["bzip2-1.0.6"], crate = "libbz2-rs-sys" },
+]
 
 [bans]
 multiple-versions = "warn"

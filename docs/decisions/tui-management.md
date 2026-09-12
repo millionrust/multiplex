@@ -42,7 +42,7 @@ not enter management state or diagnostics.
 Run:
 
 ```sh
-./scripts/verify-tui-management.sh
+./scripts/verify/tui-management.sh
 ```
 
 The suite covers typed command replay and revision conflicts, bounded forms and cancellation,

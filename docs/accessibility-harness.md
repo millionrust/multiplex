@@ -7,7 +7,7 @@ conformance and it does not alter saved application data.
 ## Automated verification
 
 ```bash
-./scripts/verify-accessibility-harness.sh --platform macos --locale en-US,en-XA,ar-XB
+./scripts/verify/accessibility-harness.sh --platform macos --locale en-US,en-XA,ar-XB
 ```
 
 The verifier checks deterministic semantic snapshots, stale action rejection, modal focus

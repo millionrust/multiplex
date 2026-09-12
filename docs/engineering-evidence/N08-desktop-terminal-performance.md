@@ -12,16 +12,16 @@ unread state, terminal search, and accessibility announcements.
 
 ## Implementation
 
-- `src/terminal.rs` caches the current viewport snapshot by terminal revision and theme. It
+- `crates/termirust-desktop/src/terminal.rs` caches the current viewport snapshot by terminal revision and theme. It
   compares rows exactly and shares unchanged rows through `Arc<TerminalRow>`.
-- `src/ui/app/terminal_grid.rs` owns terminal-cell rendering as a GPUI entity with independent
+- `crates/termirust-desktop/src/ui/app/terminal_grid.rs` owns terminal-cell rendering as a GPUI entity with independent
   invalidation.
-- `src/ui/app/mod.rs` coalesces adjacent output for one session up to 256 KiB, updates terminal
+- `crates/termirust-desktop/src/ui/app/mod.rs` coalesces adjacent output for one session up to 256 KiB, updates terminal
   entities after output/resize/search/selection/scroll changes, and retains root updates only for
   broader application state.
-- `src/ui/app/workspace.rs` embeds the terminal-grid entity instead of rebuilding terminal rows in
+- `crates/termirust-desktop/src/ui/app/workspace.rs` embeds the terminal-grid entity instead of rebuilding terminal rows in
   the workspace render function.
-- `scripts/bench-desktop-terminal.sh` runs the fixed component and rendered-entity profiles.
+- `scripts/bench/desktop-terminal.sh` runs the fixed component and rendered-entity profiles.
 
 ## Fixed Fixtures And Results
 
@@ -30,7 +30,7 @@ Environment: macOS 26.5.2, Apple silicon, Rust/Cargo 1.97.1, optimized Cargo tes
 Command:
 
 ```sh
-./scripts/bench-desktop-terminal.sh
+./scripts/bench/desktop-terminal.sh
 ```
 
 Component profile:
@@ -84,7 +84,7 @@ cargo test e2e_copy_on_select_copies_selection_to_clipboard --bin termirust -- -
 cargo test e2e_pane_context_menu_click_copy_paste_clear_and_close --bin termirust -- --test-threads=1
 cargo test e2e_canvas_terminal_paging_shortcuts_adjust_scrollback --bin termirust -- --test-threads=1
 cargo test e2e_canvas_terminal_clipboard_shortcuts_copy_and_cancel_multiline_paste --bin termirust -- --test-threads=1
-python3 scripts/clippy-changed.py
+python3 scripts/dev/clippy-changed.py
 cargo test -q
 ```
 

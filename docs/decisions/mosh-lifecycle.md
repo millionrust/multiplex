@@ -111,6 +111,6 @@ mobile access.
 
 ## Verification
 
-Run `./scripts/verify-mosh-decision.sh`. The gate confirms this accepted decision, its primary
+Run `./scripts/verify/mosh-decision.sh`. The gate confirms this accepted decision, its primary
 source inventory, the absence of a shipped Mosh surface/runtime, formatting, and the existing
 access-policy contract tests.

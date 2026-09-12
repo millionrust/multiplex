@@ -64,7 +64,7 @@ struct FindingKey {
 }
 
 pub fn scan_ui_tree(root: &Path) -> Result<Vec<LiteralFinding>, LiteralLintError> {
-    let ui_root = root.join("src/ui");
+    let ui_root = root.join("crates/termirust-desktop/src/ui");
     let mut files = Vec::new();
     collect_rust_files(&ui_root, &mut files)?;
     files.sort();

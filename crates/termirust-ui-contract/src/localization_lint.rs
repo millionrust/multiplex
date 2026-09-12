@@ -64,7 +64,7 @@ struct FindingKey {
 }
 
 pub fn scan_ui_copy_tree(root: &Path) -> Result<Vec<CopyFinding>, CopyLintError> {
-    let ui_root = root.join("src/ui");
+    let ui_root = root.join("crates/termirust-desktop/src/ui");
     let mut files = Vec::new();
     collect_rust_files(&ui_root, &mut files)?;
     files.sort();
@@ -624,7 +624,7 @@ mod localization_lint_tests {
             std::process::id(),
             std::thread::current().id()
         ));
-        let ui = root.join("src/ui");
+        let ui = root.join("crates/termirust-desktop/src/ui");
         fs::create_dir_all(&ui).unwrap();
         fs::write(ui.join("empty.rs"), "pub fn empty() {}\n").unwrap();
         let baseline_path = root.join("legacy-user-copy.toml");

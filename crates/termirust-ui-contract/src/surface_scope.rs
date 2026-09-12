@@ -13,77 +13,77 @@ pub fn files_for_surface(surface: &str) -> Option<&'static [SurfaceFile]> {
     match surface {
         "vault-keys-snippets" => Some(&[
             SurfaceFile {
-                path: "src/ui/app/key_lifecycle.rs",
+                path: "crates/termirust-desktop/src/ui/app/key_lifecycle.rs",
                 marked: false,
             },
             SurfaceFile {
-                path: "src/ui/app/vault_key_snippet.rs",
+                path: "crates/termirust-desktop/src/ui/app/vault_key_snippet.rs",
                 marked: false,
             },
             SurfaceFile {
-                path: "src/ui/snippet.rs",
+                path: "crates/termirust-desktop/src/ui/snippet.rs",
                 marked: false,
             },
             SurfaceFile {
-                path: "src/ui/app/library.rs",
+                path: "crates/termirust-desktop/src/ui/app/library.rs",
                 marked: true,
             },
             SurfaceFile {
-                path: "src/ui/app/mod.rs",
+                path: "crates/termirust-desktop/src/ui/app/mod.rs",
                 marked: true,
             },
         ]),
         "settings" => Some(&[
             SurfaceFile {
-                path: "src/ui/app/library.rs",
+                path: "crates/termirust-desktop/src/ui/app/library.rs",
                 marked: true,
             },
             SurfaceFile {
-                path: "src/ui/app/notification_settings.rs",
+                path: "crates/termirust-desktop/src/ui/app/notification_settings.rs",
                 marked: false,
             },
             SurfaceFile {
-                path: "src/ui/app/cli_status.rs",
+                path: "crates/termirust-desktop/src/ui/app/cli_status.rs",
                 marked: false,
             },
             SurfaceFile {
-                path: "src/ui/app/remote_devices.rs",
+                path: "crates/termirust-desktop/src/ui/app/remote_devices.rs",
                 marked: false,
             },
             SurfaceFile {
-                path: "src/ui/settings.rs",
+                path: "crates/termirust-desktop/src/ui/settings.rs",
                 marked: false,
             },
             SurfaceFile {
-                path: "src/ui/app/settings_surface.rs",
+                path: "crates/termirust-desktop/src/ui/app/settings_surface.rs",
                 marked: false,
             },
             SurfaceFile {
-                path: "src/ui/app/mod.rs",
+                path: "crates/termirust-desktop/src/ui/app/mod.rs",
                 marked: true,
             },
         ]),
         "agent-canvas" => Some(&[
             SurfaceFile {
-                path: "src/ui/app/canvas.rs",
+                path: "crates/termirust-desktop/src/ui/app/canvas.rs",
                 marked: false,
             },
             SurfaceFile {
-                path: "src/ui/app/workspace.rs",
+                path: "crates/termirust-desktop/src/ui/app/workspace.rs",
                 marked: false,
             },
         ]),
         "terminal-chrome" => Some(&[
             SurfaceFile {
-                path: "src/ui/render_terminal.rs",
+                path: "crates/termirust-desktop/src/ui/render_terminal.rs",
                 marked: false,
             },
             SurfaceFile {
-                path: "src/ui/app/workspace.rs",
+                path: "crates/termirust-desktop/src/ui/app/workspace.rs",
                 marked: false,
             },
             SurfaceFile {
-                path: "src/ui/app/mod.rs",
+                path: "crates/termirust-desktop/src/ui/app/mod.rs",
                 marked: true,
             },
         ]),

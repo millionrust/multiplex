@@ -115,4 +115,4 @@ The reproducible real TCP/WebSocket loopback results are in `docs/benchmarks/rel
 
 ## Verification
 
-Canonical source and vectors are checked by `scripts/verify-relay-v1-vectors.sh --check`. Real-loopback measurements are produced by `scripts/bench-relay-core.sh --loopback-only --pairs 1,10,100 --runs 10`. Protocol property tests and the framework-free `relay_fuzz_decode` stdin target exercise every decoder; hostile socket tests, exact boundary tests, WSS tests, crash matrices, strict Clippy, workspace tests, and dependency policy are required before changing this ADR to a product decision.
+Canonical source and vectors are checked by `scripts/verify/relay-v1-vectors.sh --check`. Real-loopback measurements are produced by `scripts/bench/relay-core.sh --loopback-only --pairs 1,10,100 --runs 10`. Protocol property tests and the framework-free `relay_fuzz_decode` stdin target exercise every decoder; hostile socket tests, exact boundary tests, WSS tests, crash matrices, strict Clippy, workspace tests, and dependency policy are required before changing this ADR to a product decision.

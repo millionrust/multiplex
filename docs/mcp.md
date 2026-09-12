@@ -123,9 +123,9 @@ CLI/Host and artifact-store contracts.
 ## Verify
 
 ```bash
-./scripts/verify-mcp-readonly.sh
-./scripts/verify-mcp-actions.sh
-./scripts/verify-browser-capability.sh
+./scripts/verify/mcp-readonly.sh
+./scripts/verify/mcp-actions.sh
+./scripts/verify/browser-capability.sh
 ```
 
 The gate covers lifecycle negotiation, capability filtering, JSON schemas, pagination, cursor

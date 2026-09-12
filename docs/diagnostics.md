@@ -80,7 +80,7 @@ or storage media and are not described as securely erased.
 ```bash
 cargo test -p termirust-diagnostics --all-targets
 cargo test -p termirust -- ui::settings::diagnostics
-./scripts/verify-diagnostic-bundle.sh tests/fixtures/diagnostics/export-policy.json --no-network
+./scripts/verify/diagnostic-bundle.sh tests/fixtures/diagnostics/export-policy.json --no-network
 ```
 
 The bundle verifier checks the frozen manifest contract, private file mode,
