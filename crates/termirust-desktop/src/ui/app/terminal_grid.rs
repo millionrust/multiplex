@@ -9,10 +9,10 @@
 use std::sync::Arc;
 
 use gpui::{
-    App, Bounds, Element, ElementId, FontStyle, FontWeight, GlobalElementId, Hsla,
-    InspectorElementId, IntoElement, LayoutId, Pixels, Render, ShapedLine, SharedString,
-    StrikethroughStyle, Style, TextRun, UnderlineStyle, Window, fill, font, outline, point, px,
-    relative, size,
+    App, Bounds, Element, ElementId, FontFallbacks, FontStyle, FontWeight, GlobalElementId, Hsla,
+    InspectorElementId, IntoElement, LayoutId, PathBuilder, Pixels, Render, ShapedLine,
+    SharedString, StrikethroughStyle, Style, TextRun, UnderlineStyle, Window, fill, font, outline,
+    point, px, relative, size,
 };
 
 use crate::terminal::{TerminalCell, TerminalCursorShape, TerminalSnapshot, TerminalStyle};
@@ -112,16 +112,75 @@ struct BackgroundRect {
     color: Hsla,
 }
 
+/// Families searched, in order, for glyphs the terminal font lacks, such as the icons and
+/// Powerline symbols prompt themes use. Only installed families take part.
+const TERMINAL_FONT_FALLBACKS: [&str; 7] = [
+    "Symbols Nerd Font Mono",
+    "MesloLGS NF",
+    "MesloLGS Nerd Font Mono",
+    "JetBrainsMono Nerd Font Mono",
+    "Hack Nerd Font Mono",
+    "FiraCode Nerd Font Mono",
+    "SauceCodePro Nerd Font Mono",
+];
+
+fn terminal_font(family: SharedString) -> gpui::Font {
+    let mut terminal_font = font(family);
+    terminal_font.fallbacks = Some(FontFallbacks::from_fonts(
+        TERMINAL_FONT_FALLBACKS
+            .iter()
+            .map(|name| (*name).to_owned())
+            .collect(),
+    ));
+    terminal_font
+}
+
+/// Powerline separators, drawn as shapes that fill the whole cell so segments meet
+/// without gaps whatever the font.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Separator {
+    /// U+E0B0, a solid triangle pointing right.
+    SolidRight,
+    /// U+E0B1, a thin chevron pointing right.
+    ThinRight,
+    /// U+E0B2, a solid triangle pointing left.
+    SolidLeft,
+    /// U+E0B3, a thin chevron pointing left.
+    ThinLeft,
+}
+
+impl Separator {
+    fn of(character: char) -> Option<Self> {
+        match character {
+            '\u{e0b0}' => Some(Self::SolidRight),
+            '\u{e0b1}' => Some(Self::ThinRight),
+            '\u{e0b2}' => Some(Self::SolidLeft),
+            '\u{e0b3}' => Some(Self::ThinLeft),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct SeparatorShape {
+    row: usize,
+    column: usize,
+    separator: Separator,
+    color: Hsla,
+}
+
 #[derive(Debug, Default, PartialEq)]
 struct GridLayout {
     runs: Vec<BatchedRun>,
     backgrounds: Vec<BackgroundRect>,
+    separators: Vec<SeparatorShape>,
 }
 
 pub(super) struct GridPrepaint {
     line_height: Pixels,
     backgrounds: Vec<(Bounds<Pixels>, Hsla)>,
     lines: Vec<(gpui::Point<Pixels>, ShapedLine)>,
+    separators: Vec<(Bounds<Pixels>, Separator, Hsla)>,
     cursor: Option<(Bounds<Pixels>, TerminalCursorShape, Hsla)>,
 }
 
@@ -182,6 +241,22 @@ impl TerminalGridElement {
                     }
                 }
 
+                if cell.zero_width.is_none()
+                    && let Some(separator) = Separator::of(cell.character)
+                {
+                    if let Some(finished) = run.take() {
+                        layout.runs.push(finished);
+                    }
+                    layout.separators.push(SeparatorShape {
+                        row: row_index,
+                        column,
+                        separator,
+                        color: style.fg,
+                    });
+                    next_column = column + width;
+                    continue;
+                }
+
                 if cell.is_blank() && !style.underline && !style.strikethrough {
                     if let Some(finished) = run.take() {
                         layout.runs.push(finished);
@@ -224,7 +299,7 @@ impl TerminalGridElement {
     }
 
     fn text_run(&self, style: &TerminalStyle, len: usize) -> TextRun {
-        let mut run_font = font(self.font_family.clone());
+        let mut run_font = terminal_font(self.font_family.clone());
         if style.bold {
             run_font.weight = FontWeight::BOLD;
         }
@@ -256,6 +331,34 @@ fn same_text_style(left: &TerminalStyle, right: &TerminalStyle) -> bool {
         && left.italic == right.italic
         && left.underline == right.underline
         && left.strikethrough == right.strikethrough
+}
+
+fn paint_separator(cell: Bounds<Pixels>, separator: Separator, color: Hsla, window: &mut Window) {
+    let left = cell.origin.x;
+    let right = cell.origin.x + cell.size.width;
+    let top = cell.origin.y;
+    let bottom = cell.origin.y + cell.size.height;
+    let middle = point((left + right) / 2., (top + bottom) / 2.);
+    let (tip, base) = match separator {
+        Separator::SolidRight | Separator::ThinRight => (right, left),
+        Separator::SolidLeft | Separator::ThinLeft => (left, right),
+    };
+    let tip = point(tip, middle.y);
+    let mut builder = match separator {
+        Separator::SolidRight | Separator::SolidLeft => PathBuilder::fill(),
+        Separator::ThinRight | Separator::ThinLeft => {
+            PathBuilder::stroke(px(theme::BORDER_HAIRLINE))
+        }
+    };
+    builder.move_to(point(base, top));
+    builder.line_to(tip);
+    builder.line_to(point(base, bottom));
+    if matches!(separator, Separator::SolidRight | Separator::SolidLeft) {
+        builder.close();
+    }
+    if let Ok(path) = builder.build() {
+        window.paint_path(path, color);
+    }
 }
 
 impl IntoElement for TerminalGridElement {
@@ -374,7 +477,22 @@ impl Element for TerminalGridElement {
             Some((bounds, cursor.shape, theme::terminal_cursor()))
         });
 
+        let separators = layout
+            .separators
+            .iter()
+            .map(|shape| {
+                (
+                    Bounds::new(
+                        cell_origin(shape.row, shape.column),
+                        size(cell_width, line_height),
+                    ),
+                    shape.separator,
+                    shape.color,
+                )
+            })
+            .collect();
         GridPrepaint {
+            separators,
             line_height,
             backgrounds,
             lines,
@@ -398,6 +516,9 @@ impl Element for TerminalGridElement {
             }
             for (origin, line) in &prepaint.lines {
                 let _ = line.paint(*origin, prepaint.line_height, window, cx);
+            }
+            for (cell, separator, color) in &prepaint.separators {
+                paint_separator(*cell, *separator, *color, window);
             }
             if let Some((rect, shape, color)) = prepaint.cursor {
                 if shape == TerminalCursorShape::HollowBlock {
@@ -461,6 +582,31 @@ mod tests {
             (layout.backgrounds[0].column, layout.backgrounds[0].cells),
             (0, 4),
             "one rectangle covers a, the wide character, and b"
+        );
+    }
+
+    #[test]
+    fn powerline_separators_become_shapes_and_split_text_runs() {
+        let layout = element("\x1b[34;42mdev\u{e0b0}x\u{e0b3}".as_bytes()).layout_grid();
+        let runs = layout
+            .runs
+            .iter()
+            .map(|run| (run.column, run.text.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(runs, [(0, "dev"), (4, "x")]);
+        assert_eq!(
+            layout
+                .separators
+                .iter()
+                .map(|shape| (shape.column, shape.separator))
+                .collect::<Vec<_>>(),
+            [(3, Separator::SolidRight), (5, Separator::ThinLeft)]
+        );
+        assert_eq!(layout.separators[0].color, layout.runs[0].style.fg);
+        assert_eq!(
+            (layout.backgrounds[0].column, layout.backgrounds[0].cells),
+            (0, 6),
+            "the separator cells keep the segment background"
         );
     }
 
