@@ -1,0 +1,7 @@
+# macOS: re-sign the desktop app with a stable identity before `cargo run`, so Keychain
+# access granted once survives rebuilds. See scripts/dev/run-signed.sh.
+[target.aarch64-apple-darwin]
+runner = "scripts/dev/run-signed.sh"
+
+[target.x86_64-apple-darwin]
+runner = "scripts/dev/run-signed.sh"

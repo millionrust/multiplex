@@ -176,6 +176,7 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 cargo fmt
 cargo check
 cargo run            # debug build; use --release for performance testing
+TERMIRUST_TRACE_FOCUS=1 cargo run   # log every keyboard focus change to stderr
 cargo test --workspace --all-targets --locked   # everything, as CI runs it
 cargo run -p termirust-slate --example gallery  # Slate component gallery
 cargo run -p termirust-ui-contract --bin generate-tokens  # after editing design/tokens.toml; also writes the mobile SlateTokens.swift and SlateTokens.kt
@@ -186,6 +187,10 @@ local Docker daemon; with `DOCKER_HOST` pointing at a remote machine the mounts 
 that machine and the fixtures fail to start.
 
 On macOS, GPUI may need access to the system shader cache during first compile/run.
+
+On macOS, `.cargo/config.toml` runs binaries through `scripts/dev/run-signed.sh`, which re-signs the
+desktop app with a stable identifier and your Apple Development identity (or
+`TERMIRUST_CODESIGN_IDENTITY`) so Keychain and Local Network permissions survive rebuilds.
 
 Structured diagnostics are stored under `<data dir>/termirust/diagnostics` with
 bounded rotation and retention. See [docs/diagnostics.md](docs/diagnostics.md).
