@@ -1512,7 +1512,6 @@ actor ControllerConnectionActor: ControllerConnecting {
         let envelope = try decodeStrict(CodePairingOfferEnvelope.self, from: data)
         guard envelope.schemaVersion == 1,
               envelope.identityGeneration > 0,
-              envelope.sessionGeneration > 0,
               envelope.offerBytes.count == codePairingOfferBytes else {
             throw ControllerPairingError.invalidOffer
         }

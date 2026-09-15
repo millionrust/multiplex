@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.KeyboardOptions
@@ -61,6 +62,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -111,6 +113,7 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
     }
     val state by viewModel.state.collectAsState()
     var showPairing by remember { mutableStateOf(false) }
+    var showOfferPairing by remember { mutableStateOf(false) }
     var showScanner by remember { mutableStateOf(false) }
     var showHostDetails by remember { mutableStateOf(false) }
     var confirmForget by remember { mutableStateOf(false) }
@@ -165,7 +168,7 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                                         onClick = { showEnrollmentMenu = false; showEnrollment = true })
                                 }
                             }
-                            TextButton(onClick = { showPairing = true }) { Text(stringResource(com.termirust.mobile.R.string.pair_host)) }
+                            TextButton(onClick = { showPairing = true }) { Text(stringResource(com.termirust.mobile.R.string.pair_computer)) }
                         }
                         if (activeTerminal == null && state.selectedHostId != null) {
                             TextButton(onClick = { showHostDetails = true }) { Text(stringResource(com.termirust.mobile.R.string.details)) }
@@ -236,14 +239,31 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
     }
 
     if (showPairing) {
-        PairHostDialog(
+        PairComputerDialog(
             viewModel = viewModel,
             connection = state.connection,
+            hosts = state.hosts,
             onDismiss = {
                 viewModel.cancelPairing()
                 showPairing = false
             },
             onComplete = { showPairing = false },
+            onOtherWays = {
+                viewModel.cancelPairing()
+                showPairing = false
+                showOfferPairing = true
+            },
+        )
+    }
+    if (showOfferPairing) {
+        PairHostDialog(
+            viewModel = viewModel,
+            connection = state.connection,
+            onDismiss = {
+                viewModel.cancelPairing()
+                showOfferPairing = false
+            },
+            onComplete = { showOfferPairing = false },
             onScan = { showScanner = true },
         )
     }
@@ -252,7 +272,7 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
             onResult = { offer ->
                 viewModel.pairingOffer.value = offer
                 showScanner = false
-                showPairing = true
+                showOfferPairing = true
             },
             onDismiss = { showScanner = false },
         )
@@ -371,8 +391,8 @@ private fun EmptyFleet(onPair: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Button(onClick = onPair, modifier = Modifier.size(width = 160.dp, height = 48.dp)) {
-                Text(stringResource(com.termirust.mobile.R.string.pair_host))
+            Button(onClick = onPair, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(com.termirust.mobile.R.string.pair_computer))
             }
         }
     }
@@ -1679,6 +1699,265 @@ private fun terminalEmptyText(state: ReadOnlyAttachState): String = when (state)
     else -> stringResource(com.termirust.mobile.R.string.terminal_no_output)
 }
 
+@Composable
+private fun PairComputerDialog(
+    viewModel: ControllerViewModel,
+    connection: ControllerConnectionState,
+    hosts: List<PairedHostRecord>,
+    onDismiss: () -> Unit,
+    onComplete: () -> Unit,
+    onOtherWays: () -> Unit,
+) {
+    val computers by viewModel.discoveredComputers.collectAsState()
+    val address by viewModel.pairingAddress.collectAsState()
+    val code by viewModel.pairingCode.collectAsState()
+    val deviceName by viewModel.pairingDeviceName.collectAsState()
+    var target by remember { mutableStateOf<CodePairingTarget?>(null) }
+    var enteringAddress by remember { mutableStateOf(false) }
+    var addressInvalid by remember { mutableStateOf(false) }
+    var attempted by remember { mutableStateOf(false) }
+    var hostsAtAttempt by remember { mutableStateOf<List<PairedHostRecord>?>(null) }
+    val pairing = connection is ControllerConnectionState.Pairing
+    DisposableEffect(viewModel) {
+        viewModel.startDiscovery()
+        onDispose { viewModel.stopDiscovery() }
+    }
+    // A saved record is the only proof pairing finished; the connection state moves on to the
+    // first fleet refresh, which can fail for unrelated reasons.
+    LaunchedEffect(hosts, hostsAtAttempt) {
+        val before = hostsAtAttempt ?: return@LaunchedEffect
+        if (hosts != before) {
+            hostsAtAttempt = null
+            onComplete()
+        }
+    }
+    LaunchedEffect(connection, hostsAtAttempt) {
+        if (connection is ControllerConnectionState.Failed) hostsAtAttempt = null
+    }
+    val selected = target
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                stringResource(
+                    if (selected == null) com.termirust.mobile.R.string.pair_computer
+                    else com.termirust.mobile.R.string.enter_pairing_code,
+                ),
+            )
+        },
+        text = {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (selected == null) {
+                    Text(stringResource(com.termirust.mobile.R.string.pair_computer_hint))
+                    if (!enteringAddress) {
+                        Text(
+                            stringResource(com.termirust.mobile.R.string.discovered_computers),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        if (computers.isEmpty()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                Text(
+                                    stringResource(com.termirust.mobile.R.string.searching_computers),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        } else {
+                            computers.forEach { computer ->
+                                DiscoveredComputerRow(computer) {
+                                    viewModel.pairingCode.value = ""
+                                    attempted = false
+                                    target = CodePairingTarget.Discovered(computer)
+                                }
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = { enteringAddress = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(com.termirust.mobile.R.string.enter_address)) }
+                    } else {
+                        OutlinedTextField(
+                            value = address,
+                            onValueChange = {
+                                viewModel.pairingAddress.value = it.take(300)
+                                addressInvalid = false
+                            },
+                            label = { Text(stringResource(com.termirust.mobile.R.string.computer_address)) },
+                            singleLine = true,
+                            isError = addressInvalid,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            stringResource(com.termirust.mobile.R.string.computer_address_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (addressInvalid) {
+                            Text(
+                                stringResource(com.termirust.mobile.R.string.pairing_address_invalid),
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                    TextButton(onClick = onOtherWays) {
+                        Text(stringResource(com.termirust.mobile.R.string.other_ways_to_pair))
+                    }
+                } else {
+                    Text(
+                        if (selected is CodePairingTarget.Discovered) {
+                            stringResource(
+                                com.termirust.mobile.R.string.pairing_code_hint,
+                                isolated(selected.computer.serviceName),
+                            )
+                        } else {
+                            stringResource(com.termirust.mobile.R.string.pairing_code_hint_address)
+                        },
+                    )
+                    OutlinedTextField(
+                        value = code,
+                        // Pasted codes often carry spaces or a trailing newline.
+                        onValueChange = { viewModel.pairingCode.value = it.filter { char -> char in '0'..'9' }.take(6) },
+                        label = { Text(stringResource(com.termirust.mobile.R.string.pairing_code)) },
+                        singleLine = true,
+                        enabled = !pairing,
+                        textStyle = MaterialTheme.typography.headlineSmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = 6.sp,
+                        ),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = deviceName,
+                        onValueChange = { viewModel.pairingDeviceName.value = it.take(64) },
+                        label = { Text(stringResource(com.termirust.mobile.R.string.this_device)) },
+                        singleLine = true,
+                        enabled = !pairing,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (pairing) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Text(stringResource(com.termirust.mobile.R.string.state_pairing))
+                        }
+                    }
+                    if (attempted && connection is ControllerConnectionState.Failed) {
+                        Text(
+                            codePairingError(connection.code),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (selected != null) {
+                Button(
+                    onClick = {
+                        attempted = true
+                        hostsAtAttempt = hosts
+                        viewModel.pairWithCode(selected)
+                    },
+                    enabled = code.length == 6 && deviceName.isNotBlank() && !pairing,
+                ) { Text(stringResource(com.termirust.mobile.R.string.pair_action)) }
+            } else if (enteringAddress) {
+                Button(
+                    onClick = {
+                        if (runCatching { ControllerNetworkAddresses.parseEndpoint(address) }.isSuccess) {
+                            viewModel.pairingCode.value = ""
+                            attempted = false
+                            target = CodePairingTarget.Address(address.trim())
+                        } else {
+                            addressInvalid = true
+                        }
+                    },
+                    enabled = address.isNotBlank(),
+                ) { Text(stringResource(com.termirust.mobile.R.string.continue_action)) }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                when {
+                    selected != null -> {
+                        if (pairing) viewModel.cancelPairing()
+                        hostsAtAttempt = null
+                        attempted = false
+                        target = null
+                    }
+                    enteringAddress -> {
+                        enteringAddress = false
+                        addressInvalid = false
+                    }
+                    else -> onDismiss()
+                }
+            }) {
+                Text(
+                    stringResource(
+                        if (selected == null && !enteringAddress) com.termirust.mobile.R.string.cancel
+                        else com.termirust.mobile.R.string.back,
+                    ),
+                )
+            }
+        },
+    )
+}
+
+@Composable
+private fun DiscoveredComputerRow(computer: DiscoveredController, onClick: () -> Unit) {
+    val description = stringResource(
+        com.termirust.mobile.R.string.pair_discovered_computer_accessibility,
+        isolated(computer.serviceName),
+    )
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = description },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Text(
+                isolated(computer.serviceName),
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                isolated(computer.routes.first().address),
+                style = MaterialTheme.typography.labelSmall,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun codePairingError(code: String): String = when (code) {
+    "pairing_code_rejected" -> stringResource(com.termirust.mobile.R.string.pairing_code_rejected)
+    "pairing_address_invalid" -> stringResource(com.termirust.mobile.R.string.pairing_address_invalid)
+    "pairing_address_unresolved" -> stringResource(com.termirust.mobile.R.string.pairing_address_unresolved)
+    "pairing_address_not_private" -> stringResource(com.termirust.mobile.R.string.pairing_address_not_private)
+    "offline", "timeout" -> stringResource(com.termirust.mobile.R.string.pairing_unreachable)
+    else -> stringResource(com.termirust.mobile.R.string.pairing_failed, code)
+}
+
 private enum class PairingOfferPasteError { Empty, TooLarge }
 
 @Composable
@@ -1870,7 +2149,9 @@ private fun HostDetailsDialog(
         title = { Text(isolated(host.displayName)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(com.termirust.mobile.R.string.route_value, isolated(host.route.address), host.route.port))
+                host.routes.forEach { route ->
+                    Text(stringResource(com.termirust.mobile.R.string.route_value, isolated(route.address), route.port))
+                }
                 Text(stringResource(com.termirust.mobile.R.string.fingerprint_ending, host.id.takeLast(12)), fontFamily = FontFamily.Monospace)
                 Text(stringResource(com.termirust.mobile.R.string.capabilities_value, capabilityLabels(host.capabilityBits).joinToString()))
                 Text(stringResource(com.termirust.mobile.R.string.forget_not_revoke))

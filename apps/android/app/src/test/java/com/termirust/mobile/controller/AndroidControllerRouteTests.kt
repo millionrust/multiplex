@@ -368,6 +368,16 @@ private class CountingControllerConnection : ControllerConnecting {
     ): ControllerPairingChallenge = unsupported()
 
     override suspend fun finishPairing(matches: Boolean): PairedHostRecord = unsupported()
+    override suspend fun pairWithCode(
+        routes: List<HostRoute>,
+        code: String,
+        hostName: String?,
+        expectedDiscoveryId: String?,
+        deviceName: String,
+        deviceId: UUID,
+    ): PairedHostRecord = unsupported()
+
+    override fun connectedRoute(hostId: String): HostRoute? = null
     override suspend fun fetchSessions(
         host: PairedHostRecord,
         progress: suspend (ControllerConnectionState) -> Unit,

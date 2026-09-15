@@ -101,6 +101,17 @@ internal class SshControllerConnection(
     override suspend fun finishPairing(matches: Boolean): PairedHostRecord =
         error("Pair on the private-network route before configuring SSH Controller.")
 
+    override suspend fun pairWithCode(
+        routes: List<HostRoute>,
+        code: String,
+        hostName: String?,
+        expectedDiscoveryId: String?,
+        deviceName: String,
+        deviceId: java.util.UUID,
+    ): PairedHostRecord = error("Pair on the private-network route before configuring SSH Controller.")
+
+    override fun connectedRoute(hostId: String): HostRoute? = null
+
     override suspend fun fetchSessions(
         host: PairedHostRecord,
         progress: suspend (ControllerConnectionState) -> Unit,

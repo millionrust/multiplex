@@ -11,6 +11,7 @@ object ControllerLimits {
     const val MAX_PAGE_RECORDS = 1_000
     const val MAX_PAGE_BYTES = 1 * 1_024 * 1_024
     const val MAX_TITLE_CODE_POINTS = 256
+    const val MAX_HOST_ROUTES = 8
 }
 
 @Serializable
@@ -29,6 +30,8 @@ data class PairedHostRecord(
     @SerialName("schema_version") val schemaVersion: Int = 1,
     val id: String,
     @SerialName("display_name") val displayName: String,
+    // The preferred route; always the first entry of `routes`, kept so older app builds can
+    // still read the record.
     val route: HostRoute,
     @SerialName("host_static_public_key") val hostStaticPublicKey: String,
     @SerialName("device_static_key_id") val deviceStaticKeyId: String,
@@ -38,6 +41,9 @@ data class PairedHostRecord(
     @SerialName("session_generation") val sessionGeneration: Long,
     @SerialName("capability_bits") val capabilityBits: Int,
     @SerialName("paired_at_millis") val pairedAtMillis: Long,
+    // Records saved before multiple routes existed only carry `route`.
+    val routes: List<HostRoute> = listOf(route),
+    @SerialName("discovery_id") val discoveryId: String? = null,
 ) {
     fun validate() {
         require(schemaVersion == 1)
@@ -46,8 +52,20 @@ data class PairedHostRecord(
         require(deviceStaticKeyId.toByteArray().size in 1..128)
         require(identityGeneration > 0 && revocationEpoch >= 0 && sessionGeneration >= 0)
         require(capabilityBits in 0..0x1f)
+        require(routes.size in 1..ControllerLimits.MAX_HOST_ROUTES && routes.first() == route)
+        require(routes.toSet().size == routes.size)
+        require(discoveryId == null || DISCOVERY_ID_PATTERN.matches(discoveryId))
+    }
+
+    // Moves `preferred` to the front, adding it when new and dropping overflow from the end.
+    fun preferringRoute(preferred: HostRoute): PairedHostRecord {
+        val next = (listOf(preferred) + routes.filterNot { it == preferred })
+            .take(ControllerLimits.MAX_HOST_ROUTES)
+        return copy(route = preferred, routes = next)
     }
 }
+
+internal val DISCOVERY_ID_PATTERN = Regex("^[0-9a-f]{32}$")
 
 @Serializable
 enum class ControllerSessionOrigin {
@@ -183,6 +201,11 @@ data class ControllerPairingChallenge(
     val route: HostRoute,
     val expiresAtMillis: Long,
 )
+
+sealed interface CodePairingTarget {
+    data class Discovered(val computer: DiscoveredController) : CodePairingTarget
+    data class Address(val text: String) : CodePairingTarget
+}
 
 private fun String.codePointCount(): Int = codePointCount(0, length)
 

@@ -1,5 +1,7 @@
 package com.termirust.mobile.controller
 
+import com.termirust.controller.security.CodePairingFinishRequest
+import com.termirust.controller.security.CodePairingStartRequest
 import com.termirust.controller.security.ConnectionStartRequest
 import com.termirust.controller.security.ControllerCapability
 import com.termirust.controller.security.ControllerConnectionSession
@@ -9,7 +11,11 @@ import com.termirust.controller.security.ControllerSecurityEngine
 import com.termirust.controller.security.PairingConfirmation
 import com.termirust.controller.security.PairingRole
 import com.termirust.controller.security.PairingStartRequest
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -21,13 +27,11 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.DataInputStream
 import java.io.DataOutputStream
-import java.net.Inet4Address
-import java.net.Inet6Address
-import java.net.InetAddress
-import java.security.MessageDigest
+import java.io.IOException
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 class ControllerConnection internal constructor(
     blobStore: ControllerSecureBlobStore,
@@ -41,6 +45,9 @@ class ControllerConnection internal constructor(
     @Volatile private var activeTransport: ControllerDuplexTransport? = null
     @Volatile private var activeTerminal: ActiveTerminalConnection? = null
     private var pendingPairing: PendingPairing? = null
+    private val connectedRoutes = ConcurrentHashMap<String, HostRoute>()
+
+    override fun connectedRoute(hostId: String): HostRoute? = connectedRoutes[hostId]
 
     override suspend fun beginPairing(
         offerText: String,
@@ -55,23 +62,24 @@ class ControllerConnection internal constructor(
             require(deviceName.codePointCount(0, deviceName.length) in 1..64)
             require(deviceName.none(Char::isISOControl))
             val envelope = json.decodeFromString<PairingOfferEnvelope>(offerText)
-            require(envelope.schemaVersion == 1 && envelope.offerBytes.size <= MAX_OFFER_BYTES)
+            require(envelope.schemaVersion == 2 && envelope.offerBytes.size <= MAX_OFFER_BYTES)
             require(runCatching { UUID.fromString(envelope.offerId) }.isSuccess)
             require(envelope.offerBytes.all { it in 0..255 })
+            require(envelope.routes.size in 1..ControllerLimits.MAX_HOST_ROUTES)
+            val offerRoutes = envelope.routes.map { HostRoute(it.address, it.port) }.distinct()
+            require(offerRoutes.all(ControllerNetworkAddresses::isPrivateLiteralRoute))
             val offer = envelope.offerBytes.map(Int::toByte).toByteArray()
             val summary = engine.decodeOfferSummary(offer)
             val nowSeconds = clockMillis() / 1_000
             require(summary.version.major.toInt() == 1 && summary.version.minor.toInt() == 0)
             require(summary.expiresAtUnixSeconds.toLong() > nowSeconds)
             require(summary.hostStaticPublicKey.size == 32 && envelope.identityGeneration > 0)
-            val route = HostRoute(envelope.address, envelope.port)
-            require(isPrivateRoute(route, envelope.addressFamily))
             val fingerprint = summary.hostStaticPublicKey.hex()
             val keyId = "controller.device.${deviceId.toString().lowercase()}.${fingerprint.take(16)}"
             val created = engine.secureBlobStatus(keyId).name == "MISSING"
             if (created) engine.storeSecureBlob(keyId, randomBytes(32))
             try {
-                val transport = transportFactory.open(route)
+                val (transport, route) = openFirstReachable(offerRoutes)
                 activeTransport = transport
                 val input = DataInputStream(transport.input)
                 val output = DataOutputStream(transport.output)
@@ -98,7 +106,7 @@ class ControllerConnection internal constructor(
                 val sas = session.sas().value
                 pendingPairing = PendingPairing(
                     envelope = envelope,
-                    route = route,
+                    routes = listOf(route) + offerRoutes.filterNot { it == route },
                     hostName = hostName,
                     deviceName = deviceName,
                     deviceId = deviceId,
@@ -140,7 +148,6 @@ class ControllerConnection internal constructor(
                 cancelUnlocked(deleteCreatedKey = true)
                 throw ControllerConnectionException.PairingRejected
             }
-            var registrationSent = false
             try {
                 val result = pending.session.confirmOrReject(
                     PairingConfirmation.CONFIRM,
@@ -148,74 +155,269 @@ class ControllerConnection internal constructor(
                     pending.envelope.revocationEpoch.toULong(),
                 )
                 require(result.hostStaticPublicKey.contentEquals(pending.hostKey))
-                val registration = json.encodeToString(
-                    PairingRegistrationPayload(
-                        deviceId = pending.deviceId.toString(),
-                        displayName = pending.deviceName,
-                    ),
-                ).encodeToByteArray()
-                val sealed = pending.session.sealFrame(
-                    ControllerFrameKind.CONTROL,
-                    ControllerCapability.OBSERVE_SESSIONS,
-                    pending.envelope.revocationEpoch.toULong(),
-                    registration,
-                )
-                writeFrame(pending.output, sealed, MAX_SECURE_FRAME_BYTES)
-                registrationSent = true
-                val opened = pending.session.openFrame(readFrame(pending.input, MAX_SECURE_FRAME_BYTES))
-                require(opened.kind == ControllerFrameKind.CONTROL)
-                require(opened.capability == ControllerCapability.OBSERVE_SESSIONS)
-                require(opened.revocationEpoch.toLong() == pending.envelope.revocationEpoch)
-                val ack = json.decodeFromString<PairingHostAckPayload>(opened.payload.decodeToString())
-                require(ack.schemaVersion == 1 && ack.deviceId == pending.deviceId.toString())
-                require(ack.identityGeneration == pending.envelope.identityGeneration)
-                require(ack.revocationEpoch == pending.envelope.revocationEpoch)
-                require(ack.sessionGeneration == pending.envelope.sessionGeneration)
-                require(ack.capabilityBits and pending.capabilityBits.inv() == 0)
-                val record = PairedHostRecord(
-                    id = pending.hostKey.hex(),
-                    displayName = pending.hostName,
-                    route = pending.route,
-                    hostStaticPublicKey = Base64.getEncoder().encodeToString(pending.hostKey),
-                    deviceStaticKeyId = pending.keyId,
-                    deviceId = pending.deviceId.toString(),
-                    identityGeneration = ack.identityGeneration,
-                    revocationEpoch = ack.revocationEpoch,
-                    sessionGeneration = ack.sessionGeneration,
-                    capabilityBits = ack.capabilityBits,
-                    pairedAtMillis = clockMillis(),
-                )
-                record.validate()
-                cancelUnlocked(deleteCreatedKey = false)
-                record
             } catch (error: Throwable) {
                 cancelUnlocked(deleteCreatedKey = false)
-                if (registrationSent) {
-                    val provisional = PairedHostRecord(
-                        id = pending.hostKey.hex(),
-                        displayName = pending.hostName,
-                        route = pending.route,
-                        hostStaticPublicKey = Base64.getEncoder().encodeToString(pending.hostKey),
-                        deviceStaticKeyId = pending.keyId,
-                        deviceId = pending.deviceId.toString(),
-                        identityGeneration = pending.envelope.identityGeneration,
-                        revocationEpoch = pending.envelope.revocationEpoch,
-                        sessionGeneration = pending.envelope.sessionGeneration,
-                        capabilityBits = pending.capabilityBits,
-                        pairedAtMillis = clockMillis(),
-                    )
-                    provisional.validate()
-                    try {
-                        fetchSessionsUnlocked(provisional)
-                        return@withContext provisional
-                    } catch (_: Throwable) {
-                        cancelUnlocked(deleteCreatedKey = false)
-                        throw ControllerConnectionException.AcknowledgementUncertain
-                    }
-                }
                 throw error
             }
+            registerDevice(
+                ConfirmedPairing(
+                    session = pending.session,
+                    input = pending.input,
+                    output = pending.output,
+                    hostKey = pending.hostKey,
+                    capabilityBits = pending.capabilityBits,
+                    identityGeneration = pending.envelope.identityGeneration,
+                    revocationEpoch = pending.envelope.revocationEpoch,
+                    sessionGeneration = pending.envelope.sessionGeneration,
+                    routes = pending.routes,
+                    hostName = pending.hostName,
+                    deviceName = pending.deviceName,
+                    deviceId = pending.deviceId,
+                    keyId = pending.keyId,
+                ),
+            )
         }
+    }
+
+    override suspend fun pairWithCode(
+        routes: List<HostRoute>,
+        code: String,
+        hostName: String?,
+        expectedDiscoveryId: String?,
+        deviceName: String,
+        deviceId: UUID,
+    ): PairedHostRecord = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            cancelUnlocked(deleteCreatedKey = true)
+            require(code.length == 6 && code.all { it in '0'..'9' })
+            require(routes.size in 1..ControllerLimits.MAX_HOST_ROUTES && routes.toSet().size == routes.size)
+            require(routes.all(ControllerNetworkAddresses::isPrivateLiteralRoute))
+            require(hostName == null || hostName.codePointCount(0, hostName.length) in 1..256)
+            require(deviceName.codePointCount(0, deviceName.length) in 1..64)
+            require(deviceName.none(Char::isISOControl))
+            require(expectedDiscoveryId == null || DISCOVERY_ID_PATTERN.matches(expectedDiscoveryId))
+            val (transport, route) = openFirstReachable(routes)
+            activeTransport = transport
+            coroutineScope {
+                // Blocking reads ignore coroutine cancellation, so closing the socket is what
+                // bounds the whole exchange.
+                val deadline = launch {
+                    delay(CODE_PAIRING_TIMEOUT_MILLIS)
+                    transport.close()
+                }
+                try {
+                    val confirmed = startCodePairing(
+                        transport = transport,
+                        routes = listOf(route) + routes.filterNot { it == route },
+                        code = code,
+                        hostName = hostName,
+                        expectedDiscoveryId = expectedDiscoveryId,
+                        deviceName = deviceName,
+                        deviceId = deviceId,
+                    )
+                    registerDevice(confirmed)
+                } finally {
+                    deadline.cancel()
+                }
+            }
+        }
+    }
+
+    // Runs the code exchange and the pairing handshake bound to it. Every failure here reads
+    // as a wrong code: the Host closes the connection without saying why, and it counts the
+    // attempts itself.
+    private fun startCodePairing(
+        transport: ControllerDuplexTransport,
+        routes: List<HostRoute>,
+        code: String,
+        hostName: String?,
+        expectedDiscoveryId: String?,
+        deviceName: String,
+        deviceId: UUID,
+    ): ConfirmedPairing {
+        var createdKeyId: String? = null
+        try {
+            val input = DataInputStream(transport.input)
+            val output = DataOutputStream(transport.output)
+            output.write(PAIRING_CODE_PREFACE)
+            val deviceNonce = randomBytes(32)
+            writeFrame(
+                output,
+                json.encodeToString(
+                    CodePairingHelloPayload(deviceNonce = deviceNonce.map { it.toInt() and 0xff }),
+                ).encodeToByteArray(),
+                MAX_OFFER_BYTES,
+            )
+            val envelope = json.decodeFromString<CodePairingOfferEnvelope>(
+                readFrame(input, MAX_OFFER_BYTES).decodeToString(),
+            )
+            require(envelope.schemaVersion == 1 && envelope.offerBytes.size == OFFER_CORE_BYTES)
+            require(runCatching { UUID.fromString(envelope.offerId) }.isSuccess)
+            require(envelope.offerBytes.all { it in 0..255 })
+            // A new Host starts at session generation zero.
+            require(envelope.identityGeneration > 0 && envelope.revocationEpoch >= 0 && envelope.sessionGeneration >= 0)
+            val offer = envelope.offerBytes.map(Int::toByte).toByteArray()
+            val summary = engine.decodeOfferSummary(offer)
+            require(summary.version.major.toInt() == 1 && summary.version.minor.toInt() == 0)
+            require(summary.expiresAtUnixSeconds.toLong() > clockMillis() / 1_000)
+            require(summary.hostStaticPublicKey.size == 32)
+            val discoveryId = ControllerNetworkAddresses.discoveryId(summary.hostStaticPublicKey)
+            require(expectedDiscoveryId == null || expectedDiscoveryId == discoveryId)
+            val fingerprint = summary.hostStaticPublicKey.hex()
+            val keyId = "controller.device.${deviceId.toString().lowercase()}.${fingerprint.take(16)}"
+            if (engine.secureBlobStatus(keyId).name == "MISSING") {
+                engine.storeSecureBlob(keyId, randomBytes(32))
+                createdKeyId = keyId
+            }
+            val exchange = engine.codePairingStart(
+                CodePairingStartRequest(
+                    code = code,
+                    offerBytes = offer,
+                    deviceNonce = deviceNonce,
+                    scalarEntropy = randomBytes(64),
+                ),
+            )
+            val session = try {
+                writeFrame(output, exchange.share(), CODE_SHARE_BYTES)
+                val hostShare = readFrame(input, CODE_SHARE_BYTES)
+                require(hostShare.size == CODE_SHARE_BYTES)
+                exchange.finish(
+                    CodePairingFinishRequest(
+                        hostShare = hostShare,
+                        staticKeyId = keyId,
+                        ephemeralPrivateKey = randomBytes(32),
+                        nowMillis = uptimeMillis().toULong(),
+                        nowUnixSeconds = (clockMillis() / 1_000).toULong(),
+                    ),
+                )
+            } finally {
+                exchange.close()
+            }
+            try {
+                writeFrame(output, session.pairingOutbound(uptimeMillis().toULong()), MAX_HANDSHAKE_BYTES)
+                session.pairingReceive(readFrame(input, MAX_HANDSHAKE_BYTES), uptimeMillis().toULong())
+                writeFrame(output, session.pairingOutbound(uptimeMillis().toULong()), MAX_HANDSHAKE_BYTES)
+                val result = session.confirmCodePairing(envelope.revocationEpoch.toULong())
+                require(result.hostStaticPublicKey.contentEquals(summary.hostStaticPublicKey))
+            } catch (error: Throwable) {
+                closePairingSession(session)
+                throw error
+            }
+            return ConfirmedPairing(
+                session = session,
+                input = input,
+                output = output,
+                hostKey = summary.hostStaticPublicKey,
+                capabilityBits = summary.capabilityBits.toInt(),
+                identityGeneration = envelope.identityGeneration,
+                revocationEpoch = envelope.revocationEpoch,
+                sessionGeneration = envelope.sessionGeneration,
+                routes = routes,
+                hostName = hostName ?: ControllerNetworkAddresses.defaultHostName(discoveryId),
+                deviceName = deviceName,
+                deviceId = deviceId,
+                keyId = keyId,
+            )
+        } catch (error: Throwable) {
+            createdKeyId?.let { runCatching { engine.deleteSecureBlob(it) } }
+            cancelUnlocked(deleteCreatedKey = false)
+            throw when (error) {
+                is CancellationException, is ControllerSecretException -> error
+                else -> ControllerConnectionException.CodeRejected
+            }
+        }
+    }
+
+    // Sends the device registration over a confirmed pairing and saves nothing until the Host
+    // acknowledges it. When the acknowledgement is lost, an authenticated session list proves
+    // the Host kept the device.
+    private suspend fun registerDevice(pairing: ConfirmedPairing): PairedHostRecord {
+        var registrationSent = false
+        try {
+            val registration = json.encodeToString(
+                PairingRegistrationPayload(
+                    deviceId = pairing.deviceId.toString(),
+                    displayName = pairing.deviceName,
+                ),
+            ).encodeToByteArray()
+            val sealed = pairing.session.sealFrame(
+                ControllerFrameKind.CONTROL,
+                ControllerCapability.OBSERVE_SESSIONS,
+                pairing.revocationEpoch.toULong(),
+                registration,
+            )
+            writeFrame(pairing.output, sealed, MAX_SECURE_FRAME_BYTES)
+            registrationSent = true
+            val opened = pairing.session.openFrame(readFrame(pairing.input, MAX_SECURE_FRAME_BYTES))
+            require(opened.kind == ControllerFrameKind.CONTROL)
+            require(opened.capability == ControllerCapability.OBSERVE_SESSIONS)
+            require(opened.revocationEpoch.toLong() == pairing.revocationEpoch)
+            val ack = json.decodeFromString<PairingHostAckPayload>(opened.payload.decodeToString())
+            require(ack.schemaVersion == 1 && ack.deviceId == pairing.deviceId.toString())
+            require(ack.identityGeneration == pairing.identityGeneration)
+            require(ack.revocationEpoch == pairing.revocationEpoch)
+            require(ack.sessionGeneration == pairing.sessionGeneration)
+            require(ack.capabilityBits and pairing.capabilityBits.inv() == 0)
+            val record = pairedHostRecord(
+                pairing,
+                identityGeneration = ack.identityGeneration,
+                revocationEpoch = ack.revocationEpoch,
+                sessionGeneration = ack.sessionGeneration,
+                capabilityBits = ack.capabilityBits,
+            )
+            record.validate()
+            closePairingSession(pairing.session)
+            cancelUnlocked(deleteCreatedKey = false)
+            return record
+        } catch (error: Throwable) {
+            closePairingSession(pairing.session)
+            cancelUnlocked(deleteCreatedKey = false)
+            if (registrationSent) {
+                val provisional = pairedHostRecord(
+                    pairing,
+                    identityGeneration = pairing.identityGeneration,
+                    revocationEpoch = pairing.revocationEpoch,
+                    sessionGeneration = pairing.sessionGeneration,
+                    capabilityBits = pairing.capabilityBits,
+                )
+                provisional.validate()
+                try {
+                    fetchSessionsUnlocked(provisional)
+                    return connectedRoutes[provisional.id]?.let(provisional::preferringRoute) ?: provisional
+                } catch (_: Throwable) {
+                    cancelUnlocked(deleteCreatedKey = false)
+                    throw ControllerConnectionException.AcknowledgementUncertain
+                }
+            }
+            throw error
+        }
+    }
+
+    private fun pairedHostRecord(
+        pairing: ConfirmedPairing,
+        identityGeneration: Long,
+        revocationEpoch: Long,
+        sessionGeneration: Long,
+        capabilityBits: Int,
+    ) = PairedHostRecord(
+        id = pairing.hostKey.hex(),
+        displayName = pairing.hostName,
+        route = pairing.routes.first(),
+        hostStaticPublicKey = Base64.getEncoder().encodeToString(pairing.hostKey),
+        deviceStaticKeyId = pairing.keyId,
+        deviceId = pairing.deviceId.toString(),
+        identityGeneration = identityGeneration,
+        revocationEpoch = revocationEpoch,
+        sessionGeneration = sessionGeneration,
+        capabilityBits = capabilityBits,
+        pairedAtMillis = clockMillis(),
+        routes = pairing.routes,
+        discoveryId = ControllerNetworkAddresses.discoveryId(pairing.hostKey),
+    )
+
+    private fun closePairingSession(session: ControllerPairingSession) {
+        runCatching { session.finish() }
+        session.close()
     }
 
     override suspend fun fetchSessions(
@@ -238,7 +440,7 @@ class ControllerConnection internal constructor(
             TerminalLimits().validate(viewport)
             require(host.capabilityBits and ATTACH_CAPABILITY == ATTACH_CAPABILITY)
             require(cursor.identity.hostId == host.id)
-            val socket = transportFactory.open(host.route)
+            val socket = openHost(host)
             activeTransport = socket
             try {
                 val input = DataInputStream(socket.input)
@@ -340,7 +542,7 @@ class ControllerConnection internal constructor(
             val required = ATTACH_CAPABILITY or INPUT_CAPABILITY
             require(host.capabilityBits and required == required && cursor.identity.hostId == host.id)
             val requested = host.capabilityBits and ALL_INTERACTIVE_CAPABILITIES
-            val socket = transportFactory.open(host.route)
+            val socket = openHost(host)
             activeTransport = socket
             try {
                 val input = DataInputStream(socket.input)
@@ -584,7 +786,7 @@ class ControllerConnection internal constructor(
         host.validate()
         require(host.capabilityBits and OBSERVE_CAPABILITY == OBSERVE_CAPABILITY)
         progress(ControllerConnectionState.Connecting)
-        val socket = transportFactory.open(host.route)
+        val socket = openHost(host)
         activeTransport = socket
         try {
             progress(ControllerConnectionState.Authenticating)
@@ -741,17 +943,26 @@ class ControllerConnection internal constructor(
     private fun randomBytes(size: Int): ByteArray = ByteArray(size).also(random::nextBytes)
     private fun uptimeMillis(): Long = android.os.SystemClock.elapsedRealtime()
 
-    private fun isPrivateRoute(route: HostRoute, family: String): Boolean {
-        val address = runCatching { InetAddress.getByName(route.address) }.getOrNull() ?: return false
-        if (address.isLoopbackAddress || address.isAnyLocalAddress) return false
-        val bytes = address.address.map(Byte::toInt).map { it and 0xff }
-        return when {
-            family == "ipv4" && address is Inet4Address ->
-                bytes[0] == 10 || bytes[0] == 172 && bytes[1] in 16..31 ||
-                    bytes[0] == 192 && bytes[1] == 168 || bytes[0] == 100 && bytes[1] in 64..127
-            family == "ipv6" && address is Inet6Address -> bytes[0] and 0xfe == 0xfc
-            else -> false
+    // Tries each route in order and returns the first that accepts a connection. Only a failure
+    // to connect moves on; nothing has been sent to a route that failed.
+    private fun openFirstReachable(routes: List<HostRoute>): Pair<ControllerDuplexTransport, HostRoute> {
+        var failure: IOException? = null
+        for (route in routes) {
+            try {
+                return transportFactory.open(route) to route
+            } catch (error: IOException) {
+                failure = error
+            }
         }
+        throw failure ?: IOException("no route to the Host")
+    }
+
+    // SSH and relay transports ignore the route, so only the direct TCP transport walks the list.
+    private fun openHost(host: PairedHostRecord): ControllerDuplexTransport {
+        val candidates = if (transportFactory === TcpControllerTransportFactory) host.routes else listOf(host.route)
+        val (transport, route) = openFirstReachable(candidates)
+        connectedRoutes[host.id] = route
+        return transport
     }
 
     private companion object {
@@ -768,14 +979,19 @@ class ControllerConnection internal constructor(
         const val ALL_INTERACTIVE_CAPABILITIES = ATTACH_CAPABILITY or INPUT_CAPABILITY or
             RESIZE_CAPABILITY or APPROVAL_CAPABILITY
         const val ALL_SUPPORTED_CAPABILITIES = OBSERVE_CAPABILITY or ALL_INTERACTIVE_CAPABILITIES
+        const val OFFER_CORE_BYTES = 84
+        const val CODE_SHARE_BYTES = 32
+        const val CODE_PAIRING_TIMEOUT_MILLIS = 60_000L
         val PAIRING_PREFACE = byteArrayOf(0x54, 0x52, 0x43, 0x4e, 0, 1, 2, 0)
+        val PAIRING_CODE_PREFACE = byteArrayOf(0x54, 0x52, 0x43, 0x4e, 0, 1, 3, 0)
         val AUTH_PREFACE = byteArrayOf(0x54, 0x52, 0x43, 0x4e, 0, 1, 1, 0)
     }
 }
 
 private data class PendingPairing(
     val envelope: PairingOfferEnvelope,
-    val route: HostRoute,
+    // The route that connected comes first.
+    val routes: List<HostRoute>,
     val hostName: String,
     val deviceName: String,
     val deviceId: UUID,
@@ -809,9 +1025,43 @@ private data class ActiveTerminalConnection(
     @SerialName("identity_generation") val identityGeneration: Long,
     @SerialName("revocation_epoch") val revocationEpoch: Long,
     @SerialName("session_generation") val sessionGeneration: Long,
-    @SerialName("address_family") val addressFamily: String,
+    val routes: List<PairingRoutePayload>,
+    @SerialName("offer_bytes") val offerBytes: List<Int>,
+)
+
+@Serializable private data class PairingRoutePayload(
     val address: String,
     val port: Int,
+)
+
+private class ConfirmedPairing(
+    val session: ControllerPairingSession,
+    val input: DataInputStream,
+    val output: DataOutputStream,
+    val hostKey: ByteArray,
+    val capabilityBits: Int,
+    val identityGeneration: Long,
+    val revocationEpoch: Long,
+    val sessionGeneration: Long,
+    val routes: List<HostRoute>,
+    val hostName: String,
+    val deviceName: String,
+    val deviceId: UUID,
+    val keyId: String,
+)
+
+@Serializable private data class CodePairingHelloPayload(
+    @SerialName("schema_version") val schemaVersion: Int = 1,
+    @SerialName("device_nonce") val deviceNonce: List<Int>,
+)
+
+// The Host's offer on a code connection carries no routes: the phone already reached it.
+@Serializable private data class CodePairingOfferEnvelope(
+    @SerialName("schema_version") val schemaVersion: Int,
+    @SerialName("offer_id") val offerId: String,
+    @SerialName("identity_generation") val identityGeneration: Long,
+    @SerialName("revocation_epoch") val revocationEpoch: Long,
+    @SerialName("session_generation") val sessionGeneration: Long,
     @SerialName("offer_bytes") val offerBytes: List<Int>,
 )
 
@@ -902,6 +1152,7 @@ private data class ActiveTerminalConnection(
 
 sealed class ControllerConnectionException : Exception() {
     data object PairingRejected : ControllerConnectionException()
+    data object CodeRejected : ControllerConnectionException()
     data object AcknowledgementUncertain : ControllerConnectionException()
     data object SequenceGap : ControllerConnectionException()
     data class HostError(val code: String) : ControllerConnectionException()

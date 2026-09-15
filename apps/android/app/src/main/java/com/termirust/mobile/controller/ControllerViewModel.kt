@@ -36,13 +36,17 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     )
     private val routePreferences = application.getSharedPreferences("controller-routes-v1", 0)
     private val routeCoordinator = AndroidControllerRouteCoordinator(routeConnections.availability())
+    private val discovery = ControllerHostDiscovery(application)
     private val random = SecureRandom()
     private val deviceId = loadDeviceId(application)
     private val _state = MutableStateFlow(ControllerUiState())
     val state: StateFlow<ControllerUiState> = _state.asStateFlow()
+    val discoveredComputers: StateFlow<List<DiscoveredController>> = discovery.computers
     val pairingOffer = MutableStateFlow("")
     val pairingHostName = MutableStateFlow("My Computer")
     val pairingDeviceName = MutableStateFlow("Android ${Build.MODEL}".take(64))
+    val pairingCode = MutableStateFlow("")
+    val pairingAddress = MutableStateFlow("")
     private var hosts: List<PairedHostRecord> = emptyList()
     private var cache = ControllerCacheDocument()
     private var operation: Job? = null
@@ -132,32 +136,80 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         _state.value = _state.value.copy(connection = ControllerConnectionState.Pairing)
         operation = viewModelScope.launch {
             runCatching { pairingConnection().finishPairing(matches) }
-                .onSuccess { host ->
-                    if (routeCoordinator.selected != ControllerRemoteRouteKind.PRIVATE_NETWORK) {
-                        runCatching {
-                            routeCoordinator.select(
-                                ControllerRemoteRouteKind.PRIVATE_NETWORK,
-                                explicitlyConfirmed = true,
-                            )
-                        }
-                        routePreferences.edit()
-                            .putString(SELECTED_ROUTE_KEY, ControllerRemoteRouteKind.PRIVATE_NETWORK.name)
-                            .apply()
-                    }
-                    hosts = hostStore.upsert(host)
-                    routePreferences.edit().putString(SELECTED_HOST_KEY, host.id).apply()
-                    pairingOffer.value = ""
-                    _state.value = makeState(
-                        selectedHostId = host.id,
-                        connectionState = ControllerConnectionState.PairedOffline,
-                    )
-                    refreshSelected(retry = true)
-                }
+                .onSuccess { host -> completePairing(host) }
                 .onFailure { error ->
                     pairingOffer.value = ""
                     showFailure(error)
                 }
         }
+    }
+
+    fun startDiscovery() = discovery.start()
+
+    fun stopDiscovery() = discovery.stop()
+
+    fun pairWithCode(target: CodePairingTarget) {
+        operation?.cancel()
+        _state.value = _state.value.copy(connection = ControllerConnectionState.Pairing)
+        operation = viewModelScope.launch {
+            runCatching {
+                val destination = when (target) {
+                    is CodePairingTarget.Discovered -> CodePairingDestination(
+                        routes = target.computer.routes,
+                        hostName = target.computer.serviceName,
+                        discoveryId = target.computer.discoveryId,
+                    )
+                    is CodePairingTarget.Address -> {
+                        val endpoint = ControllerNetworkAddresses.parseEndpoint(target.text)
+                        // A MagicDNS name starts with the computer's own name; an address has
+                        // none, so the Host's fingerprint label is used instead.
+                        CodePairingDestination(
+                            routes = withContext(Dispatchers.IO) { ControllerNetworkAddresses.resolve(endpoint) },
+                            hostName = endpoint.host
+                                .takeIf { ControllerNetworkAddresses.literalAddress(it) == null }
+                                ?.substringBefore('.')
+                                ?.takeIf { it.isNotEmpty() },
+                            discoveryId = null,
+                        )
+                    }
+                }
+                pairingConnection().pairWithCode(
+                    routes = destination.routes,
+                    code = pairingCode.value,
+                    hostName = destination.hostName,
+                    expectedDiscoveryId = destination.discoveryId,
+                    deviceName = pairingDeviceName.value.trim(),
+                    deviceId = deviceId,
+                )
+            }.onSuccess { host -> completePairing(host) }
+                .onFailure { error ->
+                    if (error is ControllerConnectionException.CodeRejected) pairingCode.value = ""
+                    showFailure(error)
+                }
+        }
+    }
+
+    private suspend fun completePairing(host: PairedHostRecord) {
+        if (routeCoordinator.selected != ControllerRemoteRouteKind.PRIVATE_NETWORK) {
+            runCatching {
+                routeCoordinator.select(
+                    ControllerRemoteRouteKind.PRIVATE_NETWORK,
+                    explicitlyConfirmed = true,
+                )
+            }
+            routePreferences.edit()
+                .putString(SELECTED_ROUTE_KEY, ControllerRemoteRouteKind.PRIVATE_NETWORK.name)
+                .apply()
+        }
+        hosts = hostStore.upsert(host)
+        routePreferences.edit().putString(SELECTED_HOST_KEY, host.id).apply()
+        pairingOffer.value = ""
+        pairingCode.value = ""
+        _state.value = makeState(
+            selectedHostId = host.id,
+            connectionState = ControllerConnectionState.PairedOffline,
+        )
+        refreshSelected(retry = true)
     }
 
     fun cancelPairing() {
@@ -533,6 +585,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         terminalResize?.cancel()
         terminalRuntime?.terminal?.close()
         routeConnections.close()
+        discovery.close()
         super.onCleared()
     }
 
@@ -568,21 +621,33 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         prepareRouteStart(route)
         val started = System.currentTimeMillis()
         var attempt = 0
+        var discoveryTried = false
         while (true) {
+            var reachedHost = false
             try {
                 val snapshot = connection.fetchSessions(host) { state ->
                     if (routeCoordinator.selected != route) throw CancellationException()
                     when (state) {
-                        ControllerConnectionState.Authenticating -> markTransportReady(route)
+                        ControllerConnectionState.Authenticating -> {
+                            reachedHost = true
+                            markTransportReady(route)
+                        }
                         ControllerConnectionState.Syncing -> markAuthenticated(route)
                         else -> Unit
                     }
                     _state.value = makeState(host.id, state)
                 }
                 markAuthenticated(route)
-                if (host.capabilityBits != snapshot.capabilityBits) {
-                    host = host.copy(capabilityBits = snapshot.capabilityBits)
-                    hosts = hostStore.upsert(host)
+                var updated = connection.connectedRoute(host.id)?.let(host::preferringRoute) ?: host
+                if (updated.discoveryId == null) {
+                    updated = updated.copy(discoveryId = discoveryIdFor(updated))
+                }
+                if (updated.capabilityBits != snapshot.capabilityBits) {
+                    updated = updated.copy(capabilityBits = snapshot.capabilityBits)
+                }
+                host = updated
+                if (hosts.none { it == updated }) {
+                    hosts = hostStore.upsert(updated)
                 }
                 cache = cacheStore.saveSnapshot(
                     current = cache,
@@ -596,6 +661,22 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                // Every saved address failed to connect. The computer may have moved to a new
+                // address on the same network, so look for its announcement once.
+                val discoveryId = discoveryIdFor(host)
+                if (!discoveryTried && !reachedHost && discoveryId != null && isRetryable(error) &&
+                    route == ControllerRemoteRouteKind.PRIVATE_NETWORK
+                ) {
+                    discoveryTried = true
+                    val fresh = discovery.find(discoveryId, DISCOVERY_TIMEOUT_MILLIS)
+                        ?.routes
+                        ?.filterNot { it in host.routes }
+                        .orEmpty()
+                    if (fresh.isNotEmpty()) {
+                        host = fresh.asReversed().fold(host) { record, candidate -> record.preferringRoute(candidate) }
+                        continue
+                    }
+                }
                 val willRetry = retry && isRetryable(error) && attempt < 7 &&
                     System.currentTimeMillis() - started < 90_000
                 markRouteFailure(route, retryable = willRetry, mutationInFlight = false)
@@ -963,6 +1044,10 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         is ControllerSecretException.Corrupt -> "secret_corrupt"
         is ControllerStoreException.ResourceLimit -> "resource_limit"
         is ControllerConnectionException.PairingRejected -> "pairing_rejected"
+        is ControllerConnectionException.CodeRejected -> "pairing_code_rejected"
+        is ControllerPairingAddressException.Invalid -> "pairing_address_invalid"
+        is ControllerPairingAddressException.Unresolved -> "pairing_address_unresolved"
+        is ControllerPairingAddressException.NotPrivate -> "pairing_address_not_private"
         is ControllerConnectionException.AcknowledgementUncertain -> "pairing_acknowledgement_uncertain"
         is ControllerConnectionException.SequenceGap -> "sequence_gap"
         is ControllerConnectionException.HostError -> error.code
@@ -982,6 +1067,10 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         if (existing != null) runCatching { return UUID.fromString(existing) }
         return UUID.randomUUID().also { preferences.edit().putString("device_id", it.toString()).apply() }
     }
+
+    private fun discoveryIdFor(host: PairedHostRecord): String? = host.discoveryId ?: runCatching {
+        ControllerNetworkAddresses.discoveryId(Base64.getDecoder().decode(host.hostStaticPublicKey))
+    }.getOrNull()
 
     private fun selectedRoute(): ControllerRemoteRouteKind =
         routeCoordinator.selected ?: ControllerRemoteRouteKind.PRIVATE_NETWORK
@@ -1090,6 +1179,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     private companion object {
         const val SELECTED_ROUTE_KEY = "selected_route"
         const val SELECTED_HOST_KEY = "selected_host"
+        const val DISCOVERY_TIMEOUT_MILLIS = 4_000L
     }
 }
 
@@ -1112,6 +1202,12 @@ private data class ActiveTerminalRuntime(
     var inputBlockedForResize: Boolean = false,
     var inputInFlight: UUID? = null,
     val pendingMutations: MutableMap<UUID, TerminalMutation> = mutableMapOf(),
+)
+
+private data class CodePairingDestination(
+    val routes: List<HostRoute>,
+    val hostName: String?,
+    val discoveryId: String?,
 )
 
 private class ControllerRouteUnavailableException(route: ControllerRemoteRouteKind) :

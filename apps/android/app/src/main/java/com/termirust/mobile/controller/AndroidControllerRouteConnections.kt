@@ -11,6 +11,18 @@ interface ControllerConnecting : AutoCloseable {
     ): ControllerPairingChallenge
 
     suspend fun finishPairing(matches: Boolean): PairedHostRecord
+    suspend fun pairWithCode(
+        routes: List<HostRoute>,
+        code: String,
+        hostName: String?,
+        expectedDiscoveryId: String?,
+        deviceName: String,
+        deviceId: UUID,
+    ): PairedHostRecord
+
+    /** The route the last connection to [hostId] used, when this connection picks routes. */
+    fun connectedRoute(hostId: String): HostRoute?
+
     suspend fun fetchSessions(
         host: PairedHostRecord,
         progress: suspend (ControllerConnectionState) -> Unit = {},
