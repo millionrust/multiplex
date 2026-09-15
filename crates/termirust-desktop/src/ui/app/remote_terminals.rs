@@ -275,6 +275,18 @@ impl TermiRustApp {
         };
         match pending.plan.apply() {
             Ok(()) => {
+                // New tabs pick up the setup file; tabs already open are updated here, so
+                // turning the setup on hides their status bar and turning it off restores it.
+                // Tests never reach for the developer's own tmux server.
+                #[cfg(not(test))]
+                if let Some(tmux) = self.remote_terminals.tmux.clone() {
+                    let visible = pending.kind == RemoteTerminalChange::Disable;
+                    cx.background_executor()
+                        .spawn(async move {
+                            let _ = tmux.set_wrapped_sessions_status_bar(visible);
+                        })
+                        .detach();
+                }
                 self.status_message = match pending.kind {
                     RemoteTerminalChange::Enable => localization::remote_terminals_applied_notice(),
                     RemoteTerminalChange::Disable => {

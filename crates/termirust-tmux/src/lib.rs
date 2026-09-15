@@ -27,6 +27,8 @@ pub const MAX_SESSION_NAME_BYTES: usize = 1024;
 pub const MAX_COMMAND_CHARS: usize = 128;
 /// The oldest tmux that understands `attach-session -f ignore-size`.
 pub const MINIMUM_ATTACH_VERSION: (u32, u32) = (3, 2);
+/// Sessions the shell setup starts are named `termirust-<directory>-<pid>`.
+pub const WRAPPED_SESSION_PREFIX: &str = "termirust-";
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(3);
 const COMMAND_POLL_INTERVAL: Duration = Duration::from_millis(5);
@@ -243,6 +245,30 @@ impl Tmux {
             status: output.status.code(),
             diagnostic: bounded_diagnostic(stderr.trim()),
         })
+    }
+
+    /// Hides the status bar in every session the shell setup started (named
+    /// [`WRAPPED_SESSION_PREFIX`]…), or with `visible` hands those sessions back to the global
+    /// setting. Other sessions are never touched. Returns how many sessions changed.
+    pub fn set_wrapped_sessions_status_bar(&self, visible: bool) -> Result<usize, TmuxError> {
+        let listing = self.list_sessions()?;
+        let mut changed = 0;
+        for session in listing
+            .sessions
+            .iter()
+            .filter(|session| session.name.starts_with(WRAPPED_SESSION_PREFIX))
+        {
+            let mut command = self.command();
+            if visible {
+                command.args(["set-option", "-u", "-t", session.id(), "status"]);
+            } else {
+                command.args(["set-option", "-t", session.id(), "status", "off"]);
+            }
+            if run_bounded(command, COMMAND_TIMEOUT)?.status.success() {
+                changed += 1;
+            }
+        }
+        Ok(changed)
     }
 
     /// Proves the path a paired device uses: starts a throwaway detached session, finds it

@@ -412,3 +412,34 @@ fn shell_integration_starts_new_terminal_app_shells_inside_tmux() {
         );
     }
 }
+
+#[test]
+fn only_wrapped_sessions_lose_and_regain_their_status_bar() {
+    let Some(server) = IsolatedServer::start() else {
+        return;
+    };
+    server.run(&["new-session", "-d", "-s", "termirust-terminal-4242"]);
+    server.run(&["new-session", "-d", "-s", "work"]);
+    let status = |session: &str| {
+        let output = server
+            .tmux
+            .command()
+            .args(["show-options", "-v", "-t", session, "status"])
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout).trim().to_owned()
+    };
+
+    assert_eq!(
+        server.tmux.set_wrapped_sessions_status_bar(false).unwrap(),
+        1
+    );
+    assert_eq!(status("termirust-terminal-4242"), "off");
+    assert_eq!(status("work"), "", "other sessions keep the global setting");
+
+    assert_eq!(
+        server.tmux.set_wrapped_sessions_status_bar(true).unwrap(),
+        1
+    );
+    assert_eq!(status("termirust-terminal-4242"), "");
+}
