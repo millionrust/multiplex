@@ -519,10 +519,26 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         _state.value = _state.value.copy(activeTerminal = null)
     }
 
-    fun updateTerminalViewport(columns: Int, rows: Int) {
+    /**
+     * [followsHostSize] keeps the terminal at the size the host reported and never resizes the
+     * host. Resizing a desktop terminal makes its shell redraw the prompt at the phone's width,
+     * which can leave stray prompt lines on the desktop when it grows back.
+     */
+    fun updateTerminalViewport(columns: Int, rows: Int, followsHostSize: Boolean) {
         val runtime = terminalRuntime ?: return
         val viewport = TerminalViewport(columns, rows)
         if (runCatching { TerminalLimits().validate(viewport) }.isFailure) return
+        if (followsHostSize) {
+            terminalResize?.cancel()
+            runtime.viewport = viewport
+            runtime.pendingResize = null
+            if (runtime.writer.lease == WriterLeaseState.Held) {
+                runtime.writerViewportReady = true
+                runtime.inputBlockedForResize = false
+            }
+            publishTerminal(runtime)
+            return
+        }
         if (runtime.viewport == viewport) return
         if (runtime.reducer.cursor.outputSequence == 0L) {
             runtime.terminal.resize(viewport)

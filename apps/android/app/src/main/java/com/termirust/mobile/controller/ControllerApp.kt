@@ -1070,7 +1070,7 @@ private fun ControllerTerminalScreen(
     onPaste: (String) -> Unit,
     onConfirmPaste: () -> Unit,
     onCancelPaste: () -> Unit,
-    onViewportChanged: (Int, Int) -> Unit,
+    onViewportChanged: (Int, Int, Boolean) -> Unit,
 ) {
     var followOutput by remember { mutableStateOf(true) }
     var keyboardRequest by remember { mutableLongStateOf(0L) }
@@ -1092,7 +1092,7 @@ private fun ControllerTerminalScreen(
         )
     }
     var usesDesktopWidth by remember {
-        mutableStateOf(terminalPreferences.getBoolean("desktop_width", false))
+        mutableStateOf(terminalPreferences.getBoolean("desktop_width", true))
     }
     var displayedFontSize by remember { mutableDoubleStateOf(terminalFontSize) }
     var displayedColumns by remember { mutableIntStateOf(40) }
@@ -1181,7 +1181,7 @@ private fun ControllerTerminalScreen(
         displayedFontSize = layout.displayedFontSize
         displayedColumns = ControllerTerminalWidth.columns(layout.columns, usesDesktopWidth)
         displayedRows = layout.rows
-        onViewportChanged(displayedColumns, displayedRows)
+        onViewportChanged(displayedColumns, displayedRows, usesDesktopWidth)
     }
     LaunchedEffect(
         terminal.outputSequence,
@@ -1368,7 +1368,7 @@ private fun ControllerTerminalScreen(
                 .onSizeChanged { terminalSurfaceSize = it },
         ) {
             val terminalContentWidth = if (usesDesktopWidth) {
-                maxOf(maxWidth, (displayedColumns * displayedFontSize * 0.62 + 24).dp)
+                maxOf(maxWidth, ((terminal.screen.cells.maxOfOrNull { it.size } ?: displayedColumns) * displayedFontSize * 0.62 + 24).dp)
             } else {
                 maxWidth
             }

@@ -7,7 +7,7 @@ struct ControllerReadOnlyTerminalView: View {
     @ObservedObject var viewModel: ControllerTerminalViewModel
     let onClose: () -> Void
     @AppStorage("controllerTerminalFontSize") private var terminalFontSize = 14.0
-    @AppStorage("controllerTerminalDesktopWidth") private var usesDesktopWidth = false
+    @AppStorage("controllerTerminalDesktopWidth") private var usesDesktopWidth = true
     @State private var followsOutput = true
     @State private var keyboardPresented = false
     @State private var displayedTerminalFontSize = 14.0
@@ -243,10 +243,14 @@ struct ControllerReadOnlyTerminalView: View {
                     }
                 }
             }
-            .onAppear { updateViewport(for: geometry.size) }
+            .onAppear {
+                viewModel.setFollowsHostSize(usesDesktopWidth)
+                updateViewport(for: geometry.size)
+            }
             .onChange(of: geometry.size) { _, size in updateViewport(for: size) }
             .onChange(of: terminalFontSize) { _, _ in updateViewport(for: geometry.size) }
-            .onChange(of: usesDesktopWidth) { _, _ in
+            .onChange(of: usesDesktopWidth) { _, desktopWidth in
+                viewModel.setFollowsHostSize(desktopWidth)
                 updateViewport(for: geometry.size, final: true)
             }
             .onChange(of: dynamicTypeSize) { _, _ in updateViewport(for: geometry.size) }
@@ -422,7 +426,7 @@ struct ControllerReadOnlyTerminalView: View {
 
     private func terminalContentWidth(available: CGFloat) -> CGFloat {
         guard usesDesktopWidth else { return available }
-        let gridWidth = CGFloat(displayedTerminalColumns)
+        let gridWidth = CGFloat(viewModel.terminalColumns)
             * CGFloat(displayedTerminalFontSize * 0.62)
             + 24
         return max(available, gridWidth)

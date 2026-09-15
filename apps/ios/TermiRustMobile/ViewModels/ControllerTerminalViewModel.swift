@@ -101,6 +101,29 @@ final class ControllerTerminalViewModel: ObservableObject, Identifiable {
         return hostAllows && sessionAllows
     }
 
+    /// Whether the phone keeps the host terminal's size instead of resizing it to fit the
+    /// phone. Resizing a desktop terminal makes its shell redraw the prompt at the phone's
+    /// width, which can leave stray prompt lines on the desktop when it grows back.
+    private(set) var followsHostSize = true
+
+    /// Columns of the terminal as the host sized it.
+    var terminalColumns: Int { terminal.viewport.columns }
+
+    func setFollowsHostSize(_ follows: Bool) {
+        guard follows != followsHostSize else { return }
+        followsHostSize = follows
+        if follows {
+            resizeTask?.cancel()
+            resizeTask = nil
+            pendingResize = nil
+            if writerLease == .held {
+                writerViewportReady = true
+                inputBlockedForResize = false
+                drainInputQueue()
+            }
+        }
+    }
+
     var supportsResize: Bool {
         host.capabilityBits & (1 << 3) != 0
             && (sessionCapabilities.isEmpty || sessionCapabilities.contains(.resize))
@@ -224,6 +247,12 @@ final class ControllerTerminalViewModel: ObservableObject, Identifiable {
         let next = TerminalViewportState(columns: columns, rows: rows)
         guard (try? TerminalLimits.controllerDefault.validate(viewport: next)) != nil else {
             writerMessage = "Terminal size was outside the Host safety limits."
+            return
+        }
+        if followsHostSize {
+            // The terminal keeps the size the host reported, and the host is never resized.
+            hasMeasuredViewport = true
+            viewport = next
             return
         }
         if outputSequence == 0, next != viewport {
