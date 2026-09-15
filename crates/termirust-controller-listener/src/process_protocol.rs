@@ -1,7 +1,7 @@
 use std::io::{BufRead, Read as _, Write};
 
 use serde::{Deserialize, Serialize};
-use termirust_domain::{ControllerDeviceId, PairingOfferId};
+use termirust_domain::{ControllerDeviceId, ListeningAddress, PairingOfferId};
 
 use crate::{FirewallObservation, ListenerError, ListenerErrorCode};
 
@@ -77,7 +77,13 @@ pub enum ListenerProcessEvent {
     Ready {
         schema_version: u16,
         port: u16,
+        addresses: Vec<ListeningAddress>,
         firewall: ProcessFirewallObservation,
+    },
+    /// The private addresses the listener accepts on changed after it became ready.
+    ListeningAddresses {
+        schema_version: u16,
+        addresses: Vec<ListeningAddress>,
     },
     PairingOffer {
         schema_version: u16,
@@ -103,15 +109,27 @@ pub enum ListenerProcessEvent {
 }
 
 impl ListenerProcessEvent {
-    pub fn ready(port: u16) -> Self {
-        Self::ready_with_firewall(port, FirewallObservation::Unknown)
+    pub fn ready(port: u16, addresses: Vec<ListeningAddress>) -> Self {
+        Self::ready_with_firewall(port, addresses, FirewallObservation::Unknown)
     }
 
-    pub fn ready_with_firewall(port: u16, firewall: FirewallObservation) -> Self {
+    pub fn ready_with_firewall(
+        port: u16,
+        addresses: Vec<ListeningAddress>,
+        firewall: FirewallObservation,
+    ) -> Self {
         Self::Ready {
             schema_version: PROCESS_PROTOCOL_VERSION,
             port,
+            addresses,
             firewall: firewall.into(),
+        }
+    }
+
+    pub fn listening_addresses(addresses: Vec<ListeningAddress>) -> Self {
+        Self::ListeningAddresses {
+            schema_version: PROCESS_PROTOCOL_VERSION,
+            addresses,
         }
     }
 
@@ -174,6 +192,7 @@ impl ListenerProcessEvent {
     const fn schema_version(&self) -> u16 {
         match self {
             Self::Ready { schema_version, .. }
+            | Self::ListeningAddresses { schema_version, .. }
             | Self::PairingOffer { schema_version, .. }
             | Self::PairingSasReady { schema_version, .. }
             | Self::PairingComplete { schema_version, .. }
@@ -245,6 +264,7 @@ impl std::fmt::Debug for ListenerProcessEvent {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let kind = match self {
             Self::Ready { .. } => "ready",
+            Self::ListeningAddresses { .. } => "listening_addresses",
             Self::PairingOffer { .. } => "pairing_offer",
             Self::PairingSasReady { .. } => "pairing_sas_ready",
             Self::PairingComplete { .. } => "pairing_complete",

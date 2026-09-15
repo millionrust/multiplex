@@ -13,9 +13,9 @@ use termirust_controller_security::{
     StaticPrivateKey,
 };
 use termirust_domain::{
-    AddressFamily, AuthenticatedPeer, ControllerCapabilities, ControllerCapability,
-    ControllerDeviceId, ControllerListenPolicy, ControllerNetworkRevision, DevicePublicKey,
-    DiscoveryPolicy, PairingOfferId, PairingOfferState, RouteCandidate,
+    AuthenticatedPeer, ControllerCapabilities, ControllerCapability, ControllerDeviceId,
+    ControllerListenPolicy, ControllerNetworkRevision, DevicePublicKey, ListeningAddress,
+    PairingOfferId, PairingOfferState,
 };
 use termirust_store::{
     ControllerDeviceRepository, ControllerNetworkRepository, ProjectRepository, SessionRepository,
@@ -32,7 +32,7 @@ use crate::{
     ListenerProcessEvent, ListenerRuntime, ListenerServices, PairingAuthoritySnapshot,
     ProcessPairingDecision, SourceBucketKey, SshControllerPairingOffer, SshHostPairingPrompt,
     SystemBinder, SystemFirewallObserver, SystemGeneratedPortSource, SystemHandshakeEntropy,
-    SystemInterfaceProvider, TmuxSessionSource, bind_selected_route, pair_controller,
+    SystemInterfaceProvider, TmuxSessionSource, bind_private_addresses, pair_controller,
     request_ssh_host_pairing_decision,
 };
 
@@ -259,7 +259,13 @@ struct RepositoryAuthority {
 }
 
 impl RepositoryAuthority {
-    fn create_offer(&self, route: &RouteCandidate) -> Result<ListenerProcessEvent, ListenerError> {
+    fn create_offer(
+        &self,
+        routes: &[ListeningAddress],
+    ) -> Result<ListenerProcessEvent, ListenerError> {
+        if routes.is_empty() {
+            return Err(ListenerError::new(ListenerErrorCode::NoEligibleInterface));
+        }
         let mut nonce = [0; 32];
         rand::rngs::OsRng
             .try_fill_bytes(&mut nonce)
@@ -278,14 +284,20 @@ impl RepositoryAuthority {
         let saved = self
             .repository
             .update(snapshot.revision, |authority| {
-                record = Some(authority.create_offer(
-                    offer_id,
-                    nonce,
-                    now,
-                    expires_at,
-                    capabilities,
-                    vec![format!("{}:{}", route.address, route.port.value())],
-                )?);
+                record = Some(
+                    authority.create_offer(
+                        offer_id,
+                        nonce,
+                        now,
+                        expires_at,
+                        capabilities,
+                        routes
+                            .iter()
+                            .take(crate::MAX_PAIRING_ROUTES)
+                            .map(|route| route.address.to_string())
+                            .collect(),
+                    )?,
+                );
                 Ok(())
             })
             .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
@@ -303,7 +315,7 @@ impl RepositoryAuthority {
         };
         let offer = crate::ControllerPairingOffer::new(
             offer_id,
-            route,
+            routes,
             &core,
             record.identity.generation.get(),
             saved.authority.revocation_epoch,
@@ -883,14 +895,14 @@ where
     }
 
     let interfaces = Arc::new(SystemInterfaceProvider);
-    let bound = bind_selected_route(
+    let bound = bind_private_addresses(
         &descriptor.policy,
         interfaces.as_ref(),
         &SystemBinder,
         &mut SystemGeneratedPortSource,
     )?;
-    if descriptor.policy.port != Some(bound.route.port) {
-        descriptor.policy.port = Some(bound.route.port);
+    if descriptor.policy.port != Some(bound.port) {
+        descriptor.policy.port = Some(bound.port);
         let saved = network
             .save(descriptor.network_revision, descriptor.policy.clone())
             .map_err(|_| ListenerError::new(ListenerErrorCode::InvalidPolicy))?;
@@ -930,31 +942,21 @@ where
         .map_err(|_| ListenerError::new(ListenerErrorCode::RandomUnavailable))?;
     let runtime = ListenerRuntime::new(SourceBucketKey::from_random(source_key))?;
     source_key.zeroize();
-    let route = descriptor
-        .policy
-        .route()?
-        .ok_or_else(|| ListenerError::new(ListenerErrorCode::Disabled))?;
-    let firewall = SystemFirewallObserver.observe(&route)?;
+    let initial_addresses = bound.addresses();
+    let firewall = SystemFirewallObserver.observe(&initial_addresses)?;
     events.send(&ListenerProcessEvent::ready_with_firewall(
-        bound.route.address.port(),
+        bound.port.value(),
+        initial_addresses.clone(),
         firewall,
     ))?;
+    // Pairing offers list the addresses the runtime is accepting on at the moment they are made.
+    let listening = Arc::new(Mutex::new(initial_addresses));
 
     let cancel = CancellationToken::new();
     let control_cancel = cancel.clone();
     let control_events = events.clone();
     let control_authority = repository_authority;
-    let control_route = RouteCandidate {
-        interface_id: bound.route.interface_id.clone(),
-        address_family: if bound.route.address.is_ipv4() {
-            AddressFamily::Ipv4
-        } else {
-            AddressFamily::Ipv6
-        },
-        address: bound.route.address.ip(),
-        port: bound.route.port,
-        discovery: DiscoveryPolicy::Off,
-    };
+    let control_listening = Arc::clone(&listening);
     std::thread::spawn(move || {
         loop {
             let command = match ListenerControlCommand::read(&mut reader) {
@@ -971,8 +973,11 @@ where
             let (offer_id, result) = match command {
                 ListenerControlCommand::BeginPairing { .. } => (
                     None,
-                    control_authority
-                        .create_offer(&control_route)
+                    control_listening
+                        .lock()
+                        .map(|addresses| addresses.clone())
+                        .map_err(|_| ListenerError::new(ListenerErrorCode::Io))
+                        .and_then(|addresses| control_authority.create_offer(&addresses))
                         .and_then(|event| control_events.send(&event)),
                 ),
                 ListenerControlCommand::DecidePairing {
@@ -1001,13 +1006,21 @@ where
         .enable_all()
         .build()
         .map_err(|_| ListenerError::new(ListenerErrorCode::Io))?;
+    let address_events = events.clone();
+    let observer: crate::ListeningAddressObserver = Arc::new(move |addresses| {
+        if let Ok(mut current) = listening.lock()
+            && current.as_slice() != addresses
+        {
+            *current = addresses.to_vec();
+            let _ = address_events.send(&ListenerProcessEvent::listening_addresses(
+                addresses.to_vec(),
+            ));
+        }
+    });
     tokio_runtime.block_on(async move {
-        let listener =
-            tokio::net::TcpListener::from_std(bound.listener).map_err(ListenerError::from)?;
-        let services = ListenerServices::new(interfaces, authority, pairing, backends);
-        runtime
-            .run(listener, descriptor.policy.clone(), services, cancel)
-            .await
+        let services = ListenerServices::new(interfaces, authority, pairing, backends)
+            .with_address_observer(observer);
+        runtime.run(bound, services, cancel).await
     })?;
     Ok(())
 }
@@ -1034,8 +1047,8 @@ mod tests {
     use crate::{GeneratedPortSource as _, InterfaceProvider as _};
     use termirust_controller_security::host_public_key_from_private;
     use termirust_domain::{
-        AddressFamily, ControllerPort, DiscoveryPolicy, HostIdentityGeneration, HostIdentityPublic,
-        HostIdentitySecretRef, HostIdentityState, HostPublicKey, NetworkInterfaceId,
+        ControllerPort, DiscoveryPolicy, HostIdentityGeneration, HostIdentityPublic,
+        HostIdentitySecretRef, HostIdentityState, HostPublicKey,
     };
 
     #[derive(Clone, Default)]
@@ -1065,9 +1078,6 @@ mod tests {
             ControllerNetworkRevision::ZERO,
             ControllerListenPolicy {
                 enabled: true,
-                interface_id: Some(NetworkInterfaceId::new("4:en0").unwrap()),
-                address_family: Some(AddressFamily::Ipv4),
-                selected_address: Some("192.168.1.9".parse().unwrap()),
                 port: Some(ControllerPort::Generated(55_555)),
                 discovery: DiscoveryPolicy::Off,
             },
@@ -1223,9 +1233,6 @@ mod tests {
         let port = SystemGeneratedPortSource.next_port().unwrap();
         let policy = ControllerListenPolicy {
             enabled: true,
-            interface_id: Some(interface.id),
-            address_family: Some(interface.address_family),
-            selected_address: Some(interface.address),
             port: Some(ControllerPort::Generated(port)),
             discovery: DiscoveryPolicy::Off,
         };
@@ -1263,8 +1270,12 @@ mod tests {
             event => panic!("expected redacted pairing offer event, got {event:?}"),
         };
         let offer = crate::ControllerPairingOffer::decode_text(&offer_text).unwrap();
-        assert_eq!(offer.address, interface.address);
-        assert_eq!(offer.address_family, interface.address_family);
+        assert!(
+            offer
+                .routes
+                .iter()
+                .any(|route| route.address == interface.address)
+        );
     }
 
     #[tokio::test]

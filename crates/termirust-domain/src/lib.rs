@@ -46,10 +46,10 @@ pub use controller_devices::{
 pub use controller_network::{
     AddressFamily, AuthenticatedPeer, ConnectionBudget, ControllerListenPolicy,
     ControllerNetworkError, ControllerNetworkRevision, ControllerPort, DiscoveryPolicy,
-    GENERATED_PORT_MIN, ListenerFailureCode, ListenerInstanceId, ListenerState,
+    GENERATED_PORT_MIN, ListenerFailureCode, ListenerInstanceId, ListenerState, ListeningAddress,
     MAX_GENERATED_PORT_ATTEMPTS, MAX_NETWORK_INTERFACE_ID_BYTES,
     MAX_NETWORK_INTERFACE_LABEL_SCALARS, NetworkInterfaceCandidate, NetworkInterfaceId,
-    NetworkInterfaceKind, RouteCandidate, USER_FIXED_PORT_MIN, is_private_controller_address,
+    NetworkInterfaceKind, USER_FIXED_PORT_MIN, is_private_controller_address,
 };
 pub use controller_route::{
     ControllerPlatform, RemoteRouteCapability, RemoteRouteConfigRequirement, RemoteRouteEvent,

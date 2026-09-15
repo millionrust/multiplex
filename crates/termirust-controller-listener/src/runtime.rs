@@ -8,20 +8,22 @@ use termirust_controller_security::{
 };
 use termirust_domain::{
     AuthenticatedPeer, ConnectionBudget, ControllerAuthorizationRequest,
-    ControllerCapability as DomainCapability, ControllerDeviceAuthority, ControllerListenPolicy,
-    ListenerInstanceId, OccupantGeneration,
+    ControllerCapability as DomainCapability, ControllerDeviceAuthority, ControllerPort,
+    ListenerInstanceId, ListeningAddress, OccupantGeneration,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    AuthRateLimiter, BoundedFrameQueue, BridgeAuthorization, ControllerCommandEnvelope,
-    ControllerConnectionPurpose, ControllerPairingAuthority, ControllerResponse, InterfaceProvider,
-    ListenerError, ListenerErrorCode, QueueClass, SourceBucket, SourceBucketKey,
-    SystemHandshakeEntropy, authenticate_controller, decode_command, encode_response,
-    pair_controller, read_bounded_frame, resolve_selected_interface, write_bounded_frame,
+    AuthRateLimiter, BoundAddress, BoundControllerListeners, BoundedFrameQueue,
+    BridgeAuthorization, ControllerBinder, ControllerCommandEnvelope, ControllerConnectionPurpose,
+    ControllerPairingAuthority, ControllerResponse, InterfaceProvider, ListenerError,
+    ListenerErrorCode, QueueClass, SourceBucket, SourceBucketKey, SystemBinder,
+    SystemHandshakeEntropy, authenticate_controller, bind_address, decode_command, encode_response,
+    pair_controller, read_bounded_frame, write_bounded_frame,
 };
 
 const AUTHORITY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
@@ -91,11 +93,16 @@ pub trait ControllerBackendFactory: Send + Sync {
     ) -> Result<Box<dyn ControllerConnectionBackend>, ListenerError>;
 }
 
+/// Called with every address the listener accepts on, whenever that set changes.
+pub type ListeningAddressObserver = Arc<dyn Fn(&[ListeningAddress]) + Send + Sync>;
+
 pub struct ListenerServices {
     interfaces: Arc<dyn InterfaceProvider>,
+    binder: Arc<dyn ControllerBinder<Listener = std::net::TcpListener>>,
     authority: Arc<dyn ControllerAuthorityProvider>,
     pairing: Arc<dyn ControllerPairingAuthority>,
     backends: Arc<dyn ControllerBackendFactory>,
+    addresses_changed: Option<ListeningAddressObserver>,
 }
 
 impl ListenerServices {
@@ -107,9 +114,105 @@ impl ListenerServices {
     ) -> Self {
         Self {
             interfaces,
+            binder: Arc::new(SystemBinder),
             authority,
             pairing,
             backends,
+            addresses_changed: None,
+        }
+    }
+
+    pub fn with_binder(
+        mut self,
+        binder: Arc<dyn ControllerBinder<Listener = std::net::TcpListener>>,
+    ) -> Self {
+        self.binder = binder;
+        self
+    }
+
+    pub fn with_address_observer(mut self, observer: ListeningAddressObserver) -> Self {
+        self.addresses_changed = Some(observer);
+        self
+    }
+}
+
+type AcceptedConnection = (TcpStream, std::net::SocketAddr);
+
+/// The private addresses currently accepting, each feeding one shared queue.
+struct Acceptors {
+    port: ControllerPort,
+    running: Vec<(ListeningAddress, tokio::task::JoinHandle<()>)>,
+    sender: mpsc::Sender<AcceptedConnection>,
+}
+
+impl Acceptors {
+    fn start(&mut self, bound: BoundAddress<std::net::TcpListener>) -> Result<(), ListenerError> {
+        let listener = TcpListener::from_std(bound.listener).map_err(ListenerError::from)?;
+        let sender = self.sender.clone();
+        let task = tokio::spawn(async move {
+            // An accept error ends this address; the next refresh binds it again.
+            while let Ok(accepted) = listener.accept().await {
+                if sender.send(accepted).await.is_err() {
+                    break;
+                }
+            }
+        });
+        self.running.push((bound.address, task));
+        Ok(())
+    }
+
+    /// Closes addresses that left or failed and binds addresses that appeared. Returns whether
+    /// the set changed.
+    fn refresh(
+        &mut self,
+        interfaces: &dyn InterfaceProvider,
+        binder: &dyn ControllerBinder<Listener = std::net::TcpListener>,
+    ) -> bool {
+        let Ok(candidates) = interfaces.eligible_interfaces() else {
+            return false;
+        };
+        let port = self.port;
+        let before = self.running.len();
+        self.running.retain(|(address, task)| {
+            let present = candidates.iter().any(|candidate| {
+                std::net::SocketAddr::new(candidate.address, port.value()) == address.address
+            });
+            if !present || task.is_finished() {
+                task.abort();
+                false
+            } else {
+                true
+            }
+        });
+        let mut changed = self.running.len() != before;
+        for candidate in &candidates {
+            let wanted = std::net::SocketAddr::new(candidate.address, port.value());
+            if self
+                .running
+                .iter()
+                .any(|(address, _)| address.address == wanted)
+            {
+                continue;
+            }
+            if let Ok(bound) = bind_address(candidate, port, binder)
+                && self.start(bound).is_ok()
+            {
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    fn addresses(&self) -> Vec<ListeningAddress> {
+        self.running
+            .iter()
+            .map(|(address, _)| address.clone())
+            .collect()
+    }
+
+    fn stop(&mut self) {
+        for (_, task) in self.running.drain(..) {
+            task.abort();
         }
     }
 }
@@ -161,20 +264,29 @@ impl ListenerRuntime {
 
     pub async fn run(
         self,
-        listener: TcpListener,
-        policy: ControllerListenPolicy,
+        listeners: BoundControllerListeners<std::net::TcpListener>,
         services: ListenerServices,
         cancel: CancellationToken,
     ) -> Result<ListenerRuntimeReport, ListenerError> {
-        let route = policy
-            .route()?
-            .ok_or_else(|| ListenerError::new(ListenerErrorCode::Disabled))?;
-        if listener.local_addr().map_err(ListenerError::from)?
-            != std::net::SocketAddr::new(route.address, route.port.value())
-        {
-            return Err(ListenerError::new(ListenerErrorCode::InvalidPolicy));
+        listeners.port.validate()?;
+        for bound in &listeners.bound {
+            bound.address.validate()?;
+            if bound.listener.local_addr().map_err(ListenerError::from)? != bound.address.address {
+                return Err(ListenerError::new(ListenerErrorCode::InvalidPolicy));
+            }
         }
-        resolve_selected_interface(&policy, &services.interfaces.eligible_interfaces()?)?;
+        let (sender, mut accepted) = mpsc::channel(self.budget.max_unauthenticated);
+        let mut acceptors = Acceptors {
+            port: listeners.port,
+            running: Vec::new(),
+            sender,
+        };
+        for bound in listeners.bound {
+            acceptors.start(bound)?;
+        }
+        if let Some(observer) = &services.addresses_changed {
+            observer(&acceptors.addresses());
+        }
 
         let preauth = Arc::new(Semaphore::new(self.budget.max_unauthenticated));
         let authenticated = Arc::new(Semaphore::new(self.budget.max_authenticated_per_host));
@@ -195,24 +307,16 @@ impl ListenerRuntime {
                 biased;
                 _ = cancel.cancelled() => break,
                 _ = interface_refresh.tick() => {
-                    let current = services.interfaces.eligible_interfaces();
-                    if current
-                        .as_ref()
-                        .ok()
-                        .and_then(|candidates| resolve_selected_interface(&policy, candidates).ok())
-                        .is_none()
+                    if acceptors.refresh(services.interfaces.as_ref(), services.binder.as_ref())
+                        && let Some(observer) = &services.addresses_changed
                     {
-                        terminal_error = Some(ListenerError::new(ListenerErrorCode::InterfaceGone));
-                        break;
+                        observer(&acceptors.addresses());
                     }
                 }
-                accepted = listener.accept() => {
-                    let (stream, source) = match accepted {
-                        Ok(value) => value,
-                        Err(error) => {
-                            terminal_error = Some(ListenerError::from(error));
-                            break;
-                        }
+                connection = accepted.recv() => {
+                    let Some((stream, source)) = connection else {
+                        terminal_error = Some(ListenerError::new(ListenerErrorCode::Cancelled));
+                        break;
                     };
                     report.accepted_connections = report.accepted_connections.saturating_add(1);
                     let source = SourceBucket::derive(&self.source_key, source.ip());
@@ -266,6 +370,7 @@ impl ListenerRuntime {
             }
         }
 
+        acceptors.stop();
         cancel.cancel();
         let drain = async { while tasks.join_next().await.is_some() {} };
         if tokio::time::timeout(SHUTDOWN_GRACE, drain).await.is_err() {
@@ -610,6 +715,93 @@ fn unix_millis() -> u64 {
             .as_millis(),
     )
     .unwrap_or(u64::MAX)
+}
+
+#[cfg(test)]
+mod address_tests {
+    use std::net::SocketAddr;
+
+    use termirust_domain::{
+        AddressFamily, NetworkInterfaceCandidate, NetworkInterfaceId, NetworkInterfaceKind,
+    };
+
+    use super::*;
+
+    /// Interfaces the test changes between refreshes.
+    #[derive(Default)]
+    struct ChangingInterfaces(Mutex<Vec<NetworkInterfaceCandidate>>);
+
+    impl InterfaceProvider for ChangingInterfaces {
+        fn eligible_interfaces(&self) -> Result<Vec<NetworkInterfaceCandidate>, ListenerError> {
+            Ok(self.0.lock().unwrap().clone())
+        }
+    }
+
+    /// Binds a loopback socket for each private address, since tests cannot own real ones.
+    struct LoopbackBinder;
+
+    impl ControllerBinder for LoopbackBinder {
+        type Listener = std::net::TcpListener;
+
+        fn bind_exact(&self, _address: SocketAddr) -> std::io::Result<Self::Listener> {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+            listener.set_nonblocking(true)?;
+            Ok(listener)
+        }
+    }
+
+    fn candidate(address: &str) -> NetworkInterfaceCandidate {
+        let address: std::net::IpAddr = address.parse().unwrap();
+        NetworkInterfaceCandidate {
+            id: NetworkInterfaceId::new("4:en0").unwrap(),
+            label: "en0".into(),
+            kind: NetworkInterfaceKind::Lan,
+            address_family: if address.is_ipv4() {
+                AddressFamily::Ipv4
+            } else {
+                AddressFamily::Ipv6
+            },
+            address,
+        }
+    }
+
+    fn listening(acceptors: &Acceptors) -> Vec<String> {
+        acceptors
+            .addresses()
+            .iter()
+            .map(|address| address.address.to_string())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn addresses_follow_networks_that_come_and_go() {
+        let interfaces = ChangingInterfaces::default();
+        let (sender, _accepted) = mpsc::channel(4);
+        let mut acceptors = Acceptors {
+            port: ControllerPort::Generated(55_000),
+            running: Vec::new(),
+            sender,
+        };
+
+        assert!(!acceptors.refresh(&interfaces, &LoopbackBinder));
+        assert!(listening(&acceptors).is_empty());
+
+        *interfaces.0.lock().unwrap() = vec![candidate("192.168.88.4"), candidate("100.81.253.53")];
+        assert!(acceptors.refresh(&interfaces, &LoopbackBinder));
+        assert_eq!(
+            listening(&acceptors),
+            ["192.168.88.4:55000", "100.81.253.53:55000"]
+        );
+        assert!(!acceptors.refresh(&interfaces, &LoopbackBinder));
+
+        // Tailscale gets a new address and the Wi-Fi network is left.
+        *interfaces.0.lock().unwrap() = vec![candidate("100.81.203.77")];
+        assert!(acceptors.refresh(&interfaces, &LoopbackBinder));
+        assert_eq!(listening(&acceptors), ["100.81.203.77:55000"]);
+
+        acceptors.stop();
+        assert!(listening(&acceptors).is_empty());
+    }
 }
 
 #[cfg(test)]

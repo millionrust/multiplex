@@ -10,13 +10,11 @@ use termirust_controller_listener::{
     GeneratedPortSource as _, ListenerLaunchDescriptor, ListenerProcessEvent,
     ProcessPairingDecision, SystemGeneratedPortSource,
 };
-#[cfg(not(test))]
-use termirust_controller_listener::{InterfaceProvider as _, SystemInterfaceProvider};
 use termirust_controller_security::StaticPrivateKey;
 use termirust_domain::{
     ControllerCapability, ControllerDeviceId, ControllerListenPolicy, ControllerNetworkRevision,
     ControllerPort, DiscoveryPolicy, HostIdentityPublic, HostIdentityState, ListenerState,
-    NetworkInterfaceCandidate, PairedDeviceRecord, PairedDeviceStatus, PairingOfferId,
+    ListeningAddress, PairedDeviceRecord, PairedDeviceStatus, PairingOfferId,
 };
 use termirust_store::{
     ControllerDeviceRepository, ControllerDeviceStoreError, ControllerNetworkRepository,
@@ -68,8 +66,7 @@ pub(super) struct RemoteDevicesState {
     network_repository: Option<ControllerNetworkRepository>,
     network_revision: ControllerNetworkRevision,
     network_policy: ControllerListenPolicy,
-    interfaces: Vec<NetworkInterfaceCandidate>,
-    pending_interface: Option<NetworkInterfaceCandidate>,
+    listening_addresses: Vec<ListeningAddress>,
     listener_state: ListenerState,
     listener_process: Option<ControllerListenerProcess>,
     desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
@@ -118,9 +115,6 @@ impl RemoteDevicesState {
             Ok(snapshot) => snapshot,
             Err(_) => return Self::failed(RemoteDevicesFailure::Unavailable),
         };
-        let interfaces = SystemInterfaceProvider
-            .eligible_interfaces()
-            .unwrap_or_default();
         let host_private = identity.static_private_key();
         let ssh_pairing_broker =
             SshPairingBroker::bind(durable_runtime_parent(&root).join("controller-pairing.sock"))
@@ -139,8 +133,7 @@ impl RemoteDevicesState {
                     network_repository: Some(network_repository),
                     network_revision: network.revision,
                     network_policy: network.policy,
-                    interfaces,
-                    pending_interface: None,
+                    listening_addresses: Vec::new(),
                     listener_state: ListenerState::Disabled,
                     listener_process: None,
                     desktop_pane_bridge,
@@ -186,8 +179,7 @@ impl RemoteDevicesState {
             network_repository: None,
             network_revision: ControllerNetworkRevision::ZERO,
             network_policy: ControllerListenPolicy::default(),
-            interfaces: Vec::new(),
-            pending_interface: None,
+            listening_addresses: Vec::new(),
             listener_state: ListenerState::Disabled,
             listener_process: None,
             desktop_pane_bridge: None,
@@ -219,8 +211,7 @@ impl RemoteDevicesState {
             network_repository: None,
             network_revision: ControllerNetworkRevision::ZERO,
             network_policy: ControllerListenPolicy::default(),
-            interfaces: Vec::new(),
-            pending_interface: None,
+            listening_addresses: Vec::new(),
             listener_state: ListenerState::Failed(termirust_domain::ListenerFailureCode::Internal),
             listener_process: None,
             desktop_pane_bridge: None,
@@ -268,33 +259,23 @@ impl RemoteDevicesState {
         Ok(outcome.deletion)
     }
 
-    fn begin_listener_setup(&mut self, candidate: NetworkInterfaceCandidate) {
-        self.pending_interface = Some(candidate);
-        self.listener_state = ListenerState::Disabled;
-    }
-
-    fn cancel_listener_setup(&mut self) {
-        self.pending_interface = None;
-    }
-
+    /// Turns remote access on for every private address. An empty port keeps the port used
+    /// before, so paired phones find the computer where they left it.
     fn enable_listener(
         &mut self,
         fixed_port: Option<u16>,
         controller_coordinator: &ControllerCoordinator,
     ) -> Result<(), ()> {
-        let candidate = self.pending_interface.clone().ok_or(())?;
-        let port = match fixed_port {
-            Some(port) => ControllerPort::user_fixed(port).map_err(|_| ())?,
-            None => {
+        let port = match (fixed_port, self.network_policy.port) {
+            (Some(port), _) => ControllerPort::user_fixed(port).map_err(|_| ())?,
+            (None, Some(previous @ ControllerPort::Generated(_))) => previous,
+            (None, _) => {
                 let mut generator = SystemGeneratedPortSource;
                 ControllerPort::generated(generator.next_port().map_err(|_| ())?).map_err(|_| ())?
             }
         };
         let policy = ControllerListenPolicy {
             enabled: true,
-            interface_id: Some(candidate.id),
-            address_family: Some(candidate.address_family),
-            selected_address: Some(candidate.address),
             port: Some(port),
             discovery: DiscoveryPolicy::Off,
         };
@@ -304,7 +285,6 @@ impl RemoteDevicesState {
             .map_err(|_| ())?;
         self.network_revision = saved.revision;
         self.network_policy = saved.policy;
-        self.pending_interface = None;
         if self.start_listener_process(controller_coordinator).is_err() {
             let _ = self.disable_saved_policy();
             return Err(());
@@ -339,6 +319,7 @@ impl RemoteDevicesState {
         .map_err(|_| ())?;
         match controller_coordinator.start_listener(&descriptor) {
             Ok(process) => {
+                self.listening_addresses = process.ready_addresses.clone();
                 self.listener_process = Some(process);
                 if let Some(repository) = &self.network_repository
                     && let Ok(snapshot) = repository.load()
@@ -369,6 +350,7 @@ impl RemoteDevicesState {
         }
         self.disable_saved_policy()?;
         self.listener_state = ListenerState::Disabled;
+        self.listening_addresses.clear();
         self.route_available = false;
         self.clear_pairing(PairingUiState::Idle, controller_coordinator);
         Ok(())
@@ -511,6 +493,7 @@ impl RemoteDevicesState {
         self.listener_process.take();
         self.listener_state =
             ListenerState::Failed(termirust_domain::ListenerFailureCode::Internal);
+        self.listening_addresses.clear();
         self.route_available = false;
         Err(())
     }
@@ -550,6 +533,12 @@ impl RemoteDevicesState {
                     ControllerPairingFailureKind::Storage => PairingUiState::StorageFailure,
                 };
                 self.clear_pairing(state, controller_coordinator);
+            }
+            ControllerListenerEventProjection::Addresses { addresses } => {
+                self.listening_addresses = addresses
+                    .into_iter()
+                    .filter(|address| address.validate().is_ok())
+                    .collect();
             }
         }
         Ok(())
@@ -695,22 +684,12 @@ impl TermiRustApp {
             self.remote_devices.listener_state,
             ListenerState::Ready { .. }
         );
-        let route_detail = self
-            .remote_devices
-            .network_policy
-            .route()
-            .ok()
-            .flatten()
-            .map(|route| {
-                format!(
-                    "{}:{} | {}",
-                    private_route_display(route.address, recording_friendly),
-                    route.port.value(),
-                    localization::remote_devices_listener_discovery_off()
-                )
-            });
+        let starting = matches!(
+            self.remote_devices.listener_state,
+            ListenerState::Binding | ListenerState::ShuttingDown
+        );
         let pairing_offer_qr = self.remote_devices.pairing_offer_qr.clone();
-        let mut content = v_flex()
+        let content = v_flex()
             .gap_2()
             .child(
                 h_flex()
@@ -737,61 +716,132 @@ impl TermiRustApp {
                                     )),
                             ),
                     )
-                    .when(ready, |this| {
-                        this.child(
-                            h_flex()
-                                .gap_2()
-                                .child(
-                                    Button::new("remote-devices-add-controller")
-                                        .debug_selector(|| {
-                                            "remote-devices-add-controller".to_string()
-                                        })
-                                        .small()
-                                        .icon(IconName::Plus)
-                                        .label(localization::remote_devices_add_action())
-                                        .disabled(matches!(
-                                            self.remote_devices.pairing_state,
-                                            PairingUiState::Generating
-                                                | PairingUiState::Waiting
-                                                | PairingUiState::SasReady
-                                        ))
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.begin_controller_pairing(cx);
-                                        })),
-                                )
-                                .child(
-                                    Button::new("remote-devices-stop-listener")
-                                        .debug_selector(|| {
-                                            "remote-devices-stop-listener".to_string()
-                                        })
-                                        .small()
-                                        .danger()
-                                        .label(localization::remote_devices_listener_stop_action())
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.stop_remote_listener(cx);
-                                        })),
-                                ),
+                    .child(if ready {
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("remote-devices-add-controller")
+                                    .debug_selector(|| "remote-devices-add-controller".to_string())
+                                    .small()
+                                    .icon(IconName::Plus)
+                                    .label(localization::remote_devices_add_action())
+                                    .disabled(matches!(
+                                        self.remote_devices.pairing_state,
+                                        PairingUiState::Generating
+                                            | PairingUiState::Waiting
+                                            | PairingUiState::SasReady
+                                    ))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.begin_controller_pairing(cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("remote-devices-stop-listener")
+                                    .debug_selector(|| "remote-devices-stop-listener".to_string())
+                                    .small()
+                                    .danger()
+                                    .label(localization::remote_devices_listener_stop_action())
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.stop_remote_listener(cx);
+                                    })),
+                            )
+                    } else {
+                        h_flex().child(
+                            Button::new("remote-listener-confirm")
+                                .debug_selector(|| "remote-listener-confirm".to_string())
+                                .small()
+                                .icon(IconName::Globe)
+                                .label(localization::remote_devices_listener_enable_action())
+                                .disabled(starting)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.enable_remote_listener(cx);
+                                })),
                         )
                     }),
             )
-            .when_some(route_detail, |this, detail| {
-                this.child(
-                    div()
-                        .px_3()
-                        .py_2()
-                        .rounded(px(theme::CONTROL_RADIUS))
-                        .bg(theme::with_alpha(theme::success(), 0.08))
-                        .text_size(px(theme::TYPE_CAPTION_SIZE))
-                        .text_color(theme::text_main())
-                        .child(detail),
-                )
-            })
             .when(ready, |this| {
                 this.child(
                     div()
                         .text_size(px(theme::TYPE_MICRO_SIZE))
+                        .font_medium()
+                        .text_color(theme::text_muted())
+                        .child(localization::remote_devices_listening_on()),
+                )
+                .when(self.remote_devices.listening_addresses.is_empty(), |this| {
+                    this.child(
+                        div()
+                            .px_3()
+                            .py_2()
+                            .rounded(px(theme::CONTROL_RADIUS))
+                            .bg(theme::with_alpha(theme::warning(), 0.08))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(localization::remote_devices_listener_no_interface()),
+                    )
+                })
+                .children(
+                    self.remote_devices
+                        .listening_addresses
+                        .iter()
+                        .enumerate()
+                        .map(|(index, address)| {
+                            h_flex()
+                                .id(("remote-listener-address", index))
+                                .items_center()
+                                .justify_between()
+                                .gap_3()
+                                .py_1()
+                                .border_t_1()
+                                .border_color(theme::soft_border())
+                                .child(
+                                    div()
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                        .font_medium()
+                                        .text_color(theme::text_main())
+                                        .child(format!(
+                                            "{} | {}",
+                                            address.label,
+                                            interface_kind_label(address.kind)
+                                        )),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                        .font_family(
+                                            theme::current_design_tokens().font_mono_family().0,
+                                        )
+                                        .text_color(theme::text_muted())
+                                        .child(private_socket_display(
+                                            address.address,
+                                            recording_friendly,
+                                        )),
+                                )
+                        }),
+                )
+                .child(
+                    div()
+                        .text_size(px(theme::TYPE_MICRO_SIZE))
                         .text_color(theme::text_muted())
                         .child(localization::remote_devices_listener_guidance()),
+                )
+            })
+            .when(!ready, |this| {
+                this.child(
+                    h_flex()
+                        .items_center()
+                        .flex_wrap()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_size(px(theme::TYPE_MICRO_SIZE))
+                                .text_color(theme::text_muted())
+                                .child(localization::remote_devices_listener_port_help()),
+                        )
+                        .child(
+                            div()
+                                .w(px(theme::CONNECT_PORT_WIDTH))
+                                .child(Input::new(&self.settings_inputs.remote_listener_port)),
+                        ),
                 )
             })
             .when_some(
@@ -902,155 +952,16 @@ impl TermiRustApp {
                 )
             });
 
-        if let Some(candidate) = self.remote_devices.pending_interface.clone() {
-            let kind = interface_kind_label(candidate.kind);
-            content = content.child(
-                v_flex()
-                    .gap_2()
-                    .p_3()
-                    .rounded(px(theme::CONTROL_RADIUS))
-                    .border_1()
-                    .border_color(theme::with_alpha(theme::warning(), 0.45))
-                    .bg(theme::with_alpha(theme::warning(), 0.06))
-                    .child(
-                        div()
-                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                            .font_medium()
-                            .text_color(theme::text_main())
-                            .child(localization::remote_devices_listener_confirm_title()),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(theme::TYPE_CAPTION_SIZE))
-                            .text_color(theme::text_muted())
-                            .child(format!(
-                                "{} | {} | {}",
-                                candidate.label,
-                                kind,
-                                private_route_display(candidate.address, recording_friendly)
-                            )),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(theme::TYPE_MICRO_SIZE))
-                            .text_color(theme::text_muted())
-                            .child(localization::remote_devices_listener_port_help()),
-                    )
-                    .child(Input::new(&self.settings_inputs.remote_listener_port))
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                Button::new("remote-listener-confirm")
-                                    .small()
-                                    .icon(IconName::Globe)
-                                    .label(localization::remote_devices_listener_enable_action())
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.enable_remote_listener(cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("remote-listener-cancel")
-                                    .small()
-                                    .label(localization::common_cancel())
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.remote_devices.cancel_listener_setup();
-                                        cx.notify();
-                                    })),
-                            ),
-                    ),
-            );
-        } else if !ready {
-            content = content
-                .when(self.remote_devices.interfaces.is_empty(), |this| {
-                    this.child(
-                        div()
-                            .px_3()
-                            .py_2()
-                            .rounded(px(theme::CONTROL_RADIUS))
-                            .bg(theme::with_alpha(theme::warning(), 0.08))
-                            .text_size(px(theme::TYPE_CAPTION_SIZE))
-                            .text_color(theme::text_muted())
-                            .child(localization::remote_devices_listener_no_interface()),
-                    )
-                })
-                .children(
-                    self.remote_devices
-                        .interfaces
-                        .iter()
-                        .cloned()
-                        .enumerate()
-                        .map(|(index, candidate)| {
-                            let selected = candidate.clone();
-                            h_flex()
-                                .id(("remote-listener-interface", index))
-                                .items_center()
-                                .justify_between()
-                                .gap_3()
-                                .py_2()
-                                .border_t_1()
-                                .border_color(theme::soft_border())
-                                .child(
-                                    v_flex()
-                                        .gap_1()
-                                        .child(
-                                            div()
-                                                .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                                .font_medium()
-                                                .text_color(theme::text_main())
-                                                .child(candidate.label),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_size(px(theme::TYPE_MICRO_SIZE))
-                                                .text_color(theme::text_muted())
-                                                .child(format!(
-                                                    "{} | {}",
-                                                    interface_kind_label(candidate.kind),
-                                                    private_route_display(
-                                                        candidate.address,
-                                                        recording_friendly
-                                                    )
-                                                )),
-                                        ),
-                                )
-                                .child(
-                                    Button::new(("remote-listener-select", index))
-                                        .small()
-                                        .label(localization::remote_devices_listener_use_network_action())
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.begin_remote_listener_setup(
-                                                selected.clone(),
-                                                window,
-                                                cx,
-                                            );
-                                        })),
-                                )
-                        }),
-                );
-        }
-
         content
             .child(
                 div()
                     .text_size(px(theme::TYPE_MICRO_SIZE))
                     .text_color(theme::text_muted())
-                    .child(pairing_ui_status(self.remote_devices.pairing_state)),
-            )
-            .when(
-                !ready && self.remote_devices.interfaces.is_empty(),
-                |this| {
-                    this.child(
-                        div()
-                            .px_3()
-                            .py_2()
-                            .rounded(px(theme::CONTROL_RADIUS))
-                            .bg(theme::with_alpha(theme::warning(), 0.08))
-                            .text_size(px(theme::TYPE_CAPTION_SIZE))
-                            .text_color(theme::text_muted())
-                            .child(localization::remote_devices_route_required()),
-                    )
-                },
+                    .child(if ready {
+                        pairing_ui_status(self.remote_devices.pairing_state)
+                    } else {
+                        localization::remote_devices_route_required()
+                    }),
             )
             .into_any_element()
     }
@@ -1342,19 +1253,6 @@ impl TermiRustApp {
         cx.notify();
     }
 
-    fn begin_remote_listener_setup(
-        &mut self,
-        candidate: NetworkInterfaceCandidate,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.remote_devices.begin_listener_setup(candidate);
-        self.settings_inputs
-            .remote_listener_port
-            .update(cx, |state, cx| state.set_value("", window, cx));
-        cx.notify();
-    }
-
     fn enable_remote_listener(&mut self, cx: &mut Context<Self>) {
         let port_text = self
             .settings_inputs
@@ -1627,7 +1525,7 @@ fn parse_listener_port(value: &str) -> Result<Option<u16>, ()> {
         .ok_or(())
 }
 
-fn private_route_display(address: std::net::IpAddr, recording_friendly: bool) -> String {
+fn private_socket_display(address: std::net::SocketAddr, recording_friendly: bool) -> String {
     if recording_friendly {
         localization::remote_devices_private_address_hidden()
     } else {
@@ -1722,7 +1620,7 @@ mod network_tests {
 
     use super::{
         ControllerCoordinator, PairingUiState, RemoteDevicesState, listener_state_label,
-        pairing_ui_status, parse_listener_port, private_route_display, remote_device_status,
+        pairing_ui_status, parse_listener_port, private_socket_display, remote_device_status,
         remote_identity_status,
     };
 
@@ -1734,7 +1632,7 @@ mod network_tests {
         assert!(state.devices.is_empty());
         assert_eq!(
             localization::remote_devices_route_required(),
-            "Select an active private LAN or VPN network first."
+            "Turn on remote access to pair a phone."
         );
     }
 
@@ -1752,12 +1650,12 @@ mod network_tests {
 
     #[test]
     fn route_display_is_bidi_isolated_or_recording_safe() {
-        let address = "192.168.1.20".parse().unwrap();
-        let visible = private_route_display(address, false);
+        let address = "192.168.1.20:55000".parse().unwrap();
+        let visible = private_socket_display(address, false);
         assert!(visible.starts_with('\u{2068}'));
         assert!(visible.ends_with('\u{2069}'));
         assert!(visible.contains("192.168.1.20"));
-        let hidden = private_route_display(address, true);
+        let hidden = private_socket_display(address, true);
         assert!(!hidden.contains("192.168.1.20"));
     }
 

@@ -4240,10 +4240,6 @@ id = "remote-devices-listener-guidance"
 context = "Privacy and firewall disclosure while the listener is ready."
 description = "Controller listener exposure guidance"
 [[messages]]
-id = "remote-devices-listener-confirm-title"
-context = "Safe confirmation heading before enabling local network access."
-description = "Confirm Controller listener access title"
-[[messages]]
 id = "remote-devices-listener-port-help"
 context = "Generated or fixed port and discovery guidance."
 description = "Controller listener port guidance"
@@ -4257,16 +4253,12 @@ context = "Confirmed action that enables the selected network listener."
 description = "Enable Controller listener action"
 [[messages]]
 id = "remote-devices-listener-no-interface"
-context = "No eligible active private LAN or VPN interface exists."
+context = "The listener is on but the computer has no private Wi-Fi, Ethernet, or VPN address yet."
 description = "Controller listener no-interface state"
 [[messages]]
-id = "remote-devices-listener-use-network-action"
-context = "Action that selects one exact network interface."
-description = "Select Controller listener network action"
-[[messages]]
-id = "remote-devices-listener-discovery-off"
-context = "Privacy label confirming automatic discovery is disabled."
-description = "Controller listener discovery disabled label"
+id = "remote-devices-listening-on"
+context = "Heading above the private addresses the listener is accepting connections on."
+description = "Controller listener addresses heading"
 [[messages]]
 id = "remote-devices-private-address-hidden"
 context = "Recording-friendly replacement for a private Controller route address."

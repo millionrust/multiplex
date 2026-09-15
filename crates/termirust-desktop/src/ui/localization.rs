@@ -804,10 +804,6 @@ static_message!(
     RemoteDevicesListenerGuidanceArgs
 );
 static_message!(
-    remote_devices_listener_confirm_title,
-    RemoteDevicesListenerConfirmTitleArgs
-);
-static_message!(
     remote_devices_listener_port_help,
     RemoteDevicesListenerPortHelpArgs
 );
@@ -823,14 +819,7 @@ static_message!(
     remote_devices_listener_no_interface,
     RemoteDevicesListenerNoInterfaceArgs
 );
-static_message!(
-    remote_devices_listener_use_network_action,
-    RemoteDevicesListenerUseNetworkActionArgs
-);
-static_message!(
-    remote_devices_listener_discovery_off,
-    RemoteDevicesListenerDiscoveryOffArgs
-);
+static_message!(remote_devices_listening_on, RemoteDevicesListeningOnArgs);
 static_message!(
     remote_devices_private_address_hidden,
     RemoteDevicesPrivateAddressHiddenArgs

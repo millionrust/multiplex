@@ -1,11 +1,11 @@
 use std::io;
 
 use termirust_domain::{
-    AddressFamily, ControllerListenPolicy, NetworkInterfaceCandidate, NetworkInterfaceId,
-    NetworkInterfaceKind, is_private_controller_address,
+    AddressFamily, NetworkInterfaceCandidate, NetworkInterfaceId, NetworkInterfaceKind,
+    is_private_controller_address,
 };
 
-use crate::{ListenerError, ListenerErrorCode};
+use crate::ListenerError;
 
 pub trait InterfaceProvider: Send + Sync {
     fn eligible_interfaces(&self) -> Result<Vec<NetworkInterfaceCandidate>, ListenerError>;
@@ -54,24 +54,6 @@ impl InterfaceProvider for SystemInterfaceProvider {
         });
         Ok(candidates)
     }
-}
-
-pub fn resolve_selected_interface(
-    policy: &ControllerListenPolicy,
-    interfaces: &[NetworkInterfaceCandidate],
-) -> Result<NetworkInterfaceCandidate, ListenerError> {
-    let route = policy
-        .route()?
-        .ok_or_else(|| ListenerError::new(ListenerErrorCode::Disabled))?;
-    interfaces
-        .iter()
-        .find(|candidate| {
-            candidate.id == route.interface_id
-                && candidate.address_family == route.address_family
-                && candidate.address == route.address
-        })
-        .cloned()
-        .ok_or_else(|| ListenerError::new(ListenerErrorCode::InterfaceGone))
 }
 
 fn stable_interface_id(interface: &if_addrs::Interface) -> Result<NetworkInterfaceId, io::Error> {

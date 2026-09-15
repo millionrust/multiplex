@@ -1,5 +1,5 @@
 use std::fmt;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -141,77 +141,94 @@ pub enum DiscoveryPolicy {
     Off,
 }
 
+/// Whether and on which port the Controller listener runs. When enabled it listens on every
+/// eligible private address the computer has, so there is no network to choose.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(default, deny_unknown_fields)]
+#[serde(from = "StoredListenPolicy")]
 pub struct ControllerListenPolicy {
     pub enabled: bool,
-    pub interface_id: Option<NetworkInterfaceId>,
-    pub address_family: Option<AddressFamily>,
-    pub selected_address: Option<IpAddr>,
     pub port: Option<ControllerPort>,
     pub discovery: DiscoveryPolicy,
 }
 
 impl ControllerListenPolicy {
     pub fn validate(&self) -> Result<(), ControllerNetworkError> {
-        let fields = (
-            self.interface_id.as_ref(),
-            self.address_family,
-            self.selected_address,
-            self.port,
-        );
-        match fields {
-            (None, None, None, None) if !self.enabled => Ok(()),
-            (Some(interface_id), Some(family), Some(address), Some(port)) => {
-                NetworkInterfaceId::new(interface_id.as_str())?;
-                validate_private_address(family, address)?;
-                port.validate()
-            }
-            _ => Err(ControllerNetworkError::IncompletePolicy),
+        match (self.enabled, self.port) {
+            (_, Some(port)) => port.validate(),
+            (false, None) => Ok(()),
+            (true, None) => Err(ControllerNetworkError::IncompletePolicy),
         }
     }
 
-    pub fn route(&self) -> Result<Option<RouteCandidate>, ControllerNetworkError> {
+    /// The port to listen on, or `None` when the listener is off.
+    pub fn listening_port(&self) -> Result<Option<ControllerPort>, ControllerNetworkError> {
         self.validate()?;
-        if !self.enabled {
-            return Ok(None);
-        }
-        Ok(Some(RouteCandidate {
-            interface_id: self
-                .interface_id
-                .clone()
-                .ok_or(ControllerNetworkError::IncompletePolicy)?,
-            address_family: self
-                .address_family
-                .ok_or(ControllerNetworkError::IncompletePolicy)?,
-            address: self
-                .selected_address
-                .ok_or(ControllerNetworkError::IncompletePolicy)?,
-            port: self.port.ok_or(ControllerNetworkError::IncompletePolicy)?,
-            discovery: self.discovery,
-        }))
+        Ok(self.port.filter(|_| self.enabled))
     }
 }
 
+/// The saved form, which still accepts the exact-network fields written before the listener
+/// used every private address. Those fields are ignored and dropped on the next save.
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct StoredListenPolicy {
+    enabled: bool,
+    port: Option<ControllerPort>,
+    discovery: DiscoveryPolicy,
+    #[serde(rename = "interface_id")]
+    _interface_id: Option<NetworkInterfaceId>,
+    #[serde(rename = "address_family")]
+    _address_family: Option<AddressFamily>,
+    #[serde(rename = "selected_address")]
+    _selected_address: Option<IpAddr>,
+}
+
+impl From<StoredListenPolicy> for ControllerListenPolicy {
+    fn from(stored: StoredListenPolicy) -> Self {
+        Self {
+            enabled: stored.enabled,
+            port: stored.port,
+            discovery: stored.discovery,
+        }
+    }
+}
+
+/// One address the listener is accepting connections on.
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct RouteCandidate {
+pub struct ListeningAddress {
     pub interface_id: NetworkInterfaceId,
-    pub address_family: AddressFamily,
-    pub address: IpAddr,
-    pub port: ControllerPort,
-    pub discovery: DiscoveryPolicy,
+    pub label: String,
+    pub kind: NetworkInterfaceKind,
+    pub address: SocketAddr,
 }
 
-impl fmt::Debug for RouteCandidate {
+impl ListeningAddress {
+    pub fn validate(&self) -> Result<(), ControllerNetworkError> {
+        NetworkInterfaceCandidate {
+            id: self.interface_id.clone(),
+            label: self.label.clone(),
+            kind: self.kind,
+            address_family: if self.address.is_ipv4() {
+                AddressFamily::Ipv4
+            } else {
+                AddressFamily::Ipv6
+            },
+            address: self.address.ip(),
+        }
+        .validate()?;
+        ControllerPort::user_fixed(self.address.port()).map(|_| ())
+    }
+}
+
+impl fmt::Debug for ListeningAddress {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("RouteCandidate")
+            .debug_struct("ListeningAddress")
             .field("interface_id", &self.interface_id)
-            .field("address_family", &self.address_family)
+            .field("label", &"[REDACTED]")
+            .field("kind", &self.kind)
             .field("address", &"[REDACTED]")
-            .field("port", &self.port)
-            .field("discovery", &self.discovery)
             .finish()
     }
 }
@@ -403,54 +420,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_policy_is_disabled_and_has_no_route() {
+    fn default_policy_is_disabled_and_has_no_port() {
         let policy = ControllerListenPolicy::default();
-        assert_eq!(policy.route().unwrap(), None);
+        assert_eq!(policy.listening_port().unwrap(), None);
         assert_eq!(policy.discovery, DiscoveryPolicy::Off);
     }
 
     #[test]
-    fn exact_private_policy_is_valid_and_public_or_wildcard_routes_are_rejected() {
-        let private = ControllerListenPolicy {
+    fn enabled_policy_needs_a_valid_port_and_a_stopped_policy_keeps_it() {
+        let enabled = ControllerListenPolicy {
             enabled: true,
-            interface_id: Some(NetworkInterfaceId::new("17:en0").unwrap()),
-            address_family: Some(AddressFamily::Ipv4),
-            selected_address: Some("192.168.1.8".parse().unwrap()),
             port: Some(ControllerPort::generated(55_000).unwrap()),
             discovery: DiscoveryPolicy::Off,
         };
-        assert!(private.route().unwrap().is_some());
-
-        for address in [
-            "0.0.0.0",
-            "127.0.0.1",
-            "8.8.8.8",
-            "::",
-            "::1",
-            "2001:4860:4860::8888",
-        ] {
-            let mut invalid = private.clone();
-            invalid.selected_address = Some(address.parse().unwrap());
-            invalid.address_family = Some(if address.contains(':') {
-                AddressFamily::Ipv6
-            } else {
-                AddressFamily::Ipv4
-            });
-            assert!(invalid.validate().is_err(), "accepted {address}");
-        }
-    }
-
-    #[test]
-    fn stopped_complete_policy_is_retained_but_partial_policy_is_rejected() {
-        let retained = ControllerListenPolicy {
+        assert_eq!(enabled.listening_port().unwrap(), enabled.port);
+        let stopped = ControllerListenPolicy {
             enabled: false,
-            interface_id: Some(NetworkInterfaceId::new("9:utun4").unwrap()),
-            address_family: Some(AddressFamily::Ipv6),
-            selected_address: Some("fd00::2".parse().unwrap()),
-            port: Some(ControllerPort::user_fixed(7_777).unwrap()),
-            discovery: DiscoveryPolicy::Off,
+            ..enabled.clone()
         };
-        assert_eq!(retained.route().unwrap(), None);
+        assert_eq!(stopped.listening_port().unwrap(), None);
         assert_eq!(
             ControllerListenPolicy {
                 enabled: true,
@@ -459,6 +447,66 @@ mod tests {
             .validate(),
             Err(ControllerNetworkError::IncompletePolicy)
         );
+        assert!(
+            ControllerListenPolicy {
+                port: Some(ControllerPort::Generated(80)),
+                ..enabled
+            }
+            .validate()
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn exact_network_policies_saved_by_older_versions_still_load() {
+        let stored = r#"{"enabled":true,"interface_id":"17:en0","address_family":"ipv4","selected_address":"192.168.1.8","port":{"generated":55000},"discovery":"off"}"#;
+        let policy: ControllerListenPolicy = serde_json::from_str(stored).unwrap();
+        assert_eq!(
+            policy,
+            ControllerListenPolicy {
+                enabled: true,
+                port: Some(ControllerPort::Generated(55_000)),
+                discovery: DiscoveryPolicy::Off,
+            }
+        );
+        assert_eq!(
+            serde_json::to_string(&policy).unwrap(),
+            r#"{"enabled":true,"port":{"generated":55000},"discovery":"off"}"#
+        );
+        assert!(
+            serde_json::from_str::<ControllerListenPolicy>(r#"{"enabled":false,"extra":1}"#)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn listening_addresses_must_be_private_with_a_real_port() {
+        let address = |value: &str| ListeningAddress {
+            interface_id: NetworkInterfaceId::new("17:en0").unwrap(),
+            label: "en0".into(),
+            kind: NetworkInterfaceKind::Lan,
+            address: value.parse().unwrap(),
+        };
+        for valid in [
+            "192.168.1.8:55000",
+            "100.81.253.53:55000",
+            "[fd7a:115c:a1e0::1]:55000",
+        ] {
+            assert!(address(valid).validate().is_ok(), "rejected {valid}");
+        }
+        for invalid in [
+            "0.0.0.0:55000",
+            "127.0.0.1:55000",
+            "8.8.8.8:55000",
+            "169.254.1.1:55000",
+            "[::]:55000",
+            "[::1]:55000",
+            "[fe80::1]:55000",
+            "[2001:4860:4860::8888]:55000",
+            "192.168.1.8:80",
+        ] {
+            assert!(address(invalid).validate().is_err(), "accepted {invalid}");
+        }
     }
 
     #[test]

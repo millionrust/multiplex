@@ -196,9 +196,6 @@ fn run() -> Result<(), String> {
     initialize_authority(&controller_root, &host_private)?;
     let policy = ControllerListenPolicy {
         enabled: true,
-        interface_id: Some(interface.id.clone()),
-        address_family: Some(interface.address_family),
-        selected_address: Some(interface.address),
         port: Some(ControllerPort::generated(49_152).map_err(|_| "controller_port")?),
         discovery: DiscoveryPolicy::Off,
     };

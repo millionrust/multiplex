@@ -1,13 +1,13 @@
 use std::fmt;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 
 use serde::{Deserialize, Serialize};
 use termirust_controller_security::{
     PAIRING_OFFER_BYTES, PairingOfferCore, decode_offer, encode_offer,
 };
 use termirust_domain::{
-    AddressFamily, ControllerDeviceId, ControllerNetworkError, ControllerPort, DiscoveryPolicy,
-    PairingOfferId, RouteCandidate,
+    ControllerDeviceId, ControllerPort, ListeningAddress, PairingOfferId,
+    is_private_controller_address,
 };
 use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
 
@@ -17,6 +17,9 @@ const CONNECTION_MAGIC: [u8; 4] = *b"TRCN";
 const CONNECTION_VERSION: u16 = 1;
 const CONNECTION_PREFACE_BYTES: usize = 8;
 const PAIRING_ENVELOPE_VERSION: u16 = 1;
+/// Schema 2 lists every private address the Host listens on instead of a single one.
+const PAIRING_OFFER_SCHEMA_VERSION: u16 = 2;
+pub const MAX_PAIRING_ROUTES: usize = 8;
 const MAX_PAIRING_ENVELOPE_BYTES: usize = 4 * 1024;
 const MAX_PAIRING_CONTROL_BYTES: usize = 4 * 1024;
 
@@ -79,10 +82,40 @@ pub struct ControllerPairingOffer {
     pub identity_generation: u64,
     pub revocation_epoch: u64,
     pub session_generation: u64,
-    pub address_family: AddressFamily,
+    pub routes: Vec<PairingRoute>,
+    pub offer_bytes: Vec<u8>,
+}
+
+/// One private address a phone can reach the Host on.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PairingRoute {
     pub address: IpAddr,
     pub port: u16,
-    pub offer_bytes: Vec<u8>,
+}
+
+impl PairingRoute {
+    pub fn socket_addr(self) -> SocketAddr {
+        SocketAddr::new(self.address, self.port)
+    }
+
+    fn validate(self) -> Result<(), ListenerError> {
+        ControllerPort::user_fixed(self.port)
+            .map_err(|_| ListenerError::new(ListenerErrorCode::InvalidPolicy))?;
+        if !is_private_controller_address(self.address) {
+            return Err(ListenerError::new(ListenerErrorCode::InvalidPolicy));
+        }
+        Ok(())
+    }
+}
+
+impl From<&ListeningAddress> for PairingRoute {
+    fn from(address: &ListeningAddress) -> Self {
+        Self {
+            address: address.address.ip(),
+            port: address.address.port(),
+        }
+    }
 }
 
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
@@ -170,21 +203,23 @@ impl fmt::Debug for SshControllerPairingOffer {
 impl ControllerPairingOffer {
     pub fn new(
         offer_id: PairingOfferId,
-        route: &RouteCandidate,
+        routes: &[ListeningAddress],
         offer: &PairingOfferCore,
         identity_generation: u64,
         revocation_epoch: u64,
         session_generation: u64,
     ) -> Result<Self, ListenerError> {
         let value = Self {
-            schema_version: PAIRING_ENVELOPE_VERSION,
+            schema_version: PAIRING_OFFER_SCHEMA_VERSION,
             offer_id,
             identity_generation,
             revocation_epoch,
             session_generation,
-            address_family: route.address_family,
-            address: route.address,
-            port: route.port.value(),
+            routes: routes
+                .iter()
+                .take(MAX_PAIRING_ROUTES)
+                .map(PairingRoute::from)
+                .collect(),
             offer_bytes: encode_offer(offer)
                 .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))?
                 .to_vec(),
@@ -220,30 +255,18 @@ impl ControllerPairingOffer {
     }
 
     fn validate(&self) -> Result<(), ListenerError> {
-        if self.schema_version != PAIRING_ENVELOPE_VERSION
+        if self.schema_version != PAIRING_OFFER_SCHEMA_VERSION
             || self.identity_generation == 0
             || self.offer_bytes.len() != PAIRING_OFFER_BYTES
         {
             return Err(ListenerError::new(ListenerErrorCode::MalformedFrame));
         }
-        let port = ControllerPort::user_fixed(self.port).map_err(network_error)?;
-        let route = RouteCandidate {
-            interface_id: termirust_domain::NetworkInterfaceId::new("pairing-route")
-                .map_err(network_error)?,
-            address_family: self.address_family,
-            address: self.address,
-            port,
-            discovery: DiscoveryPolicy::Off,
-        };
-        let policy = termirust_domain::ControllerListenPolicy {
-            enabled: true,
-            interface_id: Some(route.interface_id),
-            address_family: Some(route.address_family),
-            selected_address: Some(route.address),
-            port: Some(route.port),
-            discovery: route.discovery,
-        };
-        policy.validate().map_err(network_error)?;
+        if self.routes.is_empty() || self.routes.len() > MAX_PAIRING_ROUTES {
+            return Err(ListenerError::new(ListenerErrorCode::InvalidPolicy));
+        }
+        for route in &self.routes {
+            route.validate()?;
+        }
         decode_offer(&self.offer_bytes)
             .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))?;
         Ok(())
@@ -375,26 +398,29 @@ fn decode_control<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> Result<T, Liste
     serde_json::from_slice(bytes).map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))
 }
 
-fn network_error(_: ControllerNetworkError) -> ListenerError {
-    ListenerError::new(ListenerErrorCode::InvalidPolicy)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use termirust_controller_security::{
         CONTROLLER_V1, CapabilitySet, ControllerCapability, HostStaticPublicKey, PairingNonce,
     };
-    use termirust_domain::{NetworkInterfaceId, RouteCandidate};
+    use termirust_domain::{NetworkInterfaceId, NetworkInterfaceKind};
 
-    fn route() -> RouteCandidate {
-        RouteCandidate {
+    fn listening(address: &str) -> ListeningAddress {
+        ListeningAddress {
             interface_id: NetworkInterfaceId::new("4:en0").unwrap(),
-            address_family: AddressFamily::Ipv4,
-            address: "192.168.1.9".parse().unwrap(),
-            port: ControllerPort::generated(55_555).unwrap(),
-            discovery: DiscoveryPolicy::Off,
+            label: "en0".into(),
+            kind: NetworkInterfaceKind::Lan,
+            address: address.parse().unwrap(),
         }
+    }
+
+    fn routes() -> Vec<ListeningAddress> {
+        vec![
+            listening("192.168.1.9:55555"),
+            listening("100.81.253.53:55555"),
+            listening("[fd7a:115c:a1e0::8e01:fdaa]:55555"),
+        ]
     }
 
     fn offer() -> PairingOfferCore {
@@ -437,11 +463,26 @@ mod tests {
     #[test]
     fn pairing_offer_round_trips_without_interface_metadata() {
         let envelope =
-            ControllerPairingOffer::new(PairingOfferId::new(), &route(), &offer(), 1, 3, 5)
+            ControllerPairingOffer::new(PairingOfferId::new(), &routes(), &offer(), 1, 3, 5)
                 .unwrap();
         let text = envelope.encode_text().unwrap();
         assert!(!text.contains("en0"));
         assert!(!text.contains("4:en0"));
+        assert_eq!(
+            envelope
+                .routes
+                .iter()
+                .map(|route| route.socket_addr().to_string())
+                .collect::<Vec<_>>(),
+            [
+                "192.168.1.9:55555",
+                "100.81.253.53:55555",
+                "[fd7a:115c:a1e0::8e01:fdaa]:55555"
+            ]
+        );
+        let mut single_route: serde_json::Value = serde_json::from_str(&text).unwrap();
+        single_route["schema_version"] = serde_json::json!(1);
+        assert!(ControllerPairingOffer::decode_text(&single_route.to_string()).is_err());
         assert_eq!(
             ControllerPairingOffer::decode_text(&text).unwrap(),
             envelope
@@ -450,7 +491,7 @@ mod tests {
         assert_eq!(
             format!("{envelope:?}"),
             format!(
-                "ControllerPairingOffer {{ schema_version: 1, offer_id: {:?}, identity_generation: 1, revocation_epoch: 3, session_generation: 5, route: \"[REDACTED]\", offer_bytes: \"[REDACTED]\" }}",
+                "ControllerPairingOffer {{ schema_version: 2, offer_id: {:?}, identity_generation: 1, revocation_epoch: 3, session_generation: 5, route: \"[REDACTED]\", offer_bytes: \"[REDACTED]\" }}",
                 envelope.offer_id
             )
         );
@@ -473,14 +514,17 @@ mod tests {
 
     #[test]
     fn pairing_offer_rejects_public_routes_and_unknown_fields() {
-        let mut public = route();
-        public.address = "8.8.8.8".parse().unwrap();
+        let mut public = routes();
+        public.push(listening("8.8.8.8:55555"));
         assert!(
             ControllerPairingOffer::new(PairingOfferId::new(), &public, &offer(), 1, 3, 5).is_err()
         );
+        assert!(
+            ControllerPairingOffer::new(PairingOfferId::new(), &[], &offer(), 1, 3, 5).is_err()
+        );
 
         let envelope =
-            ControllerPairingOffer::new(PairingOfferId::new(), &route(), &offer(), 1, 3, 5)
+            ControllerPairingOffer::new(PairingOfferId::new(), &routes(), &offer(), 1, 3, 5)
                 .unwrap();
         let mut value: serde_json::Value =
             serde_json::from_str(&envelope.encode_text().unwrap()).unwrap();

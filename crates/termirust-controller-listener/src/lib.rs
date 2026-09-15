@@ -1,7 +1,8 @@
-//! Opt-in exact-interface Controller bridge for user-controlled LAN and VPN routes.
+//! Opt-in Controller bridge for private LAN and VPN networks.
 //!
-//! The listener is disabled by default, does not advertise itself, never mutates a firewall,
-//! and rejects wildcard or public bind addresses before reaching the socket adapter.
+//! The listener is disabled by default. When enabled it binds each private address the
+//! computer has, never mutates a firewall, and rejects wildcard, loopback, and public bind
+//! addresses before reaching the socket adapter.
 
 mod authorization;
 mod bind;
@@ -28,8 +29,8 @@ mod tmux_sessions;
 
 pub use authorization::{BridgeAuthorization, BridgeCommand, BridgeCommandKind};
 pub use bind::{
-    BoundControllerListener, BoundRoute, ControllerBinder, GeneratedPortSource, SystemBinder,
-    SystemGeneratedPortSource, bind_selected_route,
+    BoundAddress, BoundControllerListeners, ControllerBinder, GeneratedPortSource, SystemBinder,
+    SystemGeneratedPortSource, bind_address, bind_private_addresses,
 };
 pub use client_channel::ControllerClientChannel;
 pub use desktop_pane_bridge::{
@@ -48,7 +49,7 @@ pub use handshake::{
     authenticate_controller, initiate_controller,
 };
 pub use host_backend::HostBackendFactory;
-pub use interfaces::{InterfaceProvider, SystemInterfaceProvider, resolve_selected_interface};
+pub use interfaces::{InterfaceProvider, SystemInterfaceProvider};
 pub use launch::{
     LISTENER_OWNERSHIP_WAIT, ListenerLaunchDescriptor, RepositoryBridgeSources,
     run_listener_worker, serve_repository_stdio_bridge,
@@ -59,8 +60,8 @@ pub use pairing::{
     PairingAuthoritySnapshot, pair_controller, pair_controller_client,
 };
 pub use pairing_protocol::{
-    ControllerConnectionPurpose, ControllerPairingOffer, PairingConnectRequest,
-    PairingDeviceRegistration, PairingHostAck, SshControllerPairingOffer,
+    ControllerConnectionPurpose, ControllerPairingOffer, MAX_PAIRING_ROUTES, PairingConnectRequest,
+    PairingDeviceRegistration, PairingHostAck, PairingRoute, SshControllerPairingOffer,
 };
 pub use process_protocol::{
     ListenerControlCommand, ListenerProcessEvent, ProcessFirewallObservation,
@@ -77,7 +78,7 @@ pub use rate_limit::{AuthRateLimiter, SourceBucket, SourceBucketKey};
 pub use runtime::{
     AuthoritySnapshot, ControllerAuthorityProvider, ControllerBackendFactory,
     ControllerConnectionBackend, HostCommandContext, ListenerRuntime, ListenerRuntimeReport,
-    ListenerServices, serve_authenticated_stdio_stream,
+    ListenerServices, ListeningAddressObserver, serve_authenticated_stdio_stream,
 };
 pub use ssh_pairing_broker::{
     SshHostPairingDecision, SshHostPairingDecisionValue, SshHostPairingPrompt,

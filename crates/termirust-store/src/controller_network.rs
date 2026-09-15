@@ -296,15 +296,11 @@ fn io_error(operation: &'static str, error: io::Error) -> ControllerNetworkStore
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::IpAddr;
-    use termirust_domain::{AddressFamily, ControllerPort, DiscoveryPolicy, NetworkInterfaceId};
+    use termirust_domain::{ControllerPort, DiscoveryPolicy};
 
     fn policy(enabled: bool) -> ControllerListenPolicy {
         ControllerListenPolicy {
             enabled,
-            interface_id: Some(NetworkInterfaceId::new("4:en0").unwrap()),
-            address_family: Some(AddressFamily::Ipv4),
-            selected_address: Some(IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 9))),
             port: Some(ControllerPort::Generated(55_555)),
             discovery: DiscoveryPolicy::Off,
         }

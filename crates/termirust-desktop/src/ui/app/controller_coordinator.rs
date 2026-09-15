@@ -65,6 +65,9 @@ pub(super) enum ControllerListenerEventProjection {
     Failed {
         failure: ControllerPairingFailureKind,
     },
+    Addresses {
+        addresses: Vec<termirust_domain::ListeningAddress>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -255,6 +258,9 @@ impl ControllerCoordinator {
             ListenerProcessEvent::Ready { .. } => {
                 Err(ControllerListenerEventProjectionError::UnexpectedReady)
             }
+            ListenerProcessEvent::ListeningAddresses { addresses, .. } => {
+                Ok(ControllerListenerEventProjection::Addresses { addresses })
+            }
             ListenerProcessEvent::PairingOffer {
                 offer_id,
                 offer_text,
@@ -336,11 +342,11 @@ mod tests {
     };
     use termirust_controller_security::StaticPrivateKey;
     use termirust_domain::{
-        AddressFamily, ControllerCapabilities, ControllerCapability, ControllerDeviceAuthority,
+        ControllerCapabilities, ControllerCapability, ControllerDeviceAuthority,
         ControllerDeviceId, ControllerListenPolicy, ControllerNetworkRevision, ControllerPort,
         ControllerProtocolRange, DevicePublicKey, DeviceStoreRevision, DiscoveryPolicy,
         HostIdentityGeneration, HostIdentityPublic, HostIdentitySecretRef, HostIdentityState,
-        HostPublicKey, NetworkInterfaceId, PairedDeviceRecord, PairedDeviceStatus, PairingOfferId,
+        HostPublicKey, PairedDeviceRecord, PairedDeviceStatus, PairingOfferId,
     };
     use termirust_store::ControllerDeviceRepository;
 
@@ -566,9 +572,6 @@ mod tests {
         let fixture = tempfile::tempdir().unwrap();
         let policy = ControllerListenPolicy {
             enabled: true,
-            interface_id: Some(NetworkInterfaceId::new("en-test").unwrap()),
-            address_family: Some(AddressFamily::Ipv4),
-            selected_address: Some("192.168.1.20".parse().unwrap()),
             port: Some(ControllerPort::user_fixed(49_152).unwrap()),
             discovery: DiscoveryPolicy::Off,
         };
@@ -670,7 +673,8 @@ mod tests {
         let stale_offer_id = PairingOfferId::new();
 
         assert_eq!(
-            coordinator.project_listener_event(None, ListenerProcessEvent::ready(49_152)),
+            coordinator
+                .project_listener_event(None, ListenerProcessEvent::ready(49_152, Vec::new())),
             Err(ControllerListenerEventProjectionError::UnexpectedReady)
         );
         assert_eq!(

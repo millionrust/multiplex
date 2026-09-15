@@ -3,11 +3,11 @@ use std::net::{SocketAddr, TcpListener};
 
 use rand::Rng as _;
 use termirust_domain::{
-    ControllerListenPolicy, ControllerPort, DiscoveryPolicy, GENERATED_PORT_MIN,
-    MAX_GENERATED_PORT_ATTEMPTS, NetworkInterfaceCandidate, NetworkInterfaceId,
+    ControllerListenPolicy, ControllerPort, GENERATED_PORT_MIN, ListeningAddress,
+    MAX_GENERATED_PORT_ATTEMPTS, NetworkInterfaceCandidate,
 };
 
-use crate::{InterfaceProvider, ListenerError, ListenerErrorCode, resolve_selected_interface};
+use crate::{InterfaceProvider, ListenerError, ListenerErrorCode};
 
 pub trait ControllerBinder: Send + Sync {
     type Listener;
@@ -47,99 +47,110 @@ impl GeneratedPortSource for SystemGeneratedPortSource {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BoundRoute {
-    pub interface_id: NetworkInterfaceId,
-    pub address: SocketAddr,
-    pub port: ControllerPort,
-    pub discovery: DiscoveryPolicy,
-}
-
-pub struct BoundControllerListener<L> {
+/// One bound socket and the private address it accepts on.
+pub struct BoundAddress<L> {
     pub listener: L,
-    pub route: BoundRoute,
+    pub address: ListeningAddress,
 }
 
-impl<L> std::fmt::Debug for BoundControllerListener<L> {
+/// Every private address the listener could bind, all on one port.
+pub struct BoundControllerListeners<L> {
+    pub port: ControllerPort,
+    pub bound: Vec<BoundAddress<L>>,
+}
+
+impl<L> BoundControllerListeners<L> {
+    pub fn addresses(&self) -> Vec<ListeningAddress> {
+        self.bound
+            .iter()
+            .map(|bound| bound.address.clone())
+            .collect()
+    }
+}
+
+impl<L> std::fmt::Debug for BoundControllerListeners<L> {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
-            .debug_struct("BoundControllerListener")
-            .field("listener", &"[OPAQUE]")
-            .field("route", &"[REDACTED]")
+            .debug_struct("BoundControllerListeners")
+            .field("port", &self.port)
+            .field("bound", &self.bound.len())
             .finish()
     }
 }
 
-pub fn bind_selected_route<P, B, R>(
+/// Binds every eligible private address on the policy's port.
+///
+/// Addresses that cannot take the port are skipped; the runtime retries them as networks
+/// change. A generated port is replaced only when no address at all can use it, and a
+/// computer with no private network yet binds nothing and waits.
+pub fn bind_private_addresses<P, B, R>(
     policy: &ControllerListenPolicy,
     interfaces: &P,
     binder: &B,
     ports: &mut R,
-) -> Result<BoundControllerListener<B::Listener>, ListenerError>
+) -> Result<BoundControllerListeners<B::Listener>, ListenerError>
 where
     P: InterfaceProvider,
     B: ControllerBinder,
     R: GeneratedPortSource,
 {
-    policy.validate()?;
-    if !policy.enabled {
-        return Err(ListenerError::new(ListenerErrorCode::Disabled));
-    }
+    let requested = policy
+        .listening_port()?
+        .ok_or_else(|| ListenerError::new(ListenerErrorCode::Disabled))?;
     let candidates = interfaces.eligible_interfaces()?;
     if candidates.is_empty() {
-        return Err(ListenerError::new(ListenerErrorCode::NoEligibleInterface));
+        return Ok(BoundControllerListeners {
+            port: requested,
+            bound: Vec::new(),
+        });
     }
-    let selected = resolve_selected_interface(policy, &candidates)?;
-    let requested_port = policy
-        .port
-        .ok_or_else(|| ListenerError::new(ListenerErrorCode::InvalidPolicy))?;
-    match requested_port {
-        ControllerPort::UserFixed(port) => bind_one(selected, requested_port, port, binder),
-        ControllerPort::Generated(persisted_port) => {
-            let mut last_conflict = None;
-            for attempt in 0..MAX_GENERATED_PORT_ATTEMPTS {
-                let port = if attempt == 0 {
-                    persisted_port
-                } else {
-                    ports.next_port()?
-                };
-                ControllerPort::generated(port)?;
-                match bind_one(
-                    selected.clone(),
-                    ControllerPort::Generated(port),
-                    port,
-                    binder,
-                ) {
-                    Ok(bound) => return Ok(bound),
-                    Err(error) if error.code == ListenerErrorCode::PortConflict => {
-                        last_conflict = Some(error);
-                    }
-                    Err(error) => return Err(error),
+    let attempts = match requested {
+        ControllerPort::UserFixed(_) => 1,
+        ControllerPort::Generated(_) => MAX_GENERATED_PORT_ATTEMPTS,
+    };
+    let mut port = requested;
+    let mut last_error = None;
+    for attempt in 0..attempts {
+        if attempt > 0 {
+            port = ControllerPort::generated(ports.next_port()?)?;
+        }
+        let mut bound = Vec::new();
+        let mut all_conflicts = true;
+        for candidate in &candidates {
+            match bind_address(candidate, port, binder) {
+                Ok(address) => bound.push(address),
+                Err(error) => {
+                    all_conflicts &= error.code == ListenerErrorCode::PortConflict;
+                    last_error = Some(error);
                 }
             }
-            Err(last_conflict
-                .unwrap_or_else(|| ListenerError::new(ListenerErrorCode::PortConflict)))
+        }
+        if !bound.is_empty() {
+            return Ok(BoundControllerListeners { port, bound });
+        }
+        if !all_conflicts {
+            break;
         }
     }
+    Err(last_error.unwrap_or_else(|| ListenerError::new(ListenerErrorCode::PortConflict)))
 }
 
-fn bind_one<B: ControllerBinder>(
-    selected: NetworkInterfaceCandidate,
+/// Binds one eligible private address on `port`.
+pub fn bind_address<B: ControllerBinder + ?Sized>(
+    candidate: &NetworkInterfaceCandidate,
     port: ControllerPort,
-    port_number: u16,
     binder: &B,
-) -> Result<BoundControllerListener<B::Listener>, ListenerError> {
-    let address = SocketAddr::new(selected.address, port_number);
+) -> Result<BoundAddress<B::Listener>, ListenerError> {
+    candidate.validate()?;
+    port.validate()?;
+    let address = ListeningAddress {
+        interface_id: candidate.id.clone(),
+        label: candidate.label.clone(),
+        kind: candidate.kind,
+        address: SocketAddr::new(candidate.address, port.value()),
+    };
     let listener = binder
-        .bind_exact(address)
+        .bind_exact(address.address)
         .map_err(crate::error::bind_error)?;
-    Ok(BoundControllerListener {
-        listener,
-        route: BoundRoute {
-            interface_id: selected.id,
-            address,
-            port,
-            discovery: DiscoveryPolicy::Off,
-        },
-    })
+    Ok(BoundAddress { listener, address })
 }

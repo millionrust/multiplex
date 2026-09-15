@@ -9,7 +9,7 @@ use termirust_controller_listener::{
     ListenerControlCommand, ListenerError, ListenerLaunchDescriptor, ListenerProcessEvent,
     ProcessPairingDecision,
 };
-use termirust_domain::PairingOfferId;
+use termirust_domain::{ListeningAddress, PairingOfferId};
 
 const CONTROLLER_LISTENER_MODE: &str = "--controller-listener";
 const LISTENER_READY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -33,6 +33,8 @@ pub struct ControllerListenerProcess {
     control: Option<ChildStdin>,
     events: mpsc::Receiver<Result<ListenerProcessEvent, ListenerProcessError>>,
     pub ready_port: u16,
+    /// The private addresses the listener accepted on when it became ready.
+    pub ready_addresses: Vec<ListeningAddress>,
 }
 
 impl std::fmt::Debug for ControllerListenerProcess {
@@ -83,8 +85,12 @@ impl ControllerListenerProcess {
                 }
             }
         });
-        let ready_port = match event_rx.recv_timeout(LISTENER_READY_TIMEOUT) {
-            Ok(Ok(ListenerProcessEvent::Ready { port, .. })) if port >= 1_024 => port,
+        let (ready_port, ready_addresses) = match event_rx.recv_timeout(LISTENER_READY_TIMEOUT) {
+            Ok(Ok(ListenerProcessEvent::Ready {
+                port, addresses, ..
+            })) if port >= 1_024 && addresses.iter().all(|address| address.validate().is_ok()) => {
+                (port, addresses)
+            }
             Ok(_) => {
                 terminate(&mut child);
                 return Err(ListenerProcessError::InvalidReadiness);
@@ -106,6 +112,7 @@ impl ControllerListenerProcess {
             control: Some(control),
             events: event_rx,
             ready_port,
+            ready_addresses,
         })
     }
 
@@ -196,7 +203,7 @@ mod tests {
 
     #[test]
     fn process_event_stream_accepts_only_typed_bounded_readiness() {
-        let event = ListenerProcessEvent::ready(50_000);
+        let event = ListenerProcessEvent::ready(50_000, Vec::new());
         let mut bytes = Vec::new();
         event.write(&mut bytes).unwrap();
         assert_eq!(

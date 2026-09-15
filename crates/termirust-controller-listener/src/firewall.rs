@@ -1,4 +1,4 @@
-use termirust_domain::RouteCandidate;
+use termirust_domain::ListeningAddress;
 
 use crate::{ListenerError, ListenerErrorCode};
 
@@ -10,22 +10,19 @@ pub enum FirewallObservation {
 }
 
 pub trait FirewallObserver: Send + Sync {
-    fn observe(&self, route: &RouteCandidate) -> Result<FirewallObservation, ListenerError>;
+    fn observe(&self, addresses: &[ListeningAddress])
+    -> Result<FirewallObservation, ListenerError>;
 }
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SystemFirewallObserver;
 
 impl FirewallObserver for SystemFirewallObserver {
-    fn observe(&self, route: &RouteCandidate) -> Result<FirewallObservation, ListenerError> {
-        route
-            .port
-            .validate()
-            .map_err(|_| ListenerError::new(ListenerErrorCode::InvalidPolicy))?;
-        if route.address.is_unspecified()
-            || route.address.is_loopback()
-            || route.discovery != termirust_domain::DiscoveryPolicy::Off
-        {
+    fn observe(
+        &self,
+        addresses: &[ListeningAddress],
+    ) -> Result<FirewallObservation, ListenerError> {
+        if addresses.iter().any(|address| address.validate().is_err()) {
             return Err(ListenerError::new(ListenerErrorCode::InvalidPolicy));
         }
 
@@ -37,28 +34,28 @@ impl FirewallObserver for SystemFirewallObserver {
 
 #[cfg(test)]
 mod tests {
-    use std::net::IpAddr;
-
-    use termirust_domain::{
-        AddressFamily, ControllerListenPolicy, ControllerPort, DiscoveryPolicy, NetworkInterfaceId,
-    };
+    use termirust_domain::{NetworkInterfaceId, NetworkInterfaceKind};
 
     use super::*;
 
     #[test]
-    fn system_observation_is_read_only_unknown_for_an_exact_private_route() {
-        let policy = ControllerListenPolicy {
-            enabled: true,
-            interface_id: Some(NetworkInterfaceId::new("4:en0").unwrap()),
-            address_family: Some(AddressFamily::Ipv4),
-            selected_address: Some("192.168.1.20".parse::<IpAddr>().unwrap()),
-            port: Some(ControllerPort::Generated(55_555)),
-            discovery: DiscoveryPolicy::Off,
+    fn system_observation_is_read_only_unknown_for_private_addresses() {
+        let address = |value: &str| ListeningAddress {
+            interface_id: NetworkInterfaceId::new("4:en0").unwrap(),
+            label: "en0".into(),
+            kind: NetworkInterfaceKind::Lan,
+            address: value.parse().unwrap(),
         };
-        let route = policy.route().unwrap().unwrap();
         assert_eq!(
-            SystemFirewallObserver.observe(&route).unwrap(),
+            SystemFirewallObserver
+                .observe(&[address("192.168.1.20:55555"), address("100.81.1.2:55555")])
+                .unwrap(),
             FirewallObservation::Unknown
+        );
+        assert!(
+            SystemFirewallObserver
+                .observe(&[address("0.0.0.0:55555")])
+                .is_err()
         );
     }
 }
