@@ -42,8 +42,9 @@ Pure Rust, no platform code, fully testable in CI.
   A lost scroll still resends the scrolled area: the host has no copy of the viewer's older frame.
 - [x] 1.11 `feat(screen-codec): promote fast-changing regions to a motion region`
 - [x] 1.12 `feat(screen-codec): refine lossy tiles to exact pixels when idle`
-- [ ] 1.13 `test(screen-codec): add fuzz targets and a synthetic workload report`
-  Fuzz the op parser and tile decoders; report bytes per workload against [4.8].
+- [x] 1.13 `test(screen-codec): add fuzz targets and a synthetic workload report`
+  Evidence: `docs/engineering-evidence/RS1-screen-codec.md`. Video on the tile path is above
+  target on synthetic content; tuned with Stage A lower detail and the Stage B motion stream.
 
 ## M0 — Spikes (after M1, evidence only) [6]
 

@@ -1,0 +1,29 @@
+[package]
+name = "termirust-screen-codec-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "=0.4.10"
+termirust-screen-codec = { path = ".." }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "batches"
+path = "fuzz_targets/batches.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tile_payloads"
+path = "fuzz_targets/tile_payloads.rs"
+test = false
+doc = false
+bench = false
