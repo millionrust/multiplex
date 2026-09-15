@@ -91,6 +91,7 @@ use termirust_controller_listener::{
     DesktopPaneBridgeServer, DesktopPaneRegistration, DesktopPaneRegistry, DesktopPaneTransport,
 };
 
+use crate::terminal::MouseProtocolMode;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     ClipboardItem, InteractiveElement as _, KeyDownEvent, MouseButton, MouseDownEvent,
@@ -118,7 +119,6 @@ use termirust_ui_contract::{
     TerminalAnnouncement, TerminalAnnouncementCoalescer, TerminalFocusMode, TerminalLifecycle,
 };
 use tokio_util::sync::CancellationToken;
-use vt100::MouseProtocolMode;
 
 use crate::connection_diagnostics::{
     ConnectionDiagnosticManager, DiagnosticControl, DiagnosticEvent, DiagnosticFailureKind,
@@ -8368,6 +8368,8 @@ impl TermiRustApp {
             HostedTerminalAction::Preserve => {}
             HostedTerminalAction::Append(data) => {
                 pane.terminal.process_bytes(data);
+                // The durable Host answers its program itself; retained output may be replayed.
+                pane.terminal.take_pty_replies();
                 pane.append_accessible_output(
                     data,
                     projection.last_sequence.map(|sequence| sequence.get()),
@@ -8377,6 +8379,7 @@ impl TermiRustApp {
                 let size = pane.terminal.size();
                 pane.terminal = TerminalState::new(size, pane.request.terminal_scrollback_rows);
                 pane.terminal.process_bytes(data);
+                pane.terminal.take_pty_replies();
                 pane.terminal_accessibility.clear_sensitive_content();
                 pane.append_accessible_output(
                     data,
@@ -8566,6 +8569,12 @@ impl TermiRustApp {
                             pane.terminal.resize(size);
                         }
                         pane.terminal.process_bytes(&data);
+                        let replies = pane.terminal.take_pty_replies();
+                        if !replies.is_empty() && pane.connected {
+                            // Answers to the program's own queries, such as cursor position
+                            // reports. Sent straight to the session, never broadcast.
+                            let _ = pane.runtime.command_tx.send(SessionCommand::Input(replies));
+                        }
                         if pane.app_attached.is_none() {
                             desktop_panes.append_output(pane.controller_session_id, &data, || {
                                 pane.terminal.controller_snapshot_bytes()
@@ -9130,6 +9139,9 @@ impl TermiRustApp {
 
         let now = Instant::now();
         for pane in &mut self.panes {
+            if pane.terminal.flush_expired_synchronized_update() {
+                panes_to_refresh.push(pane.id);
+            }
             if pane.terminal_announcement.is_none()
                 && let Some(announcement) = pane.terminal_announcements.flush(now)
             {
@@ -14033,6 +14045,7 @@ mod tests {
     use crate::sftp::RemoteFileEntry;
     use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent};
     use crate::storage::load_saved_state;
+    use crate::terminal::MouseProtocolMode;
     #[cfg(unix)]
     use crate::test_support::TestSshAgent;
     use crate::test_support::{
@@ -14055,7 +14068,6 @@ mod tests {
     use std::time::{Duration, Instant};
     use termirust_domain::HostedSessionId;
     use termirust_ui_contract::MessageId;
-    use vt100::MouseProtocolMode;
 
     #[cfg(unix)]
     #[derive(Clone, Copy)]

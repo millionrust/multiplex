@@ -1,9 +1,23 @@
-use std::cell::{Cell, Ref, RefCell};
-use std::mem;
-use std::sync::Arc;
+//! Terminal emulation for desktop panes, backed by `alacritty_terminal`.
+//!
+//! The app feeds session bytes in with [`TerminalState::process_bytes`] and draws
+//! [`TerminalState::snapshot`], a copy of the visible cells with colors already resolved
+//! against the theme. Replies the terminal owes the program, such as cursor position
+//! reports, are collected for the caller to send back with
+//! [`TerminalState::take_pty_replies`].
 
+use std::cell::{Cell, RefCell};
+use std::sync::{Arc, Mutex};
+
+use alacritty_terminal::event::{Event as TermEvent, EventListener};
+use alacritty_terminal::grid::{Dimensions, Scroll};
+use alacritty_terminal::index::{Column, Line, Point};
+use alacritty_terminal::term::cell::{Cell as GridCell, Flags, LineLength};
+use alacritty_terminal::term::{Config, Term, TermMode};
+use alacritty_terminal::vte::ansi::{
+    Color, CursorShape, NamedColor, Processor, Rgb, StdSyncHandler,
+};
 use gpui::Hsla;
-use vt100::{Color, MouseProtocolEncoding, MouseProtocolMode, Parser};
 
 use crate::ui::theme;
 
@@ -32,6 +46,41 @@ impl Default for TerminalSize {
     }
 }
 
+impl Dimensions for TerminalSize {
+    fn total_lines(&self) -> usize {
+        self.screen_lines()
+    }
+
+    fn screen_lines(&self) -> usize {
+        usize::from(self.rows)
+    }
+
+    fn columns(&self) -> usize {
+        usize::from(self.cols)
+    }
+}
+
+/// Which mouse events the program asked to receive.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MouseProtocolMode {
+    #[default]
+    None,
+    /// X10 press-only reporting. Kept for the report encoder; the emulator never enables it.
+    Press,
+    PressRelease,
+    ButtonMotion,
+    AnyMotion,
+}
+
+/// How mouse reports are encoded.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MouseProtocolEncoding {
+    #[default]
+    Default,
+    Utf8,
+    Sgr,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TerminalStyle {
     pub fg: Hsla,
@@ -39,23 +88,60 @@ pub struct TerminalStyle {
     pub bold: bool,
     pub italic: bool,
     pub underline: bool,
+    pub strikethrough: bool,
 }
 
+/// One visible character. Wide characters occupy two columns and appear once.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TerminalCell {
-    pub text: String,
+    pub column: u16,
+    pub character: char,
+    /// Combining characters drawn with `character`.
+    pub zero_width: Option<Box<[char]>>,
+    pub wide: bool,
     pub style: TerminalStyle,
+}
+
+impl TerminalCell {
+    pub fn is_blank(&self) -> bool {
+        self.character == ' ' && self.zero_width.is_none()
+    }
+
+    pub fn push_text(&self, text: &mut String) {
+        text.push(self.character);
+        if let Some(zero_width) = &self.zero_width {
+            text.extend(zero_width.iter());
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TerminalRow {
     pub cells: Vec<TerminalCell>,
-    pub text: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TerminalCursorShape {
+    Block,
+    Underline,
+    Beam,
+    HollowBlock,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TerminalCursor {
+    pub row: u16,
+    pub column: u16,
+    pub shape: TerminalCursorShape,
+    pub wide: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TerminalSnapshot {
-    pub rows: Vec<Arc<TerminalRow>>,
+    pub rows: Vec<TerminalRow>,
+    pub columns: u16,
+    /// Absent when the cursor is hidden or scrolled out of view.
+    pub cursor: Option<TerminalCursor>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -65,7 +151,6 @@ pub struct TerminalRenderMetrics {
     pub snapshot_requests: u64,
     pub snapshot_cache_hits: u64,
     pub rows_scanned: u64,
-    pub rows_rebuilt: u64,
 }
 
 #[derive(Default)]
@@ -73,11 +158,29 @@ struct TerminalSnapshotCache {
     revision: u64,
     theme_key: Option<(Hsla, Hsla)>,
     initialized: bool,
-    snapshot: TerminalSnapshot,
+    snapshot: Arc<TerminalSnapshot>,
+}
+
+/// Collects what the emulator asks of its host while bytes are processed.
+#[derive(Clone, Default)]
+struct TerminalEvents {
+    replies: Arc<Mutex<Vec<u8>>>,
+}
+
+impl EventListener for TerminalEvents {
+    fn send_event(&self, event: TermEvent) {
+        if let TermEvent::PtyWrite(text) = event
+            && let Ok(mut replies) = self.replies.lock()
+        {
+            replies.extend_from_slice(text.as_bytes());
+        }
+    }
 }
 
 pub struct TerminalState {
-    parser: Parser,
+    term: Term<TerminalEvents>,
+    parser: Processor<StdSyncHandler>,
+    events: TerminalEvents,
     size: TerminalSize,
     revision: u64,
     snapshot_cache: RefCell<TerminalSnapshotCache>,
@@ -86,8 +189,15 @@ pub struct TerminalState {
 
 impl TerminalState {
     pub fn new(size: TerminalSize, scrollback: usize) -> Self {
+        let events = TerminalEvents::default();
+        let config = Config {
+            scrolling_history: scrollback,
+            ..Config::default()
+        };
         Self {
-            parser: Parser::new(size.rows, size.cols, scrollback),
+            term: Term::new(config, &size, events.clone()),
+            parser: Processor::new(),
+            events,
             size,
             revision: 0,
             snapshot_cache: RefCell::new(TerminalSnapshotCache::default()),
@@ -104,7 +214,7 @@ impl TerminalState {
             return;
         }
 
-        self.parser.process(data);
+        self.parser.advance(&mut self.term, data);
         self.mark_dirty();
         let mut metrics = self.render_metrics.get();
         metrics.parser_batches = metrics.parser_batches.saturating_add(1);
@@ -114,8 +224,88 @@ impl TerminalState {
         self.render_metrics.set(metrics);
     }
 
+    /// Applies a synchronized update (DEC mode 2026) whose program never ended it before
+    /// the emulator's timeout. Returns whether the screen changed.
+    pub fn flush_expired_synchronized_update(&mut self) -> bool {
+        let expired = self
+            .parser
+            .sync_timeout()
+            .sync_timeout()
+            .is_some_and(|deadline| deadline <= std::time::Instant::now());
+        if expired {
+            self.parser.stop_sync(&mut self.term);
+            self.mark_dirty();
+        }
+        expired
+    }
+
+    /// Bytes the terminal owes the program, such as device attribute and cursor position
+    /// reports, in the order they were requested.
+    pub fn take_pty_replies(&mut self) -> Vec<u8> {
+        self.events
+            .replies
+            .lock()
+            .map(|mut replies| std::mem::take(&mut *replies))
+            .unwrap_or_default()
+    }
+
+    /// Escape sequences that reproduce the visible screen and input modes on a fresh
+    /// terminal of the same size, for a controller that attaches mid-session.
     pub fn controller_snapshot_bytes(&self) -> Vec<u8> {
-        self.parser.screen().state_formatted()
+        let mut bytes = Vec::new();
+        let mode = *self.term.mode();
+        bytes.extend_from_slice(b"\x1b[0m\x1b[H\x1b[2J\x1b[3J");
+        let grid = self.term.grid();
+        let columns = grid.columns();
+        let mut current = SgrState::default();
+        for row in 0..grid.screen_lines() {
+            let line = Line(row as i32);
+            bytes.extend_from_slice(format!("\x1b[{};1H", row + 1).as_bytes());
+            let length = grid[line].line_length().0.min(columns);
+            for column in 0..length {
+                let cell = &grid[line][Column(column)];
+                if cell
+                    .flags
+                    .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
+                {
+                    continue;
+                }
+                let next = SgrState::of(cell);
+                if next != current {
+                    next.write(&mut bytes);
+                    current = next;
+                }
+                let mut text = String::new();
+                text.push(cell.c);
+                text.extend(cell.zerowidth().into_iter().flatten());
+                bytes.extend_from_slice(text.as_bytes());
+            }
+        }
+        bytes.extend_from_slice(b"\x1b[0m");
+        let cursor = grid.cursor.point;
+        bytes.extend_from_slice(
+            format!("\x1b[{};{}H", cursor.line.0 + 1, cursor.column.0 + 1).as_bytes(),
+        );
+        let private_modes = [
+            (TermMode::SHOW_CURSOR, 25),
+            (TermMode::APP_CURSOR, 1),
+            (TermMode::BRACKETED_PASTE, 2004),
+            (TermMode::MOUSE_REPORT_CLICK, 1000),
+            (TermMode::MOUSE_DRAG, 1002),
+            (TermMode::MOUSE_MOTION, 1003),
+            (TermMode::UTF8_MOUSE, 1005),
+            (TermMode::SGR_MOUSE, 1006),
+        ];
+        for (flag, number) in private_modes {
+            let suffix = if mode.contains(flag) { 'h' } else { 'l' };
+            bytes.extend_from_slice(format!("\x1b[?{number}{suffix}").as_bytes());
+        }
+        if mode.contains(TermMode::APP_KEYPAD) {
+            bytes.extend_from_slice(b"\x1b=");
+        } else {
+            bytes.extend_from_slice(b"\x1b>");
+        }
+        bytes
     }
 
     pub fn resize(&mut self, size: TerminalSize) {
@@ -125,56 +315,84 @@ impl TerminalState {
         }
 
         self.size = size;
-        self.parser.screen_mut().set_size(size.rows, size.cols);
+        self.term.resize(size);
         self.mark_dirty();
     }
 
+    fn mode(&self) -> TermMode {
+        *self.term.mode()
+    }
+
     pub fn application_cursor(&self) -> bool {
-        self.parser.screen().application_cursor()
+        self.mode().contains(TermMode::APP_CURSOR)
     }
 
     pub fn alternate_screen(&self) -> bool {
-        self.parser.screen().alternate_screen()
+        self.mode().contains(TermMode::ALT_SCREEN)
     }
 
     pub fn bracketed_paste(&self) -> bool {
-        self.parser.screen().bracketed_paste()
+        self.mode().contains(TermMode::BRACKETED_PASTE)
     }
 
     #[cfg(test)]
     pub fn cursor_position(&self) -> (u16, u16) {
-        self.parser.screen().cursor_position()
+        let point = self.term.grid().cursor.point;
+        (
+            u16::try_from(point.line.0.max(0)).unwrap_or(u16::MAX),
+            u16::try_from(point.column.0).unwrap_or(u16::MAX),
+        )
     }
 
     #[cfg(test)]
     pub fn cursor_visible(&self) -> bool {
-        !self.parser.screen().hide_cursor()
+        self.mode().contains(TermMode::SHOW_CURSOR)
     }
 
     pub fn mouse_protocol_mode(&self) -> MouseProtocolMode {
-        self.parser.screen().mouse_protocol_mode()
+        let mode = self.mode();
+        if mode.contains(TermMode::MOUSE_MOTION) {
+            MouseProtocolMode::AnyMotion
+        } else if mode.contains(TermMode::MOUSE_DRAG) {
+            MouseProtocolMode::ButtonMotion
+        } else if mode.contains(TermMode::MOUSE_REPORT_CLICK) {
+            MouseProtocolMode::PressRelease
+        } else {
+            MouseProtocolMode::None
+        }
     }
 
     pub fn mouse_protocol_encoding(&self) -> MouseProtocolEncoding {
-        self.parser.screen().mouse_protocol_encoding()
+        let mode = self.mode();
+        if mode.contains(TermMode::SGR_MOUSE) {
+            MouseProtocolEncoding::Sgr
+        } else if mode.contains(TermMode::UTF8_MOUSE) {
+            MouseProtocolEncoding::Utf8
+        } else {
+            MouseProtocolEncoding::Default
+        }
     }
 
+    /// How many rows the view is scrolled back from the live screen.
     pub fn scrollback(&self) -> usize {
-        self.parser.screen().scrollback()
+        self.term.grid().display_offset()
     }
 
+    /// How many rows of history exist above the live screen.
     pub fn max_scrollback(&self) -> usize {
-        let mut screen = self.parser.screen().clone();
-        screen.set_scrollback(usize::MAX);
-        screen.scrollback()
+        self.term.grid().history_size()
     }
 
     pub fn set_scrollback(&mut self, rows: usize) {
-        let previous = self.parser.screen().scrollback();
-        self.parser.screen_mut().set_scrollback(rows);
-        if self.parser.screen().scrollback() != previous {
-            self.mark_dirty();
+        let previous = self.scrollback();
+        let target = rows.min(self.max_scrollback());
+        if target == previous {
+            return;
         }
+        let delta =
+            i32::try_from(target).unwrap_or(i32::MAX) - i32::try_from(previous).unwrap_or(i32::MAX);
+        self.term.scroll_display(Scroll::Delta(delta));
+        self.mark_dirty();
     }
 
     pub fn reset_scrollback(&mut self) {
@@ -182,62 +400,36 @@ impl TerminalState {
     }
 
     pub fn scroll_scrollback(&mut self, delta: i32) {
-        let current = self.scrollback() as i32;
-        let next = (current + delta).max(0) as usize;
+        let current = self.scrollback() as i64;
+        let next = (current + i64::from(delta)).max(0) as usize;
         self.set_scrollback(next);
     }
 
+    /// The text of a visible row, without trailing blanks.
     pub fn visible_row_text(&self, row: u16) -> Option<String> {
-        let (_, cols) = self.parser.screen().size();
-        self.parser.screen().rows(0, cols).nth(usize::from(row))
+        if usize::from(row) >= self.term.grid().screen_lines() {
+            return None;
+        }
+        Some(self.line_text(self.visible_line(row)))
     }
 
+    /// Every row of history followed by the live screen, without trailing blanks.
     pub fn all_rows_text(&self) -> Vec<String> {
-        let screen = self.parser.screen().clone();
-        let (rows, cols) = screen.size();
-        let viewport_rows = usize::from(rows.max(1));
-        let max_scrollback = {
-            let mut top = screen.clone();
-            top.set_scrollback(usize::MAX);
-            top.scrollback()
-        };
-        let total_rows = max_scrollback + viewport_rows;
-        let mut all_rows = Vec::with_capacity(total_rows);
-
-        let full_pages = max_scrollback / viewport_rows;
-        let remainder = max_scrollback % viewport_rows;
-
-        for page in 0..full_pages {
-            let mut view = screen.clone();
-            view.set_scrollback(max_scrollback - page * viewport_rows);
-            for row in view.rows(0, cols) {
-                all_rows.push(row);
-            }
-        }
-
-        if remainder > 0 {
-            let mut view = screen.clone();
-            view.set_scrollback(remainder);
-            for row in view.rows(0, cols).take(remainder) {
-                all_rows.push(row);
-            }
-        }
-
-        {
-            let mut view = screen.clone();
-            view.set_scrollback(0);
-            for row in view.rows(0, cols) {
-                all_rows.push(row);
-            }
-        }
-
-        all_rows
+        let grid = self.term.grid();
+        let top = -(grid.history_size() as i32);
+        let bottom = grid.screen_lines() as i32;
+        (top..bottom)
+            .map(|line| self.line_text(Line(line)))
+            .collect()
     }
 
+    /// Index into [`Self::all_rows_text`] of the first visible row.
     pub fn visible_row_start(&self) -> usize {
         self.max_scrollback().saturating_sub(self.scrollback())
     }
 
+    /// The text from a visible cell up to, but not including, another visible cell.
+    /// Rows that wrapped join without a line break.
     pub fn contents_between(
         &self,
         start_row: u16,
@@ -245,12 +437,30 @@ impl TerminalState {
         end_row: u16,
         end_col: u16,
     ) -> String {
-        self.parser
-            .screen()
-            .contents_between(start_row, start_col, end_row, end_col)
+        let columns = self.term.grid().columns();
+        if columns == 0 || (start_row, start_col) >= (end_row, end_col) {
+            return String::new();
+        }
+        let start = Point::new(
+            self.visible_line(start_row),
+            Column(usize::from(start_col).min(columns - 1)),
+        );
+        let end = if end_col == 0 {
+            Point::new(self.visible_line(end_row) - 1, Column(columns - 1))
+        } else {
+            Point::new(
+                self.visible_line(end_row),
+                Column((usize::from(end_col) - 1).min(columns - 1)),
+            )
+        };
+        if end < start {
+            return String::new();
+        }
+        self.term.bounds_to_string(start, end)
     }
 
-    pub fn snapshot(&self) -> Ref<'_, TerminalSnapshot> {
+    /// The visible screen. Unchanged output returns the same shared snapshot.
+    pub fn snapshot(&self) -> Arc<TerminalSnapshot> {
         let theme_key = (theme::terminal_default_fg(), theme::terminal_default_bg());
         let requires_scan = {
             let cache = self.snapshot_cache.borrow();
@@ -262,17 +472,25 @@ impl TerminalState {
         metrics.snapshot_requests = metrics.snapshot_requests.saturating_add(1);
         if requires_scan {
             let mut cache = self.snapshot_cache.borrow_mut();
-            let (rows_scanned, rows_rebuilt) = refresh_snapshot(&self.parser, &mut cache.snapshot);
+            // Reuse the previous snapshot's buffers when nothing else still holds it.
+            let rows_scanned = match Arc::get_mut(&mut cache.snapshot) {
+                Some(snapshot) => refresh_snapshot(&self.term, snapshot),
+                None => {
+                    let mut snapshot = TerminalSnapshot::default();
+                    let rows_scanned = refresh_snapshot(&self.term, &mut snapshot);
+                    cache.snapshot = Arc::new(snapshot);
+                    rows_scanned
+                }
+            };
             cache.revision = self.revision;
             cache.theme_key = Some(theme_key);
             cache.initialized = true;
-            metrics.rows_scanned = metrics.rows_scanned.saturating_add(u64::from(rows_scanned));
-            metrics.rows_rebuilt = metrics.rows_rebuilt.saturating_add(u64::from(rows_rebuilt));
+            metrics.rows_scanned = metrics.rows_scanned.saturating_add(rows_scanned);
         } else {
             metrics.snapshot_cache_hits = metrics.snapshot_cache_hits.saturating_add(1);
         }
         self.render_metrics.set(metrics);
-        Ref::map(self.snapshot_cache.borrow(), |cache| &cache.snapshot)
+        self.snapshot_cache.borrow().snapshot.clone()
     }
 
     #[cfg(test)]
@@ -285,152 +503,232 @@ impl TerminalState {
         self.render_metrics.set(TerminalRenderMetrics::default());
     }
 
+    fn visible_line(&self, row: u16) -> Line {
+        Line(i32::from(row) - self.term.grid().display_offset() as i32)
+    }
+
+    fn line_text(&self, line: Line) -> String {
+        let row = &self.term.grid()[line];
+        let mut text = String::new();
+        for column in 0..row.line_length().0 {
+            let cell = &row[Column(column)];
+            if cell
+                .flags
+                .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
+            {
+                continue;
+            }
+            text.push(cell.c);
+            text.extend(cell.zerowidth().into_iter().flatten());
+        }
+        text.truncate(text.trim_end_matches(' ').len());
+        text
+    }
+
     fn mark_dirty(&mut self) {
         self.revision = self.revision.wrapping_add(1);
     }
 }
 
-fn refresh_snapshot(parser: &Parser, snapshot: &mut TerminalSnapshot) -> (u16, u16) {
-    let screen = parser.screen();
-    let (rows, cols) = screen.size();
-    let (cursor_row, cursor_col) = screen.cursor_position();
-    let show_cursor = !screen.hide_cursor() && screen.scrollback() == 0;
-    snapshot.rows.resize_with(usize::from(rows), Arc::default);
+/// Copies the visible cells, the way a renderer reads them: colors resolved, wide-character
+/// spacers dropped, and the cursor recorded separately.
+fn refresh_snapshot(term: &Term<TerminalEvents>, snapshot: &mut TerminalSnapshot) -> u64 {
+    let grid = term.grid();
+    let screen_lines = grid.screen_lines();
+    let columns = grid.columns();
+    let display_offset = grid.display_offset() as i32;
+    snapshot.columns = u16::try_from(columns).unwrap_or(u16::MAX);
+    snapshot
+        .rows
+        .resize_with(screen_lines, TerminalRow::default);
 
-    let mut rebuilt = 0_u16;
-    for row in 0..rows {
-        let cached = &snapshot.rows[usize::from(row)];
-        if terminal_row_matches(
-            screen,
-            row,
-            cols,
-            cursor_row,
-            cursor_col,
-            show_cursor,
-            cached,
-        ) {
-            continue;
+    for (row_index, row) in snapshot.rows.iter_mut().enumerate() {
+        row.cells.clear();
+        let line = Line(row_index as i32 - display_offset);
+        let grid_row = &grid[line];
+        for column in 0..columns {
+            let cell = &grid_row[Column(column)];
+            if cell
+                .flags
+                .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
+            {
+                continue;
+            }
+            row.cells.push(TerminalCell {
+                column: column as u16,
+                character: if cell.flags.contains(Flags::HIDDEN) || cell.c == '\t' {
+                    ' '
+                } else {
+                    cell.c
+                },
+                zero_width: cell.zerowidth().map(Box::from),
+                wide: cell.flags.contains(Flags::WIDE_CHAR),
+                style: style_for_cell(term, cell),
+            });
         }
-        snapshot.rows[usize::from(row)] = Arc::new(render_terminal_row(
-            screen,
-            row,
-            cols,
-            cursor_row,
-            cursor_col,
-            show_cursor,
-        ));
-        rebuilt = rebuilt.saturating_add(1);
     }
-    (rows, rebuilt)
+
+    let mode = term.mode();
+    let cursor = grid.cursor.point;
+    let cursor_row = cursor.line.0 + display_offset;
+    snapshot.cursor = (mode.contains(TermMode::SHOW_CURSOR)
+        && (0..screen_lines as i32).contains(&cursor_row))
+    .then(|| TerminalCursor {
+        row: cursor_row as u16,
+        column: cursor.column.0 as u16,
+        shape: match term.cursor_style().shape {
+            CursorShape::Underline => TerminalCursorShape::Underline,
+            CursorShape::Beam => TerminalCursorShape::Beam,
+            CursorShape::HollowBlock => TerminalCursorShape::HollowBlock,
+            CursorShape::Block | CursorShape::Hidden => TerminalCursorShape::Block,
+        },
+        wide: grid[cursor].flags.contains(Flags::WIDE_CHAR),
+    });
+    screen_lines as u64
 }
 
-fn terminal_row_matches(
-    screen: &vt100::Screen,
-    row: u16,
-    cols: u16,
-    cursor_row: u16,
-    cursor_col: u16,
-    show_cursor: bool,
-    cached: &TerminalRow,
-) -> bool {
-    let mut cached_index = 0_usize;
-    for col in 0..cols {
-        let Some(cell) = screen.cell(row, col) else {
-            continue;
-        };
-        if cell.is_wide_continuation() {
-            continue;
-        }
-        let Some(cached_cell) = cached.cells.get(cached_index) else {
-            return false;
-        };
-        let text_matches = if cell.has_contents() {
-            cached_cell.text == cell.contents()
-        } else {
-            cached_cell.text == " "
-        };
-        let cursor_here = show_cursor && row == cursor_row && col == cursor_col;
-        if !text_matches || cached_cell.style != style_for_cell(cell, cursor_here) {
-            return false;
-        }
-        cached_index += 1;
-    }
-    cached_index == cached.cells.len()
-}
+fn style_for_cell(term: &Term<TerminalEvents>, cell: &GridCell) -> TerminalStyle {
+    let mut fg = resolve_color(term, cell.fg, true);
+    let mut bg = resolve_color(term, cell.bg, false);
 
-fn render_terminal_row(
-    screen: &vt100::Screen,
-    row: u16,
-    cols: u16,
-    cursor_row: u16,
-    cursor_col: u16,
-    show_cursor: bool,
-) -> TerminalRow {
-    let mut cells = Vec::with_capacity(usize::from(cols));
-    let mut text = String::new();
-    for col in 0..cols {
-        let Some(cell) = screen.cell(row, col) else {
-            continue;
-        };
-        if cell.is_wide_continuation() {
-            continue;
-        }
-        let cursor_here = show_cursor && row == cursor_row && col == cursor_col;
-        let cell_text = cell_text(cell);
-        text.push_str(&cell_text);
-        cells.push(TerminalCell {
-            text: cell_text,
-            style: style_for_cell(cell, cursor_here),
-        });
-    }
-    TerminalRow { cells, text }
-}
-
-fn cell_text(cell: &vt100::Cell) -> String {
-    if cell.has_contents() {
-        cell.contents().to_string()
-    } else {
-        " ".to_string()
-    }
-}
-
-fn style_for_cell(cell: &vt100::Cell, cursor_here: bool) -> TerminalStyle {
-    let mut fg = map_terminal_color(cell.fgcolor(), true);
-    let mut bg = map_terminal_color(cell.bgcolor(), false);
-
-    if cell.inverse() {
-        mem::swap(&mut fg, &mut bg);
+    if cell.flags.contains(Flags::INVERSE) {
+        std::mem::swap(&mut fg, &mut bg);
     }
 
-    if cell.dim() {
+    if cell.flags.contains(Flags::DIM) {
         fg.a = (fg.a * 0.72).clamp(0.0, 1.0);
-    }
-
-    if cursor_here {
-        fg = theme::terminal_default_bg();
-        bg = theme::terminal_cursor();
     }
 
     TerminalStyle {
         fg,
         bg,
-        bold: cell.bold(),
-        italic: cell.italic(),
-        underline: cell.underline(),
+        bold: cell.flags.contains(Flags::BOLD),
+        italic: cell.flags.contains(Flags::ITALIC),
+        underline: cell.flags.intersects(Flags::ALL_UNDERLINES),
+        strikethrough: cell.flags.contains(Flags::STRIKEOUT),
     }
 }
 
-fn map_terminal_color(color: Color, foreground: bool) -> Hsla {
+/// Resolves a cell color against colors the program set with OSC 4, 10, and 11, then the
+/// theme.
+fn resolve_color(term: &Term<TerminalEvents>, color: Color, foreground: bool) -> Hsla {
     match color {
-        Color::Default => {
-            if foreground {
-                theme::terminal_default_fg()
-            } else {
-                theme::terminal_default_bg()
+        Color::Spec(Rgb { r, g, b }) => rgb_color(r, g, b),
+        Color::Indexed(index) => term.colors()[usize::from(index)]
+            .map(|Rgb { r, g, b }| rgb_color(r, g, b))
+            .unwrap_or_else(|| palette_color(index)),
+        Color::Named(name) => {
+            if let Some(Rgb { r, g, b }) = term.colors()[name] {
+                return rgb_color(r, g, b);
+            }
+            named_color(name, foreground)
+        }
+    }
+}
+
+fn named_color(name: NamedColor, foreground: bool) -> Hsla {
+    let index = name as usize;
+    if index < 16 {
+        return palette_color(index as u8);
+    }
+    if (NamedColor::DimBlack as usize..=NamedColor::DimWhite as usize).contains(&index) {
+        let mut color = palette_color((index - NamedColor::DimBlack as usize) as u8);
+        color.a *= 0.72;
+        return color;
+    }
+    match name {
+        NamedColor::Background => theme::terminal_default_bg(),
+        NamedColor::Cursor => theme::terminal_cursor(),
+        NamedColor::Foreground | NamedColor::BrightForeground | NamedColor::DimForeground => {
+            theme::terminal_default_fg()
+        }
+        _ if foreground => theme::terminal_default_fg(),
+        _ => theme::terminal_default_bg(),
+    }
+}
+
+/// SGR attributes written by [`TerminalState::controller_snapshot_bytes`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SgrState {
+    fg: Color,
+    bg: Color,
+    flags: Flags,
+}
+
+impl Default for SgrState {
+    fn default() -> Self {
+        Self {
+            fg: Color::Named(NamedColor::Foreground),
+            bg: Color::Named(NamedColor::Background),
+            flags: Flags::empty(),
+        }
+    }
+}
+
+impl SgrState {
+    const STYLE_FLAGS: Flags = Flags::BOLD
+        .union(Flags::DIM)
+        .union(Flags::ITALIC)
+        .union(Flags::UNDERLINE)
+        .union(Flags::INVERSE)
+        .union(Flags::HIDDEN)
+        .union(Flags::STRIKEOUT);
+
+    fn of(cell: &GridCell) -> Self {
+        Self {
+            fg: cell.fg,
+            bg: cell.bg,
+            flags: cell.flags & Self::STYLE_FLAGS,
+        }
+    }
+
+    fn write(&self, bytes: &mut Vec<u8>) {
+        let mut codes = vec!["0".to_owned()];
+        for (flag, code) in [
+            (Flags::BOLD, "1"),
+            (Flags::DIM, "2"),
+            (Flags::ITALIC, "3"),
+            (Flags::UNDERLINE, "4"),
+            (Flags::INVERSE, "7"),
+            (Flags::HIDDEN, "8"),
+            (Flags::STRIKEOUT, "9"),
+        ] {
+            if self.flags.contains(flag) {
+                codes.push(code.to_owned());
             }
         }
-        Color::Rgb(r, g, b) => rgb_color(r, g, b),
-        Color::Idx(index) => palette_color(index),
+        if let Some(code) = sgr_color(self.fg, true) {
+            codes.push(code);
+        }
+        if let Some(code) = sgr_color(self.bg, false) {
+            codes.push(code);
+        }
+        bytes.extend_from_slice(format!("\x1b[{}m", codes.join(";")).as_bytes());
+    }
+}
+
+fn sgr_color(color: Color, foreground: bool) -> Option<String> {
+    let base = if foreground { 38 } else { 48 };
+    match color {
+        Color::Spec(Rgb { r, g, b }) => Some(format!("{base};2;{r};{g};{b}")),
+        Color::Indexed(index) => Some(format!("{base};5;{index}")),
+        Color::Named(name) => {
+            let index = name as usize;
+            if index < 8 {
+                Some(format!("{}", base - 8 + index))
+            } else if index < 16 {
+                Some(format!("{}", base + 52 + index - 8))
+            } else if (NamedColor::DimBlack as usize..=NamedColor::DimWhite as usize)
+                .contains(&index)
+            {
+                Some(format!(
+                    "{}",
+                    base - 8 + index - NamedColor::DimBlack as usize
+                ))
+            } else {
+                None
+            }
+        }
     }
 }
 
@@ -474,6 +772,10 @@ fn rgb_color(r: u8, g: u8, b: u8) -> Hsla {
 mod tests {
     use std::time::{Duration, Instant};
 
+    use serde::Deserialize;
+
+    use super::*;
+
     #[test]
     fn named_colors_and_cursor_come_from_the_slate_terminal_tokens() {
         let tokens = crate::ui::theme::current_design_tokens();
@@ -486,24 +788,239 @@ mod tests {
             expected(tokens.color_terminal_ansi_bright_blue())
         );
         assert_eq!(
-            map_terminal_color(Color::Default, true),
+            named_color(NamedColor::Foreground, true),
             expected(tokens.color_terminal_fg())
+        );
+        assert_eq!(
+            named_color(NamedColor::Background, false),
+            expected(tokens.color_bg_terminal())
         );
         // The xterm cube and gray ramp stay fixed.
         assert_eq!(palette_color(16), rgb_color(0, 0, 0));
         assert_eq!(palette_color(255), rgb_color(238, 238, 238));
-
-        let mut parser = vt100::Parser::new(1, 2, 0);
-        parser.process(b"a");
-        let cell = parser.screen().cell(0, 0).unwrap();
-        let cursor = style_for_cell(cell, true);
-        assert_eq!(cursor.bg, expected(tokens.color_terminal_cursor()));
-        assert_eq!(cursor.fg, expected(tokens.color_bg_terminal()));
     }
 
-    use serde::Deserialize;
+    #[test]
+    fn colors_a_program_sets_override_the_theme_palette() {
+        let mut terminal = TerminalState::new(TerminalSize::new(4, 1, 0, 0), 0);
+        terminal.process_bytes(b"\x1b]4;1;rgb:12/34/56\x07\x1b[31mA");
+        let snapshot = terminal.snapshot();
+        assert_eq!(
+            snapshot.rows[0].cells[0].style.fg,
+            rgb_color(0x12, 0x34, 0x56)
+        );
+    }
 
-    use super::*;
+    #[test]
+    fn snapshot_records_the_cursor_and_drops_wide_character_spacers() {
+        let mut terminal = TerminalState::new(TerminalSize::new(6, 2, 0, 0), 10);
+        terminal.process_bytes("a界b".as_bytes());
+        let snapshot = terminal.snapshot();
+        let cells = &snapshot.rows[0].cells;
+        assert_eq!(
+            cells
+                .iter()
+                .take(3)
+                .map(|cell| (cell.column, cell.character, cell.wide))
+                .collect::<Vec<_>>(),
+            [(0, 'a', false), (1, '界', true), (3, 'b', false)]
+        );
+        assert_eq!(
+            snapshot.cursor,
+            Some(TerminalCursor {
+                row: 0,
+                column: 4,
+                shape: TerminalCursorShape::Block,
+                wide: false,
+            })
+        );
+        drop(snapshot);
+
+        terminal.process_bytes(b"\x1b[6 q\x1b[?25l");
+        assert_eq!(terminal.snapshot().cursor, None, "hidden cursor");
+        terminal.process_bytes(b"\x1b[?25h");
+        assert_eq!(
+            terminal.snapshot().cursor.map(|cursor| cursor.shape),
+            Some(TerminalCursorShape::Beam)
+        );
+    }
+
+    #[test]
+    fn device_status_requests_queue_replies_for_the_program() {
+        let mut terminal = TerminalState::new(TerminalSize::new(20, 4, 0, 0), 0);
+        terminal.process_bytes(b"ab\x1b[6n");
+        assert_eq!(terminal.take_pty_replies(), b"\x1b[1;3R");
+        assert!(terminal.take_pty_replies().is_empty());
+    }
+
+    #[test]
+    fn scrolling_back_moves_the_view_and_the_selection_text_with_it() {
+        let mut terminal = TerminalState::new(TerminalSize::new(10, 2, 0, 0), 100);
+        terminal.process_bytes(b"one\r\ntwo\r\nthree\r\nfour");
+        assert_eq!(terminal.max_scrollback(), 2);
+        assert_eq!(terminal.visible_row_text(0).as_deref(), Some("three"));
+
+        terminal.scroll_scrollback(1);
+        assert_eq!(terminal.scrollback(), 1);
+        assert_eq!(terminal.visible_row_start(), 1);
+        assert_eq!(terminal.visible_row_text(0).as_deref(), Some("two"));
+        assert_eq!(terminal.contents_between(0, 0, 1, 3), "two\nthr");
+
+        terminal.scroll_scrollback(50);
+        assert_eq!(terminal.scrollback(), 2);
+        terminal.reset_scrollback();
+        assert_eq!(terminal.scrollback(), 0);
+        assert_eq!(terminal.all_rows_text(), ["one", "two", "three", "four"]);
+    }
+
+    #[test]
+    fn controller_snapshot_reproduces_the_screen_and_modes() {
+        let mut terminal = TerminalState::new(TerminalSize::new(12, 3, 0, 0), 10);
+        terminal
+            .process_bytes(b"\x1b[1;31mred\x1b[0m plain\r\n\x1b[?2004h\x1b[?1000h\x1b[?1006hnext");
+        let mut replay = TerminalState::new(TerminalSize::new(12, 3, 0, 0), 10);
+        replay.process_bytes(&terminal.controller_snapshot_bytes());
+
+        assert_eq!(replay.all_rows_text(), ["red plain", "next", ""]);
+        assert_eq!(replay.cursor_position(), terminal.cursor_position());
+        assert!(replay.bracketed_paste());
+        assert_eq!(
+            replay.mouse_protocol_mode(),
+            MouseProtocolMode::PressRelease
+        );
+        assert_eq!(replay.mouse_protocol_encoding(), MouseProtocolEncoding::Sgr);
+        let original = terminal.snapshot();
+        let replayed = replay.snapshot();
+        assert_eq!(
+            original.rows[0].cells[0].style,
+            replayed.rows[0].cells[0].style
+        );
+        assert_eq!(
+            original.rows[0].cells[4].style,
+            replayed.rows[0].cells[4].style
+        );
+    }
+
+    #[test]
+    fn unchanged_terminal_snapshot_is_a_zero_scan_cache_hit() {
+        let terminal = TerminalState::new(TerminalSize::new(80, 24, 0, 0), 10_000);
+
+        let first = terminal.snapshot();
+        assert_eq!(first.rows.len(), 24);
+        drop(first);
+        let second = terminal.snapshot();
+        assert_eq!(second.rows.len(), 24);
+        drop(second);
+        assert_eq!(
+            terminal.render_metrics(),
+            TerminalRenderMetrics {
+                snapshot_requests: 2,
+                snapshot_cache_hits: 1,
+                rows_scanned: 24,
+                ..TerminalRenderMetrics::default()
+            }
+        );
+    }
+
+    #[test]
+    fn terminal_snapshot_memory_work_is_bounded_by_the_viewport() {
+        let mut terminal = TerminalState::new(TerminalSize::new(40, 8, 0, 0), 10_000);
+        for line in 0..2_000 {
+            terminal.process_bytes(format!("line-{line:04}\r\n").as_bytes());
+        }
+        assert!(terminal.max_scrollback() > 1_000);
+
+        terminal.reset_render_metrics();
+        let snapshot = terminal.snapshot();
+        assert_eq!(snapshot.rows.len(), 8);
+        assert!(snapshot.rows.iter().all(|row| row.cells.len() <= 40));
+        drop(snapshot);
+
+        assert_eq!(terminal.render_metrics().rows_scanned, 8);
+    }
+
+    #[test]
+    #[ignore = "manual fixed-fixture performance profile"]
+    fn desktop_terminal_performance_profile() {
+        const RUNS: usize = 1_000;
+        let mut startup_samples = Vec::with_capacity(RUNS);
+        for _ in 0..RUNS {
+            let started = Instant::now();
+            let terminal = TerminalState::new(TerminalSize::new(120, 40, 0, 0), 10_000);
+            drop(terminal.snapshot());
+            startup_samples.push(started.elapsed());
+        }
+
+        let mut terminal = TerminalState::new(TerminalSize::new(120, 40, 0, 0), 10_000);
+        drop(terminal.snapshot());
+        terminal.reset_render_metrics();
+        let mut input_samples = Vec::with_capacity(RUNS);
+        for index in 0..RUNS {
+            let byte = b'a' + u8::try_from(index % 26).expect("bounded fixture index");
+            let started = Instant::now();
+            terminal.process_bytes(&[byte]);
+            drop(terminal.snapshot());
+            input_samples.push(started.elapsed());
+        }
+        let interactive_metrics = terminal.render_metrics();
+        assert_eq!(interactive_metrics.snapshot_requests, RUNS as u64);
+
+        let line = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\r\n";
+        let output_bytes = line.repeat(32_768);
+        let mut output_terminal = TerminalState::new(TerminalSize::new(120, 40, 0, 0), 10_000);
+        let output_started = Instant::now();
+        for chunk in output_bytes.chunks(64 * 1024) {
+            output_terminal.process_bytes(chunk);
+            drop(output_terminal.snapshot());
+        }
+        let output_elapsed = output_started.elapsed();
+        let output_metrics = output_terminal.render_metrics();
+        let throughput_mib_s =
+            output_bytes.len() as f64 / output_elapsed.as_secs_f64() / (1024.0 * 1024.0);
+
+        let (startup_p50, startup_p95, startup_p99) = percentiles(&mut startup_samples);
+        let (input_p50, input_p95, input_p99) = percentiles(&mut input_samples);
+        assert!(
+            startup_p99 < Duration::from_millis(20),
+            "terminal component startup p99 regressed to {startup_p99:?}"
+        );
+        assert!(
+            input_p99 < Duration::from_millis(10),
+            "terminal input plus snapshot p99 regressed to {input_p99:?}"
+        );
+        assert!(
+            throughput_mib_s >= 10.0,
+            "terminal sustained-output throughput regressed to {throughput_mib_s:.2} MiB/s"
+        );
+        println!(
+            "terminal component profile: startup p50={}us p95={}us p99={}us; input+snapshot p50={}us p95={}us p99={}us; sustained={throughput_mib_s:.2}MiB/s bytes={} batches={} rows_scanned={}",
+            startup_p50.as_micros(),
+            startup_p95.as_micros(),
+            startup_p99.as_micros(),
+            input_p50.as_micros(),
+            input_p95.as_micros(),
+            input_p99.as_micros(),
+            output_bytes.len(),
+            output_metrics.parser_batches,
+            output_metrics.rows_scanned,
+        );
+    }
+
+    fn percentiles(samples: &mut [Duration]) -> (Duration, Duration, Duration) {
+        samples.sort_unstable();
+        (
+            samples[percentile_index(samples.len(), 50)],
+            samples[percentile_index(samples.len(), 95)],
+            samples[percentile_index(samples.len(), 99)],
+        )
+    }
+
+    fn percentile_index(len: usize, percentile: usize) -> usize {
+        len.saturating_mul(percentile)
+            .div_ceil(100)
+            .saturating_sub(1)
+            .min(len.saturating_sub(1))
+    }
 
     #[derive(Debug, Deserialize)]
     struct TerminalConformanceFixture {
@@ -615,175 +1132,6 @@ mod tests {
     }
 
     #[test]
-    fn unchanged_terminal_snapshot_is_a_zero_scan_cache_hit() {
-        let terminal = TerminalState::new(TerminalSize::new(80, 24, 0, 0), 10_000);
-
-        let first = terminal.snapshot();
-        assert_eq!(first.rows.len(), 24);
-        drop(first);
-        assert_eq!(
-            terminal.render_metrics(),
-            TerminalRenderMetrics {
-                snapshot_requests: 1,
-                rows_scanned: 24,
-                rows_rebuilt: 24,
-                ..TerminalRenderMetrics::default()
-            }
-        );
-
-        let second = terminal.snapshot();
-        assert_eq!(second.rows.len(), 24);
-        drop(second);
-        assert_eq!(
-            terminal.render_metrics(),
-            TerminalRenderMetrics {
-                snapshot_requests: 2,
-                snapshot_cache_hits: 1,
-                rows_scanned: 24,
-                rows_rebuilt: 24,
-                ..TerminalRenderMetrics::default()
-            }
-        );
-    }
-
-    #[test]
-    fn terminal_snapshot_rebuilds_only_rows_changed_by_output() {
-        let mut terminal = TerminalState::new(TerminalSize::new(80, 24, 0, 0), 10_000);
-        drop(terminal.snapshot());
-        terminal.reset_render_metrics();
-
-        terminal.process_bytes(b"hello");
-        drop(terminal.snapshot());
-
-        assert_eq!(
-            terminal.render_metrics(),
-            TerminalRenderMetrics {
-                parser_batches: 1,
-                parser_bytes: 5,
-                snapshot_requests: 1,
-                rows_scanned: 24,
-                rows_rebuilt: 1,
-                ..TerminalRenderMetrics::default()
-            }
-        );
-
-        terminal.reset_render_metrics();
-        terminal.process_bytes(b"\r\nworld");
-        drop(terminal.snapshot());
-        let metrics = terminal.render_metrics();
-        assert_eq!(metrics.rows_scanned, 24);
-        assert!(
-            metrics.rows_rebuilt <= 2,
-            "cursor movement and one new line rebuilt {} rows",
-            metrics.rows_rebuilt
-        );
-    }
-
-    #[test]
-    fn terminal_snapshot_memory_work_is_bounded_by_the_viewport() {
-        let mut terminal = TerminalState::new(TerminalSize::new(40, 8, 0, 0), 10_000);
-        for line in 0..2_000 {
-            terminal.process_bytes(format!("line-{line:04}\r\n").as_bytes());
-        }
-        assert!(terminal.max_scrollback() > 1_000);
-
-        terminal.reset_render_metrics();
-        let snapshot = terminal.snapshot();
-        assert_eq!(snapshot.rows.len(), 8);
-        assert!(snapshot.rows.iter().all(|row| row.cells.len() <= 40));
-        drop(snapshot);
-
-        let metrics = terminal.render_metrics();
-        assert_eq!(metrics.rows_scanned, 8);
-        assert!(metrics.rows_rebuilt <= 8);
-    }
-
-    #[test]
-    #[ignore = "manual fixed-fixture performance profile"]
-    fn desktop_terminal_performance_profile() {
-        const RUNS: usize = 1_000;
-        let mut startup_samples = Vec::with_capacity(RUNS);
-        for _ in 0..RUNS {
-            let started = Instant::now();
-            let terminal = TerminalState::new(TerminalSize::new(120, 40, 0, 0), 10_000);
-            drop(terminal.snapshot());
-            startup_samples.push(started.elapsed());
-        }
-
-        let mut terminal = TerminalState::new(TerminalSize::new(120, 40, 0, 0), 10_000);
-        drop(terminal.snapshot());
-        terminal.reset_render_metrics();
-        let mut input_samples = Vec::with_capacity(RUNS);
-        for index in 0..RUNS {
-            let byte = b'a' + u8::try_from(index % 26).expect("bounded fixture index");
-            let started = Instant::now();
-            terminal.process_bytes(&[byte]);
-            drop(terminal.snapshot());
-            input_samples.push(started.elapsed());
-        }
-        let interactive_metrics = terminal.render_metrics();
-        assert_eq!(interactive_metrics.snapshot_requests, RUNS as u64);
-        assert!(interactive_metrics.rows_rebuilt <= (RUNS * 2) as u64);
-
-        let line = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\r\n";
-        let output_bytes = line.repeat(32_768);
-        let mut output_terminal = TerminalState::new(TerminalSize::new(120, 40, 0, 0), 10_000);
-        let output_started = Instant::now();
-        for chunk in output_bytes.chunks(64 * 1024) {
-            output_terminal.process_bytes(chunk);
-            drop(output_terminal.snapshot());
-        }
-        let output_elapsed = output_started.elapsed();
-        let output_metrics = output_terminal.render_metrics();
-        let throughput_mib_s =
-            output_bytes.len() as f64 / output_elapsed.as_secs_f64() / (1024.0 * 1024.0);
-
-        let (startup_p50, startup_p95, startup_p99) = percentiles(&mut startup_samples);
-        let (input_p50, input_p95, input_p99) = percentiles(&mut input_samples);
-        assert!(
-            startup_p99 < Duration::from_millis(20),
-            "terminal component startup p99 regressed to {startup_p99:?}"
-        );
-        assert!(
-            input_p99 < Duration::from_millis(10),
-            "terminal input plus snapshot p99 regressed to {input_p99:?}"
-        );
-        assert!(
-            throughput_mib_s >= 10.0,
-            "terminal sustained-output throughput regressed to {throughput_mib_s:.2} MiB/s"
-        );
-        println!(
-            "terminal component profile: startup p50={}us p95={}us p99={}us; input+snapshot p50={}us p95={}us p99={}us; sustained={throughput_mib_s:.2}MiB/s bytes={} batches={} rows_scanned={} rows_rebuilt={}",
-            startup_p50.as_micros(),
-            startup_p95.as_micros(),
-            startup_p99.as_micros(),
-            input_p50.as_micros(),
-            input_p95.as_micros(),
-            input_p99.as_micros(),
-            output_bytes.len(),
-            output_metrics.parser_batches,
-            output_metrics.rows_scanned,
-            output_metrics.rows_rebuilt,
-        );
-    }
-
-    fn percentiles(samples: &mut [Duration]) -> (Duration, Duration, Duration) {
-        samples.sort_unstable();
-        (
-            samples[percentile_index(samples.len(), 50)],
-            samples[percentile_index(samples.len(), 95)],
-            samples[percentile_index(samples.len(), 99)],
-        )
-    }
-
-    fn percentile_index(len: usize, percentile: usize) -> usize {
-        len.saturating_mul(percentile)
-            .div_ceil(100)
-            .saturating_sub(1)
-            .min(len.saturating_sub(1))
-    }
-
-    #[test]
     fn terminal_conformance_v1_matches_canonical_fixture() {
         let fixture: TerminalConformanceFixture = serde_json::from_str(include_str!(
             "../../../tests/fixtures/terminal/terminal-conformance-v1.json"
@@ -792,68 +1140,36 @@ mod tests {
         assert_eq!(fixture.schema_version, 1);
 
         for case in fixture.cases {
-            let mut terminal = TerminalState::new(
-                TerminalSize::new(case.columns, case.rows, 0, 0),
-                case.scrollback,
-            );
-            for chunk in &case.chunks {
-                terminal.process_bytes(chunk);
+            let actual = terminal_signature(&case, case.chunks.iter().map(Vec::as_slice));
+            let expected = TerminalSignature {
+                lines: case.expected.lines.clone(),
+                cursor: (case.expected.cursor_row, case.expected.cursor_column),
+                cursor_visible: case.expected.cursor_visible,
+                application_cursor: case.expected.application_cursor,
+                alternate_screen: case.expected.alternate_screen,
+                bracketed_paste: case.expected.bracketed_paste,
+                mouse_mode: case.expected.mouse_mode.clone(),
+                mouse_encoding: case.expected.mouse_encoding.clone(),
+                scrollback_rows: case.expected.scrollback_rows,
+            };
+            if case.name == "private_modes_inside_alternate_screen" {
+                // The fixture follows vt100, which homes the cursor on entering the
+                // alternate screen. Like xterm, this emulator keeps the cursor where it was.
+                assert_eq!(actual.lines, ["    alt", "", ""], "{}", case.name);
+                assert_eq!(actual.cursor, (0, 7), "{}", case.name);
+                assert_eq!(
+                    TerminalSignature {
+                        lines: expected.lines.clone(),
+                        cursor: expected.cursor,
+                        ..actual
+                    },
+                    expected,
+                    "{}",
+                    case.name
+                );
+                continue;
             }
-
-            let lines = terminal
-                .all_rows_text()
-                .into_iter()
-                .map(|line| line.trim_end().to_string())
-                .collect::<Vec<_>>();
-            assert_eq!(lines, case.expected.lines, "{} lines", case.name);
-            assert_eq!(
-                terminal.cursor_position(),
-                (case.expected.cursor_row, case.expected.cursor_column),
-                "{} cursor",
-                case.name
-            );
-            assert_eq!(
-                terminal.cursor_visible(),
-                case.expected.cursor_visible,
-                "{} cursor visibility",
-                case.name
-            );
-            assert_eq!(
-                terminal.application_cursor(),
-                case.expected.application_cursor,
-                "{} application cursor",
-                case.name
-            );
-            assert_eq!(
-                terminal.alternate_screen(),
-                case.expected.alternate_screen,
-                "{} alternate screen",
-                case.name
-            );
-            assert_eq!(
-                terminal.bracketed_paste(),
-                case.expected.bracketed_paste,
-                "{} bracketed paste",
-                case.name
-            );
-            assert_eq!(
-                mouse_mode_name(terminal.mouse_protocol_mode()),
-                case.expected.mouse_mode,
-                "{} mouse mode",
-                case.name
-            );
-            assert_eq!(
-                mouse_encoding_name(terminal.mouse_protocol_encoding()),
-                case.expected.mouse_encoding,
-                "{} mouse encoding",
-                case.name
-            );
-            assert_eq!(
-                terminal.max_scrollback(),
-                case.expected.scrollback_rows,
-                "{} scrollback",
-                case.name
-            );
+            assert_eq!(actual, expected, "{}", case.name);
         }
     }
 
@@ -882,7 +1198,31 @@ mod tests {
 
         for case in &fixture.cases {
             let actual = terminal_conformance_v2_signature(case, &fixture.styles, None);
-            assert_eq!(actual, case.expected, "{} configured operations", case.name);
+            match case.name.as_str() {
+                // The fixture follows vt100, which cuts rows and columns off on resize.
+                // Like xterm, iTerm2, and Zed, this emulator re-wraps long lines when the
+                // width shrinks and moves top rows into history when the height shrinks.
+                "resize_shrink_columns_repairs_wide_cell" => {
+                    assert_eq!(actual.scrollback_rows, 2, "{}", case.name);
+                    assert_eq!(
+                        rewrapped_text(case),
+                        "ab界cd",
+                        "{} keeps every character",
+                        case.name
+                    );
+                }
+                "resize_shrink_rows_clamps_cursor" => {
+                    assert_eq!(actual.lines, ["two", "three"], "{}", case.name);
+                    assert_eq!(
+                        (actual.cursor_row, actual.cursor_column),
+                        (1, 5),
+                        "{}",
+                        case.name
+                    );
+                    assert_eq!(actual.scrollback_rows, 1, "{}", case.name);
+                }
+                _ => assert_eq!(actual, case.expected, "{} configured operations", case.name),
+            }
         }
     }
 
@@ -901,13 +1241,30 @@ mod tests {
                         Some((operation_index, split)),
                     );
                     assert_eq!(
-                        actual, case.expected,
+                        actual,
+                        terminal_conformance_v2_signature(case, &fixture.styles, None),
                         "{} operation {operation_index} split at {split}",
                         case.name
                     );
                 }
             }
         }
+    }
+
+    fn rewrapped_text(case: &TerminalConformanceV2Case) -> String {
+        let mut terminal = TerminalState::new(
+            TerminalSize::new(case.columns, case.rows, 0, 0),
+            case.scrollback,
+        );
+        for operation in &case.operations {
+            match operation {
+                TerminalConformanceV2Operation::Process { bytes } => terminal.process_bytes(bytes),
+                TerminalConformanceV2Operation::Resize { columns, rows } => {
+                    terminal.resize(TerminalSize::new(*columns, *rows, 0, 0));
+                }
+            }
+        }
+        terminal.all_rows_text().concat()
     }
 
     fn terminal_conformance_v2_fixture() -> TerminalConformanceV2Fixture {
@@ -944,37 +1301,35 @@ mod tests {
             }
         }
 
-        let screen = terminal.parser.screen();
-        let (rows, columns) = screen.size();
-        let (cursor_row, cursor_column) = screen.cursor_position();
+        let grid = terminal.term.grid();
+        let (cursor_row, cursor_column) = terminal.cursor_position();
         TerminalConformanceV2Expected {
-            lines: screen
-                .rows(0, columns)
-                .map(|line| line.trim_end().to_string())
+            lines: (0..grid.screen_lines())
+                .map(|row| terminal.line_text(Line(row as i32)))
                 .collect(),
-            cells: (0..rows)
+            cells: (0..grid.screen_lines())
                 .map(|row| {
-                    (0..columns)
+                    (0..grid.columns())
                         .map(|column| {
-                            let cell = screen.cell(row, column).expect("fixture cell exists");
-                            let style = terminal_conformance_v2_style(cell);
+                            let cell = &grid[Line(row as i32)][Column(column)];
+                            let spacer = cell.flags.contains(Flags::WIDE_CHAR_SPACER);
                             TerminalConformanceV2Cell {
-                                text: if cell.is_wide_continuation() {
+                                text: if spacer {
                                     String::new()
-                                } else if cell.has_contents() {
-                                    cell.contents().to_string()
                                 } else {
-                                    " ".to_string()
+                                    let mut text = cell.c.to_string();
+                                    text.extend(cell.zerowidth().into_iter().flatten());
+                                    text
                                 },
-                                width: if cell.is_wide_continuation() {
+                                width: if spacer {
                                     0
-                                } else if cell.is_wide() {
+                                } else if cell.flags.contains(Flags::WIDE_CHAR) {
                                     2
                                 } else {
                                     1
                                 },
                                 style: styles
-                                    .binary_search(&style)
+                                    .binary_search(&terminal_conformance_v2_style(cell))
                                     .expect("fixture style should be registered"),
                             }
                         })
@@ -983,33 +1338,40 @@ mod tests {
                 .collect(),
             cursor_row,
             cursor_column,
-            cursor_visible: !screen.hide_cursor(),
-            application_cursor: screen.application_cursor(),
-            alternate_screen: screen.alternate_screen(),
-            bracketed_paste: screen.bracketed_paste(),
-            mouse_mode: mouse_mode_name(screen.mouse_protocol_mode()).to_string(),
-            mouse_encoding: mouse_encoding_name(screen.mouse_protocol_encoding()).to_string(),
+            cursor_visible: terminal.cursor_visible(),
+            application_cursor: terminal.application_cursor(),
+            alternate_screen: terminal.alternate_screen(),
+            bracketed_paste: terminal.bracketed_paste(),
+            mouse_mode: mouse_mode_name(terminal.mouse_protocol_mode()).to_string(),
+            mouse_encoding: mouse_encoding_name(terminal.mouse_protocol_encoding()).to_string(),
             scrollback_rows: terminal.max_scrollback(),
         }
     }
 
-    fn terminal_conformance_v2_style(cell: &vt100::Cell) -> TerminalConformanceV2Style {
+    fn terminal_conformance_v2_style(cell: &GridCell) -> TerminalConformanceV2Style {
         TerminalConformanceV2Style {
-            foreground: terminal_conformance_v2_color(cell.fgcolor()),
-            background: terminal_conformance_v2_color(cell.bgcolor()),
-            bold: cell.bold(),
-            dim: cell.dim(),
-            italic: cell.italic(),
-            underline: cell.underline(),
-            inverse: cell.inverse(),
+            foreground: terminal_conformance_v2_color(cell.fg),
+            background: terminal_conformance_v2_color(cell.bg),
+            bold: cell.flags.contains(Flags::BOLD),
+            dim: cell.flags.contains(Flags::DIM),
+            italic: cell.flags.contains(Flags::ITALIC),
+            underline: cell.flags.intersects(Flags::ALL_UNDERLINES),
+            inverse: cell.flags.contains(Flags::INVERSE),
         }
     }
 
     fn terminal_conformance_v2_color(color: Color) -> TerminalConformanceV2Color {
         match color {
-            Color::Default => TerminalConformanceV2Color::Default,
-            Color::Idx(value) => TerminalConformanceV2Color::Indexed { value },
-            Color::Rgb(red, green, blue) => TerminalConformanceV2Color::Rgb { red, green, blue },
+            Color::Named(name) if (name as usize) < 16 => {
+                TerminalConformanceV2Color::Indexed { value: name as u8 }
+            }
+            Color::Named(_) => TerminalConformanceV2Color::Default,
+            Color::Indexed(value) => TerminalConformanceV2Color::Indexed { value },
+            Color::Spec(Rgb { r, g, b }) => TerminalConformanceV2Color::Rgb {
+                red: r,
+                green: g,
+                blue: b,
+            },
         }
     }
 
@@ -1025,11 +1387,7 @@ mod tests {
             terminal.process_bytes(chunk);
         }
         TerminalSignature {
-            lines: terminal
-                .all_rows_text()
-                .into_iter()
-                .map(|line| line.trim_end().to_string())
-                .collect(),
+            lines: terminal.all_rows_text(),
             cursor: terminal.cursor_position(),
             cursor_visible: terminal.cursor_visible(),
             application_cursor: terminal.application_cursor(),

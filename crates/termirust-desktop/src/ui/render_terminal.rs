@@ -83,16 +83,6 @@ pub fn style_for_render(
     style
 }
 
-pub fn default_terminal_style() -> TerminalStyle {
-    TerminalStyle {
-        fg: theme::terminal_default_fg(),
-        bg: theme::terminal_default_bg(),
-        bold: false,
-        italic: false,
-        underline: false,
-    }
-}
-
 pub fn display_terminal_text(text: &str) -> SharedString {
     if text.is_empty() {
         return "\u{00a0}".into();

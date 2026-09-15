@@ -111,6 +111,18 @@ impl SshEventWake {
     }
 }
 
+/// The app stopped receiving session events.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SshEventsClosed;
+
+impl std::fmt::Display for SshEventsClosed {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("the app event channel is closed")
+    }
+}
+
+impl std::error::Error for SshEventsClosed {}
+
 /// The sending half of the app's session event channel.
 #[derive(Clone, Debug)]
 pub struct SshEventSender {
@@ -132,8 +144,8 @@ impl SshEventSender {
         )
     }
 
-    pub fn send(&self, event: SshEvent) -> Result<(), std::sync::mpsc::SendError<SshEvent>> {
-        self.events.send(event)?;
+    pub fn send(&self, event: SshEvent) -> Result<(), SshEventsClosed> {
+        self.events.send(event).map_err(|_| SshEventsClosed)?;
         self.wake.wake();
         Ok(())
     }

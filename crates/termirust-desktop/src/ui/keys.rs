@@ -1,7 +1,7 @@
 //! Keystroke and mouse encoding helpers shared by the terminal UI.
 
+use crate::terminal::{MouseProtocolEncoding, MouseProtocolMode};
 use gpui::{Keystroke, Modifiers, ScrollDelta};
-use vt100::{MouseProtocolEncoding, MouseProtocolMode};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TerminalModifiers {

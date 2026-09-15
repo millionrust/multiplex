@@ -1,6 +1,6 @@
 # TermiRust
 
-Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt100`.
+Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `alacritty_terminal`.
 
 ## Current product shape
 
@@ -142,7 +142,10 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
     component and state in a working shell; `SLATE_THEME`, `SLATE_TAB`, `SLATE_OVERLAY`,
     and `SLATE_SCROLL` start it in a given state for screenshots.
 - [crates/termirust-desktop/src/terminal.rs](crates/termirust-desktop/src/terminal.rs)
-  - VT state wrapper around `vt100`: snapshot generation, scrollback access, selection extraction, bracketed-paste and mouse-mode inspection.
+  - Terminal emulation over `alacritty_terminal`: a theme-resolved snapshot of the visible cells and cursor, scrollback, selection text, mode inspection, replies owed to the program (cursor position and device attribute reports), and a controller snapshot byte stream.
+  - It re-wraps lines on resize and keeps the cursor on entering the alternate screen, as xterm does. The shared conformance fixtures follow vt100 there; `terminal.rs` tests pin those three cases to the xterm behavior.
+- [crates/termirust-desktop/src/ui/app/terminal_grid.rs](crates/termirust-desktop/src/ui/app/terminal_grid.rs)
+  - Per-pane grid entity that paints the snapshot the way Zed's terminal does: same-style cells batched into runs shaped with a forced cell-width advance, merged background rectangles, and a separately painted cursor. Session output wakes the app's event loop (`SshEventSender`) and is drawn immediately, then gathered in `motion.terminal_output_batch` windows.
 - [crates/termirust-desktop/src/ssh.rs](crates/termirust-desktop/src/ssh.rs)
   - SSH runtime thread and Tokio event loop: shell open, PTY allocation, raw input/output, and remote resize.
 - [crates/termirust-desktop/src/local.rs](crates/termirust-desktop/src/local.rs)
@@ -203,4 +206,4 @@ bounded rotation and retention. See [docs/diagnostics.md](docs/diagnostics.md).
 - The `Keychain` imports keys from `~/.ssh` and allows picking files from disk, but does not generate keys.
 - SSH config hosts are imported at startup (shown with an `SSH Config` badge) and runtime-synced, not written back into the app state file.
 - Quick connect uses the first available SSH key; for password-only auth, use the host editor form.
-- The terminal re-renders the whole app on any output and rebuilds a full snapshot per frame; the performance backlog is tracked in GitHub issue #2.
+- Durable hosted sessions still poll their Host for output every `motion.hosted_live_poll` (40 ms); SSH and local panes are drawn as output arrives.
