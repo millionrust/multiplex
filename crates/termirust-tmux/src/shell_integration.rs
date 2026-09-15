@@ -14,6 +14,8 @@ use std::fs;
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 
+use crate::appearance::WrappedSessionAppearance;
+
 /// First line of the block added to a shell startup file.
 pub const BLOCK_START: &str = "# >>> termirust remote terminals >>>";
 /// Last line of the block added to a shell startup file.
@@ -33,6 +35,8 @@ pub const WRAPPED_TERMINAL_PROGRAMS: [&str; 6] = [
 pub const DIFF_CONTEXT_LINES: usize = 2;
 
 const CONFIG_DIRECTORY: &str = ".config/termirust";
+/// The app-owned tmux configuration wrapped tabs source, shared by every shell.
+const TMUX_CONFIG_FILE: &str = "tmux.conf";
 const INIT_FILE_HEADER: &str = "# Managed by TermiRust. Turn off \"Open new terminals in tmux\" in TermiRust, or delete this file and the marked block in your shell startup file.";
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -210,6 +214,7 @@ impl ChangePlan {
 pub struct ShellIntegration {
     home: PathBuf,
     tmux: PathBuf,
+    appearance: WrappedSessionAppearance,
 }
 
 impl ShellIntegration {
@@ -219,7 +224,14 @@ impl ShellIntegration {
         Self {
             home: home.into(),
             tmux: tmux.into(),
+            appearance: WrappedSessionAppearance::for_this_platform(),
         }
+    }
+
+    /// Uses `appearance` instead of this platform's, so tests render the same file everywhere.
+    pub fn with_appearance(mut self, appearance: WrappedSessionAppearance) -> Self {
+        self.appearance = appearance;
+        self
     }
 
     /// The shells to set up: the login shell, plus any supported shell whose startup file
@@ -272,6 +284,17 @@ impl ShellIntegration {
                 _ => partial = true,
             }
         }
+        // The tmux configuration belongs with the init files: missing or outdated while they
+        // are installed, or left behind without them, needs a repair.
+        match read_optional(&self.tmux_config_path()) {
+            Ok(Some(contents)) => {
+                if installed.is_empty() || contents != self.appearance.configuration_file() {
+                    partial = true;
+                }
+            }
+            Ok(None) => partial |= !installed.is_empty(),
+            Err(_) => partial = true,
+        }
         match (partial, installed.is_empty()) {
             (true, _) => IntegrationStatus::Partial,
             (false, true) => IntegrationStatus::Off,
@@ -283,6 +306,18 @@ impl ShellIntegration {
     /// is already in place.
     pub fn plan_enable(&self, shells: &[Shell]) -> Result<ChangePlan, IntegrationError> {
         let mut plan = ChangePlan::default();
+        // The tmux configuration first: an init file that sources it never runs before it exists.
+        let config_path = self.tmux_config_path();
+        let before = read_optional(&config_path)?;
+        let after = self.appearance.configuration_file();
+        if before.as_deref() != Some(after.as_str()) {
+            plan.changes.push(FileChange {
+                path: self.display_path(&config_path),
+                write_path: config_path,
+                before,
+                after: Some(after),
+            });
+        }
         for shell in shells {
             let init_path = self.init_path(*shell);
             let before = read_optional(&init_path)?;
@@ -347,6 +382,15 @@ impl ShellIntegration {
                 });
             }
         }
+        let config_path = self.tmux_config_path();
+        if let Some(before) = read_optional(&config_path)? {
+            plan.changes.push(FileChange {
+                path: self.display_path(&config_path),
+                write_path: config_path,
+                before: Some(before),
+                after: None,
+            });
+        }
         // Blocks go first so a failure part way never leaves one pointing at nothing.
         Ok(plan)
     }
@@ -355,6 +399,10 @@ impl ShellIntegration {
         self.home
             .join(CONFIG_DIRECTORY)
             .join(shell.init_file_name())
+    }
+
+    fn tmux_config_path(&self) -> PathBuf {
+        self.home.join(CONFIG_DIRECTORY).join(TMUX_CONFIG_FILE)
     }
 
     fn startup_path(&self, shell: Shell) -> PathBuf {
@@ -377,16 +425,17 @@ impl ShellIntegration {
     fn init_file(&self, shell: Shell) -> String {
         let tmux = shell_single_quote(&self.tmux.to_string_lossy());
         let programs = WRAPPED_TERMINAL_PROGRAMS.join("|");
+        let config = shell_single_quote(&self.tmux_config_path().to_string_lossy());
         // `&& exit` rather than `exec`: if tmux cannot start, the terminal keeps a plain
-        // shell instead of closing the moment it opens. The status bar is off for these
-        // sessions only. Scrolling and selection are left to tmux's own mouse settings: tmux
-        // holds the only complete history of a pane, so the terminal app's scrollback cannot.
+        // shell instead of closing the moment it opens. Sourcing the app's tmux configuration
+        // right after `new-session` applies its options to that session only; `-q` keeps a
+        // missing file from failing the tab.
         match shell {
             Shell::Zsh => format!(
-                "{INIT_FILE_HEADER}\nif [[ -o interactive && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        {tmux} new-session -s \"termirust-${{PWD:t}}-$$\" \\; set-option status off && exit\n      fi\n      ;;\n  esac\nfi\n"
+                "{INIT_FILE_HEADER}\nif [[ -o interactive && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        {tmux} new-session -s \"termirust-${{PWD:t}}-$$\" \\; source-file -q {config} && exit\n      fi\n      ;;\n  esac\nfi\n"
             ),
             Shell::Bash => format!(
-                "{INIT_FILE_HEADER}\nif [[ $- == *i* && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        {tmux} new-session -s \"termirust-${{PWD##*/}}-$$\" \\; set-option status off && exit\n      fi\n      ;;\n  esac\nfi\n"
+                "{INIT_FILE_HEADER}\nif [[ $- == *i* && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        {tmux} new-session -s \"termirust-${{PWD##*/}}-$$\" \\; source-file -q {config} && exit\n      fi\n      ;;\n  esac\nfi\n"
             ),
         }
     }
@@ -585,6 +634,7 @@ mod tests {
         assert_eq!(
             paths,
             [
+                PathBuf::from("~/.config/termirust/tmux.conf"),
                 PathBuf::from("~/.config/termirust/shell-init.zsh"),
                 PathBuf::from("~/.zshrc")
             ]
@@ -720,7 +770,7 @@ mod tests {
     }
 
     #[test]
-    fn wrapped_sessions_hide_the_status_bar_and_an_older_init_file_is_updated() {
+    fn wrapped_tabs_source_the_tmux_configuration_and_older_files_are_updated() {
         let (home, integration) = home();
         integration
             .plan_enable(&[Shell::Zsh])
@@ -728,25 +778,49 @@ mod tests {
             .apply()
             .unwrap();
         let init_path = home.path().join(".config/termirust/shell-init.zsh");
+        let config_path = home.path().join(".config/termirust/tmux.conf");
         let init = fs::read_to_string(&init_path).unwrap();
-        assert!(init.contains(
-            "new-session -s \"termirust-${PWD:t}-$$\" \\; set-option status off && exit"
-        ));
+        assert!(init.contains(&format!(
+            "new-session -s \"termirust-${{PWD:t}}-$$\" \\; source-file -q '{}' && exit",
+            config_path.display()
+        )));
+        let config = fs::read_to_string(&config_path).unwrap();
+        assert!(config.contains("\nset-option mouse on\n"));
 
-        // The file an earlier version wrote, without the status bar setting.
-        fs::write(&init_path, init.replace(" \\; set-option status off", "")).unwrap();
+        // The init file an earlier version wrote, which set the status bar itself.
+        let old_line = format!(" \\; source-file -q '{}'", config_path.display());
+        fs::write(
+            &init_path,
+            init.replace(&old_line, " \\; set-option status off"),
+        )
+        .unwrap();
+        // And a tmux configuration someone edited.
+        fs::write(&config_path, "set -g mouse off\n").unwrap();
         assert_eq!(integration.status(), IntegrationStatus::Partial);
         let update = integration.plan_enable(&[Shell::Zsh]).unwrap();
-        assert_eq!(update.changes.len(), 1);
         assert_eq!(
-            update.changes[0].path,
-            PathBuf::from("~/.config/termirust/shell-init.zsh")
+            update
+                .changes
+                .iter()
+                .map(|change| change.path.clone())
+                .collect::<Vec<_>>(),
+            [
+                PathBuf::from("~/.config/termirust/tmux.conf"),
+                PathBuf::from("~/.config/termirust/shell-init.zsh"),
+            ]
         );
         update.apply().unwrap();
         assert_eq!(
             integration.status(),
             IntegrationStatus::On(vec![Shell::Zsh])
         );
+
+        integration.plan_disable().unwrap().apply().unwrap();
+        assert!(
+            !config_path.exists(),
+            "removing the setup deletes the tmux configuration"
+        );
+        assert_eq!(integration.status(), IntegrationStatus::Off);
     }
 
     #[test]

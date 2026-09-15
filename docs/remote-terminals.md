@@ -93,22 +93,36 @@ into the init file (such as `/opt/homebrew/bin/tmux`, not the versioned Cellar d
 behind it, so an upgrade keeps working) so tabs started with a minimal `PATH` still find it. If tmux is missing, the
 section tells you how to install it and leaves the setup unavailable.
 
-The tmux status bar is turned off for these sessions only; your other tmux sessions keep theirs.
+Wrapped tabs should feel like the terminal they replaced, and your own tmux sessions should not
+change. The setup never edits `~/.tmux.conf`. It writes an app-owned tmux configuration that each
+wrapped tab sources right after `new-session`, so its options apply to that session:
 
-Scrolling and selecting happen in tmux. A tmux pane's history lives in tmux, not in the
-terminal app, so the app's own scrollback cannot hold it. With `set -g mouse on` in
-`~/.tmux.conf`, the wheel scrolls tmux's history and programs that ask for the mouse (Codex,
-vim) receive it; dragging selects in copy mode and keeps the selection until you click elsewhere. An earlier version set
-`terminal-overrides[97]` to keep tmux off the alternate screen; that left programs such as
-Claude Code impossible to scroll, so applying or removing the setup now clears it. A tmux
-configuration that hides copy mode's position indicator and copies selections to the clipboard:
+- no status bar;
+- the mouse on, so the wheel scrolls tmux's history (a tmux pane's history lives in tmux, not in
+  the terminal app) and programs that ask for the mouse, such as Codex, receive it;
+- a quiet grey selection and no `[n/n]` copy-mode position counter, also for new windows;
+- dragging selects and copies to the clipboard (`pbcopy` on macOS), the selection stays put
+  while you scroll, and a click clears it;
+- two lines per wheel step instead of five.
+
+tmux key bindings belong to the whole server, so each binding checks the session name and keeps
+tmux's default behavior in every other session. Applying the setup also updates sessions already
+running; removing it deletes the file, unsets those options, and restores tmux's default
+bindings. An earlier version set `terminal-overrides[97]` to keep tmux off the alternate screen,
+which left programs such as Claude Code impossible to scroll; applying or removing the setup
+clears it.
+
+`~/.config/termirust/tmux.conf`, shared by every shell:
 
 ```tmux
-set -g mouse on
-set -gw copy-mode-position-format ""
-set -s set-clipboard on
-bind -T copy-mode MouseDragEnd1Pane send -X copy-pipe-no-clear "pbcopy" \; send -X stop-selection
-bind -T copy-mode MouseDown1Pane select-pane \; send -X clear-selection
+# Managed by TermiRust for the tmux sessions it starts (named termirust-*). Turn off "Open new terminals in tmux" in TermiRust to remove it.
+set-option status off
+set-option mouse on
+set-option -w copy-mode-position-format ''
+set-option -w mode-style 'bg=#3b4252,fg=default'
+set-hook after-new-window 'set-option -w copy-mode-position-format "" ; set-option -w mode-style "bg=#3b4252,fg=default"'
+bind-key -T copy-mode MouseDragEnd1Pane 'if-shell -F "#{m:termirust-*,#{session_name}}" "send-keys -X copy-pipe-no-clear pbcopy ; send-keys -X stop-selection" "send-keys -X copy-pipe-and-cancel"'
+# ...and the same guard for MouseDown1Pane, WheelUpPane, and WheelDownPane in copy-mode and copy-mode-vi
 ```
 
 One app-owned init file per shell, safe to delete —
@@ -120,7 +134,7 @@ if [[ -o interactive && -z "$TMUX" && -z "$TERMIRUST_NO_WRAP" ]]; then
   case "$TERM_PROGRAM" in
     Apple_Terminal|zed|iTerm.app|ghostty|WezTerm|vscode)
       if [[ -x '/opt/homebrew/bin/tmux' ]]; then
-        '/opt/homebrew/bin/tmux' new-session -s "termirust-${PWD:t}-$$" \; set-option status off && exit
+        '/opt/homebrew/bin/tmux' new-session -s "termirust-${PWD:t}-$$" \; source-file -q '/Users/you/.config/termirust/tmux.conf' && exit
       fi
       ;;
   esac

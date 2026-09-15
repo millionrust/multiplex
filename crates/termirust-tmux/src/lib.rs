@@ -13,6 +13,7 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+pub mod appearance;
 pub mod shell_integration;
 
 /// Overrides binary discovery with one exact tmux path.
@@ -254,37 +255,79 @@ impl Tmux {
         })
     }
 
-    /// Makes the running server match the shell setup: with `setup_on`, sessions it started
-    /// (named [`WRAPPED_SESSION_PREFIX`]…) hide their status bar; otherwise they go back to the
-    /// global status setting. Either way the [`LEGACY_SCROLLBACK_OVERRIDE_TARGET`] an earlier
-    /// version set is removed. Other sessions keep their own options. A client already attached
-    /// keeps its screen mode until it attaches again. Returns how many sessions changed; with
-    /// no server running there is nothing to change.
+    /// Makes the running server match the shell setup. With `setup_on`, sessions it started
+    /// (named [`WRAPPED_SESSION_PREFIX`]…) and their windows get the
+    /// [`appearance::WrappedSessionAppearance`] options and new-window hook, and the guarded key
+    /// bindings are installed; otherwise those options and the hook are removed and tmux's
+    /// default bindings for the same keys are put back. Either way the
+    /// [`LEGACY_SCROLLBACK_OVERRIDE_TARGET`] an earlier version set is removed. Other sessions
+    /// keep their own options. Returns how many sessions changed; with no server running there
+    /// is nothing to change.
     pub fn apply_wrapped_session_appearance(&self, setup_on: bool) -> Result<usize, TmuxError> {
         let listing = self.list_sessions()?;
         if listing.sessions.is_empty() {
             return Ok(0);
         }
-        let mut override_command = self.command();
-        override_command.args(["set-option", "-s", "-u", LEGACY_SCROLLBACK_OVERRIDE_TARGET]);
-        run_bounded(override_command, COMMAND_TIMEOUT)?;
+        let appearance = appearance::WrappedSessionAppearance::for_this_platform();
+        self.run_arguments(["set-option", "-s", "-u", LEGACY_SCROLLBACK_OVERRIDE_TARGET])?;
+        let bindings = if setup_on {
+            appearance.bind_commands()
+        } else {
+            appearance.default_bind_commands()
+        };
+        for binding in bindings {
+            self.run_arguments(binding)?;
+        }
+
+        let hook = appearance::WrappedSessionAppearance::new_window_hook();
         let mut changed = 0;
         for session in listing
             .sessions
             .iter()
             .filter(|session| session.name.starts_with(WRAPPED_SESSION_PREFIX))
         {
-            let mut command = self.command();
-            if setup_on {
-                command.args(["set-option", "-t", session.id(), "status", "off"]);
-            } else {
-                command.args(["set-option", "-u", "-t", session.id(), "status"]);
+            let id = session.id();
+            let mut applied = true;
+            for [_, name, value] in appearance::WrappedSessionAppearance::session_options() {
+                let output = if setup_on {
+                    self.run_arguments(["set-option", "-t", id, name, value])?
+                } else {
+                    self.run_arguments(["set-option", "-u", "-t", id, name])?
+                };
+                applied &= output.status.success();
             }
-            if run_bounded(command, COMMAND_TIMEOUT)?.status.success() {
+            let output = if setup_on {
+                self.run_arguments(["set-hook", "-t", id, "after-new-window", hook.as_str()])?
+            } else {
+                self.run_arguments(["set-hook", "-u", "-t", id, "after-new-window"])?
+            };
+            applied &= output.status.success();
+            let windows = self.run_arguments(["list-windows", "-t", id, "-F", "#{window_id}"])?;
+            for window in String::from_utf8_lossy(&windows.stdout).lines() {
+                for [_, _, name, value] in appearance::WrappedSessionAppearance::window_options() {
+                    let output = if setup_on {
+                        self.run_arguments(["set-option", "-w", "-t", window, name, value])?
+                    } else {
+                        self.run_arguments(["set-option", "-w", "-u", "-t", window, name])?
+                    };
+                    applied &= output.status.success();
+                }
+            }
+            if applied {
                 changed += 1;
             }
         }
         Ok(changed)
+    }
+
+    fn run_arguments<I, S>(&self, arguments: I) -> Result<BoundedOutput, TmuxError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<std::ffi::OsStr>,
+    {
+        let mut command = self.command();
+        command.args(arguments);
+        run_bounded(command, COMMAND_TIMEOUT)
     }
 
     /// Proves the path a paired device uses: starts a throwaway detached session, finds it

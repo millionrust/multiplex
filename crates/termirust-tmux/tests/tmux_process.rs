@@ -447,12 +447,47 @@ fn the_setup_hides_wrapped_status_bars_and_clears_the_old_scrollback_override() 
         termirust_tmux::LEGACY_SCROLLBACK_OVERRIDE_TARGET,
         "*:smcup@:rmcup@",
     ]);
+    let output = |arguments: &[&str]| {
+        let output = server.tmux.command().args(arguments).output().unwrap();
+        String::from_utf8_lossy(&output.stdout).trim().to_owned()
+    };
+    let wheel_binding = || {
+        output(&["list-keys", "-T", "copy-mode"])
+            .lines()
+            .find(|line| line.contains("WheelUpPane"))
+            .unwrap_or_default()
+            .to_owned()
+    };
+
     assert_eq!(
         server.tmux.apply_wrapped_session_appearance(true).unwrap(),
         1
     );
     assert_eq!(status("termirust-terminal-4242"), "off");
     assert_eq!(status("work"), "", "other sessions keep the global setting");
+    assert_eq!(
+        output(&[
+            "show-options",
+            "-v",
+            "-t",
+            "termirust-terminal-4242",
+            "mouse"
+        ]),
+        "on"
+    );
+    assert_eq!(output(&["show-options", "-v", "-t", "work", "mouse"]), "");
+    assert_eq!(
+        output(&[
+            "show-options",
+            "-w",
+            "-v",
+            "-t",
+            "termirust-terminal-4242",
+            "mode-style"
+        ]),
+        termirust_tmux::appearance::SELECTION_STYLE
+    );
+    assert!(wheel_binding().contains("#{m:termirust-*,#{session_name}}"));
     assert!(
         !overrides().contains("smcup@"),
         "applying clears the override"
@@ -463,5 +498,95 @@ fn the_setup_hides_wrapped_status_bars_and_clears_the_old_scrollback_override() 
         1
     );
     assert_eq!(status("termirust-terminal-4242"), "");
+    assert_eq!(
+        output(&[
+            "show-options",
+            "-v",
+            "-t",
+            "termirust-terminal-4242",
+            "mouse"
+        ]),
+        ""
+    );
+    assert!(
+        !wheel_binding().contains("if-shell"),
+        "removing puts tmux's default binding back"
+    );
     assert!(!overrides().contains("smcup@"));
+}
+
+#[test]
+fn a_session_sourcing_the_generated_configuration_gets_it_and_others_do_not() {
+    let Some(server) = IsolatedServer::start() else {
+        return;
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("tmux.conf");
+    fs::write(
+        &config,
+        termirust_tmux::appearance::WrappedSessionAppearance::new(Some("pbcopy".to_owned()))
+            .configuration_file(),
+    )
+    .unwrap();
+    server.run(&["new-session", "-d", "-s", "work"]);
+    let config = config.to_string_lossy();
+    server.run(&[
+        "new-session",
+        "-d",
+        "-s",
+        "termirust-demo-1",
+        ";",
+        "source-file",
+        &config,
+    ]);
+    server.run(&["new-window", "-t", "termirust-demo-1"]);
+    let output = |arguments: &[&str]| {
+        let output = server.tmux.command().args(arguments).output().unwrap();
+        assert!(output.status.success(), "tmux {arguments:?}: {output:?}");
+        String::from_utf8_lossy(&output.stdout).trim().to_owned()
+    };
+
+    assert_eq!(
+        output(&["show-options", "-v", "-t", "termirust-demo-1", "status"]),
+        "off"
+    );
+    assert_eq!(
+        output(&["show-options", "-v", "-t", "termirust-demo-1", "mouse"]),
+        "on"
+    );
+    assert_eq!(output(&["show-options", "-v", "-t", "work", "mouse"]), "");
+    assert_eq!(
+        output(&[
+            "show-options",
+            "-w",
+            "-v",
+            "-t",
+            "termirust-demo-1:1",
+            "mode-style"
+        ]),
+        termirust_tmux::appearance::SELECTION_STYLE,
+        "a new window in the session gets the selection style"
+    );
+    assert_eq!(
+        output(&[
+            "display-message",
+            "-p",
+            "-t",
+            "termirust-demo-1",
+            "#{m:termirust-*,#{session_name}}"
+        ]),
+        "1"
+    );
+    assert_eq!(
+        output(&[
+            "display-message",
+            "-p",
+            "-t",
+            "work",
+            "#{m:termirust-*,#{session_name}}"
+        ]),
+        "0"
+    );
+    let bindings = output(&["list-keys", "-T", "copy-mode-vi"]);
+    assert!(bindings.contains("copy-pipe-no-clear pbcopy ; send-keys -X stop-selection"));
 }
