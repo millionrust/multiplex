@@ -73,7 +73,12 @@ Pure Rust, no platform code, fully testable in CI.
   checks, one encoder per subscription with flow control, previews, refinement, motion region
   messages, input gated on control, and resume across connections. Wiring capture threads and
   drawing into the desktop app happens in 2.12 and 2.13.
-- [ ] 2.9 `feat(screen-host): mask TermiRust terminal panes and publish their placement`
+- [x] 2.9 `feat(screen-session): mask TermiRust terminal panes and publish their placement`
+  Protocol and session logic: the host publishes pane placements (hosted session id, rectangle,
+  cell size) and, for panes the viewer says it draws from text, fills them with one colour before
+  encoding, so typing in them costs next to nothing. Placements precede the masked pixels, follow a
+  moved pane, clip at the surface edge, survive reconnects, and never apply to previews. Reading
+  pane rectangles and window occlusion from the desktop app happens in 2.12.
 - [x] 2.10 Viewer session: landed with 2.8.
 - [x] 2.11 `feat(screen-input): inject pointer and keyboard input behind the writer lease`
   A GPUI-free crate (`termirust-screen-input`): a single-writer injector that maps surface pixels

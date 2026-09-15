@@ -4,8 +4,8 @@ use std::collections::{HashMap, VecDeque};
 
 use termirust_screen_codec::{Decoder, FrameBuffer, Rect};
 use termirust_screen_protocol::{
-    ControlHolder, Hello, Message, PROTOCOL_VERSION, Profile, ResumeOutcome, ResumeRequest,
-    SurfaceInfo, Viewport,
+    ControlHolder, Hello, MAX_PANES, Message, PROTOCOL_VERSION, PanePlacement, PaneSession,
+    Profile, ResumeOutcome, ResumeRequest, SurfaceInfo, Viewport,
 };
 
 use crate::{InputEvent, SessionError, THUMBNAIL_CACHE_BYTES, THUMBNAIL_SURFACE_BIT};
@@ -29,6 +29,11 @@ pub enum ViewerEvent {
         surface: u32,
         rect: Option<Rect>,
     },
+    /// Terminal panes on `surface` moved, appeared, or closed. Draw attached ones from their text.
+    Panes {
+        surface: u32,
+        panes: Vec<PanePlacement>,
+    },
     Closed {
         reason: String,
     },
@@ -48,6 +53,8 @@ pub struct ViewerSession {
     surfaces: Vec<SurfaceInfo>,
     decoders: HashMap<u32, Decoder>,
     control: ControlHolder,
+    panes: HashMap<u32, Vec<PanePlacement>>,
+    attached: Vec<PaneSession>,
     outbox: VecDeque<Message>,
 }
 
@@ -59,6 +66,8 @@ impl ViewerSession {
             surfaces: Vec::new(),
             decoders: HashMap::new(),
             control: ControlHolder::Nobody,
+            panes: HashMap::new(),
+            attached: Vec::new(),
             outbox: VecDeque::new(),
         }
     }
@@ -85,6 +94,12 @@ impl ViewerSession {
             cache_bytes: self.cache_bytes as u64,
             resume,
         }));
+        if !self.attached.is_empty() {
+            self.outbox.push_back(Message::AttachedPanes {
+                sessions: self.attached.clone(),
+            });
+        }
+        self.panes.clear();
         self.state = State::AwaitingWelcome;
     }
 
@@ -142,6 +157,26 @@ impl ViewerSession {
 
     pub fn release_control(&mut self) {
         self.outbox.push_back(Message::ReleaseControl);
+    }
+
+    /// Names the terminal sessions whose text this viewer draws itself, replacing the previous
+    /// list. The host stops sending pixels where those panes sit. Kept across reconnects; at most
+    /// [`MAX_PANES`] are sent.
+    pub fn attach_panes(&mut self, mut sessions: Vec<PaneSession>) {
+        sessions.truncate(MAX_PANES);
+        if sessions != self.attached {
+            self.attached = sessions;
+            if !matches!(self.state, State::Disconnected | State::Closed) {
+                self.outbox.push_back(Message::AttachedPanes {
+                    sessions: self.attached.clone(),
+                });
+            }
+        }
+    }
+
+    /// Terminal panes on `surface`, as the host last published them.
+    pub fn panes(&self, surface: u32) -> &[PanePlacement] {
+        self.panes.get(&surface).map_or(&[], Vec::as_slice)
     }
 
     /// Sends input. The host injects it only while this viewer holds control.
@@ -210,6 +245,14 @@ impl ViewerSession {
             }
             (State::Open, Message::MotionRegion { surface, rect }) => {
                 Ok(vec![ViewerEvent::MotionRegion { surface, rect }])
+            }
+            (State::Open, Message::PanePlacements { surface, panes }) => {
+                if panes.is_empty() {
+                    self.panes.remove(&surface);
+                } else {
+                    self.panes.insert(surface, panes.clone());
+                }
+                Ok(vec![ViewerEvent::Panes { surface, panes }])
             }
             (State::Open, _) => {
                 self.state = State::Closed;

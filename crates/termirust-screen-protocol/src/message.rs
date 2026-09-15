@@ -10,9 +10,11 @@
 //! | 0x12 | viewer → host | viewport: surface, rectangle, scale |
 //! | 0x13 | viewer → host | acknowledge: surface, generation, sequence |
 //! | 0x14 | viewer → host | cache miss: surface, tile, hash |
+//! | 0x15 | viewer → host | attached panes: terminal session ids the viewer draws as text |
 //! | 0x20 | host → viewer | batch: one `TSB1` tile batch |
 //! | 0x21 | host → viewer | motion region: surface, optional rectangle |
 //! | 0x22 | host → viewer | control holder |
+//! | 0x23 | host → viewer | pane placements: surface, terminal panes with rectangle and cell size |
 //! | 0x30 | viewer → host | request control |
 //! | 0x31 | viewer → host | release control |
 //! | 0x32 | viewer → host | pointer move: surface, x, y |
@@ -32,6 +34,8 @@ const MAX_SURFACES: usize = 16;
 const MAX_NAME_BYTES: usize = 128;
 const MAX_TEXT_BYTES: usize = 256;
 const MAX_REASON_BYTES: usize = 64;
+/// Most terminal panes one placements message or attachment list names.
+pub const MAX_PANES: usize = 32;
 
 /// How much detail a subscription wants.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -93,6 +97,21 @@ pub struct Viewport {
     pub surface: u32,
     pub rect: Rect,
     pub scale_milli: u16,
+}
+
+/// A TermiRust terminal session, by its hosted session id.
+pub type PaneSession = [u8; 16];
+
+/// Where a TermiRust terminal pane sits on a surface. A viewer attached to the pane's text stream
+/// draws the rectangle from that stream; the host sends it no pixels there.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PanePlacement {
+    pub session: PaneSession,
+    /// In surface pixels.
+    pub rect: Rect,
+    /// One terminal cell, in surface pixels.
+    pub cell_width: u16,
+    pub cell_height: u16,
 }
 
 /// Who may click and type on the host.
@@ -162,12 +181,21 @@ pub enum Message {
         tile: TileIndex,
         hash: TileHash,
     },
+    /// Replaces the viewer's previous list.
+    AttachedPanes {
+        sessions: Vec<PaneSession>,
+    },
     Batch(Batch),
     MotionRegion {
         surface: u32,
         rect: Option<Rect>,
     },
     Control(ControlHolder),
+    /// Replaces the previous placements on `surface`.
+    PanePlacements {
+        surface: u32,
+        panes: Vec<PanePlacement>,
+    },
     RequestControl,
     ReleaseControl,
     PointerMove {
@@ -204,9 +232,11 @@ const UNSUBSCRIBE: u8 = 0x11;
 const VIEWPORT: u8 = 0x12;
 const ACKNOWLEDGE: u8 = 0x13;
 const CACHE_MISS: u8 = 0x14;
+const ATTACHED_PANES: u8 = 0x15;
 const BATCH: u8 = 0x20;
 const MOTION_REGION: u8 = 0x21;
 const CONTROL: u8 = 0x22;
+const PANE_PLACEMENTS: u8 = 0x23;
 const REQUEST_CONTROL: u8 = 0x30;
 const RELEASE_CONTROL: u8 = 0x31;
 const POINTER_MOVE: u8 = 0x32;
@@ -297,6 +327,14 @@ impl Message {
                 w.u32(tile.0);
                 w.u64(hash.0);
             }
+            Self::AttachedPanes { sessions } => {
+                w.u8(ATTACHED_PANES);
+                if sessions.len() > MAX_PANES {
+                    return Err(ProtocolError::Malformed);
+                }
+                w.u8(sessions.len() as u8);
+                sessions.iter().for_each(|session| w.bytes(session));
+            }
             Self::Batch(batch) => {
                 w.u8(BATCH);
                 w.bytes(&batch.encode().map_err(|_| ProtocolError::InvalidBatch)?);
@@ -319,6 +357,23 @@ impl Message {
                     ControlHolder::You => 1,
                     ControlHolder::AnotherDevice => 2,
                 });
+            }
+            Self::PanePlacements { surface, panes } => {
+                w.u8(PANE_PLACEMENTS);
+                w.u32(*surface);
+                if panes.len() > MAX_PANES {
+                    return Err(ProtocolError::Malformed);
+                }
+                w.u8(panes.len() as u8);
+                for pane in panes {
+                    if pane.cell_width == 0 || pane.cell_height == 0 {
+                        return Err(ProtocolError::Malformed);
+                    }
+                    w.bytes(&pane.session);
+                    w.rect(pane.rect);
+                    w.u16(pane.cell_width);
+                    w.u16(pane.cell_height);
+                }
             }
             Self::RequestControl => w.u8(REQUEST_CONTROL),
             Self::ReleaseControl => w.u8(RELEASE_CONTROL),
@@ -466,6 +521,14 @@ impl Message {
                 tile: TileIndex(r.u32()?),
                 hash: TileHash(r.u64()?),
             },
+            ATTACHED_PANES => {
+                let count = r.pane_count()?;
+                let mut sessions = Vec::with_capacity(count);
+                for _ in 0..count {
+                    sessions.push(r.session()?);
+                }
+                Self::AttachedPanes { sessions }
+            }
             BATCH => {
                 let rest = r.take(r.remaining())?;
                 Self::Batch(Batch::decode(rest).map_err(|_| ProtocolError::InvalidBatch)?)
@@ -484,6 +547,26 @@ impl Message {
                 2 => ControlHolder::AnotherDevice,
                 _ => return Err(ProtocolError::Malformed),
             }),
+            PANE_PLACEMENTS => {
+                let surface = r.u32()?;
+                let count = r.pane_count()?;
+                let mut panes = Vec::with_capacity(count);
+                for _ in 0..count {
+                    let session = r.session()?;
+                    let rect = r.rect()?;
+                    let (cell_width, cell_height) = (r.u16()?, r.u16()?);
+                    if cell_width == 0 || cell_height == 0 {
+                        return Err(ProtocolError::Malformed);
+                    }
+                    panes.push(PanePlacement {
+                        session,
+                        rect,
+                        cell_width,
+                        cell_height,
+                    });
+                }
+                Self::PanePlacements { surface, panes }
+            }
             REQUEST_CONTROL => Self::RequestControl,
             RELEASE_CONTROL => Self::ReleaseControl,
             POINTER_MOVE => Self::PointerMove {
@@ -626,6 +709,16 @@ impl<'a> Reader<'a> {
         }
         Ok(rect)
     }
+    fn pane_count(&mut self) -> Result<usize, ProtocolError> {
+        let count = self.u8()? as usize;
+        if count > MAX_PANES {
+            return Err(ProtocolError::Malformed);
+        }
+        Ok(count)
+    }
+    fn session(&mut self) -> Result<PaneSession, ProtocolError> {
+        Ok(self.take(16)?.try_into().expect("16 bytes"))
+    }
     fn resume(&mut self) -> Result<ResumeRequest, ProtocolError> {
         Ok(ResumeRequest {
             surface: self.u32()?,
@@ -709,6 +802,9 @@ mod tests {
                 tile: TileIndex(42),
                 hash: TileHash(0xDEAD_BEEF),
             },
+            Message::AttachedPanes {
+                sessions: vec![[0x11; 16], [0x22; 16]],
+            },
             Message::Batch(Batch {
                 surface: SurfaceId(1),
                 generation: Generation(2),
@@ -728,6 +824,15 @@ mod tests {
                 rect: None,
             },
             Message::Control(ControlHolder::AnotherDevice),
+            Message::PanePlacements {
+                surface: 1,
+                panes: vec![PanePlacement {
+                    session: [0x11; 16],
+                    rect: Rect::new(240, 96, 1200, 720),
+                    cell_width: 16,
+                    cell_height: 34,
+                }],
+            },
             Message::RequestControl,
             Message::ReleaseControl,
             Message::PointerMove {
@@ -869,6 +974,45 @@ mod tests {
         );
     }
 
+    #[test]
+    fn pane_lists_are_bounded_and_cells_are_never_empty() {
+        let too_many = Message::AttachedPanes {
+            sessions: vec![[0; 16]; MAX_PANES + 1],
+        };
+        assert_eq!(too_many.encode(), Err(ProtocolError::Malformed));
+        let mut claimed = vec![ATTACHED_PANES, MAX_PANES as u8 + 1];
+        claimed.extend([0; 16 * (MAX_PANES + 1)]);
+        assert_eq!(Message::decode(&claimed), Err(ProtocolError::Malformed));
+
+        let pane = PanePlacement {
+            session: [1; 16],
+            rect: Rect::new(0, 0, 100, 100),
+            cell_width: 8,
+            cell_height: 16,
+        };
+        let mut bytes = Message::PanePlacements {
+            surface: 1,
+            panes: vec![pane],
+        }
+        .encode()
+        .unwrap();
+        assert_eq!(bytes.len(), 1 + 4 + 1 + 16 + 16 + 4);
+        let height_at = bytes.len() - 2;
+        bytes[height_at..].copy_from_slice(&[0, 0]);
+        assert_eq!(Message::decode(&bytes), Err(ProtocolError::Malformed));
+        assert_eq!(
+            Message::PanePlacements {
+                surface: 1,
+                panes: vec![PanePlacement {
+                    cell_width: 0,
+                    ..pane
+                }],
+            }
+            .encode(),
+            Err(ProtocolError::Malformed)
+        );
+    }
+
     proptest! {
         #[test]
         fn random_bodies_never_panic(bytes in proptest::collection::vec(any::<u8>(), 0..200)) {
@@ -876,7 +1020,7 @@ mod tests {
         }
 
         #[test]
-        fn mutated_messages_reencode_to_themselves(index in 0usize..19, at in 0usize..64, value in any::<u8>()) {
+        fn mutated_messages_reencode_to_themselves(index in 0usize..21, at in 0usize..64, value in any::<u8>()) {
             let message = &all_messages()[index];
             let mut bytes = message.encode().unwrap();
             let at = at % bytes.len();

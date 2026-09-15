@@ -14,7 +14,7 @@ mod viewer;
 
 pub use error::SessionError;
 pub use host::{
-    Grants, HostConfig, HostEvent, HostSession, ResumeStore, THUMBNAIL_CACHE_BYTES,
+    Grants, HostConfig, HostEvent, HostSession, PANE_MASK_BGRA, ResumeStore, THUMBNAIL_CACHE_BYTES,
     THUMBNAIL_SURFACE_BIT, TicketVerifier,
 };
 pub use input::InputEvent;

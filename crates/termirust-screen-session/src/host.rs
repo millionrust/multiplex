@@ -3,18 +3,21 @@
 use std::collections::{HashMap, VecDeque};
 
 use termirust_screen_codec::{
-    Encoder, EncoderConfig, Frame, Generation, MotionEvent, Rect, Size, SurfaceId, downscale,
-    preview_factor,
+    Encoder, EncoderConfig, Frame, FrameBuffer, Generation, MotionEvent, Rect, Size, SurfaceId,
+    downscale, preview_factor,
 };
 use termirust_screen_protocol::{
-    ControlHolder, Hello, Message, PROTOCOL_VERSION, Profile, ResumeOutcome, SurfaceInfo, Viewport,
-    Welcome,
+    ControlHolder, Hello, MAX_PANES, Message, PROTOCOL_VERSION, PanePlacement, PaneSession,
+    Profile, ResumeOutcome, SurfaceInfo, Viewport, Welcome,
 };
 
 use crate::{InputEvent, SessionError};
 
 /// Set on the surface id of preview batches, so a viewer keeps previews and full views apart.
 pub const THUMBNAIL_SURFACE_BIT: u32 = 0x8000_0000;
+/// What a masked terminal pane holds in the pixel stream (BGRA). Viewers draw the pane's text on
+/// top, so this is only seen for a moment while a pane's text is still loading.
+pub const PANE_MASK_BGRA: [u8; 4] = [0x1C, 0x1E, 0x23, 0xFF];
 /// Tile cache for previews, the same on both sides.
 pub const THUMBNAIL_CACHE_BYTES: usize = 4 << 20;
 /// Largest cache a viewer may ask the host to model.
@@ -123,6 +126,8 @@ struct Subscription {
     pending: Pending,
     last_sent_ms: Option<u64>,
     viewport: Option<Viewport>,
+    /// The captured frame with attached panes masked out, reused between frames.
+    masked: Option<FrameBuffer>,
 }
 
 enum State {
@@ -141,6 +146,8 @@ pub struct HostSession<V: TicketVerifier> {
     subscriptions: HashMap<u32, Subscription>,
     resumable: HashMap<u32, Encoder>,
     control: ControlHolder,
+    panes: HashMap<u32, Vec<PanePlacement>>,
+    attached: Vec<PaneSession>,
     outbox: VecDeque<Message>,
 }
 
@@ -159,6 +166,8 @@ impl<V: TicketVerifier> HostSession<V> {
             subscriptions: HashMap::new(),
             resumable: HashMap::new(),
             control: ControlHolder::Nobody,
+            panes: HashMap::new(),
+            attached: Vec::new(),
             outbox: VecDeque::new(),
         }
     }
@@ -252,6 +261,14 @@ impl<V: TicketVerifier> HostSession<V> {
                 if let Some(previous) = self.subscriptions.insert(key, subscription) {
                     self.keep_for_resume(grants.device, key, previous, store);
                 }
+                if profile == Profile::Interactive
+                    && let Some(panes) = self.panes.get(&surface)
+                {
+                    self.outbox.push_back(Message::PanePlacements {
+                        surface,
+                        panes: panes.clone(),
+                    });
+                }
                 Ok(vec![HostEvent::Subscribed { surface, profile }])
             }
             Message::Unsubscribe { surface } => {
@@ -294,6 +311,13 @@ impl<V: TicketVerifier> HostSession<V> {
                 }
                 Ok(Vec::new())
             }
+            Message::AttachedPanes { sessions } => {
+                if sessions != self.attached {
+                    self.attached = sessions;
+                    self.recheck_interactive(None);
+                }
+                Ok(Vec::new())
+            }
             Message::RequestControl => {
                 if grants.can_control {
                     Ok(vec![HostEvent::ControlRequested])
@@ -327,7 +351,8 @@ impl<V: TicketVerifier> HostSession<V> {
             | Message::Goodbye { .. }
             | Message::Batch(_)
             | Message::MotionRegion { .. }
-            | Message::Control(_) => {
+            | Message::Control(_)
+            | Message::PanePlacements { .. } => {
                 self.fail(SessionError::ProtocolViolation, "unexpected_message", store)
             }
         }
@@ -343,6 +368,57 @@ impl<V: TicketVerifier> HostSession<V> {
 
     pub const fn control(&self) -> ControlHolder {
         self.control
+    }
+
+    /// Publishes where TermiRust terminal panes sit on `surface`, replacing the previous list.
+    /// Panes the viewer has attached to are masked out of its pixel stream from the next frame.
+    ///
+    /// Publish only panes no other window covers, since a covered part would be hidden from the
+    /// viewer, and only panes this device may watch. At most [`MAX_PANES`] are kept.
+    pub fn set_panes(&mut self, surface: u32, mut panes: Vec<PanePlacement>) {
+        panes.truncate(MAX_PANES);
+        panes.retain(|pane| pane.cell_width > 0 && pane.cell_height > 0 && !pane.rect.is_empty());
+        let previous = self.panes.get(&surface).map_or(&[][..], Vec::as_slice);
+        if previous == panes.as_slice() {
+            return;
+        }
+        if self.is_open() && self.subscriptions.contains_key(&surface) {
+            self.outbox.push_back(Message::PanePlacements {
+                surface,
+                panes: panes.clone(),
+            });
+        }
+        if panes.is_empty() {
+            self.panes.remove(&surface);
+        } else {
+            self.panes.insert(surface, panes);
+        }
+        self.recheck_interactive(Some(surface));
+    }
+
+    /// The rectangles of `surface` currently kept out of the pixel stream.
+    pub fn masked_rects(&self, surface: u32) -> Vec<Rect> {
+        let Some(info) = self.surfaces.iter().find(|info| info.id == surface) else {
+            return Vec::new();
+        };
+        self.panes
+            .get(&surface)
+            .into_iter()
+            .flatten()
+            .filter(|pane| self.attached.contains(&pane.session))
+            .map(|pane| pane.rect.intersect(info.size.bounds()))
+            .filter(|rect| !rect.is_empty())
+            .collect()
+    }
+
+    /// Makes the next frame compare every tile of the interactive view of `surface`, or of every
+    /// surface, because what is masked changed.
+    fn recheck_interactive(&mut self, surface: Option<u32>) {
+        for (key, subscription) in &mut self.subscriptions {
+            if subscription.profile == Profile::Interactive && surface.is_none_or(|s| s == *key) {
+                subscription.pending.add(None);
+            }
+        }
     }
 
     /// The part of `surface` the viewer last reported showing.
@@ -365,6 +441,7 @@ impl<V: TicketVerifier> HostSession<V> {
             return Ok(());
         }
         let config = self.config;
+        let masks = self.masked_rects(surface);
         for profile in [Profile::Interactive, Profile::Thumbnail] {
             let key = key_for(surface, profile);
             let Some(subscription) = self.subscriptions.get_mut(&key) else {
@@ -385,7 +462,21 @@ impl<V: TicketVerifier> HostSession<V> {
                     if matches!(pending, Pending::Nothing) {
                         None
                     } else {
-                        let batch = subscription.encoder.encode_at(frame, rects, now_ms)?;
+                        let batch = if masks.is_empty() {
+                            subscription.masked = None;
+                            subscription.encoder.encode_at(frame, rects, now_ms)?
+                        } else {
+                            let masked = subscription
+                                .masked
+                                .get_or_insert_with(|| FrameBuffer::new(frame.size()));
+                            masked.copy_from_frame(frame)?;
+                            for rect in &masks {
+                                masked.fill_rect(*rect, PANE_MASK_BGRA)?;
+                            }
+                            subscription
+                                .encoder
+                                .encode_at(&masked.as_frame(), rects, now_ms)?
+                        };
                         match subscription.encoder.motion_event() {
                             Some(MotionEvent::Promoted(rect)) => {
                                 self.outbox.push_back(Message::MotionRegion {
@@ -494,6 +585,7 @@ impl<V: TicketVerifier> HostSession<V> {
             pending: Pending::Everything,
             last_sent_ms: None,
             viewport: None,
+            masked: None,
         }
     }
 
