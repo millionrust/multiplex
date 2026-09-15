@@ -194,6 +194,41 @@ fn app_icon(path: &'static str) -> Icon {
     Icon::new(Icon::empty().path(path))
 }
 
+/// Whole terminal lines to scroll for a wheel event, positive toward earlier output.
+///
+/// A trackpad reports many sub-line pixel movements, so the distance is accumulated per pane
+/// and only whole lines are returned. A new gesture or a change of direction starts over.
+fn scroll_lines_from_delta(
+    remainder: &mut f32,
+    delta: ScrollDelta,
+    touch_phase: TouchPhase,
+    line_height: Pixels,
+) -> Option<i32> {
+    let line_height: f32 = line_height.into();
+    if line_height <= 0.0 {
+        return None;
+    }
+    let delta_y: f32 = delta.pixel_delta(px(line_height)).y.into();
+    if matches!(touch_phase, TouchPhase::Started)
+        || (*remainder != 0.0 && remainder.signum() != delta_y.signum())
+    {
+        *remainder = 0.0;
+    }
+    *remainder += delta_y;
+    let lines = (*remainder / line_height).trunc();
+    *remainder -= lines * line_height;
+    (lines != 0.0).then_some(lines as i32)
+}
+
+fn pane_scroll_lines(
+    pane: &mut SessionPane,
+    delta: ScrollDelta,
+    touch_phase: TouchPhase,
+    line_height: Pixels,
+) -> Option<i32> {
+    scroll_lines_from_delta(&mut pane.scroll_remainder, delta, touch_phase, line_height)
+}
+
 fn primary_shortcut_label() -> &'static str {
     #[cfg(target_os = "macos")]
     {
@@ -751,6 +786,8 @@ struct SessionPane {
     status: String,
     selection: Option<SelectionRange>,
     dragging_selection: bool,
+    /// Trackpad scroll distance not yet large enough to move one line.
+    scroll_remainder: f32,
     log_id: String,
     current_input: String,
     selected_autocomplete_index: Option<usize>,
@@ -7574,6 +7611,7 @@ impl TermiRustApp {
             status: "Connecting".to_string(),
             selection: None,
             dragging_selection: false,
+            scroll_remainder: 0.0,
             log_id,
             current_input: String::new(),
             selected_autocomplete_index: None,
@@ -10796,31 +10834,60 @@ impl TermiRustApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.pane_uses_mouse_reporting(pane_id) {
-            if let Some(data) = self.mouse_report_bytes(
-                pane_id,
-                event.position,
-                MouseEventKind::Wheel { delta: event.delta },
-                event.modifiers,
-                window,
-                cx,
-            ) {
+        let line_height = px(self.terminal_font_size() * TERMINAL_LINE_HEIGHT);
+        let Some(lines) = self
+            .pane_mut(pane_id)
+            .and_then(|pane| pane_scroll_lines(pane, event.delta, event.touch_phase, line_height))
+        else {
+            return;
+        };
+        let (mouse_reporting, alternate_screen, application_cursor, accepts_input) = self
+            .pane(pane_id)
+            .map(|pane| {
+                (
+                    pane.terminal.mouse_protocol_mode() != MouseProtocolMode::None,
+                    pane.terminal.alternate_screen(),
+                    pane.terminal.application_cursor(),
+                    pane.accepts_terminal_input(),
+                )
+            })
+            .unwrap_or_default();
+
+        if accepts_input && mouse_reporting {
+            // One wheel report per line, the way a notched mouse wheel reports, so a
+            // trackpad does not flood the program with a report for every tiny movement.
+            let step = ScrollDelta::Lines(point(0.0, lines.signum() as f32));
+            let mut data = Vec::new();
+            for _ in 0..lines.unsigned_abs() {
+                if let Some(report) = self.mouse_report_bytes(
+                    pane_id,
+                    event.position,
+                    MouseEventKind::Wheel { delta: step },
+                    event.modifiers,
+                    window,
+                    cx,
+                ) {
+                    data.extend(report);
+                }
+            }
+            if !data.is_empty() {
                 let _ = self.send_input_bytes(pane_id, data, cx);
             }
             return;
         }
 
-        let line_height = px(self.terminal_font_size() * TERMINAL_LINE_HEIGHT);
-        let delta = event.delta.pixel_delta(line_height);
-        let delta_y: f32 = delta.y.into();
-        let line_height_px: f32 = line_height.into();
-        let lines = (delta_y / line_height_px).round() as i32;
-        if lines != 0 {
-            if let Some(pane) = self.pane_mut(pane_id) {
-                pane.terminal.scroll_scrollback(lines);
-            }
-            self.sync_terminal_grid(pane_id, cx);
+        if accepts_input && alternate_screen {
+            // Full-screen programs such as tmux, less, and vim keep no scrollback here, so
+            // the wheel scrolls them with arrow keys, as other terminals do.
+            let keys = crate::ui::keys::alternate_scroll_keys(lines, application_cursor);
+            let _ = self.send_input_bytes(pane_id, keys, cx);
+            return;
         }
+
+        if let Some(pane) = self.pane_mut(pane_id) {
+            pane.terminal.scroll_scrollback(lines);
+        }
+        self.sync_terminal_grid(pane_id, cx);
         cx.notify();
     }
 
@@ -27549,6 +27616,58 @@ sleep 1
                 })
             })
             .expect("window update should succeed");
+    }
+
+    #[test]
+    fn trackpad_scroll_accumulates_sub_line_movement_into_whole_lines() {
+        use super::scroll_lines_from_delta;
+        use gpui::TouchPhase;
+
+        let line = px(crate::ui::theme::LIST_ROW_HEIGHT);
+        let pixels =
+            |lines: f32| gpui::ScrollDelta::Pixels(point(gpui::Pixels::ZERO, line * lines));
+        let mut remainder = 0.0;
+
+        // Small trackpad movements add up instead of each rounding to nothing or a line.
+        for _ in 0..3 {
+            assert_eq!(
+                scroll_lines_from_delta(&mut remainder, pixels(0.3), TouchPhase::Moved, line),
+                None
+            );
+        }
+        assert_eq!(
+            scroll_lines_from_delta(&mut remainder, pixels(0.3), TouchPhase::Moved, line),
+            Some(1)
+        );
+        assert_eq!(
+            scroll_lines_from_delta(&mut remainder, pixels(2.25), TouchPhase::Moved, line),
+            Some(2)
+        );
+
+        // Reversing direction drops the leftover distance from the other direction.
+        assert_eq!(
+            scroll_lines_from_delta(&mut remainder, pixels(-0.95), TouchPhase::Moved, line),
+            None
+        );
+        assert_eq!(
+            scroll_lines_from_delta(&mut remainder, pixels(-0.1), TouchPhase::Moved, line),
+            Some(-1)
+        );
+
+        // A new gesture starts from zero, and notched wheels still move whole lines.
+        assert_eq!(
+            scroll_lines_from_delta(&mut remainder, pixels(0.5), TouchPhase::Started, line),
+            None
+        );
+        assert_eq!(
+            scroll_lines_from_delta(
+                &mut remainder,
+                gpui::ScrollDelta::Lines(point(0.0, -3.0)),
+                TouchPhase::Started,
+                line
+            ),
+            Some(-3)
+        );
     }
 
     #[gpui::test]

@@ -249,6 +249,14 @@ pub fn encode_control_char(key: &str) -> Option<u8> {
     }
 }
 
+/// Arrow keys that scroll a full-screen program without mouse reporting: one Up per line
+/// toward earlier output (positive `lines`), one Down per line back. Follows the cursor-key
+/// mode the program asked for.
+pub fn alternate_scroll_keys(lines: i32, application_cursor: bool) -> Vec<u8> {
+    cursor_key(application_cursor, if lines > 0 { b'A' } else { b'B' })
+        .repeat(lines.unsigned_abs() as usize)
+}
+
 pub fn encode_mouse_report(
     mode: MouseProtocolMode,
     encoding: MouseProtocolEncoding,
@@ -304,9 +312,11 @@ pub fn encode_mouse_report(
                     value
                 }
             };
-            if direction < 0.0 {
+            // GPUI reports a positive delta when content should move down to reveal earlier
+            // output, which is wheel up (button 4, code 64) in the xterm protocol.
+            if direction > 0.0 {
                 button_code += 64;
-            } else if direction > 0.0 {
+            } else if direction < 0.0 {
                 button_code += 65;
             } else {
                 return None;
@@ -574,5 +584,34 @@ mod tests {
                 case.name
             );
         }
+    }
+
+    #[test]
+    fn wheel_toward_earlier_output_reports_wheel_up() {
+        let report = |y: f32| {
+            encode_mouse_report(
+                MouseProtocolMode::PressRelease,
+                MouseProtocolEncoding::Sgr,
+                MouseEventKind::Wheel {
+                    delta: ScrollDelta::Lines(gpui::point(0.0, y)),
+                },
+                TerminalCellPos { row: 4, col: 9 },
+                Modifiers::none(),
+            )
+        };
+        assert_eq!(report(1.0), Some(b"\x1b[<64;10;5M".to_vec()));
+        assert_eq!(report(-1.0), Some(b"\x1b[<65;10;5M".to_vec()));
+        assert_eq!(report(0.0), None);
+    }
+
+    #[test]
+    fn alternate_screen_wheel_sends_one_arrow_per_line_in_the_cursor_key_mode() {
+        assert_eq!(alternate_scroll_keys(2, false), b"\x1b[A\x1b[A".to_vec());
+        assert_eq!(alternate_scroll_keys(-1, false), b"\x1b[B".to_vec());
+        assert_eq!(alternate_scroll_keys(1, true), b"\x1bOA".to_vec());
+        assert_eq!(
+            alternate_scroll_keys(-3, true),
+            b"\x1bOB\x1bOB\x1bOB".to_vec()
+        );
     }
 }
