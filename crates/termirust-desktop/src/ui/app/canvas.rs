@@ -3176,11 +3176,22 @@ impl TermiRustApp {
             cx.notify();
             return;
         }
-        let Some(path) =
-            Self::take_dialog_path_for_tests().or_else(|| rfd::FileDialog::new().pick_folder())
-        else {
+        self.choose_path(
+            rfd::AsyncFileDialog::new(),
+            super::DialogChoice::Folder,
+            cx,
+            |app, path, cx| app.set_canvas_project_directory(path, cx),
+        );
+    }
+
+    fn set_canvas_project_directory(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
+        // The editor can gain unsaved changes while the folder panel is open.
+        if self.canvas_project_editor_is_dirty(cx) {
+            self.error_message =
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopySaveOrRevertTheOpenProjectFileBeforeChangingFolders).to_string();
+            cx.notify();
             return;
-        };
+        }
         if !path.is_dir() {
             self.error_message = localization::dynamic_user_data_message(
                 termirust_ui_contract::MessageId::AgentCanvasDynamicProjectFolderDoesNotExist,
@@ -3452,11 +3463,21 @@ impl TermiRustApp {
     }
 
     fn pick_agent_working_directory(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(path) =
-            Self::take_dialog_path_for_tests().or_else(|| rfd::FileDialog::new().pick_folder())
-        else {
-            return;
-        };
+        self.choose_path_in_window(
+            rfd::AsyncFileDialog::new(),
+            super::DialogChoice::Folder,
+            window,
+            cx,
+            |app, path, window, cx| app.set_agent_working_directory(path, window, cx),
+        );
+    }
+
+    fn set_agent_working_directory(
+        &mut self,
+        path: std::path::PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if !path.is_dir() {
             self.error_message = localization::dynamic_user_data_message(
                 termirust_ui_contract::MessageId::AgentCanvasDynamicWorkingDirectoryDoesNotExist,

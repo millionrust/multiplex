@@ -84,6 +84,7 @@ use terminal_grid::TerminalGridView;
 use worktree_launch::WorktreeLaunchUiState;
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
@@ -102,7 +103,7 @@ use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{ActiveTheme, Icon, Sizable, StyledExt as _, h_flex, v_flex};
-use rfd::{AsyncFileDialog, FileDialog};
+use rfd::AsyncFileDialog;
 use termirust_client::{DevUrlProjection, HostReconciliationPlan};
 use termirust_domain::{HostedSessionId, SessionOrigin};
 use termirust_protocol::MobileDevicePairingRequest;
@@ -371,6 +372,26 @@ struct SearchMatch {
     full_row: usize,
     start_col: usize,
     end_col: usize,
+}
+
+/// What a file panel asks the user to choose.
+#[derive(Clone, Copy, Debug)]
+enum DialogChoice {
+    Folder,
+    File,
+    SaveFile,
+}
+
+impl DialogChoice {
+    #[cfg_attr(test, allow(dead_code))]
+    async fn run(self, dialog: AsyncFileDialog) -> Option<PathBuf> {
+        let handle = match self {
+            Self::Folder => dialog.pick_folder().await,
+            Self::File => dialog.pick_file().await,
+            Self::SaveFile => dialog.save_file().await,
+        };
+        handle.map(|handle| handle.path().to_path_buf())
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1369,6 +1390,7 @@ pub struct TermiRustApp {
     global_search: GlobalSearchState,
     shell_accessibility: ShellAccessibilityAdapter,
     project_list_focus: FocusHandle,
+    focus_trace: Option<String>,
     preset_library: PresetLibraryState,
     preset_label_input: Entity<InputState>,
     preset_executable_input: Entity<InputState>,
@@ -1523,6 +1545,61 @@ impl TermiRustApp {
         {
             None
         }
+    }
+
+    /// Opens a file panel from a spawned task and hands the chosen path to `then` in a
+    /// fresh update. A panel run modally inside an update keeps the main queue running, so
+    /// any task that touches the app while it is open aborts the process.
+    fn choose_path_in_window(
+        &mut self,
+        dialog: AsyncFileDialog,
+        choice: DialogChoice,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        then: impl FnOnce(&mut Self, PathBuf, &mut Window, &mut Context<Self>) + 'static,
+    ) {
+        #[cfg(test)]
+        {
+            let _ = (dialog, choice);
+            if let Some(path) = Self::take_dialog_path_for_tests() {
+                then(self, path, window, cx);
+            }
+        }
+        #[cfg(not(test))]
+        cx.spawn_in(window, async move |this, cx| {
+            let Some(path) = choice.run(dialog).await else {
+                return;
+            };
+            let _ = cx.update(|window, cx| {
+                let _ = this.update(cx, |app, cx| then(app, path, window, cx));
+            });
+        })
+        .detach();
+    }
+
+    /// [`Self::choose_path_in_window`] for callers without a window.
+    fn choose_path(
+        &mut self,
+        dialog: AsyncFileDialog,
+        choice: DialogChoice,
+        cx: &mut Context<Self>,
+        then: impl FnOnce(&mut Self, PathBuf, &mut Context<Self>) + 'static,
+    ) {
+        #[cfg(test)]
+        {
+            let _ = (dialog, choice);
+            if let Some(path) = Self::take_dialog_path_for_tests() {
+                then(self, path, cx);
+            }
+        }
+        #[cfg(not(test))]
+        cx.spawn(async move |this, cx| {
+            let Some(path) = choice.run(dialog).await else {
+                return;
+            };
+            let _ = this.update(cx, |app, cx| then(app, path, cx));
+        })
+        .detach();
     }
 
     pub fn new(mut saved: SavedState, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -1756,6 +1833,7 @@ impl TermiRustApp {
             global_search: GlobalSearchState::new(),
             shell_accessibility: ShellAccessibilityAdapter::new(),
             project_list_focus,
+            focus_trace: std::env::var_os("TERMIRUST_TRACE_FOCUS").map(|_| String::new()),
             preset_library,
             preset_label_input,
             preset_executable_input,
@@ -1949,6 +2027,7 @@ impl TermiRustApp {
                         let _ = this.update(cx, |app, cx| {
                             app.process_events(cx);
                             app.process_shell_accessibility_actions(window, cx);
+                            app.trace_focus_change(window, cx);
                             app.refresh_remote_listener_process(cx);
                             app.process_artifact_progress(cx);
                             app.process_activity_activation(window, cx);
@@ -2015,8 +2094,44 @@ impl TermiRustApp {
         self.saved.settings.terminal_font_size as f32
     }
 
+    /// With `TERMIRUST_TRACE_FOCUS` set, logs which element holds keyboard focus each time
+    /// it changes, to diagnose focus leaving the terminal.
+    fn trace_focus_change(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.focus_trace.is_none() {
+            return;
+        }
+        let holder = if !window.is_window_active() {
+            "window inactive".to_string()
+        } else if self.project_list_focus.is_focused(window) {
+            "project list".to_string()
+        } else if let Some(pane) = self
+            .panes
+            .iter()
+            .find(|pane| pane.terminal_focus.contains_focused(window, cx))
+        {
+            format!("terminal {} ({:?})", pane.id, pane.terminal_focus_mode)
+        } else if let Some(pane) = self
+            .panes
+            .iter()
+            .find(|pane| pane.terminal_chrome_focus.contains_focused(window, cx))
+        {
+            format!("terminal chrome {}", pane.id)
+        } else if window.focused(cx).is_some() {
+            "another element".to_string()
+        } else {
+            "nothing".to_string()
+        };
+        if self.focus_trace.as_deref() != Some(holder.as_str()) {
+            eprintln!("[focus] {holder}");
+            self.focus_trace = Some(holder);
+        }
+    }
+
     fn process_shell_accessibility_actions(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         for event in self.shell_accessibility.drain() {
+            if self.focus_trace.is_some() {
+                eprintln!("[focus] accessibility request {:?}", event.command);
+            }
             match event.command {
                 ShellAccessibilityCommand::SkipToContent
                 | ShellAccessibilityCommand::FocusRegion(ShellRegionId::Content) => {
@@ -5196,23 +5311,31 @@ impl TermiRustApp {
         if self.diagnostic_operation.is_some() {
             return;
         }
-        let Some(preview) = self.diagnostic_preview.take() else {
+        if self.diagnostic_preview.is_none() {
             self.error_message = localization::diagnostics_preview_required();
             cx.notify();
             return;
-        };
-        let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
-            FileDialog::new()
-                .add_filter(
-                    localization::static_message(MessageId::SettingsJsonFileType),
-                    &["json"],
-                )
-                .set_file_name(localization::static_message(
-                    MessageId::SettingsDiagnosticsFilename,
-                ))
-                .save_file()
-        }) else {
-            self.diagnostic_preview = Some(preview);
+        }
+        let dialog = AsyncFileDialog::new()
+            .add_filter(
+                localization::static_message(MessageId::SettingsJsonFileType),
+                &["json"],
+            )
+            .set_file_name(localization::static_message(
+                MessageId::SettingsDiagnosticsFilename,
+            ));
+        self.choose_path(dialog, DialogChoice::SaveFile, cx, |app, path, cx| {
+            app.export_previewed_diagnostics_to(path, cx);
+        });
+    }
+
+    fn export_previewed_diagnostics_to(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if self.diagnostic_operation.is_some() {
+            return;
+        }
+        let Some(preview) = self.diagnostic_preview.take() else {
+            self.error_message = localization::diagnostics_preview_required();
+            cx.notify();
             return;
         };
         let cancellation = termirust_diagnostics::ExportCancellation::default();
@@ -5627,20 +5750,20 @@ impl TermiRustApp {
     }
 
     fn export_portable_data(&mut self, cx: &mut Context<Self>) {
-        let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
-            FileDialog::new()
-                .add_filter(
-                    localization::static_message(MessageId::SettingsJsonFileType),
-                    &["json"],
-                )
-                .set_file_name(localization::static_message(
-                    MessageId::SettingsPortableFilename,
-                ))
-                .save_file()
-        }) else {
-            return;
-        };
+        let dialog = AsyncFileDialog::new()
+            .add_filter(
+                localization::static_message(MessageId::SettingsJsonFileType),
+                &["json"],
+            )
+            .set_file_name(localization::static_message(
+                MessageId::SettingsPortableFilename,
+            ));
+        self.choose_path(dialog, DialogChoice::SaveFile, cx, |app, path, cx| {
+            app.export_portable_data_to(path, cx);
+        });
+    }
 
+    fn export_portable_data_to(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         match export_portable_data_bundle(&path, &self.saved, &self.known_hosts) {
             Ok(_) => {
                 self.status_message =
@@ -5688,11 +5811,16 @@ impl TermiRustApp {
     }
 
     fn pick_sync_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(path) =
-            Self::take_dialog_path_for_tests().or_else(|| FileDialog::new().pick_folder())
-        else {
-            return;
-        };
+        self.choose_path_in_window(
+            AsyncFileDialog::new(),
+            DialogChoice::Folder,
+            window,
+            cx,
+            |app, path, window, cx| app.set_sync_folder(path, window, cx),
+        );
+    }
+
+    fn set_sync_folder(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         let path_str = path.display().to_string();
         self.saved.settings.sync_folder_path = Some(path_str.clone());
         self.save_settings();
@@ -6120,20 +6248,32 @@ impl TermiRustApp {
             return;
         }
 
-        let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
-            FileDialog::new()
-                .add_filter(
-                    localization::static_message(MessageId::SettingsEncryptedBackupFileType),
-                    &["json"],
-                )
-                .set_file_name(localization::static_message(
-                    MessageId::SettingsBackupFilename,
-                ))
-                .save_file()
-        }) else {
-            return;
-        };
+        let dialog = AsyncFileDialog::new()
+            .add_filter(
+                localization::static_message(MessageId::SettingsEncryptedBackupFileType),
+                &["json"],
+            )
+            .set_file_name(localization::static_message(
+                MessageId::SettingsBackupFilename,
+            ));
+        self.choose_path_in_window(
+            dialog,
+            DialogChoice::SaveFile,
+            window,
+            cx,
+            move |app, path, window, cx| {
+                app.export_encrypted_portable_data_to(path, passphrase, window, cx);
+            },
+        );
+    }
 
+    fn export_encrypted_portable_data_to(
+        &mut self,
+        path: PathBuf,
+        passphrase: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match export_encrypted_portable_data_bundle(
             &path,
             &self.saved,
@@ -6215,21 +6355,23 @@ impl TermiRustApp {
             return;
         }
 
-        let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
-            FileDialog::new()
-                .add_filter(
-                    localization::static_message(MessageId::SettingsEncryptedMobileFileType),
-                    &["json"],
-                )
-                .set_file_name(localization::static_message(
-                    MessageId::SettingsMobileFilename,
-                ))
-                .save_file()
-        }) else {
-            return;
-        };
-
-        self.export_mobile_vault_to_path(&path, &passphrase, window, cx);
+        let dialog = AsyncFileDialog::new()
+            .add_filter(
+                localization::static_message(MessageId::SettingsEncryptedMobileFileType),
+                &["json"],
+            )
+            .set_file_name(localization::static_message(
+                MessageId::SettingsMobileFilename,
+            ));
+        self.choose_path_in_window(
+            dialog,
+            DialogChoice::SaveFile,
+            window,
+            cx,
+            move |app, path, window, cx| {
+                app.export_mobile_vault_to_path(&path, &passphrase, window, cx);
+            },
+        );
     }
 
     fn import_mobile_pairing_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -6297,17 +6439,25 @@ impl TermiRustApp {
     }
 
     fn import_portable_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
-            FileDialog::new()
-                .add_filter(
-                    localization::static_message(MessageId::SettingsJsonFileType),
-                    &["json"],
-                )
-                .pick_file()
-        }) else {
-            return;
-        };
+        let dialog = AsyncFileDialog::new().add_filter(
+            localization::static_message(MessageId::SettingsJsonFileType),
+            &["json"],
+        );
+        self.choose_path_in_window(
+            dialog,
+            DialogChoice::File,
+            window,
+            cx,
+            |app, path, window, cx| app.import_portable_data_file(path, window, cx),
+        );
+    }
 
+    fn import_portable_data_file(
+        &mut self,
+        path: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match import_portable_data_bundle(&path, &mut self.saved, &self.known_hosts) {
             Ok(_) => {
                 let _ = save_saved_state(&self.saved);
@@ -6367,17 +6517,28 @@ impl TermiRustApp {
             return;
         }
 
-        let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
-            FileDialog::new()
-                .add_filter(
-                    localization::static_message(MessageId::SettingsEncryptedBackupFileType),
-                    &["json"],
-                )
-                .pick_file()
-        }) else {
-            return;
-        };
+        let dialog = AsyncFileDialog::new().add_filter(
+            localization::static_message(MessageId::SettingsEncryptedBackupFileType),
+            &["json"],
+        );
+        self.choose_path_in_window(
+            dialog,
+            DialogChoice::File,
+            window,
+            cx,
+            move |app, path, window, cx| {
+                app.import_encrypted_portable_data_file(path, passphrase, window, cx);
+            },
+        );
+    }
 
+    fn import_encrypted_portable_data_file(
+        &mut self,
+        path: PathBuf,
+        passphrase: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match import_encrypted_portable_data_bundle(
             &path,
             &mut self.saved,
@@ -7108,22 +7269,23 @@ impl TermiRustApp {
         }) else {
             return;
         };
-        let Some(local_path) =
-            Self::take_dialog_path_for_tests().or_else(|| FileDialog::new().pick_file())
-        else {
-            return;
-        };
-
-        let operation = SftpOperationRequest::Upload {
-            workspace_id,
-            operation_id: self.next_sftp_operation_id(),
-            request,
-            remote_dir: current_path,
-            local_path,
-            conflict_policy: SftpConflictPolicy::Ask,
-        };
-        self.start_workspace_transfer(workspace_id, operation, cx);
-        let _ = window;
+        self.choose_path_in_window(
+            AsyncFileDialog::new(),
+            DialogChoice::File,
+            window,
+            cx,
+            move |app, local_path, _window, cx| {
+                let operation = SftpOperationRequest::Upload {
+                    workspace_id,
+                    operation_id: app.next_sftp_operation_id(),
+                    request,
+                    remote_dir: current_path,
+                    local_path,
+                    conflict_policy: SftpConflictPolicy::Ask,
+                };
+                app.start_workspace_transfer(workspace_id, operation, cx);
+            },
+        );
     }
 
     fn download_workspace_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -7149,21 +7311,24 @@ impl TermiRustApp {
         else {
             return;
         };
-        let Some(local_path) = Self::take_dialog_path_for_tests()
-            .or_else(|| FileDialog::new().set_file_name(&entry.name).save_file())
-        else {
-            return;
-        };
-
-        let operation = SftpOperationRequest::Download {
-            workspace_id,
-            operation_id: self.next_sftp_operation_id(),
-            request,
-            remote_path: entry.path,
-            local_path,
-            conflict_policy: SftpConflictPolicy::Ask,
-        };
-        self.start_workspace_transfer(workspace_id, operation, cx);
+        let dialog = AsyncFileDialog::new().set_file_name(&entry.name);
+        let remote_path = entry.path;
+        self.choose_path(
+            dialog,
+            DialogChoice::SaveFile,
+            cx,
+            move |app, local_path, cx| {
+                let operation = SftpOperationRequest::Download {
+                    workspace_id,
+                    operation_id: app.next_sftp_operation_id(),
+                    request,
+                    remote_path,
+                    local_path,
+                    conflict_policy: SftpConflictPolicy::Ask,
+                };
+                app.start_workspace_transfer(workspace_id, operation, cx);
+            },
+        );
     }
 
     fn start_workspace_transfer(
@@ -7926,12 +8091,28 @@ impl TermiRustApp {
                 pane.auto_reconnect_at = None;
                 pane.status = "Reconnecting...".to_string();
             }
-            self.reconnect_pane(pane_id, window, cx);
+            // Automatic reconnects run in the background, often in another tab, so they
+            // keep keyboard focus where the user left it.
+            let had_focus = self.pane(pane_id).is_some_and(|pane| {
+                pane.terminal_focus.contains_focused(window, cx)
+                    || pane.terminal_chrome_focus.contains_focused(window, cx)
+            });
+            self.reconnect_pane_with_focus(pane_id, had_focus, window, cx);
         }
         true
     }
 
     fn reconnect_pane(&mut self, pane_id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        self.reconnect_pane_with_focus(pane_id, true, window, cx);
+    }
+
+    fn reconnect_pane_with_focus(
+        &mut self,
+        pane_id: u64,
+        take_focus: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(pane) = self.pane(pane_id) else {
             return;
         };
@@ -7990,7 +8171,7 @@ impl TermiRustApp {
         };
         self.error_message.clear();
         self.sync_terminal_layout(window, cx);
-        if let Some(pane) = self.pane(new_pane_id) {
+        if take_focus && let Some(pane) = self.pane(new_pane_id) {
             pane.terminal_focus.focus(window);
         }
         self.persist_runtime_state();
