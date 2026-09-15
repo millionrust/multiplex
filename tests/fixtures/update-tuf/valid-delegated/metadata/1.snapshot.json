@@ -1,0 +1,30 @@
+{
+  "signed": {
+    "_type": "snapshot",
+    "spec_version": "1.0.0",
+    "version": 1,
+    "expires": "2099-01-01T00:00:00Z",
+    "meta": {
+      "targets.json": {
+        "length": 2283,
+        "hashes": {
+          "sha256": "538d95e39e9e175993631ec7570ede3151e66f498478a7f7902d7242e2f9a79b"
+        },
+        "version": 1
+      },
+      "stable-macos-aarch64.json": {
+        "length": 1807,
+        "hashes": {
+          "sha256": "8775dc216b131c5d6204a9c0b827f39f95baf356fc9b67104fde88a9bbdb8af5"
+        },
+        "version": 1
+      }
+    }
+  },
+  "signatures": [
+    {
+      "keyid": "8ec3a843a0f9328c863cac4046ab1cacbbc67888476ac7acf73d9bcd9a223ada",
+      "sig": "8cd21d720b1dd9ab47fd8259efbfe1acb4686e5ce51de92c0cc4bf2cdc604636329230987e4e123d55711b28f67c955c99befa9415ecf7331632a2e19fab4756ba0e724d77d20bb46e5801e339067b6e0403ad74b807fd0bd9076b539de7a67697fb45505e1c43b56a27a05d0fd7ce25d587ae4af22662d6878b4f68c137dba551300fdd7f30d781985253c42686ce77e5afc6b6d58e991227ca5901cfbdff07fdf5ec4d627854074cf44a7de5145f485b245c9f3ac76c902ec9b87725fb14a4059c68cf73f44db2214a4522c1ae2acef2ac406bb6f27b9ccebe76fcf867cefc0be144b8883349ae598f23ef597e5de0423eed3c8ef0c8eaff4a4da22f4b327a9346bfcdea7ebd34d40a0c9ccdfcf36e64df923b6ad9917aa532ea5cda7e9f26d0e804882a7e460551e135a31d39b7f281d21bc8470272b9769fe2c71391f5aa2ed960b646c3d4efe8df9fdc10d330d4f94a94156208433083f7bf361895e46fb20f8b695baf6c8301b4effd5280727575a60206f7fcb8d11fd577fa5aa452b7"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "policy": {
+    "max_file_mib": 10,
+    "max_files": 5,
+    "retention_days": 14,
+    "bundle_mib": 50
+  },
+  "canaries": [
+    "TERMIRUST_TERMINAL_CANARY_7EFA",
+    "TERMIRUST_PROMPT_CANARY_1A92",
+    "password=client-secret",
+    "Bearer client-token",
+    "/Users/private/client-project",
+    "client-user@production.internal",
+    "-----BEGIN OPENSSH PRIVATE KEY-----"
+  ]
+}

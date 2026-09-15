@@ -1,0 +1,32 @@
+[package]
+name = "termirust-domain"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "Pure domain contracts for TermiRust projects and durable sessions"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+unicode-segmentation = "1.12"
+unicode-casefold = "0.2"
+unicode-normalization = "0.1"
+url = "2.5"
+uuid = { version = "1.22", features = ["serde", "v4"] }
+
+[dev-dependencies]
+tempfile = "3.27"
+
+[[bench]]
+name = "session_search"
+harness = false
+
+[[bench]]
+name = "transcript_normalize"
+harness = false
+
+[[bench]]
+name = "dev_url_scan"
+harness = false

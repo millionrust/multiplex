@@ -1,0 +1,18 @@
+# name|normalized URLs separated by comma, or -|byte stream with \xNN escapes
+plain|http://localhost:3000/|ready http://localhost:3000/\x0a
+sgr-split|http://localhost:3000/path?q=x|ready http://local\x1b[31mhost:3000/path?q=x\x1b[0m\x0a
+subdomain|https://api.localhost/|listening https://api.localhost/\x0a
+ipv4|http://127.42.0.9:8080/|http://127.42.0.9:8080/\x0a
+ipv6|http://[::1]:9000/|http://[::1]:9000/\x0a
+cursor-splice|-|http://local\x1b[2Chost:3000\x0a
+osc-title-splice|-|http://local\x1b]0;title\x07host:3000\x0a
+dcs-splice|-|http://local\x1bPignored\x1b\\host:3000\x0a
+osc8-link|-|\x1b]8;;http://localhost:3000\x07label\x1b]8;;\x07\x0a
+osc52-clipboard|-|\x1b]52;c;aHR0cDovL2xvY2FsaG9zdDozMDAw\x07\x0a
+invalid-utf8|-|http://local\xffhost:3000\x0a
+external|-|http://example.com/\x0a
+private|-|http://10.0.0.1/\x0a
+metadata|-|http://169.254.169.254/latest/meta-data/\x0a
+credentialed|-|http://user:pass@localhost:3000/\x0a
+ambiguous-integer|-|http://2130706433:3000/\x0a
+ambiguous-hex|-|http://0x7f000001:3000/\x0a

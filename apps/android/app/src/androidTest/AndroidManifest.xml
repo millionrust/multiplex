@@ -1,0 +1,11 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <package android:name="com.termirust.mobile" />
+    </queries>
+    <application>
+        <service
+            android:name="com.termirust.mobile.replication.TransferPermissionProbeService"
+            android:exported="true"
+            android:process=":transferPermissionProbe" />
+    </application>
+</manifest>

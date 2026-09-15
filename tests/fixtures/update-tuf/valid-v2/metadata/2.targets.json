@@ -1,0 +1,45 @@
+{
+  "signed": {
+    "_type": "targets",
+    "spec_version": "1.0.0",
+    "version": 2,
+    "expires": "2099-01-01T00:00:00Z",
+    "targets": {
+      "stable/macos/aarch64/termirust-1.2.3.tar.zst": {
+        "length": 50,
+        "hashes": {
+          "sha256": "eacdd41b74a1359fdde7ac9e3844d86ef4aa6f19330caf91fea08520a0f6cdcb"
+        },
+        "custom": {
+          "termirust": {
+            "arch": "aarch64",
+            "channel": "stable",
+            "emergency_rollback": false,
+            "platform": "macos",
+            "protocol_range": {
+              "max": 2,
+              "min": 1
+            },
+            "rollout": 100,
+            "schema_version": 1,
+            "store_range": {
+              "max": 3,
+              "min": 1
+            },
+            "version": "1.2.3"
+          }
+        }
+      }
+    },
+    "delegations": {
+      "keys": {},
+      "roles": []
+    }
+  },
+  "signatures": [
+    {
+      "keyid": "8ec3a843a0f9328c863cac4046ab1cacbbc67888476ac7acf73d9bcd9a223ada",
+      "sig": "10818ff5f74be2a925630dc4d5434cf5b89784b977d14ecaa615e501027d8f2cc3dc4f062e0b78457d39638b00422b98af8052872809a54918fb85267e74926608d4235092ba3b519d1f7d802fb11457ae29a7519792b5d81a927b6cbd4445289d2612aa20f3337c527f66c128db81186b8ea6b08799329c9d94b5e9ae81e846b2971ce08924b252802f33aa8fe5b5095b47efcbc594a263656a60a6a7c4462e5915e5faba382f1223a2b77586b870aad79212cfecc5d015b945218d3935951c9868379aa83dc2e51190be5aa60e364c8919b51420f9fae90925f569e63cdfe84ece0a3c1b2db2bedcc3acd431ea5c096eeb352a736b7d82dd7f9d8a1e1b2a7f45747f177780d688bc1497d2c2d77077030645431e26d8c03e1f5cfcc6ba2a78be14c51aacea1e9fdf025c4b5cbdf02b464c8c80cb6fc36e52ceeb4864b4d0bc890f6b60bc88f095882a2eb452bf8a1e929195ecb16b6f2033884320e8a30c8d799f1feb173e9a856f676bb1f5b72689d02921a36ed7d566359d400b7bc24575"
+    }
+  ]
+}

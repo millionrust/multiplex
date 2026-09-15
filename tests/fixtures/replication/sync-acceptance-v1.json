@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "slot": "89abcdef0123456789abcdef0123456789abcdef0123456789abcdef01234567",
+  "conflict_count": 2,
+  "provider_conflict_count": 0,
+  "conflict_review_token": "b3db6fab773028786fd45a5e177d9d94405a8f1907c5e422d580592d78d2b78f",
+  "resolved_entry_count": 5
+}

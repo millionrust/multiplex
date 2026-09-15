@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "limits": {
+    "minimum_font_size": 10.0,
+    "maximum_font_size": 32.0,
+    "minimum_columns": 20,
+    "maximum_columns": 400,
+    "minimum_rows": 5,
+    "maximum_rows": 200,
+    "horizontal_inset": 24.0,
+    "vertical_inset": 24.0,
+    "character_width_factor": 0.62,
+    "line_height_factor": 1.35,
+    "compact_width": 600.0,
+    "compact_text_scale": 1.6,
+    "maximum_accessibility_characters": 4096,
+    "ios_minimum_target": 44.0,
+    "android_minimum_target": 48.0
+  },
+  "layout_cases": [
+    {
+      "name": "phone portrait",
+      "width": 390.0,
+      "height": 600.0,
+      "requested_font_size": 14.0,
+      "text_scale": 1.0,
+      "expected_font_size": 14.0,
+      "expected_columns": 42,
+      "expected_rows": 30,
+      "expected_compact": true
+    },
+    {
+      "name": "tablet split landscape",
+      "width": 1024.0,
+      "height": 700.0,
+      "requested_font_size": 14.0,
+      "text_scale": 1.0,
+      "expected_font_size": 14.0,
+      "expected_columns": 115,
+      "expected_rows": 35,
+      "expected_compact": false
+    },
+    {
+      "name": "small phone at 200 percent",
+      "width": 320.0,
+      "height": 400.0,
+      "requested_font_size": 32.0,
+      "text_scale": 2.0,
+      "expected_font_size": 32.0,
+      "expected_columns": 20,
+      "expected_rows": 5,
+      "expected_compact": true
+    },
+    {
+      "name": "font lower bound",
+      "width": 800.0,
+      "height": 600.0,
+      "requested_font_size": 7.0,
+      "text_scale": 1.0,
+      "expected_font_size": 10.0,
+      "expected_columns": 125,
+      "expected_rows": 42,
+      "expected_compact": false
+    },
+    {
+      "name": "font upper bound",
+      "width": 800.0,
+      "height": 600.0,
+      "requested_font_size": 40.0,
+      "text_scale": 1.0,
+      "expected_font_size": 32.0,
+      "expected_columns": 39,
+      "expected_rows": 13,
+      "expected_compact": false
+    },
+    {
+      "name": "expanded text forces compact controls",
+      "width": 600.0,
+      "height": 500.0,
+      "requested_font_size": 14.0,
+      "text_scale": 2.0,
+      "expected_font_size": 14.0,
+      "expected_columns": 33,
+      "expected_rows": 12,
+      "expected_compact": true
+    }
+  ],
+  "accessible_output_cases": [
+    {
+      "name": "visible output remains intact",
+      "lines": ["alpha", "beta"],
+      "maximum_characters": 20,
+      "expected": "alpha\nbeta"
+    },
+    {
+      "name": "only the latest bounded output is exposed",
+      "lines": ["alpha", "beta", "gamma"],
+      "maximum_characters": 10,
+      "expected": "beta\ngamma"
+    },
+    {
+      "name": "blank terminal has no hidden accessibility output",
+      "lines": ["", ""],
+      "maximum_characters": 20,
+      "expected": ""
+    }
+  ],
+  "background_cases": [
+    {
+      "name": "held writer is released",
+      "writer_held": true,
+      "expected_release_writer": true,
+      "expected_cover_privacy": true,
+      "expected_clear_pending_input": true,
+      "expected_clear_pending_resize": true
+    },
+    {
+      "name": "read-only terminal still clears transient state",
+      "writer_held": false,
+      "expected_release_writer": false,
+      "expected_cover_privacy": true,
+      "expected_clear_pending_input": true,
+      "expected_clear_pending_resize": true
+    }
+  ]
+}

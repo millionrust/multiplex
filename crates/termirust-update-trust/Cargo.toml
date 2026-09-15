@@ -1,0 +1,19 @@
+[package]
+name = "termirust-update-trust"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "Bounded platform-neutral TUF metadata verification for TermiRust updates"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+hex = "0.4"
+jiff = { version = "0.2", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+tempfile = "3.27"
+tokio = { version = "1", features = ["fs", "macros", "rt", "sync"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+tough = { version = "=0.24.0", default-features = false }
+url = "2"

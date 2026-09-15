@@ -1,0 +1,26 @@
+[package]
+name = "termirust-slate"
+version.workspace = true
+edition = "2024"
+rust-version.workspace = true
+description = "Slate: TermiRust's styled component library on gpui-base"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+gpui = { package = "gpui-pre", version = "0.3.4" }
+gpui-base = "0.6.1"
+termirust-ui-contract = { version = "0.1.0", path = "../termirust-ui-contract" }
+
+[dev-dependencies]
+gpui = { package = "gpui-pre", version = "0.3.4", features = ["test-support"] }
+
+[target.'cfg(not(any(target_os = "linux", target_os = "freebsd")))'.dev-dependencies]
+gpui_platform = { package = "gpui-pre-platform", version = "0.3.4", features = ["font-kit", "runtime_shaders"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dev-dependencies]
+gpui_platform = { package = "gpui-pre-platform", version = "0.3.4", features = ["font-kit", "runtime_shaders", "x11", "wayland"] }
+
+[[example]]
+name = "gallery"
+path = "examples/gallery.rs"

@@ -1,0 +1,185 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "password credential succeeds without forwarding",
+      "request": {
+        "policy": { "authentication": "password", "certificate_signer": null, "agent_forwarding": "disabled" },
+        "material": { "password_credential": true, "private_key": false, "openssh_certificate": false, "security_key_handle": false },
+        "runtime": { "password_authentication": "available", "private_key_authentication": "available", "openssh_certificate_authentication": "available", "local_agent_authentication": "available", "security_key_authentication": "available", "agent_forwarding": "available" },
+        "agent_forwarding_confirmed": false
+      },
+      "expected_plan": { "authentication": "password", "certificate_signer": null, "forward_agent": false },
+      "expected_error": null
+    },
+    {
+      "name": "password requires credential material",
+      "request": {
+        "policy": { "authentication": "password", "certificate_signer": null, "agent_forwarding": "disabled" },
+        "material": { "password_credential": false, "private_key": false, "openssh_certificate": false, "security_key_handle": false },
+        "runtime": { "password_authentication": "available", "private_key_authentication": "available", "openssh_certificate_authentication": "available", "local_agent_authentication": "available", "security_key_authentication": "available", "agent_forwarding": "available" },
+        "agent_forwarding_confirmed": false
+      },
+      "expected_plan": null,
+      "expected_error": "ssh_password_credential_missing"
+    },
+    {
+      "name": "private key succeeds",
+      "request": {
+        "policy": { "authentication": "private_key", "certificate_signer": null, "agent_forwarding": "disabled" },
+        "material": { "password_credential": false, "private_key": true, "openssh_certificate": false, "security_key_handle": false },
+        "runtime": { "password_authentication": "available", "private_key_authentication": "available", "openssh_certificate_authentication": "available", "local_agent_authentication": "available", "security_key_authentication": "available", "agent_forwarding": "available" },
+        "agent_forwarding_confirmed": false
+      },
+      "expected_plan": { "authentication": "private_key", "certificate_signer": null, "forward_agent": false },
+      "expected_error": null
+    },
+    {
+      "name": "private key requires configured file",
+      "request": {
+        "policy": { "authentication": "private_key", "certificate_signer": null, "agent_forwarding": "disabled" },
+        "material": { "password_credential": false, "private_key": false, "openssh_certificate": false, "security_key_handle": false },
+        "runtime": { "password_authentication": "available", "private_key_authentication": "available", "openssh_certificate_authentication": "available", "local_agent_authentication": "available", "security_key_authentication": "available", "agent_forwarding": "available" },
+        "agent_forwarding_confirmed": false
+      },
+      "expected_plan": null,
+      "expected_error": "ssh_private_key_missing"
+    },
+    {
+      "name": "certificate with private key signer succeeds",
+      "request": {
+        "policy": { "authentication": "open_ssh_certificate", "certificate_signer": "private_key", "agent_forwarding": "disabled" },
+        "material": { "password_credential": false, "private_key": true, "openssh_certificate": true, "security_key_handle": false },
+        "runtime": { "password_authentication": "available", "private_key_authentication": "available", "openssh_certificate_authentication": "available", "local_agent_authentication": "available", "security_key_authentication": "available", "agent_forwarding": "available" },
+        "agent_forwarding_confirmed": false
+      },
+      "expected_plan": { "authentication": "open_ssh_certificate", "certificate_signer": "private_key", "forward_agent": false },
+      "expected_error": null
+    },
+    {
+      "name": "certificate file is mandatory",
+      "request": {
+        "policy": { "authentication": "open_ssh_certificate", "certificate_signer": "private_key", "agent_forwarding": "disabled" },
+        "material": { "password_credential": false, "private_key": true, "openssh_certificate": false, "security_key_handle": false },
+        "runtime": { "password_authentication": "available", "private_key_authentication": "available", "openssh_certificate_authentication": "available", "local_agent_authentication": "available", "security_key_authentication": "available", "agent_forwarding": "available" },
+        "agent_forwarding_confirmed": false
+      },
+      "expected_plan": null,
+      "expected_error": "ssh_certificate_missing"
+    },
+    {
+      "name": "certificate signer is mandatory",
+      "request": {
+        "policy": { "authentication": "open_ssh_certificate", "certificate_signer": null, "agent_forwarding": "disabled" },
+        "material": { "password_credential": false, "private_key": true, "openssh_certificate": true, "security_key_handle": false },
+        "runtime": { "password_authentication": "available", "private_key_authentication": "available", "openssh_certificate_authentication": "available", "local_agent_authentication": "available", "security_key_authentication": "available", "agent_forwarding": "available" },
+        "agent_forwarding_confirmed": false
+      },
+      "expected_plan": null,
+      "expected_error": "ssh_certificate_signer_missing"
+    },
+    {
+      "name": "certificate may use local agent signer",
+      "request": {
+        "policy": { "authentication": "open_ssh_certificate", "certificate_signer": "local_agent", "agent_forwarding": "disabled" },
+        "material": { "password_credential": false, "private_key": false, "openssh_certificate": true, "security_key_handle": false },
+        "runtime": { "password_authentication": "available", "private_key_authentication": "available", "openssh_certificate_authentication": "available", "local_agent_authentication": "available", "security_key_authentication": "available", "agent_forwarding": "available" },
+        "agent_forwarding_confirmed": false
+      },
+      "expected_plan": { "authentication": "open_ssh_certificate", "certificate_signer": "local_agent", "forward_agent": false },
+      "expected_error": null
+    },
+    {
+      "name": "security key authentication requires handle",
+      "request": {
+        "policy": { "authentication": "security_key", "certificate_signer": null, "agent_forwarding": "disabled" },
+        "material": { "password_credential": false, "private_key": false, "openssh_certificate": false, "security_key_handle": false },
+        "runtime": { "password_authentication": "available", "private_key_authentication": "available", "openssh_certificate_authentication": "available", "local_agent_authentication": "available", "security_key_authentication": "available", "agent_forwarding": "available" },
+        "agent_forwarding_confirmed": false
+      },
+      "expected_plan": null,
+      "expected_error": "ssh_security_key_handle_missing"
+    },
+    {
+      "name": "non-certificate methods reject signer",
+      "request": {
+        "policy": { "authentication": "password", "certificate_signer": "private_key", "agent_forwarding": "disabled" },
+        "material": { "password_credential": true, "private_key": true, "openssh_certificate": true, "security_key_handle": false },
+        "runtime": { "password_authentication": "available", "private_key_authentication": "available", "openssh_certificate_authentication": "available", "local_agent_authentication": "available", "security_key_authentication": "available", "agent_forwarding": "available" },
+        "agent_forwarding_confirmed": false
+      },
+      "expected_plan": null,
+      "expected_error": "ssh_certificate_signer_unexpected"
+    },
+    {
+      "name": "unsupported security key fails closed",
+      "request": {
+        "policy": { "authentication": "security_key", "certificate_signer": null, "agent_forwarding": "disabled" },
+        "material": { "password_credential": false, "private_key": false, "openssh_certificate": false, "security_key_handle": true },
+        "runtime": { "password_authentication": "available", "private_key_authentication": "available", "openssh_certificate_authentication": "available", "local_agent_authentication": "available", "security_key_authentication": "unsupported", "agent_forwarding": "available" },
+        "agent_forwarding_confirmed": false
+      },
+      "expected_plan": null,
+      "expected_error": "ssh_capability_unavailable"
+    },
+    {
+      "name": "forwarding requires per-connection confirmation",
+      "request": {
+        "policy": { "authentication": "private_key", "certificate_signer": null, "agent_forwarding": "confirm_each_connection" },
+        "material": { "password_credential": false, "private_key": true, "openssh_certificate": false, "security_key_handle": false },
+        "runtime": { "password_authentication": "available", "private_key_authentication": "available", "openssh_certificate_authentication": "available", "local_agent_authentication": "available", "security_key_authentication": "available", "agent_forwarding": "available" },
+        "agent_forwarding_confirmed": false
+      },
+      "expected_plan": null,
+      "expected_error": "ssh_agent_forwarding_confirmation_required"
+    },
+    {
+      "name": "confirmed forwarding succeeds independently of key auth",
+      "request": {
+        "policy": { "authentication": "private_key", "certificate_signer": null, "agent_forwarding": "confirm_each_connection" },
+        "material": { "password_credential": false, "private_key": true, "openssh_certificate": false, "security_key_handle": false },
+        "runtime": { "password_authentication": "available", "private_key_authentication": "available", "openssh_certificate_authentication": "available", "local_agent_authentication": "available", "security_key_authentication": "available", "agent_forwarding": "available" },
+        "agent_forwarding_confirmed": true
+      },
+      "expected_plan": { "authentication": "private_key", "certificate_signer": null, "forward_agent": true },
+      "expected_error": null
+    },
+    {
+      "name": "forwarding rejects missing local agent provider",
+      "request": {
+        "policy": { "authentication": "password", "certificate_signer": null, "agent_forwarding": "confirm_each_connection" },
+        "material": { "password_credential": true, "private_key": false, "openssh_certificate": false, "security_key_handle": false },
+        "runtime": { "password_authentication": "available", "private_key_authentication": "available", "openssh_certificate_authentication": "available", "local_agent_authentication": "provider_unavailable", "security_key_authentication": "available", "agent_forwarding": "available" },
+        "agent_forwarding_confirmed": true
+      },
+      "expected_plan": null,
+      "expected_error": "ssh_capability_unavailable"
+    }
+  ],
+  "projections": [
+    {
+      "name": "all capabilities available",
+      "runtime": { "password_authentication": "available", "private_key_authentication": "available", "openssh_certificate_authentication": "available", "local_agent_authentication": "available", "security_key_authentication": "available", "agent_forwarding": "available" },
+      "expected": [
+        { "capability": "password_authentication", "availability": "available" },
+        { "capability": "private_key_authentication", "availability": "available" },
+        { "capability": "open_ssh_certificate_authentication", "availability": "available" },
+        { "capability": "local_agent_authentication", "availability": "available" },
+        { "capability": "security_key_authentication", "availability": "available" },
+        { "capability": "agent_forwarding", "availability": "available" }
+      ]
+    },
+    {
+      "name": "unavailable reasons remain distinct",
+      "runtime": { "password_authentication": "available", "private_key_authentication": "available", "openssh_certificate_authentication": "available", "local_agent_authentication": "provider_unavailable", "security_key_authentication": "unsupported", "agent_forwarding": "provider_unavailable" },
+      "expected": [
+        { "capability": "password_authentication", "availability": "available" },
+        { "capability": "private_key_authentication", "availability": "available" },
+        { "capability": "open_ssh_certificate_authentication", "availability": "available" },
+        { "capability": "local_agent_authentication", "availability": "provider_unavailable" },
+        { "capability": "security_key_authentication", "availability": "unsupported" },
+        { "capability": "agent_forwarding", "availability": "provider_unavailable" }
+      ]
+    }
+  ]
+}

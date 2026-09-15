@@ -1,4 +1,24 @@
-.claude/settings.local.json
+# Build output
 /target
+/tools/*/target
+
+# Generated mobile FFI and binding artifacts (rebuilt by scripts/build/*, copied
+# into apps/ by scripts/sync/*)
+/dist/
+
+# Generated Xcode project for the iOS provider-access fixture
+/apps/ios/ProviderAccessFixture/*.xcodeproj/
+
+# Generated leftovers from checkouts before mobile/ moved to apps/.
+# Keep these narrow so accidental source edits in the old tree remain visible.
+/mobile/android/.gradle/
+/mobile/android/app/build/
+/mobile/android/build/
+/mobile/android/app/src/test/native/
+/mobile/ios/ProviderAccessFixture/*.xcodeproj/
+
+# Local tooling state
+.claude/settings.local.json
 .DS_Store
-.antigravitycli/
+__pycache__/
+*.py[cod]

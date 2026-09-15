@@ -1,0 +1,25 @@
+version = 1
+
+[[resources]]
+id = "font.ui.family"
+kind = "font_reference"
+source = "Operating-system system UI font stack"
+bundled = false
+license = "Provided by the operating system; no font file is redistributed"
+owner = "G21.1 accessibility and localization program"
+
+[[resources]]
+id = "font.mono.family"
+kind = "font_reference"
+source = "User-selected installed monospace font with operating-system fallback"
+bundled = false
+license = "No font file is redistributed"
+owner = "G21.1 accessibility and localization program"
+
+[[resources]]
+id = "icon.status.*"
+kind = "semantic_icon_contract"
+source = "Original generic semantic names defined in design/tokens.toml"
+bundled = false
+license = "No third-party vector or provider mark is included by Goal 01.1"
+owner = "G21.1 accessibility and localization program"

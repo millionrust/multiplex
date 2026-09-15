@@ -1,0 +1,387 @@
+{
+  "device_list": {
+    "data": {
+      "devices": [{
+        "capabilities": ["observe_sessions", "attach_output", "send_input"],
+        "created_at_unix_seconds": 100,
+        "fingerprint_suffix": "B5HQXD4G",
+        "id": "00000000-0000-0000-0000-000000000007",
+        "identity_generation": 1,
+        "last_seen_at_unix_seconds": 200,
+        "name": "Jacob's iPhone",
+        "protocol_maximum": 1,
+        "protocol_minimum": 1,
+        "status": "online"
+      }, {
+        "capabilities": ["observe_sessions"],
+        "created_at_unix_seconds": 101,
+        "fingerprint_suffix": "M4994Y8G",
+        "id": "00000000-0000-0000-0000-000000000008",
+        "identity_generation": 1,
+        "name": "Team tablet",
+        "protocol_maximum": 1,
+        "protocol_minimum": 1,
+        "status": "offline"
+      }],
+      "repository_revision": 1
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "device_revoke": {
+    "data": {
+      "active_access_revoked": true,
+      "applied": true,
+      "device": {
+        "capabilities": ["observe_sessions", "attach_output", "send_input"],
+        "created_at_unix_seconds": 100,
+        "fingerprint_suffix": "B5HQXD4G",
+        "id": "00000000-0000-0000-0000-000000000007",
+        "identity_generation": 1,
+        "last_seen_at_unix_seconds": 200,
+        "name": "Jacob's iPhone",
+        "protocol_maximum": 1,
+        "protocol_minimum": 1,
+        "status": "revoked"
+      },
+      "repository_revision": 2
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "device_revoke_preview": {
+    "data": {
+      "active_access_will_be_revoked": true,
+      "confirmation_required": true,
+      "device": {
+        "capabilities": ["observe_sessions", "attach_output", "send_input"],
+        "created_at_unix_seconds": 100,
+        "fingerprint_suffix": "B5HQXD4G",
+        "id": "00000000-0000-0000-0000-000000000007",
+        "identity_generation": 1,
+        "last_seen_at_unix_seconds": 200,
+        "name": "Jacob's iPhone",
+        "protocol_maximum": 1,
+        "protocol_minimum": 1,
+        "status": "online"
+      },
+      "other_devices_reconnect": false,
+      "repository_revision": 1
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "device_show": {
+    "data": {
+      "device": {
+        "capabilities": ["observe_sessions", "attach_output", "send_input"],
+        "created_at_unix_seconds": 100,
+        "fingerprint_suffix": "B5HQXD4G",
+        "id": "00000000-0000-0000-0000-000000000007",
+        "identity_generation": 1,
+        "last_seen_at_unix_seconds": 200,
+        "name": "Jacob's iPhone",
+        "protocol_maximum": 1,
+        "protocol_minimum": 1,
+        "status": "online"
+      },
+      "repository_revision": 1
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "help": {
+    "data": {
+      "commands": [
+        "status [--json]",
+        "project list [--json]",
+        "device list [--status <offline|online|revoked>] [--json]",
+        "device show <ControllerDeviceId> [--json]",
+        "device revoke <ControllerDeviceId> [--expected-revision N --yes] [--json]",
+        "preset list --project <ProjectId> [--json]",
+        "session list [--project <id>] [--group <id>] [--state <value>] [--archived] [--json]",
+        "session show <HostedSessionId> [--json]",
+        "session wait <id> (--state <state> | --activity <activity>) [--timeout-ms N] [--json]",
+        "session input <id> --input-stdin [--json] < stdin",
+        "session resize <id> --columns N --rows N [--json]",
+        "session attach <id> [--from-sequence N] [--columns N] [--rows N] [--write] [--json]",
+        "session resume <id> [--expected-revision N --yes] [--json]",
+        "session launch --project <id> --preset <id> [--group <id>] [--json]",
+        "session stop <id> [--expected-revision N] --yes [--json]",
+        "session archive <id> [--expected-revision N] [--json]",
+        "session restore <id> [--expected-revision N] [--json]",
+        "session remove <id> [--expected-revision N] [--json]",
+        "session remove <id> [--expected-revision N] --preview-token <token> --yes --confirmation-stdin [--json] < stdin",
+        "controller ssh --host <host> [--user <user>] [--port <port>] pair [--json]",
+        "controller ssh --host <host> [--user <user>] [--port <port>] sessions [--json]",
+        "controller ssh --host <host> [--user <user>] [--port <port>] attach --session <id> --generation N [--from-sequence N] [--columns N] [--rows N] [--write] [--json]",
+        "controller ssh --host <host> [--user <user>] [--port <port>] input --session <id> --generation N [--json] < stdin",
+        "controller ssh --host <host> [--user <user>] [--port <port>] resize --session <id> --generation N --columns N --rows N [--json]",
+        "controller ssh --host <host> [--user <user>] [--port <port>] approval --session <id> --generation N --approval <id> --decision <allow|deny> [--json]",
+        "controller ssh --host <host> [--user <user>] [--port <port>] detach --session <id> --generation N [--json]"
+      ],
+      "exit_codes": [
+        "0 success",
+        "2 usage or validation",
+        "3 unavailable or incompatible",
+        "4 permission denied or interaction required",
+        "5 stale revision or conflict",
+        "6 resource or quota limit",
+        "7 operation failure or timeout",
+        "130 signal cancellation"
+      ],
+      "safety": "Local metadata and authenticated Host commands only. Device list/show and revoke preview never create Controller state; revocation requires an exact reviewed repository revision plus --yes, revokes the selected device, and requires other connected devices to reconnect. Device keys and pairing routes are never output. Session wait accepts lifecycle values shown by session show, or activity values unknown, idle, busy, needs_input, done, and failed. Local Session attach is read-only unless --write is explicit; human attach requires a TTY and detaches with Ctrl-] then d, while JSON attach never emits terminal bytes. Session resume previews without mutation and requires an exact reviewed revision plus --yes; the CLI replacement always uses the read-only Codex sandbox. Local Session input requires explicit bounded stdin and never echoes payload bytes. Local Session resize requires explicit dimensions from 1 to 1000. Stop requires --yes. Session removal requires a reviewed preview token, --yes, and bounded confirmation from stdin. Human SSH attach is interactive and detaches with Ctrl-] then d; JSON attach never emits terminal bytes. SSH Controller input is read only from stdin. Mutations never silently retry conflicts or unknown completion. Output can contain user-chosen device, project, preset, and session titles and may be sensitive."
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "preset_list": {
+    "data": {
+      "presets": [{
+        "enabled": true,
+        "favorite": true,
+        "id": "00000000-0000-0000-0000-000000000002",
+        "label": "Counter",
+        "permission_policy": "ask_as_needed",
+        "revision": 1,
+        "risk": "safe"
+      }],
+      "project_id": "00000000-0000-0000-0000-000000000001"
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "project_list": {
+    "data": {
+      "projects": [{
+        "id": "00000000-0000-0000-0000-000000000001",
+        "name": "Example Project",
+        "revision": 1,
+        "status": "available"
+      }]
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_archive": {
+    "data": {
+      "outcome": "archived",
+      "session": {
+        "activity": "unknown",
+        "archived": true,
+        "id": "00000000-0000-0000-0000-000000000003",
+        "preset_id": "00000000-0000-0000-0000-000000000002",
+        "project_id": "00000000-0000-0000-0000-000000000001",
+        "revision": 2,
+        "state": "exited",
+        "title": "Counter session",
+        "unread": false
+      }
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_attach": {
+    "data": {
+      "from_sequence": 3,
+      "latest_sequence": 9,
+      "lifecycle": "ready",
+      "replayed_bytes": 12,
+      "replayed_records": 2,
+      "session_id": "00000000-0000-0000-0000-000000000003",
+      "snapshot": false,
+      "writer_lease": false
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_input": {
+    "data": {
+      "accepted_bytes": 13,
+      "applied": true,
+      "session_id": "00000000-0000-0000-0000-000000000003"
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_resize": {
+    "data": {
+      "applied": true,
+      "columns": 132,
+      "rows": 43,
+      "session_id": "00000000-0000-0000-0000-000000000003"
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_launch": {
+    "data": {
+      "outcome": "launched",
+      "session": {
+        "activity": "unknown",
+        "archived": false,
+        "id": "00000000-0000-0000-0000-000000000004",
+        "preset_id": "00000000-0000-0000-0000-000000000002",
+        "project_id": "00000000-0000-0000-0000-000000000001",
+        "revision": 6,
+        "state": "live",
+        "title": "Counter",
+        "unread": false
+      }
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_list": {
+    "data": {
+      "sessions": [{
+        "activity": "unknown",
+        "archived": false,
+        "id": "00000000-0000-0000-0000-000000000003",
+        "preset_id": "00000000-0000-0000-0000-000000000002",
+        "project_id": "00000000-0000-0000-0000-000000000001",
+        "revision": 1,
+        "state": "exited",
+        "title": "Counter session",
+        "unread": false
+      }]
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_restore": {
+    "data": {
+      "outcome": "restored",
+      "session": {
+        "activity": "unknown",
+        "archived": false,
+        "id": "00000000-0000-0000-0000-000000000003",
+        "preset_id": "00000000-0000-0000-0000-000000000002",
+        "project_id": "00000000-0000-0000-0000-000000000001",
+        "revision": 3,
+        "state": "exited",
+        "title": "Counter session",
+        "unread": false
+      }
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_resume": {
+    "data": {
+      "continuity_committed": true,
+      "lifecycle": "live",
+      "permission_policy": "read_only",
+      "provider": "codex",
+      "provider_version": "0.150.1",
+      "replacement_generation": 4,
+      "source_revision": 3,
+      "source_session_id": "00000000-0000-0000-0000-000000000003",
+      "successor_revision": 3,
+      "successor_session_id": "00000000-0000-0000-0000-000000000004"
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_resume_preview": {
+    "data": {
+      "confirmation_required": true,
+      "permission_policy": "read_only",
+      "provider": "codex",
+      "provider_version": "0.150.1",
+      "replacement_generation": 4,
+      "source_revision": 3,
+      "source_session_id": "00000000-0000-0000-0000-000000000003"
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_show": {
+    "data": {
+      "session": {
+        "activity": "unknown",
+        "archived": false,
+        "id": "00000000-0000-0000-0000-000000000003",
+        "preset_id": "00000000-0000-0000-0000-000000000002",
+        "project_id": "00000000-0000-0000-0000-000000000001",
+        "revision": 1,
+        "state": "exited",
+        "title": "Counter session",
+        "unread": false
+      }
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_stop": {
+    "data": {
+      "outcome": "stopped",
+      "session": {
+        "activity": "unknown",
+        "archived": false,
+        "id": "00000000-0000-0000-0000-000000000004",
+        "preset_id": "00000000-0000-0000-0000-000000000002",
+        "project_id": "00000000-0000-0000-0000-000000000001",
+        "revision": 8,
+        "state": "exited",
+        "title": "Counter",
+        "unread": false
+      }
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_wait": {
+    "data": {
+      "condition": {
+        "kind": "lifecycle",
+        "state": "exited"
+      },
+      "session": {
+        "activity": "unknown",
+        "archived": false,
+        "id": "00000000-0000-0000-0000-000000000003",
+        "preset_id": "00000000-0000-0000-0000-000000000002",
+        "project_id": "00000000-0000-0000-0000-000000000001",
+        "revision": 1,
+        "state": "exited",
+        "title": "Counter session",
+        "unread": false
+      }
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "status": {
+    "data": {
+      "cli_version": "0.1.0",
+      "host_control": "host_unavailable",
+      "json_schema_version": 1,
+      "protocol_maximum": "1.0",
+      "protocol_minimum": "1.0",
+      "store": "available"
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  }
+}

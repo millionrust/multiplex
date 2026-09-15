@@ -1,0 +1,2690 @@
+version = 1
+baseline_commit = "9f8924f927752f34db10acc9994344798d0a5fb0"
+synthetic_canaries = [
+  "TERMIRUST_AUDIT_SECRET_CANARY_7bd50a",
+  "TERMIRUST_AUDIT_PATH_CANARY_32e146",
+  "TERMIRUST_AUDIT_BIDI_CANARY_9ac274",
+]
+
+[[cases]]
+id = "UA-0001"
+screen_id = "first-run"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-first-run-normal"
+state = "normal"
+viewport = "960x640"
+scale = 100
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0002"
+screen_id = "first-run"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-first-run-loading"
+state = "loading"
+viewport = "1440x900@2x"
+scale = 200
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0003"
+screen_id = "first-run"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-first-run-empty"
+state = "empty"
+viewport = "720x900"
+scale = 400
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0004"
+screen_id = "first-run"
+surface = "shell-overlays-palette"
+route_fixture = "n-a"
+state = "filter-empty"
+viewport = "960x640"
+scale = 100
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+n_a_reason = "State is not part of this route's frozen product lifecycle; the owning surface state contract covers it elsewhere."
+
+[[cases]]
+id = "UA-0005"
+screen_id = "first-run"
+surface = "shell-overlays-palette"
+route_fixture = "n-a"
+state = "partial"
+viewport = "1440x900@2x"
+scale = 200
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+n_a_reason = "State is not part of this route's frozen product lifecycle; the owning surface state contract covers it elsewhere."
+
+[[cases]]
+id = "UA-0006"
+screen_id = "first-run"
+surface = "shell-overlays-palette"
+route_fixture = "n-a"
+state = "offline"
+viewport = "720x900"
+scale = 400
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+n_a_reason = "State is not part of this route's frozen product lifecycle; the owning surface state contract covers it elsewhere."
+
+[[cases]]
+id = "UA-0007"
+screen_id = "first-run"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-first-run-permission-denied"
+state = "permission-denied"
+viewport = "960x640"
+scale = 100
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0008"
+screen_id = "first-run"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-first-run-error"
+state = "error"
+viewport = "1440x900@2x"
+scale = 200
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0009"
+screen_id = "first-run"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-first-run-cancelled"
+state = "cancelled"
+viewport = "720x900"
+scale = 400
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0010"
+screen_id = "first-run"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-first-run-recovery"
+state = "recovery"
+viewport = "960x640"
+scale = 100
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0011"
+screen_id = "shell-navigation"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-shell-navigation-normal"
+state = "normal"
+viewport = "1440x900@2x"
+scale = 200
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0012"
+screen_id = "shell-navigation"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-shell-navigation-loading"
+state = "loading"
+viewport = "720x900"
+scale = 400
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0013"
+screen_id = "shell-navigation"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-shell-navigation-empty"
+state = "empty"
+viewport = "960x640"
+scale = 100
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0014"
+screen_id = "shell-navigation"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-shell-navigation-filter-empty"
+state = "filter-empty"
+viewport = "1440x900@2x"
+scale = 200
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0015"
+screen_id = "shell-navigation"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-shell-navigation-partial"
+state = "partial"
+viewport = "720x900"
+scale = 400
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0016"
+screen_id = "shell-navigation"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-shell-navigation-offline"
+state = "offline"
+viewport = "960x640"
+scale = 100
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0017"
+screen_id = "shell-navigation"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-shell-navigation-permission-denied"
+state = "permission-denied"
+viewport = "1440x900@2x"
+scale = 200
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0018"
+screen_id = "shell-navigation"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-shell-navigation-error"
+state = "error"
+viewport = "720x900"
+scale = 400
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0019"
+screen_id = "shell-navigation"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-shell-navigation-cancelled"
+state = "cancelled"
+viewport = "960x640"
+scale = 100
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0020"
+screen_id = "shell-navigation"
+surface = "shell-overlays-palette"
+route_fixture = "synthetic-shell-navigation-recovery"
+state = "recovery"
+viewport = "1440x900@2x"
+scale = 200
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0021"
+screen_id = "projects"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-projects-normal"
+state = "normal"
+viewport = "720x900"
+scale = 400
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0022"
+screen_id = "projects"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-projects-loading"
+state = "loading"
+viewport = "960x640"
+scale = 100
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0023"
+screen_id = "projects"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-projects-empty"
+state = "empty"
+viewport = "1440x900@2x"
+scale = 200
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0024"
+screen_id = "projects"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-projects-filter-empty"
+state = "filter-empty"
+viewport = "720x900"
+scale = 400
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0025"
+screen_id = "projects"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-projects-partial"
+state = "partial"
+viewport = "960x640"
+scale = 100
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0026"
+screen_id = "projects"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-projects-offline"
+state = "offline"
+viewport = "1440x900@2x"
+scale = 200
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0027"
+screen_id = "projects"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-projects-permission-denied"
+state = "permission-denied"
+viewport = "720x900"
+scale = 400
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0028"
+screen_id = "projects"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-projects-error"
+state = "error"
+viewport = "960x640"
+scale = 100
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0029"
+screen_id = "projects"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-projects-cancelled"
+state = "cancelled"
+viewport = "1440x900@2x"
+scale = 200
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0030"
+screen_id = "projects"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-projects-recovery"
+state = "recovery"
+viewport = "720x900"
+scale = 400
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0031"
+screen_id = "sessions"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-sessions-normal"
+state = "normal"
+viewport = "960x640"
+scale = 100
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0032"
+screen_id = "sessions"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-sessions-loading"
+state = "loading"
+viewport = "1440x900@2x"
+scale = 200
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0033"
+screen_id = "sessions"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-sessions-empty"
+state = "empty"
+viewport = "720x900"
+scale = 400
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0034"
+screen_id = "sessions"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-sessions-filter-empty"
+state = "filter-empty"
+viewport = "960x640"
+scale = 100
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0035"
+screen_id = "sessions"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-sessions-partial"
+state = "partial"
+viewport = "1440x900@2x"
+scale = 200
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0036"
+screen_id = "sessions"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-sessions-offline"
+state = "offline"
+viewport = "720x900"
+scale = 400
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0037"
+screen_id = "sessions"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-sessions-permission-denied"
+state = "permission-denied"
+viewport = "960x640"
+scale = 100
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0038"
+screen_id = "sessions"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-sessions-error"
+state = "error"
+viewport = "1440x900@2x"
+scale = 200
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0039"
+screen_id = "sessions"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-sessions-cancelled"
+state = "cancelled"
+viewport = "720x900"
+scale = 400
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0040"
+screen_id = "sessions"
+surface = "projects-groups-sessions"
+route_fixture = "synthetic-sessions-recovery"
+state = "recovery"
+viewport = "960x640"
+scale = 100
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0041"
+screen_id = "presets-runtimes"
+surface = "presets-runtimes"
+route_fixture = "synthetic-presets-runtimes-normal"
+state = "normal"
+viewport = "1440x900@2x"
+scale = 200
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0042"
+screen_id = "presets-runtimes"
+surface = "presets-runtimes"
+route_fixture = "synthetic-presets-runtimes-loading"
+state = "loading"
+viewport = "720x900"
+scale = 400
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0043"
+screen_id = "presets-runtimes"
+surface = "presets-runtimes"
+route_fixture = "synthetic-presets-runtimes-empty"
+state = "empty"
+viewport = "960x640"
+scale = 100
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0044"
+screen_id = "presets-runtimes"
+surface = "presets-runtimes"
+route_fixture = "n-a"
+state = "filter-empty"
+viewport = "1440x900@2x"
+scale = 200
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+n_a_reason = "State is not part of this route's frozen product lifecycle; the owning surface state contract covers it elsewhere."
+
+[[cases]]
+id = "UA-0045"
+screen_id = "presets-runtimes"
+surface = "presets-runtimes"
+route_fixture = "synthetic-presets-runtimes-partial"
+state = "partial"
+viewport = "720x900"
+scale = 400
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0046"
+screen_id = "presets-runtimes"
+surface = "presets-runtimes"
+route_fixture = "synthetic-presets-runtimes-offline"
+state = "offline"
+viewport = "960x640"
+scale = 100
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0047"
+screen_id = "presets-runtimes"
+surface = "presets-runtimes"
+route_fixture = "synthetic-presets-runtimes-permission-denied"
+state = "permission-denied"
+viewport = "1440x900@2x"
+scale = 200
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0048"
+screen_id = "presets-runtimes"
+surface = "presets-runtimes"
+route_fixture = "synthetic-presets-runtimes-error"
+state = "error"
+viewport = "720x900"
+scale = 400
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0049"
+screen_id = "presets-runtimes"
+surface = "presets-runtimes"
+route_fixture = "synthetic-presets-runtimes-cancelled"
+state = "cancelled"
+viewport = "960x640"
+scale = 100
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0050"
+screen_id = "presets-runtimes"
+surface = "presets-runtimes"
+route_fixture = "synthetic-presets-runtimes-recovery"
+state = "recovery"
+viewport = "1440x900@2x"
+scale = 200
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0051"
+screen_id = "worktrees-artifacts"
+surface = "worktrees-artifacts"
+route_fixture = "synthetic-worktrees-artifacts-normal"
+state = "normal"
+viewport = "720x900"
+scale = 400
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0052"
+screen_id = "worktrees-artifacts"
+surface = "worktrees-artifacts"
+route_fixture = "synthetic-worktrees-artifacts-loading"
+state = "loading"
+viewport = "960x640"
+scale = 100
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0053"
+screen_id = "worktrees-artifacts"
+surface = "worktrees-artifacts"
+route_fixture = "synthetic-worktrees-artifacts-empty"
+state = "empty"
+viewport = "1440x900@2x"
+scale = 200
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0054"
+screen_id = "worktrees-artifacts"
+surface = "worktrees-artifacts"
+route_fixture = "n-a"
+state = "filter-empty"
+viewport = "720x900"
+scale = 400
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+n_a_reason = "State is not part of this route's frozen product lifecycle; the owning surface state contract covers it elsewhere."
+
+[[cases]]
+id = "UA-0055"
+screen_id = "worktrees-artifacts"
+surface = "worktrees-artifacts"
+route_fixture = "synthetic-worktrees-artifacts-partial"
+state = "partial"
+viewport = "960x640"
+scale = 100
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0056"
+screen_id = "worktrees-artifacts"
+surface = "worktrees-artifacts"
+route_fixture = "synthetic-worktrees-artifacts-offline"
+state = "offline"
+viewport = "1440x900@2x"
+scale = 200
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0057"
+screen_id = "worktrees-artifacts"
+surface = "worktrees-artifacts"
+route_fixture = "synthetic-worktrees-artifacts-permission-denied"
+state = "permission-denied"
+viewport = "720x900"
+scale = 400
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0058"
+screen_id = "worktrees-artifacts"
+surface = "worktrees-artifacts"
+route_fixture = "synthetic-worktrees-artifacts-error"
+state = "error"
+viewport = "960x640"
+scale = 100
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0059"
+screen_id = "worktrees-artifacts"
+surface = "worktrees-artifacts"
+route_fixture = "synthetic-worktrees-artifacts-cancelled"
+state = "cancelled"
+viewport = "1440x900@2x"
+scale = 200
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0060"
+screen_id = "worktrees-artifacts"
+surface = "worktrees-artifacts"
+route_fixture = "synthetic-worktrees-artifacts-recovery"
+state = "recovery"
+viewport = "720x900"
+scale = 400
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0061"
+screen_id = "hosts-connections"
+surface = "hosts-connections"
+route_fixture = "synthetic-hosts-connections-normal"
+state = "normal"
+viewport = "960x640"
+scale = 100
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0062"
+screen_id = "hosts-connections"
+surface = "hosts-connections"
+route_fixture = "synthetic-hosts-connections-loading"
+state = "loading"
+viewport = "1440x900@2x"
+scale = 200
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0063"
+screen_id = "hosts-connections"
+surface = "hosts-connections"
+route_fixture = "synthetic-hosts-connections-empty"
+state = "empty"
+viewport = "720x900"
+scale = 400
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0064"
+screen_id = "hosts-connections"
+surface = "hosts-connections"
+route_fixture = "synthetic-hosts-connections-filter-empty"
+state = "filter-empty"
+viewport = "960x640"
+scale = 100
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0065"
+screen_id = "hosts-connections"
+surface = "hosts-connections"
+route_fixture = "synthetic-hosts-connections-partial"
+state = "partial"
+viewport = "1440x900@2x"
+scale = 200
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0066"
+screen_id = "hosts-connections"
+surface = "hosts-connections"
+route_fixture = "synthetic-hosts-connections-offline"
+state = "offline"
+viewport = "720x900"
+scale = 400
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0067"
+screen_id = "hosts-connections"
+surface = "hosts-connections"
+route_fixture = "synthetic-hosts-connections-permission-denied"
+state = "permission-denied"
+viewport = "960x640"
+scale = 100
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0068"
+screen_id = "hosts-connections"
+surface = "hosts-connections"
+route_fixture = "synthetic-hosts-connections-error"
+state = "error"
+viewport = "1440x900@2x"
+scale = 200
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0069"
+screen_id = "hosts-connections"
+surface = "hosts-connections"
+route_fixture = "synthetic-hosts-connections-cancelled"
+state = "cancelled"
+viewport = "720x900"
+scale = 400
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0070"
+screen_id = "hosts-connections"
+surface = "hosts-connections"
+route_fixture = "synthetic-hosts-connections-recovery"
+state = "recovery"
+viewport = "960x640"
+scale = 100
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0071"
+screen_id = "sftp"
+surface = "sftp"
+route_fixture = "synthetic-sftp-normal"
+state = "normal"
+viewport = "1440x900@2x"
+scale = 200
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0072"
+screen_id = "sftp"
+surface = "sftp"
+route_fixture = "synthetic-sftp-loading"
+state = "loading"
+viewport = "720x900"
+scale = 400
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0073"
+screen_id = "sftp"
+surface = "sftp"
+route_fixture = "synthetic-sftp-empty"
+state = "empty"
+viewport = "960x640"
+scale = 100
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0074"
+screen_id = "sftp"
+surface = "sftp"
+route_fixture = "synthetic-sftp-filter-empty"
+state = "filter-empty"
+viewport = "1440x900@2x"
+scale = 200
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0075"
+screen_id = "sftp"
+surface = "sftp"
+route_fixture = "synthetic-sftp-partial"
+state = "partial"
+viewport = "720x900"
+scale = 400
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0076"
+screen_id = "sftp"
+surface = "sftp"
+route_fixture = "synthetic-sftp-offline"
+state = "offline"
+viewport = "960x640"
+scale = 100
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0077"
+screen_id = "sftp"
+surface = "sftp"
+route_fixture = "synthetic-sftp-permission-denied"
+state = "permission-denied"
+viewport = "1440x900@2x"
+scale = 200
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0078"
+screen_id = "sftp"
+surface = "sftp"
+route_fixture = "synthetic-sftp-error"
+state = "error"
+viewport = "720x900"
+scale = 400
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0079"
+screen_id = "sftp"
+surface = "sftp"
+route_fixture = "synthetic-sftp-cancelled"
+state = "cancelled"
+viewport = "960x640"
+scale = 100
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0080"
+screen_id = "sftp"
+surface = "sftp"
+route_fixture = "synthetic-sftp-recovery"
+state = "recovery"
+viewport = "1440x900@2x"
+scale = 200
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0081"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-normal"
+state = "normal"
+viewport = "720x900"
+scale = 400
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0082"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-loading"
+state = "loading"
+viewport = "960x640"
+scale = 100
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0083"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-empty"
+state = "empty"
+viewport = "1440x900@2x"
+scale = 200
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0084"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-filter-empty"
+state = "filter-empty"
+viewport = "720x900"
+scale = 400
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0085"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-partial"
+state = "partial"
+viewport = "960x640"
+scale = 100
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0086"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-offline"
+state = "offline"
+viewport = "1440x900@2x"
+scale = 200
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0087"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-permission-denied"
+state = "permission-denied"
+viewport = "720x900"
+scale = 400
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0088"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-error"
+state = "error"
+viewport = "960x640"
+scale = 100
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0089"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-cancelled"
+state = "cancelled"
+viewport = "1440x900@2x"
+scale = 200
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0090"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-recovery"
+state = "recovery"
+viewport = "720x900"
+scale = 400
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0091"
+screen_id = "settings"
+surface = "settings"
+route_fixture = "synthetic-settings-normal"
+state = "normal"
+viewport = "960x640"
+scale = 100
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0092"
+screen_id = "settings"
+surface = "settings"
+route_fixture = "synthetic-settings-loading"
+state = "loading"
+viewport = "1440x900@2x"
+scale = 200
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0093"
+screen_id = "settings"
+surface = "settings"
+route_fixture = "synthetic-settings-empty"
+state = "empty"
+viewport = "720x900"
+scale = 400
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0094"
+screen_id = "settings"
+surface = "settings"
+route_fixture = "synthetic-settings-filter-empty"
+state = "filter-empty"
+viewport = "960x640"
+scale = 100
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0095"
+screen_id = "settings"
+surface = "settings"
+route_fixture = "synthetic-settings-partial"
+state = "partial"
+viewport = "1440x900@2x"
+scale = 200
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0096"
+screen_id = "settings"
+surface = "settings"
+route_fixture = "synthetic-settings-offline"
+state = "offline"
+viewport = "720x900"
+scale = 400
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0097"
+screen_id = "settings"
+surface = "settings"
+route_fixture = "synthetic-settings-permission-denied"
+state = "permission-denied"
+viewport = "960x640"
+scale = 100
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0098"
+screen_id = "settings"
+surface = "settings"
+route_fixture = "synthetic-settings-error"
+state = "error"
+viewport = "1440x900@2x"
+scale = 200
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0099"
+screen_id = "settings"
+surface = "settings"
+route_fixture = "synthetic-settings-cancelled"
+state = "cancelled"
+viewport = "720x900"
+scale = 400
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0100"
+screen_id = "settings"
+surface = "settings"
+route_fixture = "synthetic-settings-recovery"
+state = "recovery"
+viewport = "960x640"
+scale = 100
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0101"
+screen_id = "agent-canvas"
+surface = "agent-canvas"
+route_fixture = "synthetic-agent-canvas-normal"
+state = "normal"
+viewport = "1440x900@2x"
+scale = 200
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0102"
+screen_id = "agent-canvas"
+surface = "agent-canvas"
+route_fixture = "synthetic-agent-canvas-loading"
+state = "loading"
+viewport = "720x900"
+scale = 400
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0103"
+screen_id = "agent-canvas"
+surface = "agent-canvas"
+route_fixture = "synthetic-agent-canvas-empty"
+state = "empty"
+viewport = "960x640"
+scale = 100
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0104"
+screen_id = "agent-canvas"
+surface = "agent-canvas"
+route_fixture = "n-a"
+state = "filter-empty"
+viewport = "1440x900@2x"
+scale = 200
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+n_a_reason = "State is not part of this route's frozen product lifecycle; the owning surface state contract covers it elsewhere."
+
+[[cases]]
+id = "UA-0105"
+screen_id = "agent-canvas"
+surface = "agent-canvas"
+route_fixture = "synthetic-agent-canvas-partial"
+state = "partial"
+viewport = "720x900"
+scale = 400
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0106"
+screen_id = "agent-canvas"
+surface = "agent-canvas"
+route_fixture = "synthetic-agent-canvas-offline"
+state = "offline"
+viewport = "960x640"
+scale = 100
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0107"
+screen_id = "agent-canvas"
+surface = "agent-canvas"
+route_fixture = "synthetic-agent-canvas-permission-denied"
+state = "permission-denied"
+viewport = "1440x900@2x"
+scale = 200
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0108"
+screen_id = "agent-canvas"
+surface = "agent-canvas"
+route_fixture = "synthetic-agent-canvas-error"
+state = "error"
+viewport = "720x900"
+scale = 400
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0109"
+screen_id = "agent-canvas"
+surface = "agent-canvas"
+route_fixture = "n-a"
+state = "cancelled"
+viewport = "960x640"
+scale = 100
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+n_a_reason = "State is not part of this route's frozen product lifecycle; the owning surface state contract covers it elsewhere."
+
+[[cases]]
+id = "UA-0110"
+screen_id = "agent-canvas"
+surface = "agent-canvas"
+route_fixture = "synthetic-agent-canvas-recovery"
+state = "recovery"
+viewport = "1440x900@2x"
+scale = 200
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0111"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "synthetic-terminal-chrome-normal"
+state = "normal"
+viewport = "720x900"
+scale = 400
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0112"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "synthetic-terminal-chrome-loading"
+state = "loading"
+viewport = "960x640"
+scale = 100
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0113"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "n-a"
+state = "empty"
+viewport = "1440x900@2x"
+scale = 200
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+n_a_reason = "State is not part of this route's frozen product lifecycle; the owning surface state contract covers it elsewhere."
+
+[[cases]]
+id = "UA-0114"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "n-a"
+state = "filter-empty"
+viewport = "720x900"
+scale = 400
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+n_a_reason = "State is not part of this route's frozen product lifecycle; the owning surface state contract covers it elsewhere."
+
+[[cases]]
+id = "UA-0115"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "synthetic-terminal-chrome-partial"
+state = "partial"
+viewport = "960x640"
+scale = 100
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0116"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "synthetic-terminal-chrome-offline"
+state = "offline"
+viewport = "1440x900@2x"
+scale = 200
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0117"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "synthetic-terminal-chrome-permission-denied"
+state = "permission-denied"
+viewport = "720x900"
+scale = 400
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0118"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "synthetic-terminal-chrome-error"
+state = "error"
+viewport = "960x640"
+scale = 100
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0119"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "synthetic-terminal-chrome-cancelled"
+state = "cancelled"
+viewport = "1440x900@2x"
+scale = 200
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0120"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "synthetic-terminal-chrome-recovery"
+state = "recovery"
+viewport = "720x900"
+scale = 400
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0121"
+screen_id = "destructive-confirmation"
+surface = "cross-screen"
+route_fixture = "synthetic-destructive-confirmation-normal"
+state = "normal"
+viewport = "960x640"
+scale = 100
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "full"
+
+[[cases]]
+id = "UA-0122"
+screen_id = "destructive-confirmation"
+surface = "cross-screen"
+route_fixture = "n-a"
+state = "loading"
+viewport = "1440x900@2x"
+scale = 200
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "full"
+n_a_reason = "State is not part of this route's frozen product lifecycle; the owning surface state contract covers it elsewhere."
+
+[[cases]]
+id = "UA-0123"
+screen_id = "destructive-confirmation"
+surface = "cross-screen"
+route_fixture = "n-a"
+state = "empty"
+viewport = "720x900"
+scale = 400
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "full"
+n_a_reason = "State is not part of this route's frozen product lifecycle; the owning surface state contract covers it elsewhere."
+
+[[cases]]
+id = "UA-0124"
+screen_id = "destructive-confirmation"
+surface = "cross-screen"
+route_fixture = "n-a"
+state = "filter-empty"
+viewport = "960x640"
+scale = 100
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+n_a_reason = "State is not part of this route's frozen product lifecycle; the owning surface state contract covers it elsewhere."
+
+[[cases]]
+id = "UA-0125"
+screen_id = "destructive-confirmation"
+surface = "cross-screen"
+route_fixture = "n-a"
+state = "partial"
+viewport = "1440x900@2x"
+scale = 200
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "full"
+n_a_reason = "State is not part of this route's frozen product lifecycle; the owning surface state contract covers it elsewhere."
+
+[[cases]]
+id = "UA-0126"
+screen_id = "destructive-confirmation"
+surface = "cross-screen"
+route_fixture = "n-a"
+state = "offline"
+viewport = "720x900"
+scale = 400
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "full"
+n_a_reason = "State is not part of this route's frozen product lifecycle; the owning surface state contract covers it elsewhere."
+
+[[cases]]
+id = "UA-0127"
+screen_id = "destructive-confirmation"
+surface = "cross-screen"
+route_fixture = "synthetic-destructive-confirmation-permission-denied"
+state = "permission-denied"
+viewport = "960x640"
+scale = 100
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "full"
+
+[[cases]]
+id = "UA-0128"
+screen_id = "destructive-confirmation"
+surface = "cross-screen"
+route_fixture = "synthetic-destructive-confirmation-error"
+state = "error"
+viewport = "1440x900@2x"
+scale = 200
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0129"
+screen_id = "destructive-confirmation"
+surface = "cross-screen"
+route_fixture = "synthetic-destructive-confirmation-cancelled"
+state = "cancelled"
+viewport = "720x900"
+scale = 400
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "full"
+
+[[cases]]
+id = "UA-0130"
+screen_id = "destructive-confirmation"
+surface = "cross-screen"
+route_fixture = "synthetic-destructive-confirmation-recovery"
+state = "recovery"
+viewport = "960x640"
+scale = 100
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "full"
+
+[[cases]]
+id = "UA-0131"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "synthetic-terminal-chrome-replaying"
+state = "replaying"
+viewport = "1440x900@2x"
+scale = 200
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0132"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "synthetic-terminal-chrome-gap"
+state = "gap"
+viewport = "720x900"
+scale = 400
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0133"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "synthetic-terminal-chrome-backpressured"
+state = "backpressured"
+viewport = "960x640"
+scale = 100
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0134"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "synthetic-terminal-chrome-detached"
+state = "detached"
+viewport = "1440x900@2x"
+scale = 200
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0135"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "synthetic-terminal-chrome-exited"
+state = "exited"
+viewport = "720x900"
+scale = 400
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0136"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "synthetic-terminal-chrome-malformed-unicode"
+state = "malformed-unicode"
+viewport = "960x640"
+scale = 100
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0137"
+screen_id = "terminal-chrome"
+surface = "terminal-chrome"
+route_fixture = "synthetic-terminal-chrome-overflow-truncated"
+state = "overflow-truncated"
+viewport = "1440x900@2x"
+scale = 200
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0138"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-locked"
+state = "locked"
+viewport = "720x900"
+scale = 400
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0139"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-unlocking"
+state = "unlocking"
+viewport = "960x640"
+scale = 100
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0140"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-wrong-secret"
+state = "wrong-secret"
+viewport = "1440x900@2x"
+scale = 200
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0141"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-keyring-denied"
+state = "keyring-denied"
+viewport = "720x900"
+scale = 400
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0142"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-corrupt"
+state = "corrupt"
+viewport = "960x640"
+scale = 100
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0143"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-import-malformed"
+state = "import-malformed"
+viewport = "1440x900@2x"
+scale = 200
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0144"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-oversize"
+state = "oversize"
+viewport = "720x900"
+scale = 400
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0145"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-generating"
+state = "generating"
+viewport = "960x640"
+scale = 100
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0146"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-reviewing"
+state = "reviewing"
+viewport = "1440x900@2x"
+scale = 200
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0147"
+screen_id = "vault-keys-snippets"
+surface = "vault-keys-snippets"
+route_fixture = "synthetic-vault-keys-snippets-storage-failure"
+state = "storage-failure"
+viewport = "720x900"
+scale = 400
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "full"
+
+[[cases]]
+id = "UA-0148"
+screen_id = "hosts-connections"
+surface = "hosts-connections"
+route_fixture = "synthetic-hosts-connections-host-key-unknown"
+state = "host-key-unknown"
+viewport = "960x640"
+scale = 100
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0149"
+screen_id = "hosts-connections"
+surface = "hosts-connections"
+route_fixture = "synthetic-hosts-connections-host-key-mismatch"
+state = "host-key-mismatch"
+viewport = "1440x900@2x"
+scale = 200
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0150"
+screen_id = "hosts-connections"
+surface = "hosts-connections"
+route_fixture = "synthetic-hosts-connections-authentication-denied"
+state = "authentication-denied"
+viewport = "720x900"
+scale = 400
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0151"
+screen_id = "hosts-connections"
+surface = "hosts-connections"
+route_fixture = "synthetic-hosts-connections-invalid-target"
+state = "invalid-target"
+viewport = "960x640"
+scale = 100
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0152"
+screen_id = "hosts-connections"
+surface = "hosts-connections"
+route_fixture = "synthetic-hosts-connections-credential-store-unavailable"
+state = "credential-store-unavailable"
+viewport = "1440x900@2x"
+scale = 200
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0153"
+screen_id = "sftp"
+surface = "sftp"
+route_fixture = "synthetic-sftp-conflict"
+state = "conflict"
+viewport = "720x900"
+scale = 400
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0154"
+screen_id = "sftp"
+surface = "sftp"
+route_fixture = "synthetic-sftp-transferring"
+state = "transferring"
+viewport = "960x640"
+scale = 100
+theme = "dark"
+locale = "en-XA"
+motion = "reduced"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0155"
+screen_id = "sftp"
+surface = "sftp"
+route_fixture = "synthetic-sftp-disk-full"
+state = "disk-full"
+viewport = "1440x900@2x"
+scale = 200
+theme = "high-contrast"
+locale = "ar-XB"
+motion = "full"
+input_mode = "voiceover"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0156"
+screen_id = "sftp"
+surface = "sftp"
+route_fixture = "synthetic-sftp-resource-limit"
+state = "resource-limit"
+viewport = "720x900"
+scale = 400
+theme = "recording-friendly"
+locale = "cjk-fixture"
+motion = "reduced"
+input_mode = "pointer"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic-secret"
+coverage = "pairwise"
+
+[[cases]]
+id = "UA-0157"
+screen_id = "sftp"
+surface = "sftp"
+route_fixture = "synthetic-sftp-timeout"
+state = "timeout"
+viewport = "960x640"
+scale = 100
+theme = "light"
+locale = "en-US"
+motion = "full"
+input_mode = "keyboard"
+reader_steps = ["enter route", "read title and state", "traverse controls", "activate recovery or cancel when present", "escape and verify focus return"]
+expected_semantics = ["named root", "text state independent of color", "bounded focus route", "no keyboard trap", "privacy projection"]
+privacy_class = "synthetic"
+coverage = "pairwise"

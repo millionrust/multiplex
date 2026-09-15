@@ -1,0 +1,7 @@
+[
+  { "id": "empty", "hex": "", "error": "InvalidEncoding" },
+  { "id": "bad-magic", "hex": "0000000000010000", "error": "InvalidMagic" },
+  { "id": "future-major", "hex": "54434f3100020000", "error": "IncompatibleVersion" },
+  { "id": "truncated-v1", "hex": "54434f3100010000", "error": "InvalidEncoding" },
+  { "id": "oversize", "repeat_hex": "00", "count": 1048577, "error": "InvalidMagic" }
+]

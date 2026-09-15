@@ -1,0 +1,176 @@
+{
+  "diagnostics": [
+    {
+      "code": "relay_ready",
+      "number": 0
+    },
+    {
+      "code": "relay_invalid_config",
+      "number": 1
+    },
+    {
+      "code": "relay_loopback_required",
+      "number": 2
+    },
+    {
+      "code": "relay_state_locked",
+      "number": 3
+    },
+    {
+      "code": "relay_state_corrupt",
+      "number": 4
+    },
+    {
+      "code": "relay_state_version_unsupported",
+      "number": 5
+    },
+    {
+      "code": "relay_state_permission_denied",
+      "number": 6
+    },
+    {
+      "code": "relay_state_write_failed",
+      "number": 7
+    },
+    {
+      "code": "relay_invalid_upgrade",
+      "number": 8
+    },
+    {
+      "code": "relay_origin_rejected",
+      "number": 9
+    },
+    {
+      "code": "relay_handshake_limit",
+      "number": 10
+    },
+    {
+      "code": "relay_admission_rate_limited",
+      "number": 11
+    },
+    {
+      "code": "relay_unknown_route",
+      "number": 12
+    },
+    {
+      "code": "relay_invalid_proof",
+      "number": 13
+    },
+    {
+      "code": "relay_replayed_proof",
+      "number": 14
+    },
+    {
+      "code": "relay_expired_proof",
+      "number": 15
+    },
+    {
+      "code": "relay_revoked",
+      "number": 16
+    },
+    {
+      "code": "relay_duplicate_role",
+      "number": 17
+    },
+    {
+      "code": "relay_pair_limit",
+      "number": 18
+    },
+    {
+      "code": "relay_version_mismatch",
+      "number": 19
+    },
+    {
+      "code": "relay_malformed_envelope",
+      "number": 20
+    },
+    {
+      "code": "relay_frame_limit",
+      "number": 21
+    },
+    {
+      "code": "relay_route_mismatch",
+      "number": 22
+    },
+    {
+      "code": "relay_direction_mismatch",
+      "number": 23
+    },
+    {
+      "code": "relay_sequence_replay",
+      "number": 24
+    },
+    {
+      "code": "relay_sequence_gap",
+      "number": 25
+    },
+    {
+      "code": "relay_peer_offline",
+      "number": 26
+    },
+    {
+      "code": "relay_queue_limit",
+      "number": 27
+    },
+    {
+      "code": "relay_rate_limit",
+      "number": 28
+    },
+    {
+      "code": "relay_idle_timeout",
+      "number": 29
+    },
+    {
+      "code": "relay_peer_disconnected",
+      "number": 30
+    },
+    {
+      "code": "relay_revoked_live",
+      "number": 31
+    },
+    {
+      "code": "relay_shutdown",
+      "number": 32
+    },
+    {
+      "code": "relay_transport_failed",
+      "number": 33
+    },
+    {
+      "code": "relay_internal",
+      "number": 34
+    }
+  ],
+  "limits": {
+    "admission_lifetime_seconds": 30,
+    "ciphertext_payload_bytes": 1048576,
+    "encoded_websocket_message_bytes": 1048640,
+    "envelope_header_bytes": 52,
+    "failed_admissions_per_source": 5,
+    "forwarding_pairs": 100,
+    "queue_encoded_bytes": 4194304,
+    "queue_messages": 64,
+    "rate_burst_bytes": 8388608,
+    "rate_bytes_per_second": 4194304,
+    "registered_routes": 1000,
+    "unauthenticated_handshakes": 4
+  },
+  "protocol_version": 1,
+  "schema": "termirust-relay-v1-vectors",
+  "schema_version": 1,
+  "vectors": {
+    "accepted_hex": "5452413100010000000000000000000c",
+    "challenge_hex": "54524331000101002222222222222222222222222222222222222222222222222222222222222222d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c97787370000000000000007000000000000000900000000000004d23333333333333333333333333333333333333333333333333333333333333333",
+    "client_hello_hex": "54524831000101002222222222222222222222222222222222222222222222222222222222222222",
+    "envelope_hex": "54525231000101002222222222222222222222222222222222222222222222222222222222222222000000000000000500000003445566",
+    "host_verifier_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "proof_hex": "545250310001010022222222222222222222222222222222222222222222222222222222222222220000000000000009d2bea1fb95b6044a127e27ce51caeb75ffdf6e360a0f99e124af3db5948c344e5c6f8b0fd057b2ab0656014a4e61dfdb9790b598cf05f2b7ec24f085a1202e01",
+    "rejected_hex": "545241310001000d0000000000000000"
+  },
+  "wire_sizes": {
+    "admission_challenge": 128,
+    "admission_proof": 112,
+    "admission_result": 16,
+    "client_hello": 40
+  }
+}

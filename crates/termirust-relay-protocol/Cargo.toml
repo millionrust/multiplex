@@ -1,0 +1,19 @@
+[package]
+name = "termirust-relay-protocol"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "Canonical outer protocol and admission types for the TermiRust ciphertext relay"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+ed25519-dalek = { version = "=2.2.0", features = ["rand_core"] }
+rand_core = { version = "=0.6.4", features = ["getrandom"] }
+serde = { version = "=1.0.228", features = ["derive"] }
+sha2 = "=0.10.9"
+zeroize = { version = "=1.8.2", features = ["zeroize_derive"] }
+
+[dev-dependencies]
+hex = "=0.4.3"
+proptest = "=1.11.0"
+serde_json = "=1.0.149"

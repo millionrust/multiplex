@@ -1,0 +1,25 @@
+[package]
+name = "termirust-update-trust-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "=0.4.10"
+termirust-update-trust = { path = ".." }
+tempfile = "3.27"
+tokio = { version = "1", features = ["rt"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "update_metadata"
+path = "fuzz_targets/update_metadata.rs"
+test = false
+doc = false
+bench = false

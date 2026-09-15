@@ -1,0 +1,8 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>fixture-websocket</title>
+<main data-fixture="fixture-websocket">Synthetic WebSocket request</main>
+<script>
+  const socket = new WebSocket(`ws://${location.host}/socket`);
+  socket.addEventListener("open", () => socket.send("synthetic-only"));
+</script>

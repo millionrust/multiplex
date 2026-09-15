@@ -1,0 +1,4 @@
+module TermiRustMobileCrypto {
+  header "termirust_mobile.h"
+  export *
+}

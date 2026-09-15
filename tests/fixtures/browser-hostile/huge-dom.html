@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>fixture-huge-dom</title>
+<main data-fixture="fixture-huge-dom" id="root">Bounded source that expands in-browser</main>
+<script>
+  const root = document.querySelector("#root");
+  for (let index = 0; index < 100000; index += 1) {
+    root.append(document.createElement("span"));
+  }
+</script>

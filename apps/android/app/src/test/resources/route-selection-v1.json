@@ -1,0 +1,358 @@
+{
+  "schema_version": 1,
+  "routes": [
+    {
+      "kind": "local_ipc",
+      "platforms": ["desktop"],
+      "trust_layers": ["same_user_os_boundary"],
+      "configuration": [],
+      "capabilities": ["list_sessions", "attach_output", "send_input", "resize", "respond_to_approval", "detach"],
+      "allows_automatic_switch": false,
+      "allows_offline_mutations": false
+    },
+    {
+      "kind": "private_network",
+      "platforms": ["desktop", "apple_mobile", "android"],
+      "trust_layers": ["private_address", "controller_authentication"],
+      "configuration": ["private_endpoint", "paired_device"],
+      "capabilities": ["list_sessions", "attach_output", "send_input", "resize", "respond_to_approval", "detach"],
+      "allows_automatic_switch": false,
+      "allows_offline_mutations": false
+    },
+    {
+      "kind": "ssh",
+      "platforms": ["desktop", "apple_mobile", "android"],
+      "trust_layers": ["ssh_host_key", "controller_authentication"],
+      "configuration": ["ssh_endpoint", "ssh_credential", "paired_device"],
+      "capabilities": ["list_sessions", "attach_output", "send_input", "resize", "respond_to_approval", "detach"],
+      "allows_automatic_switch": false,
+      "allows_offline_mutations": false
+    },
+    {
+      "kind": "self_hosted_relay",
+      "platforms": ["desktop", "apple_mobile", "android"],
+      "trust_layers": ["system_tls", "spki_pin", "relay_admission", "controller_authentication"],
+      "configuration": ["relay_endpoint", "relay_spki_pin", "relay_credential", "paired_device"],
+      "capabilities": ["list_sessions", "attach_output", "send_input", "resize", "respond_to_approval", "detach"],
+      "allows_automatic_switch": false,
+      "allows_offline_mutations": false
+    }
+  ],
+  "transition_cases": [
+    {
+      "name": "available route becomes idle",
+      "initial": {"route": "local_ipc", "phase": "disabled", "writer_held": false},
+      "event": {"kind": "enable", "available": true},
+      "expected": {
+        "state": {"route": "local_ipc", "phase": "idle", "writer_held": false},
+        "terminal_allowed": false,
+        "disconnect_transport": false,
+        "clear_pending_input": false,
+        "release_writer": false,
+        "retry_idempotent_reads": false,
+        "mutation_disposition": "none",
+        "requires_explicit_action": false
+      }
+    },
+    {
+      "name": "missing relay configuration stays unavailable",
+      "initial": {"route": "self_hosted_relay", "phase": "disabled", "writer_held": false},
+      "event": {"kind": "enable", "available": false},
+      "expected": {
+        "state": {"route": "self_hosted_relay", "phase": "unavailable", "writer_held": false},
+        "terminal_allowed": false,
+        "disconnect_transport": false,
+        "clear_pending_input": false,
+        "release_writer": false,
+        "retry_idempotent_reads": false,
+        "mutation_disposition": "none",
+        "requires_explicit_action": false
+      }
+    },
+    {
+      "name": "explicit connect starts selected private route",
+      "initial": {"route": "private_network", "phase": "idle", "writer_held": false},
+      "event": {"kind": "connect"},
+      "expected": {
+        "state": {"route": "private_network", "phase": "connecting", "writer_held": false},
+        "terminal_allowed": false,
+        "disconnect_transport": false,
+        "clear_pending_input": false,
+        "release_writer": false,
+        "retry_idempotent_reads": false,
+        "mutation_disposition": "none",
+        "requires_explicit_action": false
+      }
+    },
+    {
+      "name": "transport readiness still requires Controller authentication",
+      "initial": {"route": "ssh", "phase": "connecting", "writer_held": false},
+      "event": {"kind": "transport_ready"},
+      "expected": {
+        "state": {"route": "ssh", "phase": "authenticating", "writer_held": false},
+        "terminal_allowed": false,
+        "disconnect_transport": false,
+        "clear_pending_input": false,
+        "release_writer": false,
+        "retry_idempotent_reads": false,
+        "mutation_disposition": "none",
+        "requires_explicit_action": false
+      }
+    },
+    {
+      "name": "authenticated selected route becomes online",
+      "initial": {"route": "self_hosted_relay", "phase": "authenticating", "writer_held": false},
+      "event": {"kind": "authenticated"},
+      "expected": {
+        "state": {"route": "self_hosted_relay", "phase": "online", "writer_held": false},
+        "terminal_allowed": true,
+        "disconnect_transport": false,
+        "clear_pending_input": false,
+        "release_writer": false,
+        "retry_idempotent_reads": false,
+        "mutation_disposition": "none",
+        "requires_explicit_action": false
+      }
+    },
+    {
+      "name": "retryable drop releases writer and reconciles mutation",
+      "initial": {"route": "private_network", "phase": "online", "writer_held": true},
+      "event": {"kind": "failure", "retryable": true, "mutation_in_flight": true},
+      "expected": {
+        "state": {"route": "private_network", "phase": "reconnecting", "writer_held": false},
+        "terminal_allowed": false,
+        "disconnect_transport": true,
+        "clear_pending_input": true,
+        "release_writer": true,
+        "retry_idempotent_reads": true,
+        "mutation_disposition": "query_by_command_id",
+        "requires_explicit_action": false
+      }
+    },
+    {
+      "name": "nonretryable authentication failure degrades visibly",
+      "initial": {"route": "ssh", "phase": "authenticating", "writer_held": false},
+      "event": {"kind": "failure", "retryable": false, "mutation_in_flight": false},
+      "expected": {
+        "state": {"route": "ssh", "phase": "degraded", "writer_held": false},
+        "terminal_allowed": false,
+        "disconnect_transport": true,
+        "clear_pending_input": true,
+        "release_writer": false,
+        "retry_idempotent_reads": false,
+        "mutation_disposition": "none",
+        "requires_explicit_action": true
+      }
+    },
+    {
+      "name": "explicit retry keeps the same route",
+      "initial": {"route": "ssh", "phase": "degraded", "writer_held": false},
+      "event": {"kind": "retry"},
+      "expected": {
+        "state": {"route": "ssh", "phase": "connecting", "writer_held": false},
+        "terminal_allowed": false,
+        "disconnect_transport": false,
+        "clear_pending_input": false,
+        "release_writer": false,
+        "retry_idempotent_reads": false,
+        "mutation_disposition": "none",
+        "requires_explicit_action": false
+      }
+    },
+    {
+      "name": "connecting cancellation returns selected route to idle",
+      "initial": {"route": "self_hosted_relay", "phase": "connecting", "writer_held": false},
+      "event": {"kind": "cancel"},
+      "expected": {
+        "state": {"route": "self_hosted_relay", "phase": "idle", "writer_held": false},
+        "terminal_allowed": false,
+        "disconnect_transport": true,
+        "clear_pending_input": true,
+        "release_writer": false,
+        "retry_idempotent_reads": false,
+        "mutation_disposition": "none",
+        "requires_explicit_action": false
+      }
+    },
+    {
+      "name": "online cancellation releases writer",
+      "initial": {"route": "private_network", "phase": "online", "writer_held": true},
+      "event": {"kind": "cancel"},
+      "expected": {
+        "state": {"route": "private_network", "phase": "idle", "writer_held": false},
+        "terminal_allowed": false,
+        "disconnect_transport": true,
+        "clear_pending_input": true,
+        "release_writer": true,
+        "retry_idempotent_reads": false,
+        "mutation_disposition": "none",
+        "requires_explicit_action": false
+      }
+    },
+    {
+      "name": "revocation closes route and writer authority",
+      "initial": {"route": "ssh", "phase": "online", "writer_held": true},
+      "event": {"kind": "revoke"},
+      "expected": {
+        "state": {"route": "ssh", "phase": "revoked", "writer_held": false},
+        "terminal_allowed": false,
+        "disconnect_transport": true,
+        "clear_pending_input": true,
+        "release_writer": true,
+        "retry_idempotent_reads": false,
+        "mutation_disposition": "none",
+        "requires_explicit_action": true
+      }
+    },
+    {
+      "name": "disabling an idle route has no live transport",
+      "initial": {"route": "local_ipc", "phase": "idle", "writer_held": false},
+      "event": {"kind": "disable"},
+      "expected": {
+        "state": {"route": "local_ipc", "phase": "disabled", "writer_held": false},
+        "terminal_allowed": false,
+        "disconnect_transport": false,
+        "clear_pending_input": true,
+        "release_writer": false,
+        "retry_idempotent_reads": false,
+        "mutation_disposition": "none",
+        "requires_explicit_action": true
+      }
+    },
+    {
+      "name": "lost route configuration closes active transport",
+      "initial": {"route": "self_hosted_relay", "phase": "online", "writer_held": true},
+      "event": {"kind": "availability_lost"},
+      "expected": {
+        "state": {"route": "self_hosted_relay", "phase": "unavailable", "writer_held": false},
+        "terminal_allowed": false,
+        "disconnect_transport": true,
+        "clear_pending_input": true,
+        "release_writer": true,
+        "retry_idempotent_reads": false,
+        "mutation_disposition": "none",
+        "requires_explicit_action": true
+      }
+    },
+    {
+      "name": "fresh authorization makes a revoked configured route idle",
+      "initial": {"route": "ssh", "phase": "revoked", "writer_held": false},
+      "event": {"kind": "authorization_restored", "available": true},
+      "expected": {
+        "state": {"route": "ssh", "phase": "idle", "writer_held": false},
+        "terminal_allowed": false,
+        "disconnect_transport": false,
+        "clear_pending_input": false,
+        "release_writer": false,
+        "retry_idempotent_reads": false,
+        "mutation_disposition": "none",
+        "requires_explicit_action": false
+      }
+    }
+  ],
+  "invalid_transition_cases": [
+    {
+      "name": "idle route cannot skip transport and authentication",
+      "initial": {"route": "private_network", "phase": "idle", "writer_held": false},
+      "event": {"kind": "authenticated"}
+    },
+    {
+      "name": "unavailable route cannot connect",
+      "initial": {"route": "self_hosted_relay", "phase": "unavailable", "writer_held": false},
+      "event": {"kind": "connect"}
+    },
+    {
+      "name": "revoked route cannot retry",
+      "initial": {"route": "ssh", "phase": "revoked", "writer_held": false},
+      "event": {"kind": "retry"}
+    },
+    {
+      "name": "availability loss cannot erase revocation",
+      "initial": {"route": "ssh", "phase": "revoked", "writer_held": false},
+      "event": {"kind": "availability_lost"}
+    }
+  ],
+  "mutation_cases": [
+    {"state": {"route": "private_network", "phase": "online", "writer_held": true}, "completion": "not_sent", "expected": "may_send"},
+    {"state": {"route": "private_network", "phase": "idle", "writer_held": false}, "completion": "not_sent", "expected": "do_not_replay"},
+    {"state": {"route": "ssh", "phase": "online", "writer_held": true}, "completion": "acknowledged", "expected": "do_not_replay"},
+    {"state": {"route": "self_hosted_relay", "phase": "reconnecting", "writer_held": false}, "completion": "unknown", "expected": "query_by_command_id"},
+    {"state": {"route": "local_ipc", "phase": "online", "writer_held": false}, "completion": "rejected", "expected": "do_not_replay"}
+  ],
+  "switch_cases": [
+    {
+      "name": "confirmed switch closes active source and releases writer",
+      "initial": {"route": "private_network", "phase": "online", "writer_held": true},
+      "target": "ssh",
+      "platform": "desktop",
+      "target_available": true,
+      "confirmed": true,
+      "expected": {
+        "from": "private_network",
+        "to": "ssh",
+        "disconnect_source": true,
+        "clear_pending_input": true,
+        "release_writer": true,
+        "automatic": false
+      },
+      "expected_error": null
+    },
+    {
+      "name": "confirmed idle switch has no transport to close",
+      "initial": {"route": "ssh", "phase": "idle", "writer_held": false},
+      "target": "self_hosted_relay",
+      "platform": "apple_mobile",
+      "target_available": true,
+      "confirmed": true,
+      "expected": {
+        "from": "ssh",
+        "to": "self_hosted_relay",
+        "disconnect_source": false,
+        "clear_pending_input": true,
+        "release_writer": false,
+        "automatic": false
+      },
+      "expected_error": null
+    },
+    {
+      "name": "unconfirmed switch is rejected",
+      "initial": {"route": "private_network", "phase": "degraded", "writer_held": false},
+      "target": "ssh",
+      "platform": "android",
+      "target_available": true,
+      "confirmed": false,
+      "expected": null,
+      "expected_error": "ExplicitConfirmationRequired"
+    },
+    {
+      "name": "same-route switch is rejected",
+      "initial": {"route": "ssh", "phase": "online", "writer_held": false},
+      "target": "ssh",
+      "platform": "desktop",
+      "target_available": true,
+      "confirmed": true,
+      "expected": null,
+      "expected_error": "SameRoute"
+    },
+    {
+      "name": "mobile cannot switch to desktop local IPC",
+      "initial": {"route": "private_network", "phase": "idle", "writer_held": false},
+      "target": "local_ipc",
+      "platform": "android",
+      "target_available": true,
+      "confirmed": true,
+      "expected": null,
+      "expected_error": "UnsupportedPlatform"
+    },
+    {
+      "name": "missing target configuration blocks switch",
+      "initial": {"route": "private_network", "phase": "online", "writer_held": false},
+      "target": "self_hosted_relay",
+      "platform": "desktop",
+      "target_available": false,
+      "confirmed": true,
+      "expected": null,
+      "expected_error": "TargetUnavailable"
+    }
+  ]
+}

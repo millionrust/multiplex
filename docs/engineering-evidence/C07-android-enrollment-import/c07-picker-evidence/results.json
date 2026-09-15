@@ -1,0 +1,59 @@
+{
+  "api": "37",
+  "abi": "arm64-v8a",
+  "page_size": "16384",
+  "owned_emulator": true,
+  "runs": [
+    {
+      "class": "com.termirust.mobile.replication.ReplicationDocumentReaderTest",
+      "tests": 7
+    },
+    {
+      "class": "com.termirust.mobile.replication.EnrollmentAcceptanceTest#prepare",
+      "tests": 1
+    },
+    {
+      "class": "com.termirust.mobile.replication.EnrollmentActivationTest#failPreparedCreation",
+      "tests": 1
+    },
+    {
+      "class": "com.termirust.mobile.replication.EnrollmentActivationTest#recoverPreparedCreation",
+      "tests": 1
+    },
+    {
+      "class": "com.termirust.mobile.replication.EnrollmentActivationTest#failActivation",
+      "tests": 1
+    },
+    {
+      "class": "com.termirust.mobile.replication.EnrollmentActivationTest#recoverActivation",
+      "tests": 1
+    },
+    {
+      "class": "com.termirust.mobile.replication.EnrollmentPickerTest#accept",
+      "tests": 1
+    },
+    {
+      "class": "com.termirust.mobile.replication.EnrollmentActivationTest#prepareCommittedRecovery",
+      "tests": 1
+    },
+    {
+      "class": "com.termirust.mobile.replication.EnrollmentActivationTest#finishCommittedRecovery",
+      "tests": 1
+    },
+    {
+      "class": "com.termirust.mobile.replication.EnrollmentPickerTest#importHost",
+      "tests": 1
+    },
+    {
+      "class": "com.termirust.mobile.replication.EnrollmentAcceptanceTest#reopen",
+      "tests": 1
+    },
+    {
+      "class": "com.termirust.mobile.replication.EnrollmentAcceptanceTest#cleanup",
+      "tests": 1
+    }
+  ],
+  "system_picker": true,
+  "passed": 18,
+  "skipped": 0
+}

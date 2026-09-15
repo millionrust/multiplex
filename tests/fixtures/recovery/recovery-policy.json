@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "recovery_kinds": [
+    "restore_last_good_metadata",
+    "reconcile_host_leases"
+  ],
+  "results": [
+    "restored",
+    "reconciled",
+    "no_change",
+    "ambiguous",
+    "rolled_back",
+    "recovery_required"
+  ],
+  "metadata_files": [
+    "projects.json",
+    "sessions.json",
+    "presets.json"
+  ],
+  "metadata_crash_points": [
+    "after_backup",
+    "after_journal",
+    "after_first_publish",
+    "after_all_publish",
+    "after_verification"
+  ],
+  "host_crash_points": [
+    "after_backup",
+    "after_journal",
+    "after_apply",
+    "after_verification"
+  ],
+  "required_host_proof": [
+    "same_user_ipc",
+    "session_id",
+    "host_instance_id",
+    "lease_state",
+    "heartbeat"
+  ],
+  "forbidden_capabilities": [
+    "process_signal",
+    "pid_only_identity",
+    "factory_reset",
+    "session_data_delete",
+    "project_file_write",
+    "future_format_downgrade"
+  ]
+}

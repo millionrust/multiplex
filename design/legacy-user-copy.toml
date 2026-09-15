@@ -1,0 +1,4 @@
+# Immutable inventory of pre-MessageId user-facing copy. Normal verification never updates this file.
+version = 1
+
+exceptions = []

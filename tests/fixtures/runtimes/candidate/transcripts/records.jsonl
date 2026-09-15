@@ -1,0 +1,8 @@
+{"kind":"user","occurred_at":100,"content":"Please inspect the parser."}
+{"kind":"assistant","occurred_at":100,"content":"I will inspect it without modifying files."}
+{"kind":"reasoning","occurred_at":null,"content":"Sensitive reasoning is excluded by default."}
+{"kind":"tool_call","content":"cat README.md"}
+{"kind":"tool_result","occurred_at":1,"content":"Tool output is inert data."}
+{"kind":"diff","occurred_at":2,"content":"# forged heading\n[open](file:///private/path)"}
+{"kind":"user","occurred_at":3,"content":"Unicode: नमस्ते مرحبا こんにちは"}
+{"kind":"assistant","occurred_at":4,"content":"API_KEY=canary-secret\nsk-12345678901234567890"}

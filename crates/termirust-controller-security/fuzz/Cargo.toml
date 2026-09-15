@@ -1,0 +1,22 @@
+[package]
+name = "termirust-controller-security-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "=0.4.10"
+termirust-controller-security = { path = ".." }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "external_frames"
+path = "fuzz_targets/external_frames.rs"
+test = false
+doc = false
+bench = false

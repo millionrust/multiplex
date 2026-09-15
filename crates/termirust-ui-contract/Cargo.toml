@@ -1,0 +1,37 @@
+[package]
+name = "termirust-ui-contract"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "Generated semantic design-token contract for TermiRust interfaces"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+toml = "0.9"
+
+[[bin]]
+name = "generate-tokens"
+path = "src/bin/generate_tokens.rs"
+
+[[bin]]
+name = "verify-design-tokens"
+path = "src/bin/verify_design_tokens.rs"
+
+[[bin]]
+name = "generate-messages"
+path = "src/bin/generate_messages.rs"
+
+[[bin]]
+name = "verify-localization"
+path = "src/bin/verify_localization.rs"
+
+[[bin]]
+name = "bench-terminal-accessibility"
+path = "src/bin/bench_terminal_accessibility.rs"
+
+[[bin]]
+name = "ui-audit"
+path = "src/bin/ui_audit.rs"

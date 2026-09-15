@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "routes": ["private_network", "ssh", "self_hosted_relay"],
+  "lifecycle_cases": [
+    {
+      "name": "normal route reaches online",
+      "steps": [
+        {"kind": "select"},
+        {"kind": "connect"},
+        {"kind": "transport_ready"},
+        {"kind": "authenticated"}
+      ],
+      "expected": {
+        "phase": "online",
+        "transport_starts": 1,
+        "transport_disconnects": 0,
+        "input_clears": 0,
+        "writer_releases": 0,
+        "idempotent_read_retries": 0,
+        "mutation_queries": 0,
+        "mutation_replays": 0,
+        "automatic_switches": 0,
+        "explicit_actions": 0,
+        "terminal_allowed": true
+      }
+    },
+    {
+      "name": "online cancellation owns cleanup",
+      "steps": [
+        {"kind": "select"},
+        {"kind": "connect"},
+        {"kind": "transport_ready"},
+        {"kind": "authenticated"},
+        {"kind": "cancel"}
+      ],
+      "expected": {
+        "phase": "idle",
+        "transport_starts": 1,
+        "transport_disconnects": 1,
+        "input_clears": 1,
+        "writer_releases": 0,
+        "idempotent_read_retries": 0,
+        "mutation_queries": 0,
+        "mutation_replays": 0,
+        "automatic_switches": 0,
+        "explicit_actions": 0,
+        "terminal_allowed": false
+      }
+    },
+    {
+      "name": "retryable drop reconciles unknown mutation without replay",
+      "steps": [
+        {"kind": "select"},
+        {"kind": "connect"},
+        {"kind": "transport_ready"},
+        {"kind": "authenticated"},
+        {"kind": "set_writer", "held": true},
+        {"kind": "failure", "retryable": true, "mutation_in_flight": true},
+        {"kind": "transport_ready"},
+        {"kind": "authenticated"}
+      ],
+      "expected": {
+        "phase": "online",
+        "transport_starts": 1,
+        "transport_disconnects": 1,
+        "input_clears": 1,
+        "writer_releases": 1,
+        "idempotent_read_retries": 1,
+        "mutation_queries": 1,
+        "mutation_replays": 0,
+        "automatic_switches": 0,
+        "explicit_actions": 0,
+        "terminal_allowed": true
+      }
+    },
+    {
+      "name": "nonretryable authentication failure needs explicit same-route retry",
+      "steps": [
+        {"kind": "select"},
+        {"kind": "connect"},
+        {"kind": "transport_ready"},
+        {"kind": "failure", "retryable": false, "mutation_in_flight": false},
+        {"kind": "retry"},
+        {"kind": "transport_ready"},
+        {"kind": "authenticated"}
+      ],
+      "expected": {
+        "phase": "online",
+        "transport_starts": 2,
+        "transport_disconnects": 1,
+        "input_clears": 1,
+        "writer_releases": 0,
+        "idempotent_read_retries": 0,
+        "mutation_queries": 0,
+        "mutation_replays": 0,
+        "automatic_switches": 0,
+        "explicit_actions": 1,
+        "terminal_allowed": true
+      }
+    },
+    {
+      "name": "revocation closes transport and writer authority",
+      "steps": [
+        {"kind": "select"},
+        {"kind": "connect"},
+        {"kind": "transport_ready"},
+        {"kind": "authenticated"},
+        {"kind": "set_writer", "held": true},
+        {"kind": "revoke"}
+      ],
+      "expected": {
+        "phase": "revoked",
+        "transport_starts": 1,
+        "transport_disconnects": 1,
+        "input_clears": 1,
+        "writer_releases": 1,
+        "idempotent_read_retries": 0,
+        "mutation_queries": 0,
+        "mutation_replays": 0,
+        "automatic_switches": 0,
+        "explicit_actions": 1,
+        "terminal_allowed": false
+      }
+    },
+    {
+      "name": "repeated availability loss is idempotent",
+      "steps": [
+        {"kind": "select"},
+        {"kind": "connect"},
+        {"kind": "transport_ready"},
+        {"kind": "authenticated"},
+        {"kind": "set_writer", "held": true},
+        {"kind": "set_available", "available": false},
+        {"kind": "set_available", "available": false}
+      ],
+      "expected": {
+        "phase": "unavailable",
+        "transport_starts": 1,
+        "transport_disconnects": 1,
+        "input_clears": 1,
+        "writer_releases": 1,
+        "idempotent_read_retries": 0,
+        "mutation_queries": 0,
+        "mutation_replays": 0,
+        "automatic_switches": 0,
+        "explicit_actions": 1,
+        "terminal_allowed": false
+      }
+    },
+    {
+      "name": "connecting cancellation does not start another route",
+      "steps": [
+        {"kind": "select"},
+        {"kind": "connect"},
+        {"kind": "cancel"}
+      ],
+      "expected": {
+        "phase": "idle",
+        "transport_starts": 1,
+        "transport_disconnects": 1,
+        "input_clears": 1,
+        "writer_releases": 0,
+        "idempotent_read_retries": 0,
+        "mutation_queries": 0,
+        "mutation_replays": 0,
+        "automatic_switches": 0,
+        "explicit_actions": 0,
+        "terminal_allowed": false
+      }
+    },
+    {
+      "name": "fresh authorization reconnects only after an explicit connect",
+      "steps": [
+        {"kind": "select"},
+        {"kind": "connect"},
+        {"kind": "transport_ready"},
+        {"kind": "authenticated"},
+        {"kind": "revoke"},
+        {"kind": "authorization_restored"},
+        {"kind": "connect"},
+        {"kind": "transport_ready"},
+        {"kind": "authenticated"}
+      ],
+      "expected": {
+        "phase": "online",
+        "transport_starts": 2,
+        "transport_disconnects": 1,
+        "input_clears": 1,
+        "writer_releases": 0,
+        "idempotent_read_retries": 0,
+        "mutation_queries": 0,
+        "mutation_replays": 0,
+        "automatic_switches": 0,
+        "explicit_actions": 1,
+        "terminal_allowed": true
+      }
+    }
+  ],
+  "switch_matrix": {
+    "confirmed": {
+      "source_phase": "online",
+      "writer_held": true,
+      "source_disconnects": 1,
+      "target_starts": 0,
+      "input_clears": 1,
+      "writer_releases": 1,
+      "automatic_switches": 0,
+      "target_phase": "idle"
+    },
+    "unconfirmed_error": "explicit_confirmation_required",
+    "unavailable_error": "target_unavailable"
+  }
+}

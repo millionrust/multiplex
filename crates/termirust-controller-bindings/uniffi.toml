@@ -1,0 +1,11 @@
+[bindings.swift]
+module_name = "TermiRustControllerSecurity"
+ffi_module_name = "TermiRustControllerSecurityFFI"
+generate_module_map = true
+
+[bindings.kotlin]
+package_name = "com.termirust.controller.security"
+cdylib_name = "termirust_controller_bindings"
+generate_immutable_records = true
+android = true
+kotlin_target_version = "2.1.0"

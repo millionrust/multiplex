@@ -1,0 +1,23 @@
+[package]
+name = "termirust-relay-spike"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[workspace]
+
+[dependencies]
+ed25519-dalek = { version = "=2.2.0", features = ["rand_core", "zeroize"] }
+libc = "0.2"
+rand_core = { version = "0.6", features = ["getrandom"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+termirust-controller-security = { version = "=0.1.0", path = "../../crates/termirust-controller-security" }
+zeroize = "=1.8.2"
+
+[[bin]]
+name = "relay-spike"
+path = "src/main.rs"

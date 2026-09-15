@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "file_category": "redacted_metadata",
+  "included_classes": [
+    "allowlisted operational metadata"
+  ],
+  "excluded_classes": [
+    "terminal input and output",
+    "prompts and transcripts",
+    "credentials and environment",
+    "paths, hostnames, usernames, and device names",
+    "artifacts and clipboard content"
+  ],
+  "required_manifest_fields": [
+    "schema_version",
+    "created_at_unix_ms",
+    "files",
+    "categories",
+    "total_entries",
+    "total_bytes",
+    "oldest_unix_ms",
+    "newest_unix_ms",
+    "redactions",
+    "snapshot_sha256",
+    "included_classes",
+    "excluded_classes"
+  ]
+}
