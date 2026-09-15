@@ -1460,6 +1460,169 @@ mod tests {
         );
     }
 
+    fn events(output: &SharedBuffer) -> Vec<ListenerProcessEvent> {
+        let bytes = output.0.lock().unwrap().clone();
+        let mut reader = Cursor::new(bytes);
+        let mut events = Vec::new();
+        while let Ok(Some(event)) = ListenerProcessEvent::read(&mut reader) {
+            events.push(event);
+        }
+        events
+    }
+
+    fn wait_for<T>(
+        output: &SharedBuffer,
+        mut find: impl FnMut(&[ListenerProcessEvent]) -> Option<T>,
+    ) -> T {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        loop {
+            if let Some(found) = find(&events(output)) {
+                return found;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "listener event did not arrive"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    #[test]
+    fn worker_pairs_a_phone_over_tcp_with_the_code_it_shows() {
+        if SystemInterfaceProvider
+            .eligible_interfaces()
+            .unwrap()
+            .is_empty()
+        {
+            return;
+        }
+        let fixture = tempfile::tempdir().unwrap();
+        let controller_root = fixture.path().join("controller");
+        let private = StaticPrivateKey::from_fixture_bytes([61; 32]);
+        let public = host_public_key_from_private(&private);
+        let devices = ControllerDeviceRepository::open(&controller_root).unwrap();
+        let snapshot = devices.load().unwrap();
+        devices
+            .update(snapshot.revision, |authority| {
+                authority.identity = Some(HostIdentityPublic::new(
+                    HostIdentityGeneration::INITIAL,
+                    HostPublicKey(public.0),
+                ));
+                authority.secret_ref =
+                    Some(HostIdentitySecretRef::new("identity:code-worker").unwrap());
+                authority.state = HostIdentityState::Ready;
+                Ok(())
+            })
+            .unwrap();
+        let policy = ControllerListenPolicy {
+            enabled: true,
+            port: Some(ControllerPort::Generated(
+                SystemGeneratedPortSource.next_port().unwrap(),
+            )),
+            discovery: DiscoveryPolicy::Off,
+        };
+        let network = ControllerNetworkRepository::open(&controller_root).unwrap();
+        let saved = network
+            .save(network.load().unwrap().revision, policy.clone())
+            .unwrap();
+        let descriptor = ListenerLaunchDescriptor::new(
+            controller_root.clone(),
+            fixture.path().join("projects"),
+            fixture.path().join("sessions"),
+            fixture.path().join("runtime"),
+            saved.revision,
+            policy,
+            &private,
+        )
+        .unwrap();
+
+        let (control_reader, mut control) = std::io::pipe().unwrap();
+        let output = SharedBuffer::default();
+        let worker_output = output.clone();
+        let worker = std::thread::spawn(move || {
+            run_listener_worker(std::io::BufReader::new(control_reader), worker_output)
+        });
+        descriptor.write(&mut control).unwrap();
+        let address = wait_for(&output, |events| {
+            events.iter().find_map(|event| match event {
+                ListenerProcessEvent::Ready { addresses, .. } => addresses
+                    .iter()
+                    .find(|address| address.address.is_ipv4())
+                    .or(addresses.first())
+                    .map(|address| address.address),
+                _ => None,
+            })
+        });
+        ListenerControlCommand::begin_code_pairing()
+            .write(&mut control)
+            .unwrap();
+        let (offer_id, code) = wait_for(&output, |events| {
+            events.iter().find_map(|event| match event {
+                ListenerProcessEvent::PairingCode { offer_id, code, .. } => {
+                    Some((*offer_id, code.clone()))
+                }
+                _ => None,
+            })
+        });
+
+        let paired = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+                ControllerConnectionPurpose::PairCode
+                    .write_to(&mut stream)
+                    .await
+                    .unwrap();
+                crate::pair_controller_with_code_client(
+                    &mut stream,
+                    &termirust_controller_security::PairingCode::parse(&code).unwrap(),
+                    StaticPrivateKey::from_fixture_bytes([62; 32]),
+                    StaticPrivateKey::from_fixture_bytes([63; 32]),
+                    &mut SystemHandshakeEntropy,
+                    ControllerDeviceId::new(),
+                    "Test phone".into(),
+                    |_| Ok(()),
+                )
+                .await
+            })
+            .unwrap_or_else(|error| {
+                panic!(
+                    "pairing failed: {error:?}; events: {:?}",
+                    events(&output)
+                        .iter()
+                        .map(|event| serde_json::to_string(event).unwrap())
+                        .collect::<Vec<_>>()
+                )
+            });
+        assert_eq!(paired.host_public_key.0, public.0);
+
+        wait_for(&output, |events| {
+            events.iter().find_map(|event| match event {
+                ListenerProcessEvent::PairingComplete {
+                    offer_id: completed,
+                    device_id,
+                    ..
+                } if *completed == offer_id && *device_id == paired.device_id => Some(()),
+                _ => None,
+            })
+        });
+        let authority = ControllerDeviceRepository::open(&controller_root)
+            .unwrap()
+            .load()
+            .unwrap()
+            .authority;
+        assert!(
+            authority
+                .devices
+                .iter()
+                .any(|device| device.device_id == paired.device_id)
+        );
+        drop(control);
+        worker.join().unwrap().unwrap();
+    }
+
     #[test]
     fn owned_worker_emits_ready_and_offer_then_stops_on_control_eof() {
         let Some(interface) = SystemInterfaceProvider

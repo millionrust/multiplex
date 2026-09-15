@@ -66,9 +66,9 @@ pub use pairing::{
     pair_controller_client, pair_controller_with_code, pair_controller_with_code_client,
 };
 pub use pairing_protocol::{
-    CodePairingHello, ControllerConnectionPurpose, ControllerPairingOffer, MAX_PAIRING_ROUTES,
-    PairingConnectRequest, PairingDeviceRegistration, PairingHostAck, PairingRoute,
-    SshControllerPairingOffer,
+    CodePairingChallenge, CodePairingHello, ControllerConnectionPurpose, ControllerPairingOffer,
+    MAX_PAIRING_ROUTES, PairingConnectRequest, PairingDeviceRegistration, PairingHostAck,
+    PairingRoute, SshControllerPairingOffer,
 };
 pub use process_protocol::{
     ListenerControlCommand, ListenerProcessEvent, ProcessFirewallObservation,

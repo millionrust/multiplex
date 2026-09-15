@@ -291,6 +291,82 @@ impl fmt::Debug for ControllerPairingOffer {
     }
 }
 
+/// The Host's reply to a code pairing hello: the public offer the code exchange is keyed to.
+/// Unlike the SSH offer it accepts session generation zero, which a new Host starts with.
+#[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CodePairingChallenge {
+    pub schema_version: u16,
+    pub offer_id: PairingOfferId,
+    pub identity_generation: u64,
+    pub revocation_epoch: u64,
+    pub session_generation: u64,
+    pub offer_bytes: Vec<u8>,
+}
+
+impl CodePairingChallenge {
+    pub fn new(
+        offer_id: PairingOfferId,
+        offer: &PairingOfferCore,
+        identity_generation: u64,
+        revocation_epoch: u64,
+        session_generation: u64,
+    ) -> Result<Self, ListenerError> {
+        let value = Self {
+            schema_version: PAIRING_ENVELOPE_VERSION,
+            offer_id,
+            identity_generation,
+            revocation_epoch,
+            session_generation,
+            offer_bytes: encode_offer(offer)
+                .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))?
+                .to_vec(),
+        };
+        value.offer()?;
+        Ok(value)
+    }
+
+    pub fn offer(&self) -> Result<PairingOfferCore, ListenerError> {
+        if self.schema_version != PAIRING_ENVELOPE_VERSION
+            || self.identity_generation == 0
+            || self.offer_bytes.len() != PAIRING_OFFER_BYTES
+        {
+            return Err(ListenerError::new(ListenerErrorCode::MalformedFrame));
+        }
+        decode_offer(&self.offer_bytes)
+            .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))
+    }
+
+    pub async fn read_from<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Self, ListenerError> {
+        let value: Self =
+            decode_control(&read_bounded_frame(reader, MAX_PAIRING_ENVELOPE_BYTES).await?)?;
+        value.offer()?;
+        Ok(value)
+    }
+
+    pub async fn write_to<W: AsyncWrite + Unpin>(
+        &self,
+        writer: &mut W,
+    ) -> Result<(), ListenerError> {
+        self.offer()?;
+        write_bounded_frame(writer, &encode_control(self)?, MAX_PAIRING_ENVELOPE_BYTES).await
+    }
+}
+
+impl fmt::Debug for CodePairingChallenge {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CodePairingChallenge")
+            .field("schema_version", &self.schema_version)
+            .field("offer_id", &self.offer_id)
+            .field("identity_generation", &self.identity_generation)
+            .field("revocation_epoch", &self.revocation_epoch)
+            .field("session_generation", &self.session_generation)
+            .field("offer_bytes", &"[REDACTED]")
+            .finish()
+    }
+}
+
 /// The first frame of code pairing: the phone's fresh nonce, which becomes half of the CPace
 /// session identifier.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

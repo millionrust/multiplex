@@ -15,9 +15,9 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    CodePairingHello, HandshakeEntropy, ListenerError, ListenerErrorCode, PairingConnectRequest,
-    PairingDeviceRegistration, PairingHostAck, SshControllerPairingOffer, read_bounded_frame,
-    write_bounded_frame,
+    CodePairingChallenge, CodePairingHello, HandshakeEntropy, ListenerError, ListenerErrorCode,
+    PairingConnectRequest, PairingDeviceRegistration, PairingHostAck, SshControllerPairingOffer,
+    read_bounded_frame, write_bounded_frame,
 };
 
 const MAX_PAIRING_HANDSHAKE_BYTES: usize = 1_024;
@@ -169,7 +169,7 @@ async fn pair_controller_with_code_inner<S: AsyncRead + AsyncWrite + Unpin>(
         code,
         snapshot,
     } = attempt;
-    SshControllerPairingOffer::new(
+    CodePairingChallenge::new(
         offer_id,
         &snapshot.offer,
         snapshot.identity_generation.get(),
@@ -234,7 +234,7 @@ where
     let scalar_entropy = entropy.scalar_entropy()?;
     tokio::time::timeout(CODE_PAIRING_TIMEOUT, async {
         CodePairingHello::new(device_nonce).write_to(stream).await?;
-        let envelope = SshControllerPairingOffer::read_from(stream).await?;
+        let envelope = CodePairingChallenge::read_from(stream).await?;
         let offer = envelope.offer()?;
         let exchange = CodeKeyExchange::new(
             PairingRole::DeviceInitiator,
@@ -266,7 +266,11 @@ where
             .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
         send_registration(
             stream,
-            &envelope,
+            OfferGenerations {
+                identity: envelope.identity_generation,
+                revocation_epoch: envelope.revocation_epoch,
+                session: envelope.session_generation,
+            },
             &offer,
             confirmed,
             device_id,
@@ -431,7 +435,11 @@ where
         .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
     send_registration(
         stream,
-        &envelope,
+        OfferGenerations {
+            identity: envelope.identity_generation,
+            revocation_epoch: envelope.revocation_epoch,
+            session: envelope.session_generation,
+        },
         &offer_for_result,
         confirmed,
         device_id,
@@ -441,10 +449,18 @@ where
     .await
 }
 
+/// The generations an offer envelope announced, which the Host acknowledgement must repeat.
+#[derive(Clone, Copy)]
+struct OfferGenerations {
+    identity: u64,
+    revocation_epoch: u64,
+    session: u64,
+}
+
 /// Registers the phone over a confirmed pairing and checks the Host's acknowledgement.
 async fn send_registration<S, G>(
     stream: &mut S,
-    envelope: &SshControllerPairingOffer,
+    envelope: OfferGenerations,
     offer: &PairingOfferCore,
     mut confirmed: ConfirmedPairing,
     device_id: ControllerDeviceId,
@@ -458,9 +474,9 @@ where
     let result = ControllerClientPairingResult {
         device_id,
         host_public_key: offer.host_static_public_key,
-        identity_generation: envelope.identity_generation,
+        identity_generation: envelope.identity,
         revocation_epoch: envelope.revocation_epoch,
-        session_generation: envelope.session_generation,
+        session_generation: envelope.session,
         capability_bits: offer.capabilities.bits(),
     };
     prepare_registration(&result)?;
@@ -493,9 +509,9 @@ where
     }
     let ack = PairingHostAck::decode(&ack.payload)?;
     if ack.device_id != device_id
-        || ack.identity_generation != envelope.identity_generation
+        || ack.identity_generation != envelope.identity
         || ack.revocation_epoch != envelope.revocation_epoch
-        || ack.session_generation != envelope.session_generation
+        || ack.session_generation != envelope.session
         || ack.capability_bits != result.capability_bits
         || confirmed.host_key != result.host_public_key
     {
