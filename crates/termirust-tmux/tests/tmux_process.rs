@@ -34,6 +34,15 @@ impl IsolatedServer {
         let output = self.tmux.command().args(arguments).output().unwrap();
         assert!(output.status.success(), "tmux {arguments:?}: {output:?}");
     }
+
+    fn output(&self, arguments: &[&str]) -> String {
+        let output = self.tmux.command().args(arguments).output().unwrap();
+        assert!(output.status.success(), "tmux {arguments:?}: {output:?}");
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .trim_end_matches('\n')
+            .to_owned()
+    }
 }
 
 impl Drop for IsolatedServer {
@@ -63,9 +72,22 @@ fn real_server_lists_sessions_with_hostile_names() {
     let Some(server) = IsolatedServer::start() else {
         return;
     };
-    for name in ["plain", "a:b.c | pipe", "émoji 🚀 spaced"] {
-        server.run(&["new-session", "-d", "-s", name, "/bin/sh"]);
-    }
+    // tmux 3.2 stores `:` and `.` in a new session's name as `_`, so expect the names tmux
+    // reports it created.
+    let mut expected = ["plain", "a:b.c | pipe", "émoji 🚀 spaced"].map(|name| {
+        server.output(&[
+            "new-session",
+            "-d",
+            "-P",
+            "-F",
+            "#{session_name}",
+            "-s",
+            name,
+            "/bin/sh",
+        ])
+    });
+    let hostile_name = expected[1].clone();
+    expected.sort();
     let listing = server.tmux.list_sessions().unwrap();
     assert_eq!(listing.skipped_lines, 0);
     let mut names = listing
@@ -74,7 +96,8 @@ fn real_server_lists_sessions_with_hostile_names() {
         .map(|session| session.name.clone())
         .collect::<Vec<_>>();
     names.sort();
-    assert_eq!(names, ["a:b.c | pipe", "plain", "émoji 🚀 spaced"]);
+    assert_eq!(names, expected);
+    assert!(hostile_name.contains(" | "));
     for session in &listing.sessions {
         assert!(session.id().starts_with('$'));
         assert!(session.created_unix_seconds > 0);
@@ -86,7 +109,7 @@ fn real_server_lists_sessions_with_hostile_names() {
     let hostile = listing
         .sessions
         .iter()
-        .find(|session| session.name == "a:b.c | pipe")
+        .find(|session| session.name == hostile_name)
         .unwrap();
     server.run(&["has-session", "-t", hostile.session_target()]);
 }

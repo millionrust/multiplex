@@ -120,9 +120,9 @@ clears it.
 # Managed by TermiRust for the tmux sessions it starts (named termirust-*). Turn off "Open new terminals in tmux" in TermiRust to remove it.
 set-option status off
 set-option mouse on
-set-option -w copy-mode-position-format ''
-set-option -w mode-style 'bg=#3b4252,fg=default'
-set-hook after-new-window 'set-option -w copy-mode-position-format "" ; set-option -w mode-style "bg=#3b4252,fg=default"'
+set-option -q -w copy-mode-position-format ''
+set-option -q -w mode-style 'bg=#3b4252,fg=default'
+set-hook after-new-window 'set-option -q -w copy-mode-position-format "" ; set-option -q -w mode-style "bg=#3b4252,fg=default"'
 bind-key -T copy-mode MouseDragEnd1Pane 'if-shell -F "#{m:termirust-*,#{session_name}}" "send-keys -X copy-pipe-no-clear pbcopy ; send-keys -X stop-selection" "send-keys -X copy-pipe-and-cancel"'
 # ...and the same guard for MouseDown1Pane, WheelUpPane, and WheelDownPane in copy-mode and copy-mode-vi
 ```

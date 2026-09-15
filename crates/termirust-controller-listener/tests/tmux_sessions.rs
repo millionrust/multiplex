@@ -499,7 +499,11 @@ async fn tmux_session_lists_attaches_streams_and_accepts_input_without_resizing(
     let mut controller = connect(fixture.backends(Some(source.clone())), 71).await;
 
     let row = controller.only_tmux_row().await;
-    assert_eq!(row.title, "phone target: a.b | c");
+    // tmux 3.2 stores `:` and `.` in a new session's name as `_`.
+    let stored_name =
+        fixture.tmux_output(&["display-message", "-p", "-t", &tmux_id, "#{session_name}"]);
+    assert!(stored_name.starts_with("phone target"));
+    assert_eq!(row.title, stored_name);
     assert_eq!(row.origin, ControllerSessionOrigin::Terminal);
     assert_eq!(row.lifecycle, "live");
     assert_eq!(row.occupant_generation, Some(OccupantGeneration::new(1)));

@@ -50,11 +50,12 @@ impl WrappedSessionAppearance {
         ]
     }
 
-    /// Window options, each without a target.
-    pub fn window_options() -> [[&'static str; 4]; 2] {
+    /// Window options, each without a target. `-q` lets tmux older than 3.5, which has no
+    /// `copy-mode-position-format`, skip that option and keep applying the rest.
+    pub fn window_options() -> [[&'static str; 5]; 2] {
         [
-            ["set-option", "-w", "copy-mode-position-format", ""],
-            ["set-option", "-w", "mode-style", SELECTION_STYLE],
+            ["set-option", "-q", "-w", "copy-mode-position-format", ""],
+            ["set-option", "-q", "-w", "mode-style", SELECTION_STYLE],
         ]
     }
 
@@ -231,9 +232,9 @@ mod tests {
         let file = WrappedSessionAppearance::new(Some("pbcopy".to_owned())).configuration_file();
         assert!(file.contains("\nset-option status off\n"));
         assert!(file.contains("\nset-option mouse on\n"));
-        assert!(file.contains("\nset-option -w copy-mode-position-format ''\n"));
+        assert!(file.contains("\nset-option -q -w copy-mode-position-format ''\n"));
         assert!(file.contains(
-            "\nset-hook after-new-window 'set-option -w copy-mode-position-format \"\" ; set-option -w mode-style \"bg=#3b4252,fg=default\"'\n"
+            "\nset-hook after-new-window 'set-option -q -w copy-mode-position-format \"\" ; set-option -q -w mode-style \"bg=#3b4252,fg=default\"'\n"
         ));
         let bindings = file
             .lines()
