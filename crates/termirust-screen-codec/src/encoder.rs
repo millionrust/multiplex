@@ -81,7 +81,12 @@ pub struct Encoder {
     motion: MotionTracker,
     motion_event: Option<MotionEvent>,
     motion_last_sent_ms: Option<u64>,
+    /// When each tile's source pixels last changed, from [`Encoder::encode_at`].
+    changed_at_ms: Vec<u64>,
 }
+
+/// How long a lossy tile must stay unchanged before it is refined to exact pixels.
+pub const REFINE_IDLE_MS: u64 = 250;
 
 impl Encoder {
     pub fn new(
@@ -109,7 +114,87 @@ impl Encoder {
             motion: MotionTracker::new(grid, config.motion),
             motion_event: None,
             motion_last_sent_ms: None,
+            changed_at_ms: vec![0; grid.len()],
         }
+    }
+
+    /// Number of tiles the viewer holds only as a lossy approximation.
+    pub fn approximate_tiles(&self) -> usize {
+        self.viewer
+            .iter()
+            .filter(|state| matches!(state, ViewerTile::Approximate(_)))
+            .count()
+    }
+
+    /// Replaces lossy tiles that have been idle for [`REFINE_IDLE_MS`] with exact pixels, oldest
+    /// first, until about `budget_bytes` of payload is used. Tiles in the motion region wait for
+    /// it to end. Returns `None` when nothing is ready. Callers pause refinement by not calling it.
+    pub fn refine_at(
+        &mut self,
+        now_ms: u64,
+        budget_bytes: usize,
+    ) -> Result<Option<Batch>, CodecError> {
+        let Some(hashes) = self.hashes.as_ref() else {
+            return Ok(None);
+        };
+        let mut ready: Vec<(u64, TileIndex)> = self
+            .viewer
+            .iter()
+            .enumerate()
+            .filter_map(|(index, state)| {
+                let tile = TileIndex(index as u32);
+                let ViewerTile::Approximate(hash) = *state else {
+                    return None;
+                };
+                let idle = now_ms.saturating_sub(self.changed_at_ms[index]) >= REFINE_IDLE_MS;
+                (idle && hashes.get(tile) == Some(hash) && !self.motion.contains(tile))
+                    .then_some((self.changed_at_ms[index], tile))
+            })
+            .collect();
+        if ready.is_empty() {
+            return Ok(None);
+        }
+        ready.sort_unstable();
+
+        let mut ops = Vec::new();
+        let mut spent = 0;
+        for (_, tile) in ready {
+            if spent >= budget_bytes && !ops.is_empty() {
+                break;
+            }
+            let hash = hashes.get(tile).expect("tile from this grid");
+            let rect = self.grid.tile_rect(tile).expect("tile from this grid");
+            let op = if self.shadow.use_if_held(hash) {
+                spent += 13;
+                TileOp::Cached { tile, hash }
+            } else {
+                let payload = encode_lossless(&self.source.as_frame(), rect);
+                spent += payload.len() + 17;
+                self.shadow.record_sent(hash, pixel_bytes(rect));
+                remember(
+                    &mut self.inserted,
+                    &mut self.oldest_resumable,
+                    (self.next_sequence, hash),
+                );
+                TileOp::Lossless {
+                    tile,
+                    hash,
+                    payload,
+                }
+            };
+            self.viewer[tile.0 as usize] = ViewerTile::Exact(hash);
+            self.sent_at[tile.0 as usize] = self.next_sequence;
+            ops.push(op);
+        }
+        let batch = Batch {
+            surface: self.surface,
+            generation: self.generation,
+            sequence: self.next_sequence,
+            size: self.grid.size(),
+            ops,
+        };
+        self.next_sequence += 1;
+        Ok(Some(batch))
     }
 
     /// The area currently treated as video, if any.
@@ -233,6 +318,9 @@ impl Encoder {
         self.motion_event = None;
         let mut motion_throttled = false;
         if let Some(now) = now_ms {
+            for tile in changed.iter() {
+                self.changed_at_ms[tile.0 as usize] = now;
+            }
             self.motion_event = self.motion.observe(&changed, now);
             if let Some(MotionEvent::Demoted(rect)) = self.motion_event {
                 for tile in self.grid.tiles_covering(rect).iter() {

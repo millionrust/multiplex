@@ -41,7 +41,7 @@ Pure Rust, no platform code, fully testable in CI.
 - [x] 1.10 `feat(screen-codec): send only what changed since the viewer's last acknowledgement`
   A lost scroll still resends the scrolled area: the host has no copy of the viewer's older frame.
 - [x] 1.11 `feat(screen-codec): promote fast-changing regions to a motion region`
-- [ ] 1.12 `feat(screen-codec): refine lossy tiles to exact pixels when idle`
+- [x] 1.12 `feat(screen-codec): refine lossy tiles to exact pixels when idle`
 - [ ] 1.13 `test(screen-codec): add fuzz targets and a synthetic workload report`
   Fuzz the op parser and tile decoders; report bytes per workload against [4.8].
 
