@@ -49,8 +49,11 @@ allow = [
 ]
 # Permissive BSD-style license. libbz2-rs-sys arrives through gpui-pre's
 # async_zip bzip2 support, which the Slate component crate pulls in.
+# webpki-root-certs is Mozilla's CA certificate data, published under the permissive CDLA 2.0;
+# it arrives through rustls-platform-verifier in reqwest.
 exceptions = [
     { allow = ["bzip2-1.0.6"], crate = "libbz2-rs-sys" },
+    { allow = ["CDLA-Permissive-2.0"], crate = "webpki-root-certs" },
 ]
 
 [bans]

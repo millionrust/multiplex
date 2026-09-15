@@ -19,7 +19,7 @@ Runtime dependencies are exact workspace pins:
 
 - `ed25519-dalek 2.2.0` for relay-scoped admission signatures
 - `tokio-tungstenite 0.28.0` / `tungstenite 0.28.0` for RFC 6455 framing and upgrade validation
-- `rustls 0.23.37` / `tokio-rustls 0.26.4` with the ring provider for injected TLS
+- `rustls 0.23.45` / `tokio-rustls 0.26.4` with the ring provider for injected TLS
 - `tokio 1.50.0` / `tokio-util 0.7.18` for bounded tasks, channels, timeouts, and cancellation
 - `fs2 0.4.3` for an OS-released exclusive metadata-store lock
 - `serde 1.0.228` / `serde_json 1.0.149` for versioned public admission metadata
