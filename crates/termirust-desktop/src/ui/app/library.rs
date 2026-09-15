@@ -1112,7 +1112,7 @@ impl TermiRustApp {
                     .items_center()
                     .child(
                         div()
-                            .text_size(px(22.))
+                            .text_size(px(theme::TYPE_TITLE_SIZE))
                             .font_semibold()
                             .text_color(theme::text_main())
                             .child(localization::known_hosts_title()),
@@ -1128,7 +1128,7 @@ impl TermiRustApp {
             )
             .child(
                 div()
-                    .text_size(px(14.))
+                    .text_size(px(theme::TYPE_BODY_LARGE_SIZE))
                     .line_height(relative(1.5))
                     .text_color(theme::text_muted())
                     .child(localization::known_hosts_description()),
@@ -1161,12 +1161,12 @@ impl TermiRustApp {
                                             .items_center()
                                             .child(
                                                 app_icon(ICON_SHIELD_CHECK)
-                                                    .size(px(14.))
+                                                    .size(px(theme::ICON_SIZE_DEFAULT))
                                                     .text_color(theme::success()),
                                             )
                                             .child(
                                                 div()
-                                                    .text_size(px(14.))
+                                                    .text_size(px(theme::TYPE_HEADING_SIZE))
                                                     .font_semibold()
                                                     .text_color(theme::text_main())
                                                     .child(endpoint.clone()),
@@ -1213,7 +1213,7 @@ impl TermiRustApp {
                         this.child(
                             self.render_library_empty_state(
                                 app_icon(ICON_SHIELD_CHECK)
-                                    .size(px(24.))
+                                    .size(px(theme::ICON_SIZE_LARGE))
                                     .text_color(theme::accent()),
                                 "No hosts pinned yet",
                                 "Trust records appear here after the first successful SSH connection to a host.",
@@ -1258,7 +1258,7 @@ impl TermiRustApp {
                     .items_center()
                     .child(
                         div()
-                            .text_size(px(22.))
+                            .text_size(px(theme::TYPE_TITLE_SIZE))
                             .font_semibold()
                             .text_color(theme::text_main())
                             .child(localization::session_history_title()),
@@ -1294,14 +1294,14 @@ impl TermiRustApp {
                                     .gap_3()
                                     .items_center()
                                     .child(
-                                        div().size(px(10.)).rounded(px(999.)).bg(theme::success()),
+                                        crate::ui::status::status_glyph(termirust_ui_contract::StatusKind::Done),
                                     )
                                     .child(
                                         v_flex()
-                                            .gap(px(2.))
+                                            .gap(px(theme::SPACE_1))
                                             .child(
                                                 div()
-                                                    .text_size(px(14.))
+                                                    .text_size(px(theme::TYPE_HEADING_SIZE))
                                                     .font_semibold()
                                                     .text_color(theme::text_main())
                                                     .child(pane.title.clone()),
@@ -1322,12 +1322,21 @@ impl TermiRustApp {
                             .into_any_element()
                     }))
                     .children(logs.iter().map(|entry| {
-                        let (status_color, status_label) = match entry.status {
-                            SessionLogStatus::Connected => (theme::success(), "Connected"),
-                            SessionLogStatus::Connecting => (theme::accent(), "Connecting"),
-                            SessionLogStatus::Disconnected => (theme::text_muted(), "Closed"),
-                            SessionLogStatus::Error => (theme::danger(), "Error"),
+                        let (status, status_label) = match entry.status {
+                            SessionLogStatus::Connected => {
+                                (termirust_ui_contract::StatusKind::Done, "Connected")
+                            }
+                            SessionLogStatus::Connecting => {
+                                (termirust_ui_contract::StatusKind::Busy, "Connecting")
+                            }
+                            SessionLogStatus::Disconnected => {
+                                (termirust_ui_contract::StatusKind::Idle, "Closed")
+                            }
+                            SessionLogStatus::Error => {
+                                (termirust_ui_contract::StatusKind::Error, "Error")
+                            }
                         };
+                        let status_color = crate::ui::status::status_color(status);
 
                         h_flex()
                             .justify_between()
@@ -1341,22 +1350,17 @@ impl TermiRustApp {
                                 h_flex()
                                     .gap_3()
                                     .items_center()
-                                    .child(
-                                        div()
-                                            .size(px(10.))
-                                            .rounded(px(999.))
-                                            .bg(theme::with_alpha(status_color, 0.5)),
-                                    )
+                                    .child(crate::ui::status::status_glyph(status))
                                     .child(
                                         v_flex()
-                                            .gap(px(2.))
+                                            .gap(px(theme::SPACE_1))
                                             .child(
                                                 h_flex()
                                                     .gap_2()
                                                     .items_center()
                                                     .child(
                                                         div()
-                                                            .text_size(px(14.))
+                                                            .text_size(px(theme::TYPE_HEADING_SIZE))
                                                             .font_semibold()
                                                             .text_color(theme::text_main())
                                                             .child(entry.title.clone()),
@@ -1414,7 +1418,7 @@ impl TermiRustApp {
                         this.child(
                             self.render_library_empty_state(
                                 Icon::new(IconName::BookOpen)
-                                    .size(px(24.))
+                                    .size(px(theme::ICON_SIZE_LARGE))
                                     .text_color(theme::accent()),
                                 "No session history yet",
                                 "Connection history appears here after you open your first SSH workspace.",

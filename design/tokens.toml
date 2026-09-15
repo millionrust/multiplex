@@ -1217,6 +1217,38 @@ reduced_motion = "motion.instant"
 values = { system = "20ms", light = "20ms", dark = "20ms", high_contrast = "20ms", recording_friendly = "20ms" }
 
 [[tokens]]
+key = "motion.event_drain_poll"
+category = "duration"
+description = "Desktop event drain interval for terminal, SSH, and SFTP updates."
+allowed_use = "Desktop app event loop only."
+reduced_motion = "motion.instant"
+values = { system = "32ms", light = "32ms", dark = "32ms", high_contrast = "32ms", recording_friendly = "32ms" }
+
+[[tokens]]
+key = "motion.window_settle"
+category = "duration"
+description = "Delay before recording the first settled window frame."
+allowed_use = "Window bounds persistence only."
+reduced_motion = "motion.instant"
+values = { system = "1500ms", light = "1500ms", dark = "1500ms", high_contrast = "1500ms", recording_friendly = "1500ms" }
+
+[[tokens]]
+key = "motion.window_open_grace"
+category = "duration"
+description = "Period after launch when reported window bounds are ignored as unsettled."
+allowed_use = "Window bounds persistence only."
+reduced_motion = "motion.instant"
+values = { system = "1200ms", light = "1200ms", dark = "1200ms", high_contrast = "1200ms", recording_friendly = "1200ms" }
+
+[[tokens]]
+key = "motion.window_bounds_debounce"
+category = "duration"
+description = "Debounce before saving a moved or resized window frame."
+allowed_use = "Window bounds persistence only."
+reduced_motion = "motion.instant"
+values = { system = "600ms", light = "600ms", dark = "600ms", high_contrast = "600ms", recording_friendly = "600ms" }
+
+[[tokens]]
 key = "motion.remote_device_poll"
 category = "duration"
 description = "Remote-device listener event polling interval."

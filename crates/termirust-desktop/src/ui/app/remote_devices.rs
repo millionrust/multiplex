@@ -822,11 +822,12 @@ impl TermiRustApp {
                                             div()
                                                 .p_2()
                                                 .rounded(px(theme::CONTROL_RADIUS))
-                                                .bg(rgb(0xffffff))
+                                                // QR codes need a white quiet zone in every theme to scan.
+                                                .bg(gpui::white())
                                                 .child(
                                                     img(qr)
-                                                        .w(px(208.0))
-                                                        .h(px(208.0))
+                                                        .w(px(theme::PAIRING_QR_SIZE))
+                                                        .h(px(theme::PAIRING_QR_SIZE))
                                                         .object_fit(ObjectFit::Contain),
                                                 ),
                                         )

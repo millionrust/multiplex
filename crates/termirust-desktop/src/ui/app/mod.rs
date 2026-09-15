@@ -171,14 +171,13 @@ use crate::ui::util::{
 // termirust-ui-surface:terminal-chrome:start
 const TERMINAL_LINE_HEIGHT: f32 = 1.3; // termirust-ui-exception:terminal-grid-metrics
 // termirust-ui-surface:terminal-chrome:end
-const WORKSPACE_SEARCH_ROW_HEIGHT: f32 = 52.0;
-const WORKSPACE_PADDING: f32 = 18.0;
-const PANE_GAP: f32 = 12.0;
-const TERMINAL_INNER_PADDING_X: f32 = 20.0;
-const TERMINAL_INNER_PADDING_Y: f32 = 14.0;
+const WORKSPACE_SEARCH_ROW_HEIGHT: f32 = theme::WORKSPACE_SEARCH_ROW_HEIGHT;
+use crate::ui::theme::{PANE_GAP, WORKSPACE_PADDING};
+const TERMINAL_INNER_PADDING_X: f32 = theme::TERMINAL_PADDING_X;
+const TERMINAL_INNER_PADDING_Y: f32 = theme::TERMINAL_PADDING_Y;
 const MAX_SPLIT_PANES: usize = 4;
 const MAX_COALESCED_TERMINAL_OUTPUT_BYTES: usize = 256 * 1024;
-const HOST_CARD_WIDTH: f32 = 300.0;
+const HOST_CARD_WIDTH: f32 = theme::HOST_CARD_WIDTH;
 const ICON_KEY: &str = "icons/key.svg";
 const ICON_SHIELD_CHECK: &str = "icons/shield-check.svg";
 const ICON_VAULT: &str = "icons/vault.svg";
@@ -1230,19 +1229,19 @@ impl Render for WorkspaceTabDragPreview {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .id("workspace-tab-drag-preview")
-            .gap(px(7.))
+            .gap(px(theme::SPACE_DENSE))
             .items_center()
-            .pl(px(12.))
-            .pr(px(14.))
-            .py(px(7.))
-            .rounded(px(10.))
+            .pl(px(theme::SPACE_4))
+            .pr(px(theme::SPACE_4))
+            .py(px(theme::SPACE_DENSE))
+            .rounded(px(theme::CARD_RADIUS))
             .bg(theme::with_alpha(theme::chrome_bg(), 0.92))
             .border_1()
             .border_color(theme::with_alpha(theme::accent(), 0.4))
             .shadow_lg()
             .child(
                 Icon::new(IconName::SquareTerminal)
-                    .size(px(14.))
+                    .size(px(theme::ICON_SIZE_DEFAULT))
                     .text_color(theme::accent()),
             )
             .child(
@@ -1898,7 +1897,9 @@ impl TermiRustApp {
         cx.spawn_in(window, async move |this, cx| {
             loop {
                 cx.background_executor()
-                    .timer(Duration::from_millis(32))
+                    .timer(theme::motion_duration(
+                        theme::current_design_tokens().motion_event_drain_poll(false),
+                    ))
                     .await;
 
                 if cx
@@ -1924,7 +1925,9 @@ impl TermiRustApp {
         // display id are recorded even if the user never moves the window.
         cx.spawn_in(window, async move |this, cx| {
             cx.background_executor()
-                .timer(Duration::from_millis(1500))
+                .timer(theme::motion_duration(
+                    theme::current_design_tokens().motion_window_settle(false),
+                ))
                 .await;
             let _ = cx.update(|window, cx| {
                 let _ = this.update(cx, |app, cx| {
@@ -6402,7 +6405,9 @@ impl TermiRustApp {
     /// `state.json`. The frame is reapplied on the next launch (see `main.rs`).
     fn persist_window_bounds(&mut self, window: &Window, cx: &mut Context<Self>) {
         // Ignore the unsettled bounds reported while the window is opening.
-        if self.launched_at.elapsed() < Duration::from_millis(1200) {
+        if self.launched_at.elapsed()
+            < theme::motion_duration(theme::current_design_tokens().motion_window_open_grace(false))
+        {
             return;
         }
         let frame = window.bounds();
@@ -6419,7 +6424,9 @@ impl TermiRustApp {
         self.saved.window_bounds = Some(bounds);
         self._window_bounds_save_task = Some(cx.spawn(async move |this, cx| {
             cx.background_executor()
-                .timer(Duration::from_millis(600))
+                .timer(theme::motion_duration(
+                    theme::current_design_tokens().motion_window_bounds_debounce(false),
+                ))
                 .await;
             let _ = this.update(cx, |this, _| {
                 if let Err(error) = save_saved_state(&this.saved) {
@@ -10939,7 +10946,7 @@ impl TermiRustApp {
                         .items_center()
                         .child(
                             div()
-                                .text_size(px(15.))
+                                .text_size(px(theme::TYPE_HEADING_SIZE))
                                 .font_semibold()
                                 .text_color(theme::text_main())
                                 .child(localization::static_message(
@@ -11074,7 +11081,7 @@ impl TermiRustApp {
                                             .items_center()
                                             .child(
                                                 div()
-                                                    .text_size(px(15.))
+                                                    .text_size(px(theme::TYPE_HEADING_SIZE))
                                                     .font_semibold()
                                                     .text_color(theme::text_main())
                                                     .child(group_name),
@@ -11187,7 +11194,7 @@ impl TermiRustApp {
                 this.child(
                     div()
                         .p_3()
-                        .rounded(px(12.))
+                        .rounded(px(theme::CARD_RADIUS))
                         .bg(theme::with_alpha(theme::hover(), 0.72))
                         .border_1()
                         .border_color(theme::border())
@@ -11201,7 +11208,7 @@ impl TermiRustApp {
             .when(!identities.is_empty(), |this| {
                 this.child(
                     v_flex()
-                        .max_h(px(148.))
+                        .max_h(px(theme::COMPACT_LIST_MAX_HEIGHT))
                         .overflow_y_scrollbar()
                         .gap_2()
                         .children(identities.iter().enumerate().map(|(index, identity)| {
@@ -11216,7 +11223,7 @@ impl TermiRustApp {
                                 .items_center()
                                 .gap_2()
                                 .p_2()
-                                .rounded(px(12.))
+                                .rounded(px(theme::CARD_RADIUS))
                                 .bg(if is_selected {
                                     theme::accent_soft()
                                 } else {
@@ -11235,7 +11242,7 @@ impl TermiRustApp {
                                 }))
                                 .child(
                                     v_flex()
-                                        .gap(px(1.))
+                                        .gap(px(theme::SPACE_1))
                                         .child(
                                             h_flex()
                                                 .gap_2()
@@ -11287,7 +11294,7 @@ impl TermiRustApp {
                                         )
                                         .child(
                                             div()
-                                                .text_size(px(11.))
+                                                .text_size(px(theme::TYPE_MICRO_SIZE))
                                                 .text_color(theme::text_muted())
                                                 .child(display_identity.key_path.clone()),
                                         ),
@@ -11330,8 +11337,8 @@ impl TermiRustApp {
                         div()
                             .id(("vault-pill", index))
                             .px_3()
-                            .py(px(7.))
-                            .rounded(px(999.))
+                            .py(px(theme::SPACE_DENSE))
+                            .rounded(px(theme::PILL_RADIUS))
                             .bg(if is_selected {
                                 theme::accent_soft()
                             } else {
@@ -11403,7 +11410,7 @@ impl TermiRustApp {
                             .items_center()
                             .child(
                                 div()
-                                    .text_size(px(14.))
+                                    .text_size(px(theme::TYPE_HEADING_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_main())
                                     .child(localization::static_message(
@@ -11620,8 +11627,8 @@ impl TermiRustApp {
                                 div()
                                     .id("draft-color-clear")
                                     .px_3()
-                                    .py(px(6.))
-                                    .rounded(px(999.))
+                                    .py(px(theme::SPACE_DENSE))
+                                    .rounded(px(theme::PILL_RADIUS))
                                     .border_1()
                                     .border_color(if self.draft_color_tag.is_none() {
                                         theme::accent()
@@ -11651,12 +11658,12 @@ impl TermiRustApp {
                                     let color: Hsla = gpui::rgb(tag.rgb_hex()).into();
                                     div()
                                         .id(("draft-color-tag", index))
-                                        .h(px(28.))
+                                        .h(px(theme::SHELL_COMPACT_CONTROL_HEIGHT))
                                         .px_3()
                                         .gap_2()
                                         .flex()
                                         .items_center()
-                                        .rounded(px(999.))
+                                        .rounded(px(theme::PILL_RADIUS))
                                         .border_1()
                                         .border_color(if active { color } else { theme::border() })
                                         .bg(if active {
@@ -11667,7 +11674,7 @@ impl TermiRustApp {
                                         .cursor_pointer()
                                         .hover(|style| style.bg(theme::hover()))
                                         .child(
-                                            div().size(px(12.)).rounded(px(999.)).bg(color),
+                                            div().size(px(theme::ICON_SIZE_SMALL)).rounded(px(theme::PILL_RADIUS)).bg(color),
                                         )
                                         .child(
                                             div()
@@ -11697,7 +11704,7 @@ impl TermiRustApp {
                     .gap_2()
                     .child(
                         div()
-                            .text_size(px(14.))
+                            .text_size(px(theme::TYPE_HEADING_SIZE))
                             .font_medium()
                             .text_color(theme::text_main())
                             .child(localization::static_message(
@@ -11950,7 +11957,7 @@ impl TermiRustApp {
                     .gap_2()
                     .child(
                         div()
-                            .text_size(px(14.))
+                            .text_size(px(theme::TYPE_HEADING_SIZE))
                             .font_medium()
                             .text_color(theme::text_main())
                             .child(localization::static_message(
@@ -12005,7 +12012,7 @@ impl TermiRustApp {
                     .gap_2()
                     .child(
                         div()
-                            .text_size(px(14.))
+                            .text_size(px(theme::TYPE_HEADING_SIZE))
                             .font_medium()
                             .text_color(theme::text_main())
                             .child(localization::static_message(
@@ -12021,12 +12028,12 @@ impl TermiRustApp {
                                 div()
                                     .id("connect-view-terminal")
                                     .flex_1()
-                                    .h(px(28.))
+                                    .h(px(theme::SHELL_COMPACT_CONTROL_HEIGHT))
                                     .flex()
                                     .items_center()
                                     .justify_center()
                                     .rounded(px(theme::CONTROL_RADIUS))
-                                    .text_size(px(14.))
+                                    .text_size(px(theme::TYPE_BODY_SIZE))
                                     .font_medium()
                                     .cursor_pointer()
                                     .when(!self.draft_start_in_files, |this| {
@@ -12048,12 +12055,12 @@ impl TermiRustApp {
                                 div()
                                     .id("connect-view-files")
                                     .flex_1()
-                                    .h(px(28.))
+                                    .h(px(theme::SHELL_COMPACT_CONTROL_HEIGHT))
                                     .flex()
                                     .items_center()
                                     .justify_center()
                                     .rounded(px(theme::CONTROL_RADIUS))
-                                    .text_size(px(14.))
+                                    .text_size(px(theme::TYPE_BODY_SIZE))
                                     .font_medium()
                                     .cursor_pointer()
                                     .when(self.draft_start_in_files, |this| {
@@ -12119,7 +12126,7 @@ impl TermiRustApp {
                     .gap_2()
                     .child(
                         div()
-                            .text_size(px(14.))
+                            .text_size(px(theme::TYPE_HEADING_SIZE))
                             .font_medium()
                             .text_color(theme::text_main())
                             .child(localization::static_message(
@@ -12128,7 +12135,7 @@ impl TermiRustApp {
                     )
                     .child(
                         h_flex()
-                            .p(px(3.))
+                            .p(px(theme::SPACE_MICRO))
                             .rounded(px(theme::CARD_RADIUS))
                             .bg(theme::hover())
                             .children(
@@ -12198,7 +12205,7 @@ impl TermiRustApp {
                     .gap_2()
                     .child(
                         div()
-                            .text_size(px(14.))
+                            .text_size(px(theme::TYPE_HEADING_SIZE))
                             .font_medium()
                             .text_color(theme::text_main())
                             .child(localization::static_message(
@@ -12215,7 +12222,7 @@ impl TermiRustApp {
                     )
                     .child(
                         h_flex()
-                            .p(px(3.))
+                            .p(px(theme::SPACE_MICRO))
                             .rounded(px(theme::CARD_RADIUS))
                             .bg(theme::hover())
                             .children(
@@ -12256,8 +12263,8 @@ impl TermiRustApp {
                                                 .justify_between()
                                                 .gap_2()
                                                 .px_3()
-                                                .py(px(8.))
-                                                .rounded(px(10.))
+                                                .py(px(theme::SPACE_3))
+                                                .rounded(px(theme::CARD_RADIUS))
                                                 .bg(theme::with_alpha(theme::hover(), 0.78))
                                                 .border_1()
                                                 .border_color(theme::border())
@@ -12386,26 +12393,26 @@ impl TermiRustApp {
                     .gap_2()
                     .child(
                         div()
-                            .text_size(px(14.))
+                            .text_size(px(theme::TYPE_HEADING_SIZE))
                             .font_medium()
                             .text_color(theme::text_main())
                             .child(localization::static_message(MessageId::HostAuthTitle)),
                     )
                     .child(
                         h_flex()
-                            .p(px(3.))
+                            .p(px(theme::SPACE_MICRO))
                             .rounded(px(theme::CARD_RADIUS))
                             .bg(theme::hover())
                             .child(
                                 div()
                                     .id("auth-password")
                                     .flex_1()
-                                    .h(px(28.))
+                                    .h(px(theme::SHELL_COMPACT_CONTROL_HEIGHT))
                                     .flex()
                                     .items_center()
                                     .justify_center()
                                     .rounded(px(theme::CONTROL_RADIUS))
-                                    .text_size(px(14.))
+                                    .text_size(px(theme::TYPE_BODY_SIZE))
                                     .font_medium()
                                     .cursor_pointer()
                                     .when(auth_mode == AuthMode::Password, |this| {
@@ -12427,12 +12434,12 @@ impl TermiRustApp {
                                 div()
                                     .id("auth-key")
                                     .flex_1()
-                                    .h(px(28.))
+                                    .h(px(theme::SHELL_COMPACT_CONTROL_HEIGHT))
                                     .flex()
                                     .items_center()
                                     .justify_center()
                                     .rounded(px(theme::CONTROL_RADIUS))
-                                    .text_size(px(14.))
+                                    .text_size(px(theme::TYPE_BODY_SIZE))
                                     .font_medium()
                                     .cursor_pointer()
                                     .when(auth_mode == AuthMode::PrivateKey, |this| {
@@ -12455,12 +12462,12 @@ impl TermiRustApp {
                                 div()
                                     .id("auth-agent")
                                     .flex_1()
-                                    .h(px(28.))
+                                    .h(px(theme::SHELL_COMPACT_CONTROL_HEIGHT))
                                     .flex()
                                     .items_center()
                                     .justify_center()
                                     .rounded(px(theme::CONTROL_RADIUS))
-                                    .text_size(px(14.))
+                                    .text_size(px(theme::TYPE_BODY_SIZE))
                                     .font_medium()
                                     .cursor_pointer()
                                     .when(auth_mode == AuthMode::LocalAgent, |this| {
@@ -12651,7 +12658,7 @@ impl TermiRustApp {
         v_flex()
             .items_center()
             .justify_center()
-            .max_w(px(520.))
+            .max_w(px(theme::DIALOG_WIDE_WIDTH))
             .mx_auto()
             .p_8()
             .rounded(px(theme::CARD_RADIUS))
@@ -12661,8 +12668,8 @@ impl TermiRustApp {
             .gap_3()
             .child(
                 div()
-                    .size(px(56.))
-                    .rounded(px(18.))
+                    .size(px(theme::EMPTY_STATE_ICON_TILE))
+                    .rounded(px(theme::DIALOG_RADIUS))
                     .bg(theme::with_alpha(theme::accent(), 0.08))
                     .border_1()
                     .border_color(theme::with_alpha(theme::accent(), 0.2))
@@ -12673,14 +12680,14 @@ impl TermiRustApp {
             )
             .child(
                 div()
-                    .text_size(px(16.))
+                    .text_size(px(theme::TYPE_ACTIVITY_TITLE_SIZE))
                     .font_semibold()
                     .text_color(theme::text_main())
                     .child(title),
             )
             .child(
                 div()
-                    .max_w(px(420.))
+                    .max_w(px(theme::DIALOG_WIDTH))
                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .line_height(relative(1.5))
                     .text_color(theme::text_muted())
@@ -12700,7 +12707,7 @@ impl TermiRustApp {
         v_flex()
             .items_center()
             .justify_center()
-            .max_w(px(520.))
+            .max_w(px(theme::DIALOG_WIDE_WIDTH))
             .mx_auto()
             .p_8()
             .rounded(px(theme::CARD_RADIUS))
@@ -12710,8 +12717,8 @@ impl TermiRustApp {
             .gap_3()
             .child(
                 div()
-                    .size(px(56.))
-                    .rounded(px(18.))
+                    .size(px(theme::EMPTY_STATE_ICON_TILE))
+                    .rounded(px(theme::DIALOG_RADIUS))
                     .bg(theme::with_alpha(theme::accent(), 0.12))
                     .border_1()
                     .border_color(theme::with_alpha(theme::accent(), 0.28))
@@ -12722,14 +12729,14 @@ impl TermiRustApp {
             )
             .child(
                 div()
-                    .text_size(px(16.))
+                    .text_size(px(theme::TYPE_ACTIVITY_TITLE_SIZE))
                     .font_semibold()
                     .text_color(theme::text_on_dark())
                     .child(title),
             )
             .child(
                 div()
-                    .max_w(px(420.))
+                    .max_w(px(theme::DIALOG_WIDTH))
                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .line_height(relative(1.5))
                     .text_color(theme::text_muted_dark())
@@ -12789,12 +12796,12 @@ impl TermiRustApp {
                                         .items_center()
                                         .child(
                                             Icon::new(IconName::SquareTerminal)
-                                                .size(px(16.))
+                                                .size(px(theme::ICON_SIZE_MEDIUM))
                                                 .text_color(theme::accent()),
                                         )
                                         .child(
                                             div()
-                                                .text_size(px(18.))
+                                                .text_size(px(theme::TYPE_TITLE_SIZE))
                                                 .font_semibold()
                                                 .text_color(theme::text_main())
                                                 .child(title),
@@ -12802,7 +12809,7 @@ impl TermiRustApp {
                                 )
                                 .child(
                                     div()
-                                        .max_w(px(760.))
+                                        .max_w(px(theme::SECURITY_DIALOG_MAXIMUM))
                                         .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                         .line_height(relative(1.55))
                                         .text_color(theme::text_muted())
@@ -13003,8 +13010,8 @@ impl TermiRustApp {
                                 .debug_selector(move || format!("recent-host-{index}"))
                                 .gap_2()
                                 .items_center()
-                                .px(px(10.))
-                                .py(px(5.))
+                                .px(px(theme::SPACE_COMPACT))
+                                .py(px(theme::SPACE_FINE))
                                 .rounded(px(theme::CARD_RADIUS))
                                 .bg(theme::library_card())
                                 .border_1()
@@ -13014,7 +13021,12 @@ impl TermiRustApp {
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     this.open_recent_host_workspace(&profile_id, window, cx);
                                 }))
-                                .child(div().size(px(7.)).rounded(px(999.)).bg(chip_color))
+                                .child(
+                                    div()
+                                        .size(px(theme::ICON_SIZE_INDICATOR))
+                                        .rounded(px(theme::PILL_RADIUS))
+                                        .bg(chip_color),
+                                )
                                 .child(
                                     div()
                                         .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
@@ -13074,7 +13086,7 @@ impl TermiRustApp {
         div()
             .px_2()
             .py_0p5()
-            .rounded(px(999.))
+            .rounded(px(theme::PILL_RADIUS))
             .bg(background)
             .border_1()
             .border_color(theme::with_alpha(foreground, 0.24))
@@ -13597,8 +13609,8 @@ impl TermiRustApp {
             .child(
                 v_flex()
                     .id("editor-dialog-card")
-                    .w(px(460.))
-                    .max_h(px(640.))
+                    .w(px(theme::DIALOG_WIDE_WIDTH))
+                    .max_h(px(theme::WINDOW_MINIMUM_HEIGHT))
                     .overflow_y_scrollbar()
                     .rounded(px(theme::CARD_RADIUS))
                     .bg(theme::library_card())
@@ -13611,10 +13623,10 @@ impl TermiRustApp {
                     .child(
                         div()
                             .absolute()
-                            .top(px(12.))
-                            .right(px(12.))
+                            .top(px(theme::SPACE_4))
+                            .right(px(theme::SPACE_4))
                             .id("editor-dialog-close")
-                            .size(px(28.))
+                            .size(px(theme::ICON_BUTTON_SIZE))
                             .rounded(px(theme::CARD_RADIUS))
                             .flex()
                             .items_center()
@@ -13629,14 +13641,14 @@ impl TermiRustApp {
                             }))
                             .child(
                                 app_icon(ICON_X)
-                                    .size(px(14.))
+                                    .size(px(theme::ICON_SIZE_DEFAULT))
                                     .text_color(theme::text_main()),
                             ),
                     )
                     .child(
                         v_flex().px_5().pt_5().pb_2().child(
                             div()
-                                .text_size(px(18.))
+                                .text_size(px(theme::TYPE_TITLE_SIZE))
                                 .font_semibold()
                                 .text_color(theme::text_main())
                                 .child(title),

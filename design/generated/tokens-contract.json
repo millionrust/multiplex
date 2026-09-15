@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "7bef6ec44df4637758ac855c6782e9238c86dad5a4214346d7daa72d95520123",
+  "sourceSha256": "3022e05324166dc2f94f9ecf82b06147f8490ed1076095aab767570c0a511a6d",
   "statuses": [
     {
       "color": "color.status.attention",
@@ -2182,6 +2182,20 @@
       }
     },
     {
+      "allowedUse": "Desktop app event loop only.",
+      "category": "duration",
+      "description": "Desktop event drain interval for terminal, SSH, and SFTP updates.",
+      "key": "motion.event_drain_poll",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "32ms",
+        "high_contrast": "32ms",
+        "light": "32ms",
+        "recording_friendly": "32ms",
+        "system": "32ms"
+      }
+    },
+    {
       "allowedUse": "Non-spatial hover and focus feedback.",
       "category": "duration",
       "description": "Fast hover and focus transition.",
@@ -2305,6 +2319,48 @@
         "light": "240ms",
         "recording_friendly": "240ms",
         "system": "240ms"
+      }
+    },
+    {
+      "allowedUse": "Window bounds persistence only.",
+      "category": "duration",
+      "description": "Debounce before saving a moved or resized window frame.",
+      "key": "motion.window_bounds_debounce",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "600ms",
+        "high_contrast": "600ms",
+        "light": "600ms",
+        "recording_friendly": "600ms",
+        "system": "600ms"
+      }
+    },
+    {
+      "allowedUse": "Window bounds persistence only.",
+      "category": "duration",
+      "description": "Period after launch when reported window bounds are ignored as unsettled.",
+      "key": "motion.window_open_grace",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "1200ms",
+        "high_contrast": "1200ms",
+        "light": "1200ms",
+        "recording_friendly": "1200ms",
+        "system": "1200ms"
+      }
+    },
+    {
+      "allowedUse": "Window bounds persistence only.",
+      "category": "duration",
+      "description": "Delay before recording the first settled window frame.",
+      "key": "motion.window_settle",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "1500ms",
+        "high_contrast": "1500ms",
+        "light": "1500ms",
+        "recording_friendly": "1500ms",
+        "system": "1500ms"
       }
     },
     {

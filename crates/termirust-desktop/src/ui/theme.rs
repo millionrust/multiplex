@@ -67,6 +67,10 @@ pub fn semantic_status(kind: StatusKind) -> StatusVisual {
     current_design_tokens().status(kind)
 }
 
+pub fn motion_duration(value: termirust_ui_contract::DurationValue) -> std::time::Duration {
+    std::time::Duration::from_millis(u64::from(value.0))
+}
+
 pub fn token_status_color(kind: StatusKind) -> Hsla {
     token_color(semantic_status(kind).color)
 }
@@ -509,6 +513,46 @@ pub const TYPE_HEADING_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_hea
 pub const TYPE_MICRO_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_micro().size;
 pub const TYPE_NANO_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_nano().size;
 pub const TYPE_METRIC_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_metric().size;
+pub const TYPE_TITLE_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_title().size;
+pub const TYPE_BODY_LARGE_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_body_large().size;
+pub const TYPE_ACTIVITY_TITLE_SIZE: f32 = DesignTokens::new(ThemeKind::System)
+    .type_activity_title()
+    .size;
+pub const ICON_BUTTON_SIZE: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_shell_icon_button_size()
+    .0;
+pub const LIST_ROW_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_list_row_height()
+    .0;
+pub const DIALOG_WIDTH: f32 = DesignTokens::new(ThemeKind::System).layout_dialog_width().0;
+pub const DIALOG_WIDE_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_dialog_wide_width()
+    .0;
+pub const DIALOG_RADIUS: f32 = DesignTokens::new(ThemeKind::System).radius_dialog().0;
+pub const SECURITY_DIALOG_MAXIMUM: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_security_dialog_maximum()
+    .0;
+pub const WINDOW_MINIMUM_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_window_minimum_height()
+    .0;
+/// The tile behind an empty-state icon.
+pub const EMPTY_STATE_ICON_TILE: f32 = SPACE_8 + SPACE_3;
+/// A pairing QR code, large enough for a phone camera at arm's length.
+pub const PAIRING_QR_SIZE: f32 = SPACE_9 * 3.0 + SPACE_5;
+/// A short scrolling list: four and a half rows, so a partial row shows it scrolls.
+pub const COMPACT_LIST_MAX_HEIGHT: f32 = LIST_ROW_HEIGHT * 4.5;
+/// Space around the workspace pane area.
+pub const WORKSPACE_PADDING: f32 = SPACE_5;
+/// Space between split panes.
+pub const PANE_GAP: f32 = SPACE_4;
+/// The workspace search bar row.
+pub const WORKSPACE_SEARCH_ROW_HEIGHT: f32 = SPACE_8 + SPACE_2;
+pub const TERMINAL_PADDING_X: f32 = DesignTokens::new(ThemeKind::System)
+    .space_terminal_inline()
+    .0;
+pub const TERMINAL_PADDING_Y: f32 = DesignTokens::new(ThemeKind::System)
+    .space_terminal_padding()
+    .0;
 pub const STATUS_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
     .layout_status_height()
     .0;
