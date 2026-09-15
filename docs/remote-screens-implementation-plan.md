@@ -319,6 +319,8 @@ pub struct CapturedFrame {
 
 - **macOS**: ScreenCaptureKit, `minimumFrameInterval` set from the current target rate,
   `.idle` frames dropped before they reach the pipeline, `dirtyRects` → `Damage::Rects`.
+  Measured on macOS 27.0 (26A428): no dirty rectangles were attached, so frames arrive with
+  unknown damage and the differ hashes every tile (`engineering-evidence/RS2-screen-capture.md`).
   BGRA for the tile path; a second 420v stream is opened only while a video region is
   active (4.3), fed straight to VideoToolbox from the IOSurface.
 - **Windows**: Desktop Duplication, dirty + move rects, separate pointer.

@@ -240,6 +240,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
+name = "apple-cf"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae3bd5e625b0ddf7228c93f0e68859b6381697e98c824d1acaf10d78289a3972"
+dependencies = [
+ "doom-fish-utils",
+]
+
+[[package]]
+name = "apple-metal"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d9d69a493f77b6e46d0cfa3ceee063d415109472eddec46bf1211d5faa7871f"
+dependencies = [
+ "doom-fish-utils",
+ "libc",
+]
+
+[[package]]
 name = "approx"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2648,6 +2667,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
 dependencies = [
  "litrs",
+]
+
+[[package]]
+name = "doom-fish-utils"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02899420fa4eefbe3bf778ba507a3bbb062917fe4797d065a2972d6521a748d5"
+dependencies = [
+ "crossbeam-queue",
+ "futures-util",
 ]
 
 [[package]]
@@ -8989,6 +9018,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "screencapturekit"
+version = "10.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09255cea2d4770d186260741235874b0d71f2781094188bdfc29cbddbaff7023"
+dependencies = [
+ "apple-cf",
+ "apple-metal",
+]
+
+[[package]]
 name = "screencapturekit-sys"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10530,6 +10569,14 @@ dependencies = [
  "sha2 0.10.9",
  "termirust-domain",
  "zeroize",
+]
+
+[[package]]
+name = "termirust-screen-capture"
+version = "0.1.0"
+dependencies = [
+ "screencapturekit 10.0.3",
+ "termirust-screen-codec",
 ]
 
 [[package]]
@@ -13592,7 +13639,7 @@ dependencies = [
  "log",
  "objc",
  "rand 0.8.6",
- "screencapturekit",
+ "screencapturekit 0.2.8",
  "screencapturekit-sys",
  "sysinfo",
  "tao-core-video-sys",

@@ -48,7 +48,9 @@ Pure Rust, no platform code, fully testable in CI.
 
 ## M0 — Spikes (after M1, evidence only) [6]
 
-- [ ] 0.2 **(device)** ScreenCaptureKit example: dirty-rect counts, idle ratio for typing, scrolling, video
+- [x] 0.2 ScreenCaptureKit example: dirty-rect counts, idle ratio, bytes (`capture_stats`)
+  Ran on this Mac: no dirty rects on macOS 27.0, 32.8 KB/s steady at native scale. See RS2.
+  Scripted typing, scrolling, and video sessions remain to be captured by the owner.
 - [ ] 0.3 VideoToolbox example from Rust: HEVC low-latency session with LTR round trip under forced loss
 - [ ] 0.4 **(device)** iroh phone ↔ Mac over cellular with a self-hosted relay; go/no-go note
 - [ ] 0.5 `docs(remote-screens): record spike results` in `docs/engineering-evidence/`
@@ -57,8 +59,10 @@ Pure Rust, no platform code, fully testable in CI.
 
 - [ ] 2.1 `docs(controller-security): amend the ADR for screen capability bits` + regenerated vectors
 - [ ] 2.2 `feat(controller-security): add ObserveScreens, ControlPointer and ControlKeyboard`
-- [ ] 2.3 `feat(screen-capture): add the capture trait and the portable differ backend`
-- [ ] 2.4 `feat(screen-capture): capture displays with ScreenCaptureKit on macOS`
+- [x] 2.3 `feat(screen-capture): add the capture trait and the portable differ backend`
+- [x] 2.4 `feat(screen-capture): capture displays with ScreenCaptureKit on macOS`
+  2.3 and 2.4 landed in one commit: one crate, one lockfile review. The codec's tile hashing is
+  the differ; the crate adds a replay source and preview downscaling.
 - [ ] 2.5 `feat(screen-transport): add the screen control protocol and stream framing`
 - [ ] 2.6 `feat(screen-transport): carry screen sessions over QUIC with iroh`
 - [ ] 2.7 `feat(controller-listener): issue screen tickets over the Controller channel`
