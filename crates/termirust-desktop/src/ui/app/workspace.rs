@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    Animation, AnimationExt as _, Context, CursorStyle, Div, DragMoveEvent,
+    Animation, AnimationExt as _, Context, CursorStyle, Div, DragMoveEvent, ExternalPaths,
     InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, ParentElement, ScrollWheelEvent, SharedString, Stateful,
     StatefulInteractiveElement as _, Styled, Window, div, px, relative,
@@ -1158,6 +1158,9 @@ impl TermiRustApp {
                     this.drop_tab_on_pane(drag.workspace_id, pane_id, window, cx);
                 }),
             )
+            .on_drop(cx.listener(move |this, paths: &ExternalPaths, window, cx| {
+                this.drop_paths_on_pane(pane_id, paths.paths(), window, cx);
+            }))
             .when(show_terminal_chrome, |this| {
                 this.child(
                     h_flex()

@@ -10764,6 +10764,23 @@ impl TermiRustApp {
         self.send_input_bytes_broadcast(pane_id, bytes, cx)
     }
 
+    /// Files dropped from Finder or another app are typed into the pane as shell-quoted paths,
+    /// as Terminal.app and Zed do, and the pane takes focus.
+    fn drop_paths_on_pane(
+        &mut self,
+        pane_id: u64,
+        paths: &[PathBuf],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let text = dropped_paths_text(paths);
+        if text.is_empty() {
+            return false;
+        }
+        self.activate_pane(pane_id, window, cx);
+        self.send_paste_bytes(pane_id, text, cx)
+    }
+
     fn confirm_pending_paste(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(pending) = self.pending_paste.take() else {
             return false;
@@ -14151,6 +14168,31 @@ impl TermiRustApp {
     }
 }
 
+/// Dropped paths as one line of shell words followed by a space, so the next word can be typed
+/// straight after. Paths of plain characters stay readable; any other path is single-quoted.
+fn dropped_paths_text(paths: &[PathBuf]) -> String {
+    let mut text = paths
+        .iter()
+        .map(|path| {
+            let path = path.to_string_lossy();
+            if !path.is_empty()
+                && path
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "/._-+,:@%=".contains(c))
+            {
+                path.into_owned()
+            } else {
+                format!("'{}'", path.replace('\'', "'\\''"))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    if !text.is_empty() {
+        text.push(' ');
+    }
+    text
+}
+
 fn search_rows(rows: &[String], query: &str) -> Vec<SearchMatch> {
     if query.trim().is_empty() {
         return Vec::new();
@@ -14317,7 +14359,7 @@ mod tests {
         PathSuggestionContext, SessionLibraryView, SplitNode, TermiRustApp, WorkspaceIndicators,
         WorkspaceRuntimeTone, WorkspaceViewMode, apply_group_defaults_to_draft,
         collect_autocomplete_candidates, collect_command_palette_candidates,
-        drain_coalesced_ssh_events, extract_snippet_prompt_names,
+        drain_coalesced_ssh_events, dropped_paths_text, extract_snippet_prompt_names,
         shell_command_requires_continuation, startup_bytes_for_request,
         substitute_snippet_placeholders, substitute_snippet_prompts, workspace_runtime_summary,
     };
@@ -14354,7 +14396,7 @@ mod tests {
     };
     use gpui_component::Root;
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::sync::mpsc;
     use std::time::{Duration, Instant};
     use termirust_domain::HostedSessionId;
@@ -14486,6 +14528,82 @@ mod tests {
             &events[1],
             SshEvent::Output { data, .. } if data == b"bb"
         ));
+    }
+
+    #[test]
+    fn dropped_paths_are_shell_words_followed_by_a_space() {
+        assert_eq!(dropped_paths_text(&[]), "");
+        assert_eq!(
+            dropped_paths_text(&[
+                PathBuf::from("/Users/me/notes.md"),
+                PathBuf::from("/Users/me/My Files/it's here.png"),
+            ]),
+            "/Users/me/notes.md '/Users/me/My Files/it'\\''s here.png' "
+        );
+    }
+
+    #[gpui::test]
+    fn dropping_files_on_a_pane_types_their_paths_as_a_paste(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let (pane_id, mut command_rx) = window
+            .update(cx, |_, _window, cx| {
+                app.update(cx, |app, cx| {
+                    let pane_id = app.next_session_id();
+                    let request = ConnectRequest::local_shell_with_config(
+                        pane_id,
+                        LocalShellConfig::default(),
+                    );
+                    let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
+                    app.register_pane(
+                        request.clone(),
+                        SessionRuntimeHandle { command_tx },
+                        cx.focus_handle().tab_stop(true),
+                        cx.focus_handle().tab_stop(true),
+                        cx,
+                    );
+                    app.open_spawned_pane_workspace(&request, pane_id);
+                    if let Some(pane) = app.pane_mut(pane_id) {
+                        pane.connected = true;
+                    }
+                    (pane_id, command_rx)
+                })
+            })
+            .expect("test window should remain open");
+
+        let paths = [PathBuf::from("/tmp/a b.txt")];
+        let sent = |command_rx: &mut tokio::sync::mpsc::UnboundedReceiver<SessionCommand>| {
+            match command_rx.try_recv() {
+                Ok(SessionCommand::Input(bytes)) => bytes,
+                other => panic!("expected typed input, got {other:?}"),
+            }
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.drop_paths_on_pane(pane_id, &paths, window, cx));
+                })
+            })
+            .unwrap();
+        assert_eq!(sent(&mut command_rx), b"'/tmp/a b.txt' ");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.pane_mut(pane_id)
+                        .unwrap()
+                        .terminal
+                        .process_bytes(b"\x1b[?2004h");
+                    assert!(app.drop_paths_on_pane(pane_id, &paths, window, cx));
+                    assert_eq!(
+                        app.active_workspace()
+                            .map(|workspace| workspace.active_pane_id),
+                        Some(pane_id)
+                    );
+                })
+            })
+            .unwrap();
+        assert_eq!(sent(&mut command_rx), b"\x1b[200~'/tmp/a b.txt' \x1b[201~");
     }
 
     #[gpui::test]
