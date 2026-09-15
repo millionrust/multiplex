@@ -88,8 +88,9 @@ Open a new Terminal or Zed tab and it appears on the phone.
 ### macOS and Linux
 
 Requires tmux 3.2 or later. The app looks for it at `$TERMIRUST_TMUX_PATH`, on `PATH`,
-and in the usual Homebrew and system locations, and writes its resolved path into the
-init file so tabs started with a minimal `PATH` still find it. If tmux is missing, the
+and in the usual Homebrew and system locations, and writes the absolute path it found
+into the init file (such as `/opt/homebrew/bin/tmux`, not the versioned Cellar directory
+behind it, so an upgrade keeps working) so tabs started with a minimal `PATH` still find it. If tmux is missing, the
 section tells you how to install it and leaves the setup unavailable.
 
 The tmux status bar is turned off for these sessions only; your other tmux sessions keep theirs.
@@ -110,8 +111,8 @@ One app-owned init file per shell, safe to delete —
 if [[ -o interactive && -z "$TMUX" && -z "$TERMIRUST_NO_WRAP" ]]; then
   case "$TERM_PROGRAM" in
     Apple_Terminal|zed|iTerm.app|ghostty|WezTerm|vscode)
-      if [[ -x '/opt/homebrew/Cellar/tmux/3.7c/bin/tmux' ]]; then
-        '/opt/homebrew/Cellar/tmux/3.7c/bin/tmux' start-server \; set-option -s 'terminal-overrides[97]' '*:smcup@:rmcup@' \; new-session -s "termirust-${PWD:t}-$$" \; set-option status off && exit
+      if [[ -x '/opt/homebrew/bin/tmux' ]]; then
+        '/opt/homebrew/bin/tmux' start-server \; set-option -s 'terminal-overrides[97]' '*:smcup@:rmcup@' \; new-session -s "termirust-${PWD:t}-$$" \; set-option status off && exit
       fi
       ;;
   esac

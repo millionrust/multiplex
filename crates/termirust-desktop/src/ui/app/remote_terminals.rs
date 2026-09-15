@@ -95,6 +95,18 @@ pub(super) struct RemoteTerminalsState {
     service_status: ServiceStatus,
 }
 
+/// The tmux path written into the startup file: the absolute path tmux was found at, such as
+/// `/opt/homebrew/bin/tmux`, so a package manager upgrade does not strand the file on a
+/// versioned directory that no longer exists. A relative path falls back to the resolved one.
+fn startup_file_tmux_path(tmux: &Tmux) -> Option<PathBuf> {
+    let found = tmux.executable();
+    if found.is_absolute() {
+        Some(found.to_path_buf())
+    } else {
+        tmux.canonical_executable().ok()
+    }
+}
+
 impl RemoteTerminalsState {
     pub(super) fn open(home: Option<PathBuf>, login_shell: Option<String>) -> Self {
         let mut state = Self {
@@ -180,7 +192,7 @@ impl RemoteTerminalsState {
         let tmux = self
             .tmux
             .as_ref()
-            .and_then(|tmux| tmux.canonical_executable().ok())
+            .and_then(startup_file_tmux_path)
             .unwrap_or_else(|| PathBuf::from("tmux"));
         Some(ShellIntegration::new(home, tmux))
     }
@@ -707,4 +719,26 @@ fn render_file_change(change: &FileChange, mono: &'static str) -> AnyElement {
                 })),
         )
         .into_any_element()
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    use super::startup_file_tmux_path;
+
+    #[test]
+    fn the_startup_file_keeps_the_path_tmux_was_found_at_not_the_versioned_target() {
+        let fixture = tempfile::tempdir().unwrap();
+        let cellar = fixture.path().join("Cellar/tmux/3.7c/bin");
+        std::fs::create_dir_all(&cellar).unwrap();
+        let real = cellar.join("tmux");
+        std::fs::write(&real, "#!/bin/sh\necho 'tmux 3.7c'\n").unwrap();
+        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let link = fixture.path().join("tmux");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let tmux = termirust_tmux::Tmux::at(&link).unwrap();
+        assert_eq!(startup_file_tmux_path(&tmux), Some(link));
+    }
 }
