@@ -1906,6 +1906,42 @@ mod network_tests {
     }
 
     #[test]
+    fn pairing_code_is_grouped_and_tailscale_hint_prefers_the_magic_dns_name() {
+        assert_eq!(super::grouped_pairing_code("305917"), "305 917");
+        assert_eq!(super::grouped_pairing_code("12345"), "12345");
+
+        let mut state =
+            RemoteDevicesState::open_default(&ControllerCoordinator::default(), None, false);
+        let address = |label: &str, kind, value: &str| termirust_domain::ListeningAddress {
+            interface_id: termirust_domain::NetworkInterfaceId::new(format!("1:{label}")).unwrap(),
+            label: label.into(),
+            kind,
+            address: value.parse().unwrap(),
+        };
+        state.listening_addresses = vec![address(
+            "en0",
+            termirust_domain::NetworkInterfaceKind::Lan,
+            "192.168.88.4:55123",
+        )];
+        assert_eq!(state.tailscale_address(), None, "no hint without Tailscale");
+
+        state.listening_addresses.push(address(
+            "utun4",
+            termirust_domain::NetworkInterfaceKind::Vpn,
+            "100.81.253.53:55123",
+        ));
+        assert_eq!(
+            state.tailscale_address().as_deref(),
+            Some("100.81.253.53:55123")
+        );
+        *state.tailscale_name.lock().unwrap() = Some("mac.tail1234.ts.net".into());
+        assert_eq!(
+            state.tailscale_address().as_deref(),
+            Some("mac.tail1234.ts.net:55123")
+        );
+    }
+
+    #[test]
     fn remote_devices_reports_every_pairing_and_identity_recovery_state() {
         for state in [
             PairingUiState::Idle,
@@ -1919,6 +1955,9 @@ mod network_tests {
             PairingUiState::Uncertain,
             PairingUiState::Paired,
             PairingUiState::Revoked,
+            PairingUiState::CodeShown,
+            PairingUiState::CodeWrong,
+            PairingUiState::CodeExhausted,
         ] {
             assert!(!pairing_ui_status(state).is_empty());
         }

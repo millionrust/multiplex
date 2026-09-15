@@ -775,6 +775,10 @@ mod tests {
             ("handshake_timeout", ControllerPairingFailureKind::Expired),
             ("io", ControllerPairingFailureKind::Uncertain),
             ("unknown", ControllerPairingFailureKind::Storage),
+            (
+                "code_attempts_exhausted",
+                ControllerPairingFailureKind::CodeAttemptsExhausted,
+            ),
         ] {
             assert_eq!(
                 coordinator.project_listener_event(
@@ -788,6 +792,38 @@ mod tests {
             coordinator.project_listener_event(
                 Some(offer_id),
                 ListenerProcessEvent::pairing_failed(Some(stale_offer_id), "io"),
+            ),
+            Err(ControllerListenerEventProjectionError::OfferMismatch)
+        );
+    }
+
+    #[test]
+    fn pairing_mode_events_project_the_code_and_fence_attempts_to_its_offer() {
+        let coordinator = ControllerCoordinator::default();
+        let offer_id = PairingOfferId::new();
+        assert_eq!(
+            coordinator.project_listener_event(
+                None,
+                ListenerProcessEvent::pairing_code(offer_id, "305917".into(), 900, 3),
+            ),
+            Ok(ControllerListenerEventProjection::Code {
+                offer_id,
+                code: "305917".into(),
+                expires_at_unix_seconds: 900,
+                attempts_left: 3,
+            })
+        );
+        assert_eq!(
+            coordinator.project_listener_event(
+                Some(offer_id),
+                ListenerProcessEvent::pairing_code_attempt_failed(offer_id, 2),
+            ),
+            Ok(ControllerListenerEventProjection::CodeAttemptFailed { attempts_left: 2 })
+        );
+        assert_eq!(
+            coordinator.project_listener_event(
+                Some(PairingOfferId::new()),
+                ListenerProcessEvent::pairing_code_attempt_failed(offer_id, 2),
             ),
             Err(ControllerListenerEventProjectionError::OfferMismatch)
         );
