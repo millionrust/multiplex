@@ -68,9 +68,13 @@ Pure Rust, no platform code, fully testable in CI.
   iroh decision in 0.4.
 - [ ] 2.6 `feat(screen-transport): carry screen sessions over QUIC with iroh`
 - [ ] 2.7 `feat(controller-listener): issue screen tickets over the Controller channel`
-- [ ] 2.8 `feat(screen-host): capture, encode and send a display to one viewer`
+- [x] 2.8 `feat(screen-session): add the host and viewer session state machines`
+  Covers the protocol logic of 2.8 and 2.10 in `termirust-screen-session`: ticket and grant
+  checks, one encoder per subscription with flow control, previews, refinement, motion region
+  messages, input gated on control, and resume across connections. Wiring capture threads and
+  drawing into the desktop app happens in 2.12 and 2.13.
 - [ ] 2.9 `feat(screen-host): mask TermiRust terminal panes and publish their placement`
-- [ ] 2.10 `feat(screen-client): receive, cache and draw a remote screen`
+- [x] 2.10 Viewer session: landed with 2.8.
 - [ ] 2.11 `feat(screen-host): inject pointer and keyboard input behind the writer lease`
 - [ ] 2.12 `feat(desktop): show computers with live previews in Devices`
 - [ ] 2.13 `feat(desktop): open a remote screen tab with zoom, minimap and inspector`

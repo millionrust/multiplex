@@ -53,6 +53,11 @@ impl Decoder {
         self.last_sequence
     }
 
+    /// Generation of the surface this decoder last applied, for resume requests.
+    pub fn generation(&self) -> Option<Generation> {
+        self.surface.map(|(_, generation)| generation)
+    }
+
     /// Applies a batch. Batches from an older generation, repeated sequences, and lossless
     /// pixels that do not match their hash are rejected before anything is drawn from them.
     pub fn apply(&mut self, batch: &Batch) -> Result<Applied, CodecError> {

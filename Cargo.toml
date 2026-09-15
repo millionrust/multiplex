@@ -28,6 +28,7 @@ members = [
     "crates/termirust-screen-capture",
     "crates/termirust-screen-codec",
     "crates/termirust-screen-protocol",
+    "crates/termirust-screen-session",
     "crates/termirust-session-host",
     "crates/termirust-slate",
     "crates/termirust-store",
