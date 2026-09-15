@@ -36,7 +36,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libxkbcommon-dev libssl-dev libfontconfig1-dev \
+            libxkbcommon-dev libssl-dev libfontconfig1-dev libdbus-1-dev \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
             pkg-config tmux
 
@@ -80,7 +80,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libxkbcommon-dev libssl-dev libfontconfig1-dev \
+            libxkbcommon-dev libssl-dev libfontconfig1-dev libdbus-1-dev \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
             pkg-config
 
@@ -143,6 +143,18 @@ jobs:
           java-version: "17"
 
       - uses: gradle/actions/setup-gradle@v4
+
+      - uses: dtolnay/rust-toolchain@1.97.1
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The Kotlin conformance tests call the generated bindings through JNA on the build
+      # machine, so they need the host build of the library the APK packages for each ABI.
+      - name: Build Controller bindings for Kotlin unit tests
+        run: |
+          cargo build --locked --release -p termirust-controller-bindings --lib
+          mkdir -p apps/android/app/src/test/native/linux-x86-64
+          cp target/release/libtermirust_controller_bindings.so apps/android/app/src/test/native/linux-x86-64/
 
       - name: Verify Kotlin contracts, unit tests, lint, and debug APK
         env:
