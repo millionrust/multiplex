@@ -149,14 +149,17 @@ impl Fixture {
         };
         self.desktop_clients
             .push(termirust_session_host::start(descriptor).await.unwrap());
+        // The session starts at the desktop size, so the size alone does not show the client
+        // has attached yet.
+        wait_until(|| {
+            self.tmux_output(&["list-clients", "-t", tmux_id, "-F", "#{client_name}"])
+                .lines()
+                .count()
+                == 1
+        })
+        .await;
         let expected = format!("{DESKTOP_COLUMNS}x{DESKTOP_ROWS}");
         wait_until(|| self.window_size(tmux_id) == expected).await;
-        let clients = self.tmux_output(&["list-clients", "-t", tmux_id, "-F", "#{client_name}"]);
-        assert_eq!(
-            clients.lines().count(),
-            1,
-            "desktop client should be attached"
-        );
     }
 
     fn backends(&self, source: Option<TmuxSessionSource>) -> Arc<HostBackendFactory> {

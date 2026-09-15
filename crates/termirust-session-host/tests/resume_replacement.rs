@@ -239,27 +239,41 @@ async fn resume_replacement_uses_new_host_generation_and_preserves_source_journa
 
     let endpoint = LocalEndpoint::new(&replacement.runtime_root, replacement_session_id);
     let cancel = CancellationToken::new();
-    let mut first_controller = HostClient::connect(
-        endpoint.clone(),
-        ConnectOptions::local(replacement_session_id, nonce(1)),
-        &cancel,
-    )
-    .await
-    .unwrap();
-    let first_output = first_controller
-        .attach(OutputSequence::ZERO, 100, 30, &cancel)
+    // Ready means the Host serves attaches, not that the replacement has printed yet, so a
+    // loaded machine can attach before the banner reaches the journal.
+    let banner_deadline = Instant::now() + Duration::from_secs(5);
+    let mut attempt = 1;
+    let watermark = loop {
+        let mut first_controller = HostClient::connect(
+            endpoint.clone(),
+            ConnectOptions::local(replacement_session_id, nonce(attempt)),
+            &cancel,
+        )
         .await
         .unwrap();
-    let output = first_output
-        .iter()
-        .flat_map(|event| event.bytes.iter().copied())
-        .collect::<Vec<_>>();
-    assert!(String::from_utf8_lossy(&output).contains("RESUME-HOST-READY"));
-    let watermark = first_output
-        .last()
-        .map_or(OutputSequence::ZERO, |event| event.sequence);
-    first_controller.disconnect();
-    drop(first_controller);
+        let first_output = first_controller
+            .attach(OutputSequence::ZERO, 100, 30, &cancel)
+            .await
+            .unwrap();
+        let output = first_output
+            .iter()
+            .flat_map(|event| event.bytes.iter().copied())
+            .collect::<Vec<_>>();
+        let watermark = first_output
+            .last()
+            .map_or(OutputSequence::ZERO, |event| event.sequence);
+        first_controller.disconnect();
+        drop(first_controller);
+        if String::from_utf8_lossy(&output).contains("RESUME-HOST-READY") {
+            break watermark;
+        }
+        assert!(
+            Instant::now() < banner_deadline,
+            "the replacement never printed its banner"
+        );
+        attempt += 1;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert!(
         replacement_process.try_wait().unwrap().is_none(),
@@ -268,7 +282,7 @@ async fn resume_replacement_uses_new_host_generation_and_preserves_source_journa
 
     let mut restarted_controller = HostClient::connect(
         endpoint,
-        ConnectOptions::local(replacement_session_id, nonce(2)),
+        ConnectOptions::local(replacement_session_id, nonce(u64::MAX)),
         &cancel,
     )
     .await

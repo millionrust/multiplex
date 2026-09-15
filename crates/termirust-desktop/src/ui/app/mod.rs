@@ -18714,7 +18714,7 @@ sleep 1
             .expect("transcript focus should be readable");
         assert!(transcript_has_focus);
         cx.write_to_clipboard(gpui::ClipboardItem::new_string("sentinel".to_string()));
-        cx.simulate_keystrokes(*window, "cmd-c");
+        cx.simulate_keystrokes(*window, "secondary-c");
         let copied = cx
             .read_from_clipboard()
             .and_then(|item| item.text())
@@ -24419,13 +24419,13 @@ sleep 1
         let (app, window) = open_test_app(cx);
 
         for (shortcut, expected) in [
-            ("cmd-1", NavSection::Activity),
-            ("cmd-2", NavSection::Projects),
-            ("cmd-3", NavSection::Hosts),
-            ("cmd-4", NavSection::Sessions),
-            ("cmd-5", NavSection::Sftp),
-            ("cmd-6", NavSection::Devices),
-            ("cmd-7", NavSection::Settings),
+            ("secondary-1", NavSection::Activity),
+            ("secondary-2", NavSection::Projects),
+            ("secondary-3", NavSection::Hosts),
+            ("secondary-4", NavSection::Sessions),
+            ("secondary-5", NavSection::Sftp),
+            ("secondary-6", NavSection::Devices),
+            ("secondary-7", NavSection::Settings),
         ] {
             let event = KeyDownEvent {
                 keystroke: Keystroke::parse(shortcut).expect("shortcut should parse"),
