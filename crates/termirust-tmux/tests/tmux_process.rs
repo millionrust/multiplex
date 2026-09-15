@@ -414,7 +414,7 @@ fn shell_integration_starts_new_terminal_app_shells_inside_tmux() {
 }
 
 #[test]
-fn only_wrapped_sessions_lose_and_regain_their_status_bar() {
+fn the_setup_hides_wrapped_status_bars_and_keeps_native_scrollback_then_undoes_both() {
     let Some(server) = IsolatedServer::start() else {
         return;
     };
@@ -430,16 +430,35 @@ fn only_wrapped_sessions_lose_and_regain_their_status_bar() {
         String::from_utf8_lossy(&output.stdout).trim().to_owned()
     };
 
+    let overrides = || {
+        let output = server
+            .tmux
+            .command()
+            .args(["show-options", "-s", "terminal-overrides"])
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout).into_owned()
+    };
+
     assert_eq!(
-        server.tmux.set_wrapped_sessions_status_bar(false).unwrap(),
+        server.tmux.apply_wrapped_session_appearance(true).unwrap(),
         1
     );
     assert_eq!(status("termirust-terminal-4242"), "off");
     assert_eq!(status("work"), "", "other sessions keep the global setting");
+    assert!(overrides().contains(&format!(
+        "{} {}",
+        termirust_tmux::scrollback_override_target(),
+        termirust_tmux::SCROLLBACK_OVERRIDE
+    )));
+    // Applying again leaves a single override.
+    server.tmux.apply_wrapped_session_appearance(true).unwrap();
+    assert_eq!(overrides().matches("smcup@").count(), 1);
 
     assert_eq!(
-        server.tmux.set_wrapped_sessions_status_bar(true).unwrap(),
+        server.tmux.apply_wrapped_session_appearance(false).unwrap(),
         1
     );
     assert_eq!(status("termirust-terminal-4242"), "");
+    assert!(!overrides().contains("smcup@"));
 }

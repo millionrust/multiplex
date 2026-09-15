@@ -29,6 +29,17 @@ pub const MAX_COMMAND_CHARS: usize = 128;
 pub const MINIMUM_ATTACH_VERSION: (u32, u32) = (3, 2);
 /// Sessions the shell setup starts are named `termirust-<directory>-<pid>`.
 pub const WRAPPED_SESSION_PREFIX: &str = "termirust-";
+/// The `terminal-overrides` entry that stops tmux from switching attached terminals to the
+/// alternate screen, so their own scrollback keeps the output. It is a server option, so it
+/// applies to every client of the server; a fixed array index makes setting it idempotent
+/// and leaves the user's other overrides alone.
+pub const SCROLLBACK_OVERRIDE: &str = "*:smcup@:rmcup@";
+pub const SCROLLBACK_OVERRIDE_INDEX: u32 = 97;
+
+/// The option name that addresses [`SCROLLBACK_OVERRIDE`], such as `terminal-overrides[97]`.
+pub fn scrollback_override_target() -> String {
+    format!("terminal-overrides[{SCROLLBACK_OVERRIDE_INDEX}]")
+}
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(3);
 const COMMAND_POLL_INTERVAL: Duration = Duration::from_millis(5);
@@ -247,11 +258,29 @@ impl Tmux {
         })
     }
 
-    /// Hides the status bar in every session the shell setup started (named
-    /// [`WRAPPED_SESSION_PREFIX`]…), or with `visible` hands those sessions back to the global
-    /// setting. Other sessions are never touched. Returns how many sessions changed.
-    pub fn set_wrapped_sessions_status_bar(&self, visible: bool) -> Result<usize, TmuxError> {
+    /// Makes the running server match the shell setup: with `setup_on`, sessions it started
+    /// (named [`WRAPPED_SESSION_PREFIX`]…) hide their status bar and the
+    /// [`SCROLLBACK_OVERRIDE`] is set; otherwise those sessions go back to the global status
+    /// setting and the override is removed. Other sessions keep their own options. A client
+    /// already attached keeps its screen mode until it attaches again. Returns how many
+    /// sessions changed; with no server running there is nothing to change.
+    pub fn apply_wrapped_session_appearance(&self, setup_on: bool) -> Result<usize, TmuxError> {
         let listing = self.list_sessions()?;
+        if listing.sessions.is_empty() {
+            return Ok(0);
+        }
+        let mut override_command = self.command();
+        if setup_on {
+            override_command.args([
+                "set-option",
+                "-s",
+                &scrollback_override_target(),
+                SCROLLBACK_OVERRIDE,
+            ]);
+        } else {
+            override_command.args(["set-option", "-s", "-u", &scrollback_override_target()]);
+        }
+        run_bounded(override_command, COMMAND_TIMEOUT)?;
         let mut changed = 0;
         for session in listing
             .sessions
@@ -259,10 +288,10 @@ impl Tmux {
             .filter(|session| session.name.starts_with(WRAPPED_SESSION_PREFIX))
         {
             let mut command = self.command();
-            if visible {
-                command.args(["set-option", "-u", "-t", session.id(), "status"]);
-            } else {
+            if setup_on {
                 command.args(["set-option", "-t", session.id(), "status", "off"]);
+            } else {
+                command.args(["set-option", "-u", "-t", session.id(), "status"]);
             }
             if run_bounded(command, COMMAND_TIMEOUT)?.status.success() {
                 changed += 1;

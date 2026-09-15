@@ -377,15 +377,19 @@ impl ShellIntegration {
     fn init_file(&self, shell: Shell) -> String {
         let tmux = shell_single_quote(&self.tmux.to_string_lossy());
         let programs = WRAPPED_TERMINAL_PROGRAMS.join("|");
+        let override_target = shell_single_quote(&crate::scrollback_override_target());
+        let override_value = shell_single_quote(crate::SCROLLBACK_OVERRIDE);
         // `&& exit` rather than `exec`: if tmux cannot start, the terminal keeps a plain
-        // shell instead of closing the moment it opens. The status bar is turned off for
-        // these sessions only, so the tab looks like the terminal it replaced.
+        // shell instead of closing the moment it opens. The tab should feel like the terminal
+        // it replaced: the status bar is off for these sessions only, and the scrollback
+        // override, set before the session attaches, keeps tmux off the alternate screen so the
+        // terminal app's own scrollback and trackpad scrolling keep working.
         match shell {
             Shell::Zsh => format!(
-                "{INIT_FILE_HEADER}\nif [[ -o interactive && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        {tmux} new-session -s \"termirust-${{PWD:t}}-$$\" \\; set-option status off && exit\n      fi\n      ;;\n  esac\nfi\n"
+                "{INIT_FILE_HEADER}\nif [[ -o interactive && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        {tmux} start-server \\; set-option -s {override_target} {override_value} \\; new-session -s \"termirust-${{PWD:t}}-$$\" \\; set-option status off && exit\n      fi\n      ;;\n  esac\nfi\n"
             ),
             Shell::Bash => format!(
-                "{INIT_FILE_HEADER}\nif [[ $- == *i* && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        {tmux} new-session -s \"termirust-${{PWD##*/}}-$$\" \\; set-option status off && exit\n      fi\n      ;;\n  esac\nfi\n"
+                "{INIT_FILE_HEADER}\nif [[ $- == *i* && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        {tmux} start-server \\; set-option -s {override_target} {override_value} \\; new-session -s \"termirust-${{PWD##*/}}-$$\" \\; set-option status off && exit\n      fi\n      ;;\n  esac\nfi\n"
             ),
         }
     }
@@ -596,7 +600,7 @@ mod tests {
         assert_eq!(zshrc.matches(BLOCK_START).count(), 1);
         let init =
             fs::read_to_string(home.path().join(".config/termirust/shell-init.zsh")).unwrap();
-        assert!(init.contains(&format!("'{TMUX}' new-session")));
+        assert!(init.contains(&format!("'{TMUX}' start-server")));
         assert!(init.contains("Apple_Terminal|zed|"));
         assert!(init.contains("&& exit"));
         assert!(!init.contains("exec "));
@@ -729,7 +733,7 @@ mod tests {
         let init_path = home.path().join(".config/termirust/shell-init.zsh");
         let init = fs::read_to_string(&init_path).unwrap();
         assert!(init.contains(
-            "new-session -s \"termirust-${PWD:t}-$$\" \\; set-option status off && exit"
+            "start-server \\; set-option -s 'terminal-overrides[97]' '*:smcup@:rmcup@' \\; new-session -s \"termirust-${PWD:t}-$$\" \\; set-option status off && exit"
         ));
 
         // The file an earlier version wrote, without the status bar setting.

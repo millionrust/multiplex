@@ -94,6 +94,14 @@ section tells you how to install it and leaves the setup unavailable.
 
 The tmux status bar is turned off for these sessions only; your other tmux sessions keep theirs.
 
+Scrolling stays native. tmux normally switches the terminal to its alternate screen, so
+the terminal app has no scrollback and every wheel event goes through tmux's copy mode.
+The init file sets `terminal-overrides[97]` to `*:smcup@:rmcup@` on the tmux server
+before the session starts, so output lands in the terminal app's own scrollback and the
+trackpad scrolls it directly. This is a server option: it also applies to other clients
+of the same tmux server, and removing the setup unsets it. Tabs attached before you apply
+the setup keep the old behavior until they reattach.
+
 One app-owned init file per shell, safe to delete —
 `~/.config/termirust/shell-init.zsh` for zsh (and `shell-init.bash` for bash):
 
@@ -103,7 +111,7 @@ if [[ -o interactive && -z "$TMUX" && -z "$TERMIRUST_NO_WRAP" ]]; then
   case "$TERM_PROGRAM" in
     Apple_Terminal|zed|iTerm.app|ghostty|WezTerm|vscode)
       if [[ -x '/opt/homebrew/Cellar/tmux/3.7c/bin/tmux' ]]; then
-        '/opt/homebrew/Cellar/tmux/3.7c/bin/tmux' new-session -s "termirust-${PWD:t}-$$" \; set-option status off && exit
+        '/opt/homebrew/Cellar/tmux/3.7c/bin/tmux' start-server \; set-option -s 'terminal-overrides[97]' '*:smcup@:rmcup@' \; new-session -s "termirust-${PWD:t}-$$" \; set-option status off && exit
       fi
       ;;
   esac
