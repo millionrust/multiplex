@@ -107,7 +107,7 @@ configuration that hides copy mode's position indicator and copies selections to
 set -g mouse on
 set -gw copy-mode-position-format ""
 set -s set-clipboard on
-bind -T copy-mode MouseDragEnd1Pane send -X copy-pipe-no-clear "pbcopy"
+bind -T copy-mode MouseDragEnd1Pane send -X copy-pipe-no-clear "pbcopy" \; send -X stop-selection
 bind -T copy-mode MouseDown1Pane select-pane \; send -X clear-selection
 ```
 
