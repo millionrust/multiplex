@@ -9,8 +9,8 @@ BUILD_IOS=0
 BUILD_ANDROID=0
 PINNED_RUST_VERSION="1.97.1"
 UNIFFI_VERSION="0.32.0"
-PINNED_XCODE_VERSION="26.6"
-PINNED_IOS_SDK_VERSION="26.5"
+PINNED_XCODE_VERSION="27.0"
+PINNED_IOS_SDK_VERSION="27.0"
 PINNED_ANDROID_NDK_VERSION="27.0.12077973"
 
 usage() {
@@ -236,8 +236,8 @@ cat > "$STAGED/provenance-v1.txt" <<'PROVENANCE'
 schema=termirust-controller-bindings-provenance-v1
 uniffi=0.32.0
 rust=1.97.1
-xcode=26.6
-ios_sdk=26.5
+xcode=27.0
+ios_sdk=27.0
 swift_target=aarch64-apple-ios
 swift_simulator_targets=aarch64-apple-ios-sim,x86_64-apple-ios
 android_targets=aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
