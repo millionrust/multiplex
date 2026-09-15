@@ -25,7 +25,7 @@ Pure Rust, no platform code, fully testable in CI.
   Rect, surface size, 64×64 tile indexing, partial edge tiles, damage rectangles to tile sets.
 - [x] 1.2 `feat(screen-codec): hash tiles and find changed tiles between frames`
   BGRA frame view with stride, xxh3-64 per tile, diff narrowed by damage.
-- [ ] 1.3 `feat(screen-codec): classify tiles as solid, text and UI, or picture`
+- [x] 1.3 `feat(screen-codec): classify tiles as solid, text and UI, or picture`
   Bounded distinct-colour count and edge density.
 - [ ] 1.4 `feat(screen-codec): encode text and UI tiles losslessly`
   Palette + run-length when few colours, raw otherwise, then deflate (`miniz_oxide`).
