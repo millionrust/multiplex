@@ -8,8 +8,9 @@ use std::collections::VecDeque;
 
 use crate::{
     Batch, CacheMiss, CacheShadow, CodecError, DESKTOP_CACHE_BYTES, Frame, FrameBuffer, Generation,
-    LossyDetail, Rect, Size, SurfaceId, TileClass, TileGrid, TileHash, TileHashes, TileIndex,
-    TileOp, TileSet, classify, detect_vertical_move, encode_lossless, encode_lossy, hash_rect,
+    LossyDetail, MotionConfig, MotionEvent, MotionTracker, Rect, Size, SurfaceId, TileClass,
+    TileGrid, TileHash, TileHashes, TileIndex, TileOp, TileSet, classify, detect_vertical_move,
+    encode_lossless, encode_lossy, hash_rect,
 };
 
 /// Moves and cache insertions remembered for resuming. A viewer that acknowledged a batch older
@@ -32,6 +33,8 @@ pub struct EncoderConfig {
     pub cache_bytes: usize,
     pub lossy_detail: LossyDetail,
     pub detect_scrolls: bool,
+    /// Motion region thresholds, used by [`Encoder::encode_at`].
+    pub motion: MotionConfig,
 }
 
 impl Default for EncoderConfig {
@@ -40,6 +43,7 @@ impl Default for EncoderConfig {
             cache_bytes: DESKTOP_CACHE_BYTES,
             lossy_detail: LossyDetail::STANDARD,
             detect_scrolls: true,
+            motion: MotionConfig::default(),
         }
     }
 }
@@ -74,6 +78,9 @@ pub struct Encoder {
     acked: u64,
     /// A resume must acknowledge at least this batch; older history was dropped.
     oldest_resumable: u64,
+    motion: MotionTracker,
+    motion_event: Option<MotionEvent>,
+    motion_last_sent_ms: Option<u64>,
 }
 
 impl Encoder {
@@ -99,7 +106,20 @@ impl Encoder {
             inserted: VecDeque::new(),
             acked: 0,
             oldest_resumable: 1,
+            motion: MotionTracker::new(grid, config.motion),
+            motion_event: None,
+            motion_last_sent_ms: None,
         }
+    }
+
+    /// The area currently treated as video, if any.
+    pub fn motion_region(&self) -> Option<Rect> {
+        self.motion.region()
+    }
+
+    /// The motion region change produced by the last [`Encoder::encode_at`], if any.
+    pub const fn motion_event(&self) -> Option<MotionEvent> {
+        self.motion_event
     }
 
     /// The viewer applied every batch up to `sequence`; history at or before it is dropped.
@@ -167,11 +187,33 @@ impl Encoder {
     }
 
     /// Encodes the difference between the viewer's picture and `frame`. `damage` is the
-    /// operating system's changed rectangles; `None` means compare every tile.
+    /// operating system's changed rectangles; `None` means compare every tile. No motion region
+    /// is tracked; use [`Encoder::encode_at`] for live capture.
     pub fn encode(
         &mut self,
         frame: &Frame<'_>,
         damage: Option<&[Rect]>,
+    ) -> Result<Batch, CodecError> {
+        self.encode_inner(frame, damage, None)
+    }
+
+    /// Encodes like [`Encoder::encode`] for a frame captured at `now_ms`, and tracks the motion
+    /// region. On the tile path, tiles inside the region are sent as lossy tiles no more often
+    /// than `tile_path_max_hz`; when the region ends, its tiles are sent again.
+    pub fn encode_at(
+        &mut self,
+        frame: &Frame<'_>,
+        damage: Option<&[Rect]>,
+        now_ms: u64,
+    ) -> Result<Batch, CodecError> {
+        self.encode_inner(frame, damage, Some(now_ms))
+    }
+
+    fn encode_inner(
+        &mut self,
+        frame: &Frame<'_>,
+        damage: Option<&[Rect]>,
+        now_ms: Option<u64>,
     ) -> Result<Batch, CodecError> {
         if frame.size() != self.grid.size() {
             return Err(CodecError::FrameSizeMismatch);
@@ -187,6 +229,28 @@ impl Encoder {
                 hashes.update(frame, candidates.as_ref())?
             }
         };
+
+        self.motion_event = None;
+        let mut motion_throttled = false;
+        if let Some(now) = now_ms {
+            self.motion_event = self.motion.observe(&changed, now);
+            if let Some(MotionEvent::Demoted(rect)) = self.motion_event {
+                for tile in self.grid.tiles_covering(rect).iter() {
+                    self.viewer[tile.0 as usize] = ViewerTile::Unknown;
+                }
+                self.motion_last_sent_ms = None;
+            }
+            if self.motion.region().is_some() {
+                let interval = 1_000 / u64::from(self.config.motion.tile_path_max_hz.max(1));
+                motion_throttled = self
+                    .motion_last_sent_ms
+                    .is_some_and(|last| now.saturating_sub(last) < interval);
+                if !motion_throttled {
+                    self.motion_last_sent_ms = Some(now);
+                }
+            }
+        }
+
         for (index, state) in self.viewer.iter().enumerate() {
             if *state == ViewerTile::Unknown {
                 changed.insert(TileIndex(index as u32));
@@ -210,8 +274,19 @@ impl Encoder {
             if self.viewer[tile.0 as usize] == ViewerTile::Exact(hash) {
                 continue;
             }
+            let in_motion = now_ms.is_some() && self.motion.contains(tile);
+            if in_motion && motion_throttled {
+                // Sent by a later batch, at the region's update rate.
+                self.viewer[tile.0 as usize] = ViewerTile::Unknown;
+                continue;
+            }
             let rect = self.grid.tile_rect(tile).expect("tile from this grid");
-            let (op, state) = match classify(frame, rect) {
+            let class = match classify(frame, rect) {
+                TileClass::Solid(color) => TileClass::Solid(color),
+                _ if in_motion => TileClass::Picture,
+                class => class,
+            };
+            let (op, state) = match class {
                 TileClass::Solid(color) => (TileOp::Solid { tile, color }, ViewerTile::Exact(hash)),
                 _ if self.shadow.use_if_held(hash) => {
                     (TileOp::Cached { tile, hash }, ViewerTile::Exact(hash))

@@ -18,6 +18,7 @@ mod geometry;
 mod hash;
 mod lossless;
 mod lossy;
+mod motion;
 mod scroll;
 mod wire;
 
@@ -36,6 +37,7 @@ pub use geometry::{MAX_SURFACE_DIMENSION, Rect, Size, TILE_SIZE, TileGrid, TileI
 pub use hash::{TileHash, TileHashes, hash_rect};
 pub use lossless::{decode_lossless, encode_lossless};
 pub use lossy::{LossyDetail, decode_lossy, encode_lossy};
+pub use motion::{MotionConfig, MotionEvent, MotionTracker};
 pub use scroll::{MAX_SCROLL_PIXELS, VerticalMove, detect_vertical_move};
 pub use wire::{
     BATCH_HEADER_BYTES, BATCH_MAGIC, BATCH_VERSION, Batch, Generation, MAX_BATCH_BYTES,
