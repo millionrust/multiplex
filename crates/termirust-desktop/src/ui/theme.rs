@@ -5,49 +5,6 @@ use termirust_ui_contract::{ColorValue, DesignTokens, StatusKind, StatusVisual, 
 
 use crate::models::ThemePreset;
 
-#[derive(Clone, Copy)]
-struct ThemePalette {
-    app_bg: u32,
-    chrome_bg: u32,
-    chrome_tab: u32,
-    chrome_tab_active: u32,
-    terminal_bg: u32,
-    terminal_panel: u32,
-    border_dark: u32,
-    text_on_dark: u32,
-    text_muted_dark: u32,
-    slate: u32,
-    hover: u32,
-}
-
-const OCEAN: ThemePalette = ThemePalette {
-    app_bg: 0x0a0e17,
-    chrome_bg: 0x0a0e17,
-    chrome_tab: 0x171c2a,
-    chrome_tab_active: 0x232b3d,
-    terminal_bg: 0x07101c,
-    terminal_panel: 0x0f1825,
-    border_dark: 0x10141d,
-    text_on_dark: 0xeaedf3,
-    text_muted_dark: 0x6e7689,
-    slate: 0x4863a0,
-    hover: 0x1c2230,
-};
-
-const DAYLIGHT: ThemePalette = ThemePalette {
-    app_bg: 0xf6f1e6,
-    chrome_bg: 0x2b3a4d,
-    chrome_tab: 0x3a4a5e,
-    chrome_tab_active: 0x55687f,
-    terminal_bg: 0x0d1620,
-    terminal_panel: 0x142030,
-    border_dark: 0x223040,
-    text_on_dark: 0xf4f7fb,
-    text_muted_dark: 0xa3b3c4,
-    slate: 0x496b8f,
-    hover: 0xede4cf,
-};
-
 const HOST_CHIP_COLORS: &[u32] = &[
     0xdd6b2d, // orange
     0x2c538d, // slate blue
@@ -62,19 +19,6 @@ const HOST_CHIP_COLORS: &[u32] = &[
 fn theme_preset_state() -> &'static RwLock<ThemePreset> {
     static THEME_PRESET: OnceLock<RwLock<ThemePreset>> = OnceLock::new();
     THEME_PRESET.get_or_init(|| RwLock::new(ThemePreset::Ocean))
-}
-
-fn palette() -> ThemePalette {
-    let preset = *theme_preset_state()
-        .read()
-        .expect("theme preset lock poisoned");
-    let mut base = match preset {
-        ThemePreset::Daylight | ThemePreset::FlexokiLight | ThemePreset::KanagawaLotus => DAYLIGHT,
-        _ => OCEAN,
-    };
-    base.terminal_bg = preset.preview_bg();
-    base.terminal_panel = mix(base.terminal_bg, base.app_bg, 0.5);
-    base
 }
 
 fn design_theme_kind(preset: ThemePreset) -> ThemeKind {
@@ -105,19 +49,6 @@ pub fn current_design_tokens() -> DesignTokens {
 
 pub fn semantic_status(kind: StatusKind) -> StatusVisual {
     current_design_tokens().status(kind)
-}
-
-fn mix(a: u32, b: u32, t: f32) -> u32 {
-    let t = t.clamp(0.0, 1.0);
-    let blend =
-        |sa: u8, sb: u8| -> u8 { ((sa as f32) * (1.0 - t) + (sb as f32) * t).round() as u8 };
-    let ar = ((a >> 16) & 0xff) as u8;
-    let ag = ((a >> 8) & 0xff) as u8;
-    let ab = (a & 0xff) as u8;
-    let br = ((b >> 16) & 0xff) as u8;
-    let bg = ((b >> 8) & 0xff) as u8;
-    let bb = (b & 0xff) as u8;
-    ((blend(ar, br) as u32) << 16) | ((blend(ag, bg) as u32) << 8) | (blend(ab, bb) as u32)
 }
 
 pub fn set_theme_preset(preset: ThemePreset) {
@@ -153,16 +84,19 @@ pub fn app_bg() -> Hsla {
     token_color(current_design_tokens().color_bg_canvas())
 }
 
+/// The title bar and tab strip.
 pub fn chrome_bg() -> Hsla {
-    color(palette().chrome_bg)
+    token_color(current_design_tokens().color_bg_chrome())
 }
 
+/// A hovered, inactive tab.
 pub fn chrome_tab() -> Hsla {
-    color(palette().chrome_tab)
+    token_color(current_design_tokens().color_bg_hover())
 }
 
+/// The active tab.
 pub fn chrome_tab_active() -> Hsla {
-    color(palette().chrome_tab_active)
+    token_color(current_design_tokens().color_bg_selected())
 }
 
 pub fn library_bg() -> Hsla {
@@ -178,35 +112,40 @@ pub fn library_card() -> Hsla {
 }
 
 pub fn terminal_bg() -> Hsla {
-    color(palette().terminal_bg)
+    token_color(current_design_tokens().color_bg_terminal())
 }
 
+/// Pane headers, bars, and panels drawn over or beside a terminal.
 pub fn terminal_panel() -> Hsla {
-    color(palette().terminal_panel)
+    token_color(current_design_tokens().color_bg_surface())
 }
 
 pub fn border() -> Hsla {
     token_color(current_design_tokens().color_border_default())
 }
 
+/// Pane edges and separators on chrome and terminal surfaces.
 pub fn border_dark() -> Hsla {
-    color(palette().border_dark)
+    token_color(current_design_tokens().color_border_default())
 }
 
 pub fn text_main() -> Hsla {
     token_color(current_design_tokens().color_text_primary())
 }
 
+/// Primary text on chrome and terminal surfaces. These follow the theme, so this is the
+/// same color as [`text_main`] and is kept for the call sites that name the surface.
 pub fn text_on_dark() -> Hsla {
-    color(palette().text_on_dark)
+    token_color(current_design_tokens().color_text_primary())
 }
 
 pub fn text_muted() -> Hsla {
     token_color(current_design_tokens().color_text_muted())
 }
 
+/// Captions and inactive labels on chrome and terminal surfaces.
 pub fn text_muted_dark() -> Hsla {
-    color(palette().text_muted_dark)
+    token_color(current_design_tokens().color_text_muted())
 }
 
 pub fn accent() -> Hsla {
@@ -233,12 +172,13 @@ pub fn danger() -> Hsla {
     token_color(semantic_status(StatusKind::Error).color)
 }
 
+/// The neutral tone for badges and chips that carry no status.
 pub fn slate() -> Hsla {
-    color(palette().slate)
+    token_color(current_design_tokens().color_text_secondary())
 }
 
 pub fn hover() -> Hsla {
-    color(palette().hover)
+    token_color(current_design_tokens().color_bg_hover())
 }
 
 pub fn modal_scrim() -> Hsla {
@@ -289,28 +229,15 @@ pub fn pane_focus_glow() -> Hsla {
 }
 
 pub fn soft_border() -> Hsla {
-    with_alpha(color(0x0a1322), 0.06)
+    token_color(current_design_tokens().color_border_subtle())
 }
 
 pub fn terminal_default_bg() -> Hsla {
-    color(palette().terminal_bg)
+    terminal_bg()
 }
 
 pub fn terminal_default_fg() -> Hsla {
-    let preset = *theme_preset_state()
-        .read()
-        .expect("theme preset lock poisoned");
-    let bg = palette().terminal_bg;
-    let r = (bg >> 16) & 0xff;
-    let g = (bg >> 8) & 0xff;
-    let b = bg & 0xff;
-    let luminance = (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32) / 255.0;
-    let _ = preset;
-    if luminance > 0.55 {
-        color(0x1f2933)
-    } else {
-        color(0xe2e8f0)
-    }
+    token_color(current_design_tokens().color_terminal_fg())
 }
 
 pub fn terminal_selection_bg() -> Hsla {
