@@ -796,3 +796,137 @@ async fn discovery_is_off_without_a_source_and_empty_without_a_server() {
     assert!(sessions.is_empty(), "a broken tmux must not break listing");
     controller.close().await;
 }
+
+/// The SSH and relay routes serve through `serve_repository_stdio_bridge` in their own
+/// process. They must offer the same live sessions as the LAN listener.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn repository_bridge_route_offers_live_panes_and_tmux_sessions() {
+    use termirust_controller_listener::{
+        DesktopPaneBridgeEndpoint, DesktopPaneBridgeServer, DesktopPaneRegistration,
+        DesktopPaneRegistry, DesktopPaneTransport, RepositoryBridgeSources,
+        serve_repository_stdio_bridge,
+    };
+    use termirust_store::ControllerDeviceRepository;
+
+    let Some(mut fixture) = Fixture::start() else {
+        return;
+    };
+    let tmux_id = fixture.new_session("over ssh");
+    fixture.attach_desktop_client(&tmux_id).await;
+    let runtime_parent = fixture.runtime_parent();
+    std::fs::create_dir_all(&runtime_parent).unwrap();
+
+    let registry = DesktopPaneRegistry::default();
+    let pane_id = HostedSessionId::new();
+    registry.register(DesktopPaneRegistration {
+        session_id: pane_id,
+        title: "Desktop pane".to_owned(),
+        runtime: "local_shell".to_owned(),
+        columns: 100,
+        rows: 30,
+        transport: DesktopPaneTransport::new(|_| true),
+    });
+    let bridge_root = runtime_parent.join("desktop-pane-bridge");
+    let mut pane_bridge = DesktopPaneBridgeServer::start(&bridge_root, registry).unwrap();
+    pane_bridge.publish().unwrap();
+
+    let host_private = StaticPrivateKey::from_fixture_bytes([81; 32]);
+    let device_private = StaticPrivateKey::from_fixture_bytes([82; 32]);
+    let controller_root = fixture.path().join("controller");
+    let devices = ControllerDeviceRepository::open(&controller_root).unwrap();
+    let snapshot = devices.load().unwrap();
+    devices
+        .update(snapshot.revision, |authority| {
+            authority.identity = Some(HostIdentityPublic::new(
+                HostIdentityGeneration::INITIAL,
+                HostPublicKey(host_public_key_from_private(&host_private).0),
+            ));
+            authority.secret_ref =
+                Some(HostIdentitySecretRef::new("identity:bridge-test").unwrap());
+            authority.state = HostIdentityState::Ready;
+            authority.revocation_epoch = REVOCATION_EPOCH;
+            authority.session_generation = SESSION_GENERATION;
+            authority.devices.push(PairedDeviceRecord {
+                device_id: ControllerDeviceId::new(),
+                public_key: DevicePublicKey(device_public_key_from_private(&device_private).0),
+                display_name: "Phone over SSH".to_owned(),
+                capabilities: ControllerCapabilities::default()
+                    .with(DomainCapability::ObserveSessions)
+                    .with(DomainCapability::AttachOutput)
+                    .with(DomainCapability::SendInput),
+                protocol_range: ControllerProtocolRange::V1,
+                created_at: 1,
+                last_seen_at: None,
+                revocation_epoch: authority.revocation_epoch,
+                identity_generation: HostIdentityGeneration::INITIAL,
+                status: PairedDeviceStatus::Online,
+                source_offer_id: PairingOfferId::new(),
+            });
+            Ok(())
+        })
+        .unwrap();
+    let saved = devices.load().unwrap();
+
+    let metadata = fixture.path().join("metadata");
+    let (client, server_stream) = tokio::io::duplex(512 * 1024);
+    let (reader, writer) = tokio::io::split(server_stream);
+    let sources = RepositoryBridgeSources {
+        desktop_pane_bridge: DesktopPaneBridgeEndpoint::discover(&bridge_root),
+        tmux_sessions: Some(fixture.source()),
+    };
+    assert!(sources.desktop_pane_bridge.is_some());
+    let server = tokio::spawn(serve_repository_stdio_bridge(
+        reader,
+        writer,
+        controller_root,
+        metadata,
+        fixture.path().join("session-data"),
+        runtime_parent.clone(),
+        runtime_parent.join("controller-pairing.sock"),
+        host_private.clone(),
+        sources,
+        CancellationToken::new(),
+    ));
+    let channel = ControllerClientChannel::connect(
+        client,
+        1,
+        saved.authority.revocation_epoch,
+        saved.authority.session_generation,
+        HostStaticPublicKey(host_public_key_from_private(&host_private).0),
+        device_private,
+        CapabilitySet::default()
+            .with(SecurityCapability::ObserveSessions)
+            .with(SecurityCapability::AttachOutput)
+            .with(SecurityCapability::SendInput),
+        &mut SystemHandshakeEntropy,
+    )
+    .await
+    .unwrap();
+    let mut controller = Controller { channel, server };
+
+    let (_, sessions) = controller.list().await;
+    assert!(
+        sessions.iter().any(|session| session.session_id == pane_id),
+        "the desktop's live pane is offered over this route"
+    );
+    let row = sessions
+        .iter()
+        .find(|session| session.runtime.as_deref() == Some(TMUX_RUNTIME_ID))
+        .expect("the tmux session is offered over this route")
+        .clone();
+    assert_eq!(row.title, "over ssh");
+    let generation = row.occupant_generation.unwrap();
+    controller.attach(row.session_id, generation).await;
+    controller
+        .complete(ControllerCommand::AcquireWriter {
+            session_id: row.session_id,
+            occupant_generation: generation,
+        })
+        .await;
+    let (input, expected) = marker("SSH");
+    controller
+        .type_and_expect(row.session_id, generation, &input, &expected)
+        .await;
+    controller.close().await;
+    drop(pane_bridge);
+}

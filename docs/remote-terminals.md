@@ -2,7 +2,7 @@
 
 Status: **partly built.** On macOS and Linux, tmux sessions are listed to paired devices
 and can be watched and typed into, and the desktop app can set up new terminals to start
-inside tmux after showing you the exact file changes. Windows, the SSH and relay routes,
+inside tmux after showing you the exact file changes, over every Controller route. Windows
 and a background service are not built yet; see "What has to be built".
 
 This is the guide a person follows when they want the terminals on their computer to
@@ -38,10 +38,11 @@ reachable from then on.
   capability bits and a single-writer lease. A device without `SendInput` is read-only
   in the protocol, not just in the UI.
 - Live desktop panes (the terminals in the desktop window) are published to the
-  Controller and are attachable — **on the LAN route only**.
+  Controller and are attachable on every route. The SSH and relay routes find them through
+  a user-only pointer file the running app publishes.
 - **tmux sessions**, when "Show tmux sessions" is on: every session on your default tmux
   server appears in the phone's session list as a live terminal, including sessions
-  TermiRust did not create — **on the LAN route only**. Watching and typing work; a
+  TermiRust did not create, on every route. Watching and typing work; a
   tmux session is never resized or ended by the phone. Requires tmux 3.2 or later.
 - **Setup for new terminals**, which starts new tabs in Terminal, Zed, iTerm2, Ghostty,
   WezTerm, and the VS Code terminal inside tmux. Previewed, applied, and removed from the
@@ -49,8 +50,7 @@ reachable from then on.
 - Local panes marked persistent already run inside `tmux new-session -A -s <name>`.
 
 Not yet: approval prompts answered from the phone (`Approval` returns an error on both
-backends), any relay UI on the desktop (relay is CLI-only), and tmux sessions over the SSH
-and relay routes.
+backends), and any relay UI on the desktop (relay is CLI-only).
 
 Remote exposure is gated in the decision records (D06 and an independent cryptographic
 review). Treat this guide as LAN first.
@@ -186,11 +186,10 @@ Existing tmux sessions keep running; `tmux kill-server` ends them.
 
 ## What has to be built
 
-Done: tmux session discovery and attach, and the setup flow for macOS and Linux.
+Done: tmux session discovery and attach, the setup flow for macOS and Linux, and route
+parity (see `docs/decisions/controller-session-sources.md`).
 
 Remaining, in the order that delivers value soonest:
 
-1. **Route parity**, so Controller-over-SSH and the relay see live panes and tmux
-   sessions, not only durable sessions.
-2. **Background service installers** for the LaunchAgent and the scheduled task.
-3. **The `termirust shell` shim** and the Windows Terminal profile writer.
+1. **Background service installers** for the LaunchAgent and the scheduled task.
+2. **The `termirust shell` shim** and the Windows Terminal profile writer.

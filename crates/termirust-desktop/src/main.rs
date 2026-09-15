@@ -112,6 +112,7 @@ fn run_controller_bridge_mode() -> Result<(), termirust_controller_listener::Lis
             runtime_parent.clone(),
             runtime_parent.join("controller-pairing.sock"),
             host_private,
+            crate::controller::remote_bridge_sources(&runtime_parent),
             CancellationToken::new(),
         ),
     )

@@ -136,6 +136,7 @@ impl RelayHostRouteOwner {
         runtime_parent: PathBuf,
         pairing_broker_path: PathBuf,
         host_private: StaticPrivateKey,
+        sources: termirust_controller_listener::RepositoryBridgeSources,
         cancel: CancellationToken,
     ) -> Result<(), RelayHostError> {
         let mut relay = RelayConnectionHandle::connect(
@@ -160,6 +161,7 @@ impl RelayHostRouteOwner {
             runtime_parent,
             pairing_broker_path,
             host_private,
+            sources,
             cancel,
         )
         .await

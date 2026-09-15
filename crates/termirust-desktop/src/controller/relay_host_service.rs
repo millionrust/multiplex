@@ -166,6 +166,7 @@ fn run_foreground(installed_path: PathBuf) -> Result<(), RelayHostServiceError> 
                     runtime_parent.clone(),
                     runtime_parent.join("controller-pairing.sock"),
                     host_private.clone(),
+                    crate::controller::remote_bridge_sources(&runtime_parent),
                     cancel.child_token(),
                 )
                 .await;

@@ -48,7 +48,10 @@ pub use handshake::{
 };
 pub use host_backend::HostBackendFactory;
 pub use interfaces::{InterfaceProvider, SystemInterfaceProvider, resolve_selected_interface};
-pub use launch::{ListenerLaunchDescriptor, run_listener_worker, serve_repository_stdio_bridge};
+pub use launch::{
+    ListenerLaunchDescriptor, RepositoryBridgeSources, run_listener_worker,
+    serve_repository_stdio_bridge,
+};
 pub use pairing::{
     ControllerClientPairingResult, ControllerPairingAuthority, HostPairingDecision,
     PairingAuthoritySnapshot, pair_controller, pair_controller_client,

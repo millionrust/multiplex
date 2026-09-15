@@ -1595,15 +1595,22 @@ impl TermiRustApp {
         let desktop_panes = DesktopPaneRegistry::default();
         #[cfg(not(test))]
         let desktop_pane_bridge_server = crate::storage::app_dir().ok().and_then(|app_root| {
-            DesktopPaneBridgeServer::start(
-                remote_devices::durable_runtime_parent(&app_root).join("desktop-pane-bridge"),
+            let mut server = DesktopPaneBridgeServer::start(
+                crate::controller::desktop_pane_bridge_root(
+                    &remote_devices::durable_runtime_parent(&app_root),
+                ),
                 desktop_panes.clone(),
             )
             .map_err(|error| {
                 eprintln!("[controller] desktop pane bridge unavailable: {error}");
                 error
             })
-            .ok()
+            .ok()?;
+            // The SSH and relay routes run in their own processes and find the panes here.
+            if let Err(error) = server.publish() {
+                eprintln!("[controller] desktop pane bridge not published: {error}");
+            }
+            Some(server)
         });
         #[cfg(test)]
         let desktop_pane_bridge_server: Option<DesktopPaneBridgeServer> = None;

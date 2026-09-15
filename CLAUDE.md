@@ -47,7 +47,7 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
   group frames in persisted, draggable, resizable nodes with reviewed context
   links and bounded dependency orchestration.
 - Paired mobile controllers can list, watch, and type into tmux sessions the app did not
-  create when "Show tmux sessions" is on (LAN route). Devices also offers a previewed,
+  create when "Show tmux sessions" is on, over LAN, SSH, and relay routes. Devices also offers a previewed,
   reversible shell startup change that starts new Terminal, Zed, iTerm2, Ghostty, WezTerm,
   and VS Code terminal tabs inside tmux. See `docs/remote-terminals.md`.
 - Saved host groups can open directly as SSH Fleet canvases. The fleet panel

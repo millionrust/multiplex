@@ -781,6 +781,18 @@ impl<R: Unpin, W: AsyncWrite + Unpin> AsyncWrite for SplitControllerIo<R, W> {
     }
 }
 
+/// Live sessions a repository bridge offers beyond durable sessions. The SSH and relay routes
+/// run the bridge in their own process, so they receive these explicitly instead of from a
+/// launch descriptor.
+#[derive(Clone, Debug, Default)]
+pub struct RepositoryBridgeSources {
+    /// The running desktop app's live panes, usually found with
+    /// [`crate::DesktopPaneBridgeEndpoint::discover`].
+    pub desktop_pane_bridge: Option<crate::DesktopPaneBridgeEndpoint>,
+    /// tmux sessions, when the user turned sharing on.
+    pub tmux_sessions: Option<TmuxSessionSource>,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn serve_repository_stdio_bridge<R, W>(
     reader: R,
@@ -791,6 +803,7 @@ pub async fn serve_repository_stdio_bridge<R, W>(
     runtime_parent: PathBuf,
     pairing_broker_path: PathBuf,
     host_private: StaticPrivateKey,
+    sources: RepositoryBridgeSources,
     cancel: CancellationToken,
 ) -> Result<(), ListenerError>
 where
@@ -808,8 +821,11 @@ where
         host_private,
         pairing_broker_path,
     });
-    let backends: Arc<dyn crate::ControllerBackendFactory> =
-        Arc::new(HostBackendFactory::new(sessions, projects, runtime_parent));
+    let backends: Arc<dyn crate::ControllerBackendFactory> = Arc::new(
+        HostBackendFactory::new(sessions, projects, runtime_parent)
+            .with_desktop_pane_bridge(sources.desktop_pane_bridge)
+            .with_tmux_sessions(sources.tmux_sessions),
+    );
     let mut stream = SplitControllerIo { reader, writer };
     let purpose = tokio::time::timeout(
         std::time::Duration::from_secs(

@@ -56,6 +56,95 @@ impl DesktopPaneBridgeEndpoint {
     fn local_endpoint(&self) -> LocalEndpoint {
         LocalEndpoint::new(&self.runtime_root, self.endpoint_id)
     }
+
+    /// The file a running desktop app writes so a separate Controller bridge process, such
+    /// as the SSH or relay route, can reach its live panes. It holds only the endpoint id;
+    /// the location is always derived from `runtime_root`, so the file cannot redirect a
+    /// reader elsewhere.
+    pub fn pointer_path(runtime_root: &Path) -> PathBuf {
+        runtime_root.with_extension("json")
+    }
+
+    /// Finds the endpoint a running desktop app published under `runtime_root`. `None` when
+    /// no app published one or the file is not a user-only regular file of this user.
+    pub fn discover(runtime_root: &Path) -> Option<Self> {
+        let pointer = Self::pointer_path(runtime_root);
+        let bytes = read_user_only_file(&pointer, MAX_POINTER_BYTES)?;
+        let parsed = serde_json::from_slice::<EndpointPointer>(&bytes).ok()?;
+        if parsed.schema != ENDPOINT_POINTER_SCHEMA || parsed.schema_version != 1 {
+            return None;
+        }
+        Self::new(runtime_root.to_path_buf(), parsed.endpoint_id).ok()
+    }
+}
+
+const ENDPOINT_POINTER_SCHEMA: &str = "termirust-desktop-pane-bridge";
+const MAX_POINTER_BYTES: u64 = 4 * 1024;
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct EndpointPointer {
+    schema: String,
+    schema_version: u16,
+    endpoint_id: HostedSessionId,
+}
+
+#[cfg(unix)]
+fn read_user_only_file(path: &Path, limit: u64) -> Option<Vec<u8>> {
+    use std::io::Read as _;
+    use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
+
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+        .ok()?;
+    let metadata = file.metadata().ok()?;
+    // SAFETY: geteuid has no preconditions and cannot fail.
+    if !metadata.is_file()
+        || metadata.uid() != unsafe { libc::geteuid() }
+        || metadata.mode() & 0o077 != 0
+        || metadata.len() > limit
+    {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    file.take(limit).read_to_end(&mut bytes).ok()?;
+    Some(bytes)
+}
+
+#[cfg(not(unix))]
+fn read_user_only_file(path: &Path, limit: u64) -> Option<Vec<u8>> {
+    let bytes = std::fs::read(path).ok()?;
+    (bytes.len() as u64 <= limit).then_some(bytes)
+}
+
+#[cfg(unix)]
+fn write_user_only_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
+
+    let temporary = path.with_extension(format!("json.{}", std::process::id()));
+    let result = (|| {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(&temporary)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        std::fs::rename(&temporary, path)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    result
+}
+
+#[cfg(not(unix))]
+fn write_user_only_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    std::fs::write(path, bytes)
 }
 
 impl fmt::Debug for DesktopPaneBridgeEndpoint {
@@ -375,6 +464,7 @@ pub struct DesktopPaneBridgeServer {
     endpoint: DesktopPaneBridgeEndpoint,
     cancel: CancellationToken,
     thread: Option<thread::JoinHandle<()>>,
+    published: bool,
 }
 
 impl fmt::Debug for DesktopPaneBridgeServer {
@@ -443,6 +533,7 @@ impl DesktopPaneBridgeServer {
                 endpoint,
                 cancel,
                 thread: Some(thread),
+                published: false,
             }),
             _ => {
                 cancel.cancel();
@@ -455,10 +546,39 @@ impl DesktopPaneBridgeServer {
     pub fn endpoint(&self) -> DesktopPaneBridgeEndpoint {
         self.endpoint.clone()
     }
+
+    /// Writes the endpoint pointer beside the runtime root so the SSH and relay Controller
+    /// routes, which run in their own processes, can list and attach these panes too. The
+    /// pointer is removed when the server stops.
+    pub fn publish(&mut self) -> Result<(), ListenerError> {
+        let pointer = EndpointPointer {
+            schema: ENDPOINT_POINTER_SCHEMA.to_owned(),
+            schema_version: 1,
+            endpoint_id: self.endpoint.endpoint_id,
+        };
+        let bytes = serde_json::to_vec(&pointer)
+            .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))?;
+        write_user_only_file(
+            &DesktopPaneBridgeEndpoint::pointer_path(&self.endpoint.runtime_root),
+            &bytes,
+        )
+        .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+        self.published = true;
+        Ok(())
+    }
 }
 
 impl Drop for DesktopPaneBridgeServer {
     fn drop(&mut self) {
+        // Only remove a pointer that still names this server; a newer app may own it.
+        if self.published
+            && DesktopPaneBridgeEndpoint::discover(&self.endpoint.runtime_root)
+                .is_some_and(|published| published.endpoint_id == self.endpoint.endpoint_id)
+        {
+            let _ = std::fs::remove_file(DesktopPaneBridgeEndpoint::pointer_path(
+                &self.endpoint.runtime_root,
+            ));
+        }
         self.cancel.cancel();
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
@@ -961,6 +1081,77 @@ impl DesktopPaneBridgeClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn published_endpoint_is_discovered_by_another_process_and_removed_on_stop() {
+        let fixture = tempfile::Builder::new()
+            .prefix("tr-dpb-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let runtime_root = fixture.path().join("desktop-pane-bridge");
+        assert!(DesktopPaneBridgeEndpoint::discover(&runtime_root).is_none());
+        let mut server =
+            DesktopPaneBridgeServer::start(&runtime_root, DesktopPaneRegistry::default()).unwrap();
+        server.publish().unwrap();
+        let pointer = DesktopPaneBridgeEndpoint::pointer_path(&runtime_root);
+        assert_eq!(pointer, fixture.path().join("desktop-pane-bridge.json"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            assert_eq!(
+                std::fs::metadata(&pointer).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+        let discovered = DesktopPaneBridgeEndpoint::discover(&runtime_root).unwrap();
+        assert!(discovered == server.endpoint());
+        drop(server);
+        assert!(!pointer.exists());
+        assert!(DesktopPaneBridgeEndpoint::discover(&runtime_root).is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn discovery_rejects_shared_symlinked_and_malformed_pointers() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir().unwrap();
+        let runtime_root = fixture.path().join("desktop-pane-bridge");
+        let pointer = DesktopPaneBridgeEndpoint::pointer_path(&runtime_root);
+        let valid = format!(
+            "{{\"schema\":\"{ENDPOINT_POINTER_SCHEMA}\",\"schema_version\":1,\"endpoint_id\":\"{}\"}}",
+            HostedSessionId::new()
+        );
+        write_user_only_file(&pointer, valid.as_bytes()).unwrap();
+        assert!(DesktopPaneBridgeEndpoint::discover(&runtime_root).is_some());
+
+        std::fs::set_permissions(&pointer, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(
+            DesktopPaneBridgeEndpoint::discover(&runtime_root).is_none(),
+            "a pointer other users can read is ignored"
+        );
+
+        std::fs::remove_file(&pointer).unwrap();
+        let elsewhere = fixture.path().join("elsewhere.json");
+        write_user_only_file(&elsewhere, valid.as_bytes()).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, &pointer).unwrap();
+        assert!(
+            DesktopPaneBridgeEndpoint::discover(&runtime_root).is_none(),
+            "a symlinked pointer is ignored"
+        );
+
+        std::fs::remove_file(&pointer).unwrap();
+        for malformed in [
+            "not json".to_owned(),
+            valid.replace(ENDPOINT_POINTER_SCHEMA, "other"),
+            valid.replace("\"schema_version\":1", "\"schema_version\":2"),
+            valid.replace('}', ",\"runtime_root\":\"/tmp/evil\"}"),
+        ] {
+            let _ = std::fs::remove_file(&pointer);
+            write_user_only_file(&pointer, malformed.as_bytes()).unwrap();
+            assert!(DesktopPaneBridgeEndpoint::discover(&runtime_root).is_none());
+        }
+    }
     use std::sync::atomic::AtomicUsize;
     use termirust_domain::CommandId;
 
