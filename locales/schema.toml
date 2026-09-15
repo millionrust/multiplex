@@ -9448,6 +9448,41 @@ context = "Terminal lifecycle status after its process exits."
 description = "Terminal exited state"
 
 [[messages]]
+id = "terminal-pane-connecting"
+context = "Shown over an SSH or local terminal pane while its session is starting."
+description = "Terminal pane connecting notice"
+[[messages.args]]
+name = "endpoint"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "terminal-pane-connect-failed"
+context = "Heading over a terminal pane whose session failed to start or dropped with an error. The error detail follows."
+description = "Terminal pane connection failed notice"
+[[messages.args]]
+name = "endpoint"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "terminal-pane-session-closed"
+context = "Heading over a terminal pane whose session ended without an error."
+description = "Terminal pane session closed notice"
+[[messages.args]]
+name = "endpoint"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "terminal-pane-reconnect-action"
+context = "Button over a disconnected terminal pane that starts its session again."
+description = "Reconnect terminal pane action"
+
+[[messages]]
 id = "terminal-input-action"
 context = "Action that explicitly returns focus to authorized terminal input."
 description = "Use terminal input"

@@ -854,6 +854,23 @@ pub fn remote_devices_pairing_code_attempts(attempts: u8) -> String {
     )))
 }
 
+pub fn terminal_pane_connecting(endpoint: &str) -> String {
+    text(&TerminalPaneConnectingArgs::new(UserData::new(endpoint)))
+}
+
+pub fn terminal_pane_connect_failed(endpoint: &str) -> String {
+    text(&TerminalPaneConnectFailedArgs::new(UserData::new(endpoint)))
+}
+
+pub fn terminal_pane_session_closed(endpoint: &str) -> String {
+    text(&TerminalPaneSessionClosedArgs::new(UserData::new(endpoint)))
+}
+
+static_message!(
+    terminal_pane_reconnect_action,
+    TerminalPaneReconnectActionArgs
+);
+
 pub fn remote_devices_pairing_tailscale_hint(address: &str) -> String {
     text(&RemoteDevicesPairingTailscaleHintArgs::new(UserData::new(
         address,

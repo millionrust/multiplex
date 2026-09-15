@@ -2228,6 +2228,10 @@ terminal-multiline-paste-confirm-status = { $count ->
     }
 terminal-multiline-paste-delivered-status = ⁧.dereviled etsap enil-itluM⁩
 terminal-pane = ⁧enap lanimreT⁩
+terminal-pane-connect-failed = ⁧ ot tcennoc t'ndluoC⁩{ $endpoint }
+terminal-pane-connecting = ⁧ ot gnitcennoC⁩{ $endpoint }
+terminal-pane-reconnect-action = ⁧tcennoceR⁩
+terminal-pane-session-closed = ⁧ ot noisses ehT⁩{ $endpoint }⁧desolc ⁩
 terminal-paste-cancelled-status = ⁧.dellecnac etsaP⁩
 terminal-read-only = ⁧ylno daeR⁩
 terminal-review-action = ⁧tuptuo lanimret weiveR⁩

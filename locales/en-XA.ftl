@@ -2228,6 +2228,10 @@ terminal-multiline-paste-confirm-status = { $count ->
     }
 terminal-multiline-paste-delivered-status = ⟦Ṁûļţî-ļîñé þåšţé ðéļîṽéŕéð.~~~~~~~~~⟧
 terminal-pane = ⟦Ţéŕɱîñåļ þåñé~~~~⟧
+terminal-pane-connect-failed = ⟦Çøûļðñ'ţ çøññéçţ ţø ~~~~~~⟧{ $endpoint }
+terminal-pane-connecting = ⟦Çøññéçţîñĝ ţø ~~~~⟧{ $endpoint }
+terminal-pane-reconnect-action = ⟦Ŕéçøññéçţ~~⟧
+terminal-pane-session-closed = ⟦Ţĥé šéššîøñ ţø ~~~~⟧{ $endpoint }⟦ çļøšéð~⟧
 terminal-paste-cancelled-status = ⟦Þåšţé çåñçéļļéð.~~~~~⟧
 terminal-read-only = ⟦Ŕéåð øñļý~~⟧
 terminal-review-action = ⟦Ŕéṽîéŵ ţéŕɱîñåļ øûţþûţ~~~~~~~⟧

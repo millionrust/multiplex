@@ -805,6 +805,8 @@ struct SessionPane {
     connected: bool,
     closed: bool,
     status: String,
+    /// Why the session last failed, kept across automatic retries until it connects.
+    last_error: Option<String>,
     selection: Option<SelectionRange>,
     dragging_selection: bool,
     /// Trackpad scroll distance not yet large enough to move one line.
@@ -7805,6 +7807,7 @@ impl TermiRustApp {
             connected: false,
             closed: false,
             status: "Connecting".to_string(),
+            last_error: None,
             selection: None,
             dragging_selection: false,
             scroll_remainder: 0.0,
@@ -8138,8 +8141,12 @@ impl TermiRustApp {
             }
         }
 
+        let last_error = self.pane(pane_id).and_then(|pane| pane.last_error.clone());
         request.session_id = self.next_session_id();
         let new_pane_id = self.spawn_pane(request.clone(), window, cx);
+        if let Some(pane) = self.pane_mut(new_pane_id) {
+            pane.last_error = last_error;
+        }
 
         if let Some(workspace_id) = workspace_id {
             if let Some(workspace) = self.workspace_mut(workspace_id) {
@@ -8660,6 +8667,7 @@ impl TermiRustApp {
                         pane.connected = true;
                         pane.closed = false;
                         pane.status = "Live".to_string();
+                        pane.last_error = None;
                         pane.set_accessible_lifecycle(TerminalLifecycle::Live);
                         let log_id = pane.log_id.clone();
                         self.saved
@@ -8930,6 +8938,7 @@ impl TermiRustApp {
                         pane.connected = false;
                         pane.closed = true;
                         pane.status = "Error".to_string();
+                        pane.last_error = Some(message.clone());
                         pane.set_accessible_lifecycle(TerminalLifecycle::Error);
                         if let Some(attached) = pane.app_attached.as_mut() {
                             attached.dev_urls.mark_host_unavailable();
@@ -14376,6 +14385,81 @@ mod tests {
             &events[1],
             SshEvent::Output { data, .. } if data == b"bb"
         ));
+    }
+
+    #[gpui::test]
+    fn failed_ssh_pane_shows_the_error_and_a_reconnect_action(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let pane_id = window
+            .update(cx, |_, _window, cx| {
+                app.update(cx, |app, cx| {
+                    let pane_id = app.next_session_id();
+                    let mut request = ConnectRequest::local_shell_with_config(
+                        pane_id,
+                        LocalShellConfig::default(),
+                    );
+                    request.kind = ConnectionKind::Ssh;
+                    request.host = "203.0.113.9".to_string();
+                    request.port = 22;
+                    request.local_shell = None;
+                    let (command_tx, _command_rx) = tokio::sync::mpsc::unbounded_channel();
+                    app.register_pane(
+                        request.clone(),
+                        SessionRuntimeHandle { command_tx },
+                        cx.focus_handle().tab_stop(true),
+                        cx.focus_handle().tab_stop(true),
+                        cx,
+                    );
+                    app.open_spawned_pane_workspace(&request, pane_id);
+                    cx.notify();
+                    pane_id
+                })
+            })
+            .expect("test window should remain open");
+        let notice = format!("pane-connection-notice-{pane_id}");
+        let reconnect = format!("pane-reconnect-{pane_id}");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        assert!(
+            visual
+                .debug_bounds(Box::leak(notice.clone().into_boxed_str()))
+                .is_some(),
+            "a connecting SSH pane says so"
+        );
+
+        let event_tx = app.read_with(cx, |app, _| app.event_tx.clone());
+        let message = "Unable to reach the SSH target: Operation timed out (os error 60)";
+        event_tx
+            .send(SshEvent::Error {
+                session_id: pane_id,
+                message: message.to_string(),
+            })
+            .unwrap();
+        app.update(cx, |app, cx| {
+            app.event_wake.take_pending();
+            app.process_events(cx);
+        });
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.pane(pane_id)
+                    .and_then(|pane| pane.last_error.as_deref()),
+                Some(message)
+            );
+        });
+        assert!(
+            visual
+                .debug_bounds(Box::leak(notice.into_boxed_str()))
+                .is_some()
+        );
+        assert!(
+            visual
+                .debug_bounds(Box::leak(reconnect.into_boxed_str()))
+                .is_some(),
+            "a failed pane offers Reconnect"
+        );
     }
 
     #[gpui::test]
@@ -27431,8 +27515,11 @@ sleep 1
             .expect("window update should succeed");
 
         let mut visual = VisualTestContext::from_window(window.into(), cx);
-        // About the width of a window beside another app on a laptop screen.
-        visual.simulate_resize(gpui::size(gpui::px(1000.), gpui::px(700.)));
+        // About 1000 px wide, like a window beside another app on a laptop screen.
+        visual.simulate_resize(gpui::size(
+            gpui::px(crate::ui::theme::WINDOW_DEFAULT_WIDTH * 0.781_25),
+            gpui::px(crate::ui::theme::WINDOW_MINIMUM_HEIGHT),
+        ));
         visual.run_until_parked();
         let view = visual
             .debug_bounds("devices-scroll")

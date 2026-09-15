@@ -740,6 +740,105 @@ impl TermiRustApp {
             .unwrap_or_else(|| cx.theme().mono_font_family.clone())
     }
 
+    /// A banner along the bottom of an SSH or local pane that is not connected: why it
+    /// failed or closed, when it retries, and a way to reconnect now. Durable sessions show
+    /// this in their header instead.
+    fn render_pane_connection_notice(
+        &self,
+        pane: &SessionPane,
+        cx: &mut Context<Self>,
+    ) -> Option<Div> {
+        if pane.connected || pane.app_attached.is_some() {
+            return None;
+        }
+        let pane_id = pane.id;
+        let endpoint = pane.request.endpoint_label();
+        let failed = pane.last_error.is_some();
+        if !failed && !pane.closed && pane.request.is_local_shell() {
+            // Local shells start in a moment; a banner would only flash.
+            return None;
+        }
+        let heading = if failed {
+            localization::terminal_pane_connect_failed(&endpoint)
+        } else if pane.closed {
+            localization::terminal_pane_session_closed(&endpoint)
+        } else {
+            localization::terminal_pane_connecting(&endpoint)
+        };
+        let retrying = pane.auto_reconnect_at.is_some() || !pane.closed;
+        Some(
+            div()
+                .absolute()
+                .left(px(theme::SPACE_3))
+                .right(px(theme::SPACE_3))
+                .bottom(px(theme::SPACE_3))
+                .child(
+                    h_flex()
+                        .id(("pane-connection-notice", pane_id))
+                        .debug_selector(move || format!("pane-connection-notice-{pane_id}"))
+                        .items_center()
+                        .justify_between()
+                        .flex_wrap()
+                        .gap(px(theme::SPACE_3))
+                        .px(px(theme::SPACE_4))
+                        .py(px(theme::SPACE_3))
+                        .rounded(px(theme::CONTROL_RADIUS))
+                        .border_1()
+                        .border_color(if failed {
+                            theme::with_alpha(theme::danger(), 0.5)
+                        } else {
+                            theme::border_dark()
+                        })
+                        .bg(theme::terminal_panel())
+                        .child(
+                            v_flex()
+                                .min_w_0()
+                                .flex_1()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                        .font_semibold()
+                                        .text_color(if failed {
+                                            theme::danger()
+                                        } else {
+                                            theme::text_on_dark()
+                                        })
+                                        .child(heading),
+                                )
+                                .when_some(pane.last_error.clone(), |this, error| {
+                                    this.child(
+                                        div()
+                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                            .text_color(theme::text_on_dark())
+                                            .child(error),
+                                    )
+                                })
+                                .when(failed && retrying, |this| {
+                                    this.child(
+                                        div()
+                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                            .text_color(theme::text_muted_dark())
+                                            .child(pane.status.clone()),
+                                    )
+                                }),
+                        )
+                        .when(pane.closed, |this| {
+                            this.child(
+                                Button::new(("pane-reconnect", pane_id))
+                                    .debug_selector(move || format!("pane-reconnect-{pane_id}"))
+                                    .small()
+                                    .icon(IconName::Redo)
+                                    .label(localization::terminal_pane_reconnect_action())
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.reconnect_pane(pane_id, window, cx);
+                                    })),
+                            )
+                        }),
+                ),
+        )
+    }
+
     pub(super) fn render_terminal_pane(
         &self,
         pane: &SessionPane,
@@ -970,6 +1069,10 @@ impl TermiRustApp {
                             .pb(px(TERMINAL_INNER_PADDING_Y))
                             .child(pane.terminal_grid.clone()),
                     ),
+            )
+            .when_some(
+                self.render_pane_connection_notice(pane, cx),
+                |this, notice| this.child(notice),
             )
             .when(pane.request.persistent_session, |this| {
                 this.child(
