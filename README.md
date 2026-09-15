@@ -13,11 +13,22 @@ A native desktop SSH client. Save your servers, connect in a click, split termin
 
 ## What you get
 
-Terminal has a host library where you save connection details once. Click a host, get a terminal. Want to watch logs on one server while poking at another? Split the workspace into up to 4 panes, each running its own SSH session.
+Terminal has a host library where you save connection details once. Double-click a host and it connects straight away, showing its progress, the connection log, and any error with a Retry button until the terminal is live. Want to watch logs on one server while poking at another? Split the workspace into up to 4 panes, each running its own SSH session.
 
 There's also a quick-connect bar. Type `user@host` or `ssh user@host:port` and you're in, no need to save anything first.
 
-The terminal itself does VT100 rendering, scrollback, in-terminal search, text selection, clipboard copy/paste, and xterm mouse reporting (so `htop`, `vim`, and friends work). It's rendered through [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui), the GPU-accelerated framework from the Zed editor.
+The terminal is built the way Zed's is. [`alacritty_terminal`](https://crates.io/crates/alacritty_terminal) does the emulation: lines re-wrap on resize, programs can set their colors, and cursor-position and device queries are answered. A custom [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui) element paints the grid, batching same-style cells into runs shaped to an exact cell width. Output is drawn as soon as it arrives rather than on a timer. You also get scrollback, in-terminal search, text selection, clipboard copy/paste, xterm mouse reporting (so `htop`, `vim`, and friends work), beam and underline cursors, Nerd Font fallback, and Powerline separators drawn as shapes.
+
+## Your terminals on your phone
+
+The iOS and Android apps pair with the desktop and can watch and type into its terminals:
+
+- **Remote access** listens on every private address the computer has (Wi-Fi, Ethernet, and VPNs such as Tailscale) and announces itself with Bonjour on the local network.
+- **Pairing** is a six-digit code shown on the desktop and typed on the phone, protected by a PAKE (CPace) so a code cannot be guessed offline. Scanning a QR code still works.
+- **Terminals in other apps** can be reached too: turn on "Open new terminals in tmux" and new tabs in Terminal, Zed, iTerm2, Ghostty, WezTerm, and VS Code start inside tmux. The setup previews every file it writes. It configures tmux for those sessions only, with the mouse scrolling and selecting and no status bar, and never edits `~/.tmux.conf`.
+- **Control** from the phone is explicit: new devices are view-only until you allow input, and the phone keeps the desktop terminal's size by default.
+
+See [docs/remote-terminals.md](docs/remote-terminals.md).
 
 Other things worth knowing about:
 
@@ -63,7 +74,8 @@ Other things worth knowing about:
 - TOFU host key pinning, with a Known Hosts view where you can review or delete pinned keys.
 - A keys view shows imported key types and lets you add key files from disk.
 - Session logs track your connection history with timestamps and duration across app restarts.
-- One-click reconnect when a session drops.
+- One-click reconnect when a session drops, with the error shown in the pane.
+- Automatic reconnects in background tabs never take keyboard focus from the terminal you are typing in.
 - Password-backed hosts can store credentials in the system credential manager.
 - Reopenable workspaces are restored after relaunch, including password sessions that can reconnect through the system credential manager.
 - Window size and position are remembered across launches, including which monitor on multi-display setups.
@@ -93,9 +105,14 @@ Automated smoke testing is documented in [docs/testing.md](docs/testing.md); run
 This is early alpha. The following are on the radar but don't exist yet:
 
 - Drag-reordering split panes
-- Vault sync / remote team features
+- Remote team / multiplayer features (encrypted shared-folder vault sync is the only sync)
+- Windows support for reaching terminals from the phone
 - Deeper library/layout polish across all major screens
 - Platform-specific packaging polish
+
+## Developing on macOS
+
+`cargo run` re-signs the desktop app with a stable identifier through `scripts/dev/run-signed.sh`, so Keychain and Local Network permissions granted once survive rebuilds. It uses your first Apple Development identity, or `TERMIRUST_CODESIGN_IDENTITY`. Set `TERMIRUST_TRACE_FOCUS=1` to log every keyboard focus change.
 
 ## Repository layout
 
