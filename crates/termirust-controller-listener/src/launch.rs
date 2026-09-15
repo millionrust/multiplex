@@ -1086,6 +1086,19 @@ where
         initial_addresses.clone(),
         firewall,
     ))?;
+    // A failure to announce never stops the listener; phones can still type the address.
+    let announcement = (descriptor.policy.discovery == termirust_domain::DiscoveryPolicy::Bonjour)
+        .then(|| {
+            let host = termirust_controller_security::host_public_key_from_private(
+                &StaticPrivateKey::from_bytes(descriptor.host_private),
+            );
+            crate::BonjourAnnouncement::start(termirust_domain::HostPublicKey(host.0)).ok()
+        })
+        .flatten()
+        .map(|mut announcement| {
+            let _ = announcement.update(&initial_addresses);
+            Mutex::new(announcement)
+        });
     // Pairing offers list the addresses the runtime is accepting on at the moment they are made.
     let listening = Arc::new(Mutex::new(initial_addresses));
 
@@ -1162,6 +1175,9 @@ where
             && current.as_slice() != addresses
         {
             *current = addresses.to_vec();
+            if let Some(Ok(mut announcement)) = announcement.as_ref().map(Mutex::lock) {
+                let _ = announcement.update(addresses);
+            }
             let _ = address_events.send(&ListenerProcessEvent::listening_addresses(
                 addresses.to_vec(),
             ));

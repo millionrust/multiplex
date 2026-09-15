@@ -298,7 +298,7 @@ impl RemoteDevicesState {
         let policy = ControllerListenPolicy {
             enabled: true,
             port: Some(port),
-            discovery: DiscoveryPolicy::Off,
+            discovery: DiscoveryPolicy::Bonjour,
         };
         let repository = self.network_repository.clone().ok_or(())?;
         let saved = repository

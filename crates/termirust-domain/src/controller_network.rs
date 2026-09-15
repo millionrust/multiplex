@@ -139,6 +139,8 @@ impl ControllerPort {
 pub enum DiscoveryPolicy {
     #[default]
     Off,
+    /// Announce the listener with Bonjour on LAN interfaces while it runs.
+    Bonjour,
 }
 
 /// Whether and on which port the Controller listener runs. When enabled it listens on every

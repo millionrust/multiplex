@@ -9,6 +9,7 @@ mod bind;
 mod client_channel;
 mod desktop_pane_bridge;
 mod devices;
+mod discovery;
 mod error;
 mod firewall;
 mod framing;
@@ -40,6 +41,10 @@ pub use desktop_pane_bridge::{
 pub use devices::{
     ControllerChannelCloser, ControllerDeviceService, ControllerDeviceServiceError,
     NoControllerChannels,
+};
+pub use discovery::{
+    BONJOUR_SERVICE_TYPE, BonjourAdvertisement, BonjourAnnouncement, bonjour_advertisement,
+    discovery_id,
 };
 pub use error::{ListenerError, ListenerErrorCode};
 pub use firewall::{FirewallObservation, FirewallObserver, SystemFirewallObserver};
