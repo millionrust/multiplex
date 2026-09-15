@@ -98,7 +98,7 @@ The tmux status bar is turned off for these sessions only; your other tmux sessi
 Scrolling and selecting happen in tmux. A tmux pane's history lives in tmux, not in the
 terminal app, so the app's own scrollback cannot hold it. With `set -g mouse on` in
 `~/.tmux.conf`, the wheel scrolls tmux's history and programs that ask for the mouse (Codex,
-vim) receive it; dragging selects in copy mode. An earlier version set
+vim) receive it; dragging selects in copy mode and keeps the selection until you click elsewhere. An earlier version set
 `terminal-overrides[97]` to keep tmux off the alternate screen; that left programs such as
 Claude Code impossible to scroll, so applying or removing the setup now clears it. A tmux
 configuration that hides copy mode's position indicator and copies selections to the clipboard:
@@ -107,7 +107,7 @@ configuration that hides copy mode's position indicator and copies selections to
 set -g mouse on
 set -gw copy-mode-position-format ""
 set -s set-clipboard on
-bind -T copy-mode MouseDragEnd1Pane send -X copy-pipe-and-cancel "pbcopy"
+bind -T copy-mode MouseDragEnd1Pane send -X copy-pipe-no-clear "pbcopy"
 ```
 
 One app-owned init file per shell, safe to delete —
