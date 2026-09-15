@@ -108,6 +108,7 @@ set -g mouse on
 set -gw copy-mode-position-format ""
 set -s set-clipboard on
 bind -T copy-mode MouseDragEnd1Pane send -X copy-pipe-no-clear "pbcopy"
+bind -T copy-mode MouseDown1Pane select-pane \; send -X clear-selection
 ```
 
 One app-owned init file per shell, safe to delete —
