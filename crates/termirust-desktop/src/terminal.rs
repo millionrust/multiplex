@@ -407,7 +407,8 @@ fn style_for_cell(cell: &vt100::Cell, cursor_here: bool) -> TerminalStyle {
     }
 
     if cursor_here {
-        mem::swap(&mut fg, &mut bg);
+        fg = theme::terminal_default_bg();
+        bg = theme::terminal_cursor();
     }
 
     TerminalStyle {
@@ -435,22 +436,7 @@ fn map_terminal_color(color: Color, foreground: bool) -> Hsla {
 
 fn palette_color(index: u8) -> Hsla {
     match index {
-        0 => hex_color(0x000000),
-        1 => hex_color(0xcd3131),
-        2 => hex_color(0x0dbc79),
-        3 => hex_color(0xe5e510),
-        4 => hex_color(0x2472c8),
-        5 => hex_color(0xbc3fbc),
-        6 => hex_color(0x11a8cd),
-        7 => hex_color(0xe5e5e5),
-        8 => hex_color(0x666666),
-        9 => hex_color(0xf14c4c),
-        10 => hex_color(0x23d18b),
-        11 => hex_color(0xf5f543),
-        12 => hex_color(0x3b8eea),
-        13 => hex_color(0xd670d6),
-        14 => hex_color(0x29b8db),
-        15 => hex_color(0xffffff),
+        0..=15 => theme::terminal_ansi(index).unwrap_or_else(theme::terminal_default_fg),
         16..=231 => {
             let value = index - 16;
             let r = cube_component(value / 36);
@@ -487,6 +473,33 @@ fn rgb_color(r: u8, g: u8, b: u8) -> Hsla {
 #[cfg(test)]
 mod tests {
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn named_colors_and_cursor_come_from_the_slate_terminal_tokens() {
+        let tokens = crate::ui::theme::current_design_tokens();
+        let expected = |value: termirust_ui_contract::ColorValue| {
+            rgb_color(value.red, value.green, value.blue)
+        };
+        assert_eq!(palette_color(1), expected(tokens.color_terminal_ansi_red()));
+        assert_eq!(
+            palette_color(12),
+            expected(tokens.color_terminal_ansi_bright_blue())
+        );
+        assert_eq!(
+            map_terminal_color(Color::Default, true),
+            expected(tokens.color_terminal_fg())
+        );
+        // The xterm cube and gray ramp stay fixed.
+        assert_eq!(palette_color(16), rgb_color(0, 0, 0));
+        assert_eq!(palette_color(255), rgb_color(238, 238, 238));
+
+        let mut parser = vt100::Parser::new(1, 2, 0);
+        parser.process(b"a");
+        let cell = parser.screen().cell(0, 0).unwrap();
+        let cursor = style_for_cell(cell, true);
+        assert_eq!(cursor.bg, expected(tokens.color_terminal_cursor()));
+        assert_eq!(cursor.fg, expected(tokens.color_bg_terminal()));
+    }
 
     use serde::Deserialize;
 

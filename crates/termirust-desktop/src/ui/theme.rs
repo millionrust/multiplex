@@ -240,6 +240,37 @@ pub fn terminal_default_fg() -> Hsla {
     token_color(current_design_tokens().color_terminal_fg())
 }
 
+/// The block cursor. Text under it is drawn in the terminal background color.
+pub fn terminal_cursor() -> Hsla {
+    token_color(current_design_tokens().color_terminal_cursor())
+}
+
+/// One of the sixteen named terminal colors, SGR 0 through 15. Higher indexes are the
+/// fixed xterm cube and gray ramp, which are not themed.
+pub fn terminal_ansi(index: u8) -> Option<Hsla> {
+    let tokens = current_design_tokens();
+    let value = match index {
+        0 => tokens.color_terminal_ansi_black(),
+        1 => tokens.color_terminal_ansi_red(),
+        2 => tokens.color_terminal_ansi_green(),
+        3 => tokens.color_terminal_ansi_yellow(),
+        4 => tokens.color_terminal_ansi_blue(),
+        5 => tokens.color_terminal_ansi_magenta(),
+        6 => tokens.color_terminal_ansi_cyan(),
+        7 => tokens.color_terminal_ansi_white(),
+        8 => tokens.color_terminal_ansi_bright_black(),
+        9 => tokens.color_terminal_ansi_bright_red(),
+        10 => tokens.color_terminal_ansi_bright_green(),
+        11 => tokens.color_terminal_ansi_bright_yellow(),
+        12 => tokens.color_terminal_ansi_bright_blue(),
+        13 => tokens.color_terminal_ansi_bright_magenta(),
+        14 => tokens.color_terminal_ansi_bright_cyan(),
+        15 => tokens.color_terminal_ansi_bright_white(),
+        _ => return None,
+    };
+    Some(token_color(value))
+}
+
 pub fn terminal_selection_bg() -> Hsla {
     accent_soft()
 }
