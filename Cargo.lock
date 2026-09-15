@@ -10589,6 +10589,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "termirust-screen-protocol"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "termirust-screen-codec",
+]
+
+[[package]]
 name = "termirust-session-host"
 version = "0.1.0"
 dependencies = [

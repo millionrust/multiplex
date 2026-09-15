@@ -63,7 +63,9 @@ Pure Rust, no platform code, fully testable in CI.
 - [x] 2.4 `feat(screen-capture): capture displays with ScreenCaptureKit on macOS`
   2.3 and 2.4 landed in one commit: one crate, one lockfile review. The codec's tile hashing is
   the differ; the crate adds a replay source and preview downscaling.
-- [ ] 2.5 `feat(screen-transport): add the screen control protocol and stream framing`
+- [x] 2.5 `feat(screen-protocol): add the session messages and stream framing`
+  A transport-neutral crate (`termirust-screen-protocol`) so the protocol does not wait on the
+  iroh decision in 0.4.
 - [ ] 2.6 `feat(screen-transport): carry screen sessions over QUIC with iroh`
 - [ ] 2.7 `feat(controller-listener): issue screen tickets over the Controller channel`
 - [ ] 2.8 `feat(screen-host): capture, encode and send a display to one viewer`
