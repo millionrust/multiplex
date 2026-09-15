@@ -854,6 +854,17 @@ remote-terminals-verify-ok = tmux sessions are listed correctly. Paired devices 
 remote-terminals-verify-ok-hidden = tmux works, but paired devices cannot see sessions until Show tmux sessions is on.
 remote-terminals-verify-failed = TermiRust could not list tmux sessions. Open a terminal and check that tmux starts.
 remote-terminals-no-wrap-hint = To keep one app out of tmux, set TERMIRUST_NO_WRAP=1 in that app's environment.
+remote-terminals-service-label = Keep reachable when TermiRust is closed
+remote-terminals-service-description = Runs the local network listener in the background from login, so paired devices can connect after you quit TermiRust. The app takes over again when you open it. Pairing a new device still needs the app.
+remote-terminals-service-status-off = Not running in the background
+remote-terminals-service-status-installed = Starts at login
+remote-terminals-service-status-running = Running in the background
+remote-terminals-service-install-action = Run in background
+remote-terminals-service-remove-action = Stop running in background
+remote-terminals-service-installed-notice = Paired devices stay connected after you quit TermiRust.
+remote-terminals-service-removed-notice = The background listener was removed.
+remote-terminals-service-error = TermiRust could not change the background listener. Try again, or run termirust controller-service status in a terminal.
+remote-terminals-service-unsupported = Running in the background is available on macOS.
 accessibility-lab-title = Accessibility laboratory
 accessibility-lab-description = Verify keyboard focus and screen-reader semantics without changing saved data.
 accessibility-lab-landmark = Reference controls

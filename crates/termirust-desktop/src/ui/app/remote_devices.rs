@@ -319,6 +319,9 @@ impl RemoteDevicesState {
         self.listener_state = ListenerState::Binding;
         let host_private = self.host_private.as_ref().ok_or(())?;
         let app_root = crate::storage::app_dir().map_err(|_| ())?;
+        // A background service serving the route hands it over before this listener binds.
+        #[cfg(not(test))]
+        crate::controller::background_service::request_yield(&durable_runtime_parent(&app_root));
         let descriptor = ListenerLaunchDescriptor::new(
             crate::storage::controller_store_dir().map_err(|_| ())?,
             crate::storage::project_store_dir().map_err(|_| ())?,

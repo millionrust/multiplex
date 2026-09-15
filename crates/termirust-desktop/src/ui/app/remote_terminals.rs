@@ -9,7 +9,52 @@ use termirust_tmux::shell_integration::{
     ChangePlan, DiffLine, FileChange, IntegrationError, IntegrationStatus, Shell, ShellIntegration,
 };
 
+use crate::controller::background_service::{self, ServiceError, ServiceStatus};
+
 use super::*;
+
+/// Installs and inspects the background listener. Tests substitute a fake so they never touch
+/// launchd.
+pub(super) trait BackgroundServiceControl {
+    fn status(&self) -> ServiceStatus;
+    fn install(&self) -> Result<(), ServiceError>;
+    fn remove(&self) -> Result<(), ServiceError>;
+}
+
+#[cfg_attr(test, allow(dead_code))]
+struct SystemBackgroundService;
+
+impl BackgroundServiceControl for SystemBackgroundService {
+    fn status(&self) -> ServiceStatus {
+        background_service::status()
+    }
+
+    fn install(&self) -> Result<(), ServiceError> {
+        background_service::install()
+    }
+
+    fn remove(&self) -> Result<(), ServiceError> {
+        background_service::remove()
+    }
+}
+
+#[cfg(test)]
+struct UnsupportedBackgroundService;
+
+#[cfg(test)]
+impl BackgroundServiceControl for UnsupportedBackgroundService {
+    fn status(&self) -> ServiceStatus {
+        ServiceStatus::Unsupported
+    }
+
+    fn install(&self) -> Result<(), ServiceError> {
+        Err(ServiceError::UNSUPPORTED)
+    }
+
+    fn remove(&self) -> Result<(), ServiceError> {
+        Err(ServiceError::UNSUPPORTED)
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum RemoteTerminalChange {
@@ -46,6 +91,8 @@ pub(super) struct RemoteTerminalsState {
     status: IntegrationStatus,
     pending: Option<PendingRemoteTerminalChange>,
     verification: RemoteTerminalVerification,
+    service: Box<dyn BackgroundServiceControl>,
+    service_status: ServiceStatus,
 }
 
 impl RemoteTerminalsState {
@@ -58,9 +105,26 @@ impl RemoteTerminalsState {
             status: IntegrationStatus::Off,
             pending: None,
             verification: RemoteTerminalVerification::Idle,
+            #[cfg(not(test))]
+            service: Box::new(SystemBackgroundService),
+            #[cfg(test)]
+            service: Box::new(UnsupportedBackgroundService),
+            service_status: ServiceStatus::Unsupported,
         };
         state.refresh();
         state
+    }
+
+    #[cfg(test)]
+    pub(super) fn with_service(mut self, service: Box<dyn BackgroundServiceControl>) -> Self {
+        self.service = service;
+        self.service_status = self.service.status();
+        self
+    }
+
+    #[cfg(test)]
+    pub(super) fn service_status(&self) -> ServiceStatus {
+        self.service_status
     }
 
     #[cfg(not(test))]
@@ -76,6 +140,7 @@ impl RemoteTerminalsState {
 
     /// Re-reads tmux and the user's files. Cheap: one `tmux -V` and a few small reads.
     pub(super) fn refresh(&mut self) {
+        self.service_status = self.service.status();
         if cfg!(windows) || self.home.is_none() {
             self.tmux = None;
             self.availability = TmuxAvailability::Unsupported;
@@ -265,6 +330,30 @@ impl TermiRustApp {
         .detach();
     }
 
+    pub(super) fn change_background_service(&mut self, install: bool, cx: &mut Context<Self>) {
+        let result = if install {
+            self.remote_terminals.service.install()
+        } else {
+            self.remote_terminals.service.remove()
+        };
+        match result {
+            Ok(()) => {
+                self.status_message = if install {
+                    localization::remote_terminals_service_installed_notice()
+                } else {
+                    localization::remote_terminals_service_removed_notice()
+                };
+                self.error_message.clear();
+            }
+            Err(error) if error == ServiceError::UNSUPPORTED => {
+                self.error_message = localization::remote_terminals_service_unsupported();
+            }
+            Err(_) => self.error_message = localization::remote_terminals_service_error(),
+        }
+        self.remote_terminals.service_status = self.remote_terminals.service.status();
+        cx.notify();
+    }
+
     pub(super) fn render_remote_terminals_section(&self, cx: &Context<Self>) -> AnyElement {
         let state = &self.remote_terminals;
         let sharing = self.saved.settings.remote_tmux_sessions;
@@ -292,6 +381,8 @@ impl TermiRustApp {
         v_flex()
             .id("remote-terminals")
             .debug_selector(|| "remote-terminals".to_string())
+            .w_full()
+            .min_w_0()
             .gap_3()
             .child(
                 v_flex()
@@ -428,11 +519,64 @@ impl TermiRustApp {
                         .child(message),
                 )
             })
+            .child(self.settings_subhead(
+                localization::remote_terminals_service_label(),
+                localization::remote_terminals_service_description(),
+            ))
+            .child(self.render_background_service_row(cx))
             .child(
                 div()
                     .text_size(px(theme::TYPE_MICRO_SIZE))
                     .text_color(theme::text_muted())
                     .child(localization::remote_terminals_no_wrap_hint()),
+            )
+            .into_any_element()
+    }
+
+    fn render_background_service_row(&self, cx: &Context<Self>) -> AnyElement {
+        let status = self.remote_terminals.service_status;
+        if status == ServiceStatus::Unsupported {
+            return div()
+                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                .text_color(theme::text_muted())
+                .child(localization::remote_terminals_service_unsupported())
+                .into_any_element();
+        }
+        let installed = status != ServiceStatus::NotInstalled;
+        h_flex()
+            .items_center()
+            .justify_between()
+            .flex_wrap()
+            .gap_3()
+            .child(
+                div()
+                    .debug_selector(|| "remote-terminals-service-status".to_string())
+                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                    .text_color(theme::text_muted())
+                    .child(match status {
+                        ServiceStatus::Running => {
+                            localization::remote_terminals_service_status_running()
+                        }
+                        ServiceStatus::Installed => {
+                            localization::remote_terminals_service_status_installed()
+                        }
+                        ServiceStatus::NotInstalled | ServiceStatus::Unsupported => {
+                            localization::remote_terminals_service_status_off()
+                        }
+                    }),
+            )
+            .child(
+                Button::new("remote-terminals-service-toggle")
+                    .debug_selector(|| "remote-terminals-service-toggle".to_string())
+                    .small()
+                    .label(if installed {
+                        localization::remote_terminals_service_remove_action()
+                    } else {
+                        localization::remote_terminals_service_install_action()
+                    })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.change_background_service(!installed, cx);
+                    })),
             )
             .into_any_element()
     }

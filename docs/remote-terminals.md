@@ -2,8 +2,9 @@
 
 Status: **partly built.** On macOS and Linux, tmux sessions are listed to paired devices
 and can be watched and typed into, and the desktop app can set up new terminals to start
-inside tmux after showing you the exact file changes, over every Controller route. Windows
-and a background service are not built yet; see "What has to be built".
+inside tmux after showing you the exact file changes, over every Controller route. On macOS
+the local network listener can keep running after you quit the app. Windows is not built
+yet; see "What has to be built".
 
 This is the guide a person follows when they want the terminals on their computer to
 show up on their phone.
@@ -150,13 +151,19 @@ setup above applies inside the distribution.
 
 ### Keeping sessions reachable when the app is closed
 
-Not built yet. tmux sessions survive the app, but something has to accept Controller
-connections. The intended setup offers a background service:
+tmux sessions survive the app, but something has to accept Controller connections:
 
-- macOS: a LaunchAgent in `~/Library/LaunchAgents`, running at login, user-level.
-- Windows: a per-user scheduled task at logon.
-
-Today, remote access works only while the desktop app is running.
+- **Controller-over-SSH** needs nothing extra: `sshd` starts the bridge for each connection,
+  so tmux sessions are reachable whenever the computer is on.
+- **Self-hosted relay** needs `termirust relay-host run` running.
+- **Local network (macOS):** under "Keep reachable when TermiRust is closed", choose
+  **Run in background**. This installs a per-user LaunchAgent,
+  `~/Library/LaunchAgents/com.termirust.desktop.controller-service.plist`, which runs
+  `termirust controller-service run` at login. It serves already-paired devices on the saved
+  route; pairing a new device still needs the app. When you open TermiRust, the service
+  hands the route to the app, and takes it back when the app quits. The same commands work
+  from a terminal: `termirust controller-service install|remove|status`.
+- **Windows:** not built yet; the intended setup is a per-user scheduled task at logon.
 
 ## Turning it off
 
@@ -166,7 +173,8 @@ Every change is reversible from the same section, or by hand:
    the init files and leaves the rest of your startup file exactly as it was. By hand:
    delete the marked block in `~/.zshrc` and the files in `~/.config/termirust/`.
 2. Choose **Hide** under "Show tmux sessions".
-3. Revoke paired devices. Revocation increments the epoch and closes live channels.
+3. Choose **Stop running in background**, or run `termirust controller-service remove`.
+4. Revoke paired devices. Revocation increments the epoch and closes live channels.
 
 Existing tmux sessions keep running; `tmux kill-server` ends them.
 
@@ -186,10 +194,10 @@ Existing tmux sessions keep running; `tmux kill-server` ends them.
 
 ## What has to be built
 
-Done: tmux session discovery and attach, the setup flow for macOS and Linux, and route
-parity (see `docs/decisions/controller-session-sources.md`).
+Done: tmux session discovery and attach, the setup flow for macOS and Linux, route parity
+(see `docs/decisions/controller-session-sources.md`), and the macOS background listener.
 
-Remaining, in the order that delivers value soonest:
+Remaining:
 
-1. **Background service installers** for the LaunchAgent and the scheduled task.
-2. **The `termirust shell` shim** and the Windows Terminal profile writer.
+1. **Windows**: the `termirust shell` shim, the Windows Terminal profile writer, and a
+   per-user logon task for the background listener.

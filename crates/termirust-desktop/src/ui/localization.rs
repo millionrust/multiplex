@@ -711,6 +711,50 @@ static_message!(
     RemoteTerminalsVerifyFailedArgs
 );
 static_message!(remote_terminals_no_wrap_hint, RemoteTerminalsNoWrapHintArgs);
+static_message!(
+    remote_terminals_service_label,
+    RemoteTerminalsServiceLabelArgs
+);
+static_message!(
+    remote_terminals_service_description,
+    RemoteTerminalsServiceDescriptionArgs
+);
+static_message!(
+    remote_terminals_service_status_off,
+    RemoteTerminalsServiceStatusOffArgs
+);
+static_message!(
+    remote_terminals_service_status_installed,
+    RemoteTerminalsServiceStatusInstalledArgs
+);
+static_message!(
+    remote_terminals_service_status_running,
+    RemoteTerminalsServiceStatusRunningArgs
+);
+static_message!(
+    remote_terminals_service_install_action,
+    RemoteTerminalsServiceInstallActionArgs
+);
+static_message!(
+    remote_terminals_service_remove_action,
+    RemoteTerminalsServiceRemoveActionArgs
+);
+static_message!(
+    remote_terminals_service_installed_notice,
+    RemoteTerminalsServiceInstalledNoticeArgs
+);
+static_message!(
+    remote_terminals_service_removed_notice,
+    RemoteTerminalsServiceRemovedNoticeArgs
+);
+static_message!(
+    remote_terminals_service_error,
+    RemoteTerminalsServiceErrorArgs
+);
+static_message!(
+    remote_terminals_service_unsupported,
+    RemoteTerminalsServiceUnsupportedArgs
+);
 pub fn remote_terminals_diff_skipped(count: usize) -> String {
     text(&RemoteTerminalsDiffSkippedArgs::new(Count(count as u64)))
 }

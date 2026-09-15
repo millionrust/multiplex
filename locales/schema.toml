@@ -4673,6 +4673,50 @@ description = "tmux check failed result"
 id = "remote-terminals-no-wrap-hint"
 context = "Hint naming the environment variable that keeps one app out of tmux."
 description = "Keep an app out of tmux hint"
+[[messages]]
+id = "remote-terminals-service-label"
+context = "Label for keeping the local network listener running after the app quits."
+description = "Background listener label"
+[[messages]]
+id = "remote-terminals-service-description"
+context = "Explains the background listener, the app taking over when opened, and that pairing needs the app."
+description = "Background listener explanation"
+[[messages]]
+id = "remote-terminals-service-status-off"
+context = "Status when the background listener is not installed."
+description = "Background listener off status"
+[[messages]]
+id = "remote-terminals-service-status-installed"
+context = "Status when the background listener is installed but not running now."
+description = "Background listener installed status"
+[[messages]]
+id = "remote-terminals-service-status-running"
+context = "Status when the background listener is running."
+description = "Background listener running status"
+[[messages]]
+id = "remote-terminals-service-install-action"
+context = "Action that installs the background listener to run at login."
+description = "Install background listener action"
+[[messages]]
+id = "remote-terminals-service-remove-action"
+context = "Action that removes the background listener."
+description = "Remove background listener action"
+[[messages]]
+id = "remote-terminals-service-installed-notice"
+context = "Notice after installing the background listener."
+description = "Background listener installed notice"
+[[messages]]
+id = "remote-terminals-service-removed-notice"
+context = "Notice after removing the background listener."
+description = "Background listener removed notice"
+[[messages]]
+id = "remote-terminals-service-error"
+context = "Error when the background listener could not be installed or removed, with a recovery step."
+description = "Background listener change error"
+[[messages]]
+id = "remote-terminals-service-unsupported"
+context = "Guidance on platforms without the background listener."
+description = "Background listener unsupported guidance"
 
 [[messages]]
 id = "accessibility-lab-title"

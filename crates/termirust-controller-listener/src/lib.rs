@@ -15,6 +15,7 @@ mod handshake;
 mod host_backend;
 mod interfaces;
 mod launch;
+mod ownership;
 mod pairing;
 mod pairing_protocol;
 mod process_protocol;
@@ -49,9 +50,10 @@ pub use handshake::{
 pub use host_backend::HostBackendFactory;
 pub use interfaces::{InterfaceProvider, SystemInterfaceProvider, resolve_selected_interface};
 pub use launch::{
-    ListenerLaunchDescriptor, RepositoryBridgeSources, run_listener_worker,
-    serve_repository_stdio_bridge,
+    LISTENER_OWNERSHIP_WAIT, ListenerLaunchDescriptor, RepositoryBridgeSources,
+    run_listener_worker, serve_repository_stdio_bridge,
 };
+pub use ownership::ListenerOwnership;
 pub use pairing::{
     ControllerClientPairingResult, ControllerPairingAuthority, HostPairingDecision,
     PairingAuthoritySnapshot, pair_controller, pair_controller_client,

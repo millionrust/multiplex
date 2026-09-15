@@ -27093,6 +27093,110 @@ sleep 1
     }
 
     #[gpui::test]
+    fn e2e_background_listener_row_installs_and_removes_through_the_service(
+        cx: &mut TestAppContext,
+    ) {
+        use crate::controller::background_service::{ServiceError, ServiceStatus};
+
+        struct FakeService {
+            status: std::sync::Arc<std::sync::Mutex<ServiceStatus>>,
+            fail_next: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        }
+
+        impl super::remote_terminals::BackgroundServiceControl for FakeService {
+            fn status(&self) -> ServiceStatus {
+                *self.status.lock().unwrap()
+            }
+
+            fn install(&self) -> Result<(), ServiceError> {
+                if self
+                    .fail_next
+                    .swap(false, std::sync::atomic::Ordering::SeqCst)
+                {
+                    return Err(ServiceError::UNSUPPORTED);
+                }
+                *self.status.lock().unwrap() = ServiceStatus::Running;
+                Ok(())
+            }
+
+            fn remove(&self) -> Result<(), ServiceError> {
+                *self.status.lock().unwrap() = ServiceStatus::NotInstalled;
+                Ok(())
+            }
+        }
+
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let status = std::sync::Arc::new(std::sync::Mutex::new(ServiceStatus::NotInstalled));
+        let fail_next = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let service = FakeService {
+            status: status.clone(),
+            fail_next: fail_next.clone(),
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.remote_terminals =
+                        super::remote_terminals::RemoteTerminalsState::open(None, None)
+                            .with_service(Box::new(service));
+                    app.activate_library_section(NavSection::Devices, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+        let click = |cx: &mut TestAppContext| {
+            scroll_selector_into_view(
+                window,
+                cx,
+                "devices-scroll",
+                "remote-terminals-service-toggle",
+            );
+            let point = selector_click_center(window, cx, "remote-terminals-service-toggle");
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.simulate_click(point, gpui::Modifiers::none());
+            visual.run_until_parked();
+        };
+
+        click(cx);
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.remote_terminals.service_status(),
+                ServiceStatus::NotInstalled
+            );
+            assert_eq!(
+                app.error_message,
+                localization::remote_terminals_service_unsupported()
+            );
+        });
+
+        click(cx);
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.remote_terminals.service_status(),
+                ServiceStatus::Running
+            );
+            assert_eq!(
+                app.status_message,
+                localization::remote_terminals_service_installed_notice()
+            );
+        });
+
+        click(cx);
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.remote_terminals.service_status(),
+                ServiceStatus::NotInstalled
+            );
+            assert_eq!(
+                app.status_message,
+                localization::remote_terminals_service_removed_notice()
+            );
+        });
+        assert_eq!(*status.lock().unwrap(), ServiceStatus::NotInstalled);
+    }
+
+    #[gpui::test]
     fn e2e_settings_controls_persist_and_reset_preferences(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);

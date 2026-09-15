@@ -216,6 +216,22 @@ fn main() {
         }
         return;
     }
+    if std::env::args().nth(1).as_deref()
+        == Some(crate::controller::background_service::SERVICE_COMMAND)
+    {
+        let arguments: Vec<String> = std::env::args().skip(2).collect();
+        if let Err(error) = crate::controller::background_service::run_command(&arguments) {
+            eprintln!(
+                "error[{}]: background Controller service command failed",
+                error.code()
+            );
+            if error.code() == "service.usage" {
+                eprintln!("usage: termirust controller-service run|install|remove|status");
+            }
+            std::process::exit(1);
+        }
+        return;
+    }
     if std::env::args().nth(1).as_deref() == Some(RELAY_HOST_COMMAND) {
         let arguments: Vec<String> = std::env::args().skip(2).collect();
         if let Err(error) = crate::controller::relay_host_service::run_command(&arguments) {

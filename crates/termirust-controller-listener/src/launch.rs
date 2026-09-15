@@ -28,10 +28,10 @@ use crate::runtime::serve_authenticated_stdio_stream_after_purpose;
 use crate::{
     AuthoritySnapshot, ControllerAuthorityProvider, ControllerConnectionPurpose,
     ControllerPairingAuthority, FirewallObserver as _, HostBackendFactory, HostPairingDecision,
-    ListenerControlCommand, ListenerError, ListenerErrorCode, ListenerProcessEvent,
-    ListenerRuntime, ListenerServices, PairingAuthoritySnapshot, ProcessPairingDecision,
-    SourceBucketKey, SshControllerPairingOffer, SshHostPairingPrompt, SystemBinder,
-    SystemFirewallObserver, SystemGeneratedPortSource, SystemHandshakeEntropy,
+    ListenerControlCommand, ListenerError, ListenerErrorCode, ListenerOwnership,
+    ListenerProcessEvent, ListenerRuntime, ListenerServices, PairingAuthoritySnapshot,
+    ProcessPairingDecision, SourceBucketKey, SshControllerPairingOffer, SshHostPairingPrompt,
+    SystemBinder, SystemFirewallObserver, SystemGeneratedPortSource, SystemHandshakeEntropy,
     SystemInterfaceProvider, TmuxSessionSource, bind_selected_route, pair_controller,
     request_ssh_host_pairing_decision,
 };
@@ -856,12 +856,19 @@ where
     }
 }
 
+/// How long a starting listener waits for another to hand over the route.
+pub const LISTENER_OWNERSHIP_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
 pub fn run_listener_worker<R, W>(mut reader: R, readiness: W) -> Result<(), ListenerError>
 where
     R: BufRead + Send + 'static,
     W: Write + Send + 'static,
 {
     let mut descriptor = ListenerLaunchDescriptor::read(&mut reader)?;
+    // Held until this worker returns, so the background service and the desktop app never
+    // serve the route together.
+    let _ownership =
+        ListenerOwnership::acquire_within(&descriptor.controller_root, LISTENER_OWNERSHIP_WAIT)?;
     let devices = ControllerDeviceRepository::open(&descriptor.controller_root)
         .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
     let network = ControllerNetworkRepository::open(&descriptor.controller_root)

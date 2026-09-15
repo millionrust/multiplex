@@ -82,3 +82,28 @@ What changes is the set of terminals behind that boundary. Consequences accepted
   rejection of shared, symlinked, and malformed pointers.
 - `controller::tests::bridge_sources_follow_the_published_bridge_and_the_sharing_setting` in
   the desktop crate.
+
+## Background Listener (macOS)
+
+`termirust controller-service run` keeps the LAN listener for the saved route up while the
+desktop app is closed, installed as a per-user LaunchAgent only when the user chooses
+"Run in background" (or runs `termirust controller-service install`).
+
+- **One listener at a time.** Every listener worker holds `controller-listener.lock` in the
+  Controller store while serving and waits up to five seconds for it before binding. The
+  kernel releases the lock when a holder exits, including on a crash.
+- **The app wins.** Before the desktop app starts its listener it asks the service, over a
+  user-only socket in the runtime parent, to yield. The service stops its worker, confirms,
+  and leaves the route alone for ten seconds or until the app holds the lock. When the app
+  quits, its worker exits and the service takes the route back within about two seconds.
+- **No pairing in the background.** The service never begins pairing; it serves only devices
+  already in the Controller store, with the same authentication, capability, and revocation
+  checks as the app's listener. A disabled route is retried, not served.
+- **Consequence accepted:** the LAN route stays reachable after the app quits, which is the
+  point. Removing the LaunchAgent, disabling the route, or revoking devices ends it. A process
+  running as the same user can ask the service to yield, which only interrupts service; it
+  grants nothing.
+
+Verified by `ownership` unit tests (exclusive hand-over, release on holder crash, symlink
+refusal) and `controller::background_service` tests (serve, yield to the app, reclaim after it
+quits, paced retries, missing store, single instance, and a `plutil -lint`-checked plist).
