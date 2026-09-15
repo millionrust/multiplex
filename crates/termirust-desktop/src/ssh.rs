@@ -81,6 +81,73 @@ pub enum SshEvent {
     },
 }
 
+/// Wakes the app's event loop when a session event is queued, so output is drawn as soon
+/// as it arrives instead of on the next timer tick. Wakes coalesce: many events queued
+/// before the loop runs cost one wake.
+#[derive(Debug, Default)]
+pub struct SshEventWake {
+    pending: AtomicBool,
+    notify: tokio::sync::Notify,
+}
+
+impl SshEventWake {
+    fn wake(&self) {
+        if !self.pending.swap(true, Ordering::AcqRel) {
+            self.notify.notify_one();
+        }
+    }
+
+    /// Clears and returns whether events arrived since the last call.
+    pub fn take_pending(&self) -> bool {
+        self.pending.swap(false, Ordering::AcqRel)
+    }
+
+    /// Resolves once an event has been queued since the last [`Self::take_pending`].
+    pub async fn wait(&self) {
+        // A wake whose events were already drained leaves a stale permit, so check again.
+        while !self.pending.load(Ordering::Acquire) {
+            self.notify.notified().await;
+        }
+    }
+}
+
+/// The sending half of the app's session event channel.
+#[derive(Clone, Debug)]
+pub struct SshEventSender {
+    events: Sender<SshEvent>,
+    wake: Arc<SshEventWake>,
+}
+
+impl SshEventSender {
+    pub fn channel() -> (Self, Receiver<SshEvent>, Arc<SshEventWake>) {
+        let (events, receiver) = std::sync::mpsc::channel();
+        let wake = Arc::new(SshEventWake::default());
+        (
+            Self {
+                events,
+                wake: wake.clone(),
+            },
+            receiver,
+            wake,
+        )
+    }
+
+    pub fn send(&self, event: SshEvent) -> Result<(), std::sync::mpsc::SendError<SshEvent>> {
+        self.events.send(event)?;
+        self.wake.wake();
+        Ok(())
+    }
+}
+
+impl From<Sender<SshEvent>> for SshEventSender {
+    fn from(events: Sender<SshEvent>) -> Self {
+        Self {
+            events,
+            wake: Arc::new(SshEventWake::default()),
+        }
+    }
+}
+
 pub struct SessionRuntimeHandle {
     pub command_tx: UnboundedSender<SessionCommand>,
 }
@@ -353,7 +420,7 @@ where
 pub fn spawn_session(
     request: ConnectRequest,
     known_hosts: Arc<KnownHostStore>,
-    event_tx: Sender<SshEvent>,
+    event_tx: SshEventSender,
     keepalive_secs: u16,
 ) -> SessionRuntimeHandle {
     let (command_tx, command_rx) = mpsc::unbounded_channel();
@@ -586,7 +653,7 @@ async fn run_session(
     request: ConnectRequest,
     known_hosts: Arc<KnownHostStore>,
     mut command_rx: UnboundedReceiver<SessionCommand>,
-    event_tx: Sender<SshEvent>,
+    event_tx: SshEventSender,
     keepalive_secs: u16,
 ) -> Result<()> {
     let session_id = request.session_id;
@@ -1531,6 +1598,37 @@ mod tests {
     use std::sync::Arc;
     use std::sync::mpsc::{self, RecvTimeoutError};
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn queued_events_wake_the_event_loop_once_until_it_drains() {
+        let (sender, receiver, wake) = super::SshEventSender::channel();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        let waits = |wake: &super::SshEventWake| {
+            runtime.block_on(async {
+                tokio::time::timeout(Duration::from_millis(50), wake.wait())
+                    .await
+                    .is_ok()
+            })
+        };
+        assert!(!waits(&wake), "nothing queued yet");
+
+        for message in ["first", "second"] {
+            sender
+                .send(SshEvent::Disconnected {
+                    session_id: 1,
+                    message: message.to_owned(),
+                })
+                .unwrap();
+        }
+        assert!(waits(&wake));
+        assert!(wake.take_pending());
+        assert!(!wake.take_pending(), "two events cost one wake");
+        assert_eq!(receiver.try_iter().count(), 2);
+        assert!(!waits(&wake), "a drained wake does not fire again");
+    }
     use tokio_util::sync::CancellationToken;
 
     fn docker_ssh_request(server: &DockerSshServer) -> ConnectRequest {
@@ -1953,7 +2051,7 @@ mod tests {
         let (event_tx, event_rx) = mpsc::channel();
 
         let request = docker_ssh_request(&server);
-        let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx, 0);
+        let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx.into(), 0);
 
         let mut saw_connected = false;
         let mut saw_output = false;
@@ -2060,7 +2158,7 @@ mod tests {
         assert!(known_hosts.entries().unwrap().is_empty());
 
         let (event_tx, event_rx) = mpsc::channel();
-        let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx, 0);
+        let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx.into(), 0);
         wait_for_connected(&request, &event_rx, "diagnostic trust setup");
         disconnect_runtime(&request, &runtime, &event_rx, "diagnostic trust setup");
         assert_eq!(known_hosts.entries().unwrap().len(), 1);
@@ -2108,7 +2206,12 @@ mod tests {
 
         let jump_request = docker_jump_request(&server);
         let (event_tx, event_rx) = mpsc::channel();
-        let jump_trust = spawn_session(jump_request.clone(), known_hosts.clone(), event_tx, 0);
+        let jump_trust = spawn_session(
+            jump_request.clone(),
+            known_hosts.clone(),
+            event_tx.into(),
+            0,
+        );
         wait_for_connected(&jump_request, &event_rx, "diagnostic jump trust setup");
         disconnect_runtime(
             &jump_request,
@@ -2157,7 +2260,8 @@ mod tests {
         assert!(format!("{:#}", mismatch.error).contains("Host key mismatch"));
         known_hosts.remove(&endpoint).unwrap();
         let (event_tx, event_rx) = mpsc::channel();
-        let trust_recovery = spawn_session(request.clone(), known_hosts.clone(), event_tx, 0);
+        let trust_recovery =
+            spawn_session(request.clone(), known_hosts.clone(), event_tx.into(), 0);
         wait_for_connected(&request, &event_rx, "diagnostic trust recovery");
         disconnect_runtime(
             &request,
@@ -2214,7 +2318,7 @@ mod tests {
             passphrase: None,
         });
 
-        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx.into(), 0);
         wait_for_connected(&request, &event_rx, "certificate ssh");
         runtime
             .command_tx
@@ -2251,7 +2355,7 @@ mod tests {
             passphrase: None,
         });
 
-        let _runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let _runtime = spawn_session(request.clone(), known_hosts, event_tx.into(), 0);
         let deadline = Instant::now() + Duration::from_secs(20);
         while Instant::now() < deadline {
             match event_rx.recv_timeout(Duration::from_millis(250)) {
@@ -2298,7 +2402,7 @@ mod tests {
         request.auth = Some(certificate_auth.clone());
         request.jump_host.as_mut().unwrap().auth = certificate_auth;
 
-        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx.into(), 0);
         wait_for_connected(&request, &event_rx, "certificate jump ssh");
         runtime
             .command_tx
@@ -2334,7 +2438,7 @@ mod tests {
         let (event_tx, event_rx) = mpsc::channel();
         let mut request = docker_ssh_request(&server);
         request.auth = Some(auth.clone());
-        let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx, 0);
+        let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx.into(), 0);
         wait_for_connected(&request, &event_rx, "SSH-agent terminal auth");
         runtime
             .command_tx
@@ -2395,7 +2499,7 @@ mod tests {
             socket_path: Some(agent.socket_path().display().to_string()),
             forward_agent: false,
         });
-        let _runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let _runtime = spawn_session(request.clone(), known_hosts, event_tx.into(), 0);
         let message = wait_for_runtime_error(&request, &event_rx, "empty agent");
         assert!(message.contains("has no identities"));
         assert!(!message.contains(agent.socket_path().to_string_lossy().as_ref()));
@@ -2408,7 +2512,7 @@ mod tests {
             socket_path: Some("/tmp/customer-secret-missing-agent.sock".to_string()),
             forward_agent: false,
         });
-        let _runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let _runtime = spawn_session(request.clone(), known_hosts, event_tx.into(), 0);
         let message = wait_for_runtime_error(&request, &event_rx, "unavailable agent");
         assert!(!message.contains("customer-secret-missing-agent.sock"));
 
@@ -2421,7 +2525,7 @@ mod tests {
             socket_path: Some(agent.socket_path().display().to_string()),
             forward_agent: false,
         });
-        let _runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let _runtime = spawn_session(request.clone(), known_hosts, event_tx.into(), 0);
         let message = wait_for_runtime_error(&request, &event_rx, "untrusted agent key");
         assert!(message.contains("Authentication was rejected by the server"));
         assert!(!message.contains(agent.socket_path().to_string_lossy().as_ref()));
@@ -2447,7 +2551,7 @@ mod tests {
         let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
         let (event_tx, event_rx) = mpsc::channel();
 
-        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx.into(), 0);
         wait_for_connected(&request, &event_rx, "SSH-agent jump chain");
         runtime
             .command_tx
@@ -2479,7 +2583,7 @@ mod tests {
         });
         let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
         let (event_tx, event_rx) = mpsc::channel();
-        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx.into(), 0);
         wait_for_connected(&request, &event_rx, "agent forwarding disabled");
         runtime
             .command_tx
@@ -2503,7 +2607,7 @@ mod tests {
         });
         let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
         let (event_tx, event_rx) = mpsc::channel();
-        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx.into(), 0);
         wait_for_connected(&request, &event_rx, "agent forwarding approved");
         runtime
             .command_tx
@@ -2590,7 +2694,7 @@ mod tests {
             let mut request = docker_ssh_request(&server);
             request.session_id = 120 + index as u64;
             request.outbound_proxy = Some(route.clone());
-            let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx, 0);
+            let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx.into(), 0);
             wait_for_connected(&request, &event_rx, "proxied terminal");
             runtime
                 .command_tx
@@ -2626,7 +2730,7 @@ mod tests {
             first_hop.host = "proxy-only.invalid".to_string();
             first_hop.port = 65022;
             first_hop.outbound_proxy = Some(route);
-            let runtime = spawn_session(jump_request.clone(), known_hosts, event_tx, 0);
+            let runtime = spawn_session(jump_request.clone(), known_hosts, event_tx.into(), 0);
             wait_for_connected(&jump_request, &event_rx, "proxied jump hop");
             disconnect_runtime(&jump_request, &runtime, &event_rx, "proxied jump hop");
             assert!(proxy.accepted_connections() >= 2);
@@ -2665,7 +2769,7 @@ mod tests {
             "pwd > {pwd_path}; printf 'startup-ran\\n' >> {marker_path}"
         ));
 
-        let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx, 0);
+        let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx.into(), 0);
         wait_for_connected(&request, &event_rx, "tmux persistence first connect");
         send_startup_payload(&request, &runtime);
 
@@ -2709,8 +2813,12 @@ mod tests {
         let (reconnect_tx, reconnect_rx) = mpsc::channel();
         let mut reconnect_request = request.clone();
         reconnect_request.session_id = 502;
-        let reconnect_runtime =
-            spawn_session(reconnect_request.clone(), known_hosts, reconnect_tx, 0);
+        let reconnect_runtime = spawn_session(
+            reconnect_request.clone(),
+            known_hosts,
+            reconnect_tx.into(),
+            0,
+        );
         wait_for_connected(
             &reconnect_request,
             &reconnect_rx,
@@ -2753,7 +2861,7 @@ mod tests {
         request.persistent_session = true;
         request.persistent_session_name = Some(session_name.clone());
 
-        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx.into(), 0);
         wait_for_connected(&request, &event_rx, "tmux kill connect");
         send_startup_payload(&request, &runtime);
         wait_for_remote_success(
@@ -2832,7 +2940,7 @@ mod tests {
         request.persistent_session_name = Some("tr-no-tmux-e2e".to_string());
         request.environment = vec![("PATH".to_string(), "/tmp/termirust-no-tmux".to_string())];
 
-        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx.into(), 0);
         wait_for_connected(&request, &event_rx, "tmux missing fallback");
         send_startup_payload(&request, &runtime);
         wait_for_output_contains(
@@ -2856,7 +2964,7 @@ mod tests {
         let (event_tx, event_rx) = mpsc::channel();
 
         let request = docker_jump_request(&server);
-        let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx, 0);
+        let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx.into(), 0);
 
         let mut saw_connected = false;
         let mut saw_output = false;
@@ -2981,7 +3089,7 @@ mod tests {
             },
         }];
 
-        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx.into(), 0);
         wait_for_connected(&request, &event_rx, "local forward");
         std::thread::sleep(Duration::from_millis(250));
 
@@ -3023,7 +3131,7 @@ mod tests {
             },
         }];
 
-        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx.into(), 0);
         wait_for_connected(&request, &event_rx, "dynamic forward");
         std::thread::sleep(Duration::from_millis(250));
 
@@ -3092,7 +3200,7 @@ mod tests {
         ];
         let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
         let (event_tx, event_rx) = mpsc::channel();
-        let _runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let _runtime = spawn_session(request.clone(), known_hosts, event_tx.into(), 0);
         let error = wait_for_runtime_error(&request, &event_rx, "forward bind conflict");
         assert!(error.contains("Unable to bind dynamic forward"));
         assert!(!error.contains(server.password()));
@@ -3127,7 +3235,7 @@ mod tests {
             },
         }];
 
-        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx.into(), 0);
         wait_for_connected(&request, &event_rx, "remote forward");
         std::thread::sleep(Duration::from_millis(250));
 

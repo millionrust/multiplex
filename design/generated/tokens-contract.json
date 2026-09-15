@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "58ccaee373e01db38c69db7a8228368cd07986cfb0547b72bd95cc5eb8f32e96",
+  "sourceSha256": "6441caca51d8b377a20b603a7abf4c8f7c27d18ecfdbd7152159ffe0e6ac13ed",
   "statuses": [
     {
       "color": "color.status.attention",
@@ -2361,6 +2361,20 @@
         "light": "240ms",
         "recording_friendly": "240ms",
         "system": "240ms"
+      }
+    },
+    {
+      "allowedUse": "Desktop terminal output event loop only.",
+      "category": "duration",
+      "description": "Window in which terminal output that keeps arriving is gathered into one frame, after the first output is drawn immediately.",
+      "key": "motion.terminal_output_batch",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "4ms",
+        "high_contrast": "4ms",
+        "light": "4ms",
+        "recording_friendly": "4ms",
+        "system": "4ms"
       }
     },
     {

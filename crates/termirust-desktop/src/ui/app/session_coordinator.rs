@@ -1,5 +1,3 @@
-use std::sync::mpsc::Sender;
-
 use termirust_domain::{
     ActivityAggregate, HostInstanceId, HostedSession, HostedSessionId, HostedSessionState,
     OccupantGeneration, OutputSequence,
@@ -12,7 +10,7 @@ use super::hosted_session::{
 };
 use super::session_library::SessionLibraryState;
 use crate::models::SavedState;
-use crate::ssh::{SessionRuntimeHandle, SshEvent};
+use crate::ssh::{SessionRuntimeHandle, SshEventSender};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum HostedDevUrlAction {
@@ -247,11 +245,11 @@ impl SessionStartRequest {
 }
 
 pub(super) struct SessionCoordinator {
-    event_tx: Sender<SshEvent>,
+    event_tx: SshEventSender,
 }
 
 impl SessionCoordinator {
-    pub fn new(event_tx: Sender<SshEvent>) -> Self {
+    pub fn new(event_tx: SshEventSender) -> Self {
         Self { event_tx }
     }
 
@@ -484,7 +482,7 @@ mod tests {
 
     fn coordinator() -> SessionCoordinator {
         let (event_tx, _event_rx) = mpsc::channel();
-        SessionCoordinator::new(event_tx)
+        SessionCoordinator::new(event_tx.into())
     }
 
     #[test]

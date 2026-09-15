@@ -8,7 +8,7 @@ use crate::sftp::{
     RemoteFileEntry, SftpConflictPolicy, SftpEvent, SftpTransferControl, SftpTransferDirection,
     SftpTransferManager, SftpTransferSpec, spawn_delete_path, spawn_list_directory,
 };
-use crate::ssh::{SessionRuntimeHandle, SshEvent, spawn_session};
+use crate::ssh::{SessionRuntimeHandle, SshEventSender, spawn_session};
 use crate::storage::KnownHostStore;
 use crate::ui::localization;
 
@@ -131,14 +131,14 @@ trait ConnectionWorkerSpawner: Send + Sync {
     fn spawn_local(
         &self,
         request: ConnectRequest,
-        event_tx: Sender<SshEvent>,
+        event_tx: SshEventSender,
     ) -> SessionRuntimeHandle;
 
     fn spawn_ssh(
         &self,
         request: ConnectRequest,
         known_hosts: Arc<KnownHostStore>,
-        event_tx: Sender<SshEvent>,
+        event_tx: SshEventSender,
         keepalive_secs: u16,
     ) -> SessionRuntimeHandle;
 }
@@ -229,7 +229,7 @@ impl ConnectionWorkerSpawner for SystemConnectionWorkerSpawner {
     fn spawn_local(
         &self,
         request: ConnectRequest,
-        event_tx: Sender<SshEvent>,
+        event_tx: SshEventSender,
     ) -> SessionRuntimeHandle {
         spawn_local_session(request, event_tx)
     }
@@ -238,7 +238,7 @@ impl ConnectionWorkerSpawner for SystemConnectionWorkerSpawner {
         &self,
         request: ConnectRequest,
         known_hosts: Arc<KnownHostStore>,
-        event_tx: Sender<SshEvent>,
+        event_tx: SshEventSender,
         keepalive_secs: u16,
     ) -> SessionRuntimeHandle {
         spawn_session(request, known_hosts, event_tx, keepalive_secs)
@@ -349,7 +349,7 @@ impl SftpWorkerSpawner for SystemSftpWorkerSpawner {
 }
 
 pub(super) struct ConnectionCoordinator {
-    event_tx: Sender<SshEvent>,
+    event_tx: SshEventSender,
     sftp_event_tx: Sender<SftpEvent>,
     known_hosts: Arc<KnownHostStore>,
     ssh_keepalive_secs: u16,
@@ -361,7 +361,7 @@ pub(super) struct ConnectionCoordinator {
 
 impl ConnectionCoordinator {
     pub fn new(
-        event_tx: Sender<SshEvent>,
+        event_tx: SshEventSender,
         sftp_event_tx: Sender<SftpEvent>,
         known_hosts: Arc<KnownHostStore>,
         ssh_keepalive_secs: u16,
@@ -677,7 +677,7 @@ mod tests {
     };
     use crate::models::{ConnectRequest, ConnectionKind};
     use crate::sftp::{RemoteFileEntry, SftpConflictPolicy, SftpEvent, SftpTransferControl};
-    use crate::ssh::{SessionRuntimeHandle, SshEvent};
+    use crate::ssh::{SessionRuntimeHandle, SshEvent, SshEventSender};
     use crate::storage::KnownHostStore;
 
     #[derive(Clone, Debug, Eq, PartialEq)]
@@ -837,7 +837,7 @@ mod tests {
             SessionRuntimeHandle { command_tx }
         }
 
-        fn report_event(event_tx: Sender<SshEvent>, session_id: u64) {
+        fn report_event(event_tx: SshEventSender, session_id: u64) {
             event_tx
                 .send(SshEvent::Error {
                     session_id,
@@ -851,7 +851,7 @@ mod tests {
         fn spawn_local(
             &self,
             request: ConnectRequest,
-            event_tx: Sender<SshEvent>,
+            event_tx: SshEventSender,
         ) -> SessionRuntimeHandle {
             self.calls.lock().unwrap().push(WorkerCall::Local {
                 session_id: request.session_id,
@@ -864,7 +864,7 @@ mod tests {
             &self,
             request: ConnectRequest,
             known_hosts: Arc<KnownHostStore>,
-            event_tx: Sender<SshEvent>,
+            event_tx: SshEventSender,
             keepalive_secs: u16,
         ) -> SessionRuntimeHandle {
             self.calls.lock().unwrap().push(WorkerCall::Ssh {
@@ -895,7 +895,7 @@ mod tests {
             expected_known_hosts: known_hosts.clone(),
         };
         let coordinator = ConnectionCoordinator {
-            event_tx,
+            event_tx: event_tx.into(),
             sftp_event_tx,
             known_hosts,
             ssh_keepalive_secs: 12,
@@ -1093,7 +1093,7 @@ mod tests {
         request.environment = vec![("TERMIRUST_TEST".to_string(), "exact".to_string())];
         let request_debug = format!("{request:?}");
         let coordinator = ConnectionCoordinator {
-            event_tx,
+            event_tx: event_tx.into(),
             sftp_event_tx,
             known_hosts: known_hosts.clone(),
             ssh_keepalive_secs: 12,

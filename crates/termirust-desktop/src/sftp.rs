@@ -3186,7 +3186,7 @@ mod tests {
             passphrase: Some(passphrase.to_string()),
         });
         let (ssh_tx, ssh_rx) = mpsc::channel();
-        let runtime = spawn_session(generated_request, known_hosts.clone(), ssh_tx, 0);
+        let runtime = spawn_session(generated_request, known_hosts.clone(), ssh_tx.into(), 0);
         let mut connected = false;
         let mut marker = false;
         let deadline = std::time::Instant::now() + Duration::from_secs(20);

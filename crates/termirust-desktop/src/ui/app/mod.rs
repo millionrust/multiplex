@@ -85,7 +85,7 @@ use worktree_launch::WorktreeLaunchUiState;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 use termirust_controller_listener::{
     DesktopPaneBridgeServer, DesktopPaneRegistration, DesktopPaneRegistry, DesktopPaneTransport,
@@ -140,7 +140,7 @@ use crate::replication::{
 use crate::sftp::{
     RemoteFileEntry, SftpConflictPolicy, SftpEvent, SftpTransferControl, SftpTransferDirection,
 };
-use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent};
+use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent, SshEventSender, SshEventWake};
 use crate::storage::{
     KnownHostStore, export_encrypted_mobile_vault, export_encrypted_portable_data_bundle,
     export_portable_data_bundle, import_encrypted_portable_data_bundle,
@@ -1385,8 +1385,9 @@ pub struct TermiRustApp {
     show_editor_panel: bool,
     connection_coordinator: ConnectionCoordinator,
     session_coordinator: SessionCoordinator,
-    event_tx: Sender<SshEvent>,
+    event_tx: SshEventSender,
     event_rx: Receiver<SshEvent>,
+    event_wake: Arc<SshEventWake>,
     sftp_event_rx: Receiver<SftpEvent>,
     connection_diagnostic_manager: ConnectionDiagnosticManager,
     connection_diagnostic_event_rx: Receiver<DiagnosticEvent>,
@@ -1541,7 +1542,7 @@ impl TermiRustApp {
         let vault_inputs = VaultInputs::new(window, cx);
         let vault_member_inputs = VaultMemberInputs::new(window, cx);
         let key_lifecycle_inputs = KeyLifecycleInputs::new(window, cx);
-        let (event_tx, event_rx) = mpsc::channel();
+        let (event_tx, event_rx, event_wake) = SshEventSender::channel();
         let session_coordinator = SessionCoordinator::new(event_tx.clone());
         let (sftp_event_tx, sftp_event_rx) = mpsc::channel();
         let canvas_project_editor_input =
@@ -1773,6 +1774,7 @@ impl TermiRustApp {
             session_coordinator,
             event_tx,
             event_rx,
+            event_wake,
             sftp_event_rx,
             connection_diagnostic_manager,
             connection_diagnostic_event_rx,
@@ -1956,6 +1958,35 @@ impl TermiRustApp {
                     .is_err()
                 {
                     break;
+                }
+            }
+        })
+        .detach();
+
+        // Session output is drawn as soon as it arrives: the first event is processed
+        // immediately, then output that keeps coming is gathered in short windows so a
+        // flood of bytes costs at most one frame per window.
+        let event_wake = app.event_wake.clone();
+        cx.spawn_in(window, async move |this, cx| {
+            loop {
+                event_wake.wait().await;
+                loop {
+                    if !event_wake.take_pending() {
+                        break;
+                    }
+                    if cx
+                        .update(|_, cx| {
+                            let _ = this.update(cx, |app, cx| app.process_events(cx));
+                        })
+                        .is_err()
+                    {
+                        return;
+                    }
+                    cx.background_executor()
+                        .timer(theme::motion_duration(
+                            theme::current_design_tokens().motion_terminal_output_batch(false),
+                        ))
+                        .await;
                 }
             }
         })
@@ -14212,7 +14243,11 @@ mod tests {
                 data: b"incremental-output".to_vec(),
             })
             .expect("app event receiver should remain open");
-        app.update(cx, |app, cx| app.process_events(cx));
+        app.update(cx, |app, cx| {
+            // Drain here, not in the wake loop, so only this one pass is measured.
+            app.event_wake.take_pending();
+            app.process_events(cx);
+        });
         visual.run_until_parked();
 
         let (root_notifications_after, root_notification_causes) = app.read_with(cx, |app, _| {

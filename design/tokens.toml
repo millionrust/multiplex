@@ -1225,6 +1225,14 @@ reduced_motion = "motion.instant"
 values = { system = "32ms", light = "32ms", dark = "32ms", high_contrast = "32ms", recording_friendly = "32ms" }
 
 [[tokens]]
+key = "motion.terminal_output_batch"
+category = "duration"
+description = "Window in which terminal output that keeps arriving is gathered into one frame, after the first output is drawn immediately."
+allowed_use = "Desktop terminal output event loop only."
+reduced_motion = "motion.instant"
+values = { system = "4ms", light = "4ms", dark = "4ms", high_contrast = "4ms", recording_friendly = "4ms" }
+
+[[tokens]]
 key = "motion.window_settle"
 category = "duration"
 description = "Delay before recording the first settled window frame."

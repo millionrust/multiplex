@@ -4,17 +4,18 @@ use std::ffi::{OsStr, OsString};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
-use std::sync::mpsc::{self, TryRecvError as StdTryRecvError};
+use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-use tokio::sync::mpsc::{self as tokio_mpsc, error::TryRecvError as TokioTryRecvError};
+use tokio::sync::mpsc as tokio_mpsc;
 
 use crate::models::{ConnectRequest, LocalShellConfig};
-use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent};
+use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent, SshEventSender};
 
-enum ReaderEvent {
-    Data(Vec<u8>),
-    Closed(String),
+enum WorkerEvent {
+    Command(SessionCommand),
+    CommandsClosed,
+    ReaderClosed(String),
 }
 
 const TMUX_READY_ATTEMPTS: usize = 100;
@@ -34,16 +35,16 @@ struct TmuxReadinessTarget {
 
 pub fn spawn_local_session(
     request: ConnectRequest,
-    event_tx: std::sync::mpsc::Sender<SshEvent>,
+    event_tx: SshEventSender,
 ) -> SessionRuntimeHandle {
-    let (command_tx, mut command_rx) = tokio_mpsc::unbounded_channel();
+    let (command_tx, command_rx) = tokio_mpsc::unbounded_channel();
     let session_id = request.session_id;
     let thread_name = format!("local-session-{session_id}");
     let fallback_tx = event_tx.clone();
     let fallback_thread_tx = fallback_tx.clone();
 
     let spawn_result = thread::Builder::new().name(thread_name).spawn(move || {
-        let result = run_local_session(request, &mut command_rx, event_tx);
+        let result = run_local_session(request, command_rx, event_tx);
         if let Err(error) = result {
             let message = format!("{error:#}");
             let _ = fallback_thread_tx.send(SshEvent::Error {
@@ -69,8 +70,8 @@ pub fn spawn_local_session(
 
 fn run_local_session(
     request: ConnectRequest,
-    command_rx: &mut tokio_mpsc::UnboundedReceiver<SessionCommand>,
-    event_tx: std::sync::mpsc::Sender<SshEvent>,
+    mut command_rx: tokio_mpsc::UnboundedReceiver<SessionCommand>,
+    event_tx: SshEventSender,
 ) -> Result<()> {
     let session_id = request.session_id;
     let shell = request
@@ -114,7 +115,11 @@ fn run_local_session(
         .context("Unable to attach a PTY reader")?;
     let master = pair.master;
 
-    let (reader_tx, reader_rx) = mpsc::channel();
+    // The reader sends output straight to the app, and a second thread forwards commands,
+    // so the worker blocks until there is something to do instead of polling.
+    let (worker_tx, worker_rx) = mpsc::channel();
+    let reader_worker_tx = worker_tx.clone();
+    let reader_event_tx = event_tx.clone();
     thread::Builder::new()
         .name(format!("local-session-reader-{session_id}"))
         .spawn(move || {
@@ -122,15 +127,18 @@ fn run_local_session(
             loop {
                 match reader.read(&mut buffer) {
                     Ok(0) => {
-                        let _ =
-                            reader_tx.send(ReaderEvent::Closed("Local shell closed".to_string()));
+                        let _ = reader_worker_tx
+                            .send(WorkerEvent::ReaderClosed("Local shell closed".to_string()));
                         break;
                     }
                     Ok(bytes_read) => {
-                        let _ = reader_tx.send(ReaderEvent::Data(buffer[..bytes_read].to_vec()));
+                        let _ = reader_event_tx.send(SshEvent::Output {
+                            session_id,
+                            data: buffer[..bytes_read].to_vec(),
+                        });
                     }
                     Err(error) => {
-                        let _ = reader_tx.send(ReaderEvent::Closed(format!(
+                        let _ = reader_worker_tx.send(WorkerEvent::ReaderClosed(format!(
                             "Unable to read from the local shell: {error}"
                         )));
                         break;
@@ -139,6 +147,17 @@ fn run_local_session(
             }
         })
         .context("Unable to spawn the local PTY reader")?;
+    thread::Builder::new()
+        .name(format!("local-session-commands-{session_id}"))
+        .spawn(move || {
+            while let Some(command) = command_rx.blocking_recv() {
+                if worker_tx.send(WorkerEvent::Command(command)).is_err() {
+                    return;
+                }
+            }
+            let _ = worker_tx.send(WorkerEvent::CommandsClosed);
+        })
+        .context("Unable to spawn the local command forwarder")?;
 
     let _ = event_tx.send(SshEvent::Connected {
         session_id,
@@ -146,83 +165,65 @@ fn run_local_session(
     });
 
     loop {
-        loop {
-            match command_rx.try_recv() {
-                Ok(SessionCommand::Input(data)) => {
-                    writer
-                        .write_all(&data)
-                        .context("Unable to write to the local shell")?;
-                    let _ = writer.flush();
-                }
-                Ok(SessionCommand::Resize(size)) => {
-                    master
-                        .resize(PtySize {
-                            rows: size.rows,
-                            cols: size.cols,
-                            pixel_width: size.pixel_width,
-                            pixel_height: size.pixel_height,
-                        })
-                        .context("Unable to resize the local PTY")?;
-                }
-                Ok(SessionCommand::KillTmuxSession { session_name }) => {
-                    match kill_local_tmux_session(&session_name) {
-                        Ok(()) => {
-                            let _ = event_tx.send(SshEvent::TmuxSessionKilled {
-                                session_id,
-                                session_name,
-                            });
-                        }
-                        Err(error) => {
-                            let _ = event_tx.send(SshEvent::Error {
-                                session_id,
-                                message: format!("Unable to kill local tmux session: {error:#}"),
-                            });
-                        }
+        let Ok(event) = worker_rx.recv() else {
+            return Ok(());
+        };
+        match event {
+            WorkerEvent::Command(SessionCommand::Input(data)) => {
+                writer
+                    .write_all(&data)
+                    .context("Unable to write to the local shell")?;
+                let _ = writer.flush();
+            }
+            WorkerEvent::Command(SessionCommand::Resize(size)) => {
+                master
+                    .resize(PtySize {
+                        rows: size.rows,
+                        cols: size.cols,
+                        pixel_width: size.pixel_width,
+                        pixel_height: size.pixel_height,
+                    })
+                    .context("Unable to resize the local PTY")?;
+            }
+            WorkerEvent::Command(SessionCommand::KillTmuxSession { session_name }) => {
+                match kill_local_tmux_session(&session_name) {
+                    Ok(()) => {
+                        let _ = event_tx.send(SshEvent::TmuxSessionKilled {
+                            session_id,
+                            session_name,
+                        });
+                    }
+                    Err(error) => {
+                        let _ = event_tx.send(SshEvent::Error {
+                            session_id,
+                            message: format!("Unable to kill local tmux session: {error:#}"),
+                        });
                     }
                 }
-                Ok(SessionCommand::StopDurable | SessionCommand::Disconnect) => {
-                    let _ = terminate_owned_pty_process_group(child.as_mut());
-                    let _ = child.wait();
-                    let _ = event_tx.send(SshEvent::Disconnected {
-                        session_id,
-                        message: "Local shell closed".to_string(),
-                    });
-                    return Ok(());
-                }
-                Err(TokioTryRecvError::Empty) => break,
-                Err(TokioTryRecvError::Disconnected) => {
-                    let _ = terminate_owned_pty_process_group(child.as_mut());
-                    let _ = child.wait();
-                    return Ok(());
-                }
+            }
+            WorkerEvent::Command(SessionCommand::StopDurable | SessionCommand::Disconnect) => {
+                let _ = terminate_owned_pty_process_group(child.as_mut());
+                let _ = child.wait();
+                let _ = event_tx.send(SshEvent::Disconnected {
+                    session_id,
+                    message: "Local shell closed".to_string(),
+                });
+                return Ok(());
+            }
+            WorkerEvent::CommandsClosed => {
+                let _ = terminate_owned_pty_process_group(child.as_mut());
+                let _ = child.wait();
+                return Ok(());
+            }
+            WorkerEvent::ReaderClosed(message) => {
+                let _ = child.try_wait();
+                let _ = event_tx.send(SshEvent::Disconnected {
+                    session_id,
+                    message,
+                });
+                return Ok(());
             }
         }
-
-        loop {
-            match reader_rx.try_recv() {
-                Ok(ReaderEvent::Data(data)) => {
-                    let _ = event_tx.send(SshEvent::Output { session_id, data });
-                }
-                Ok(ReaderEvent::Closed(message)) => {
-                    let _ = child.try_wait();
-                    let _ = event_tx.send(SshEvent::Disconnected {
-                        session_id,
-                        message,
-                    });
-                    return Ok(());
-                }
-                Err(StdTryRecvError::Empty) => break,
-                Err(StdTryRecvError::Disconnected) => {
-                    let _ = event_tx.send(SshEvent::Disconnected {
-                        session_id,
-                        message: "Local shell closed".to_string(),
-                    });
-                    return Ok(());
-                }
-            }
-        }
-
-        thread::sleep(Duration::from_millis(10));
     }
 }
 
@@ -641,7 +642,7 @@ mod tests {
             },
         );
         let (event_tx, event_rx) = std::sync::mpsc::channel();
-        let runtime = spawn_local_session(request, event_tx);
+        let runtime = spawn_local_session(request, event_tx.into());
         wait_for_event(
             &event_rx,
             Instant::now() + Duration::from_secs(5),
@@ -758,7 +759,7 @@ mod tests {
                 session_name.clone(),
                 false,
             ),
-            first_tx,
+            first_tx.into(),
         );
         wait_for_event(
             &first_rx,
@@ -810,7 +811,7 @@ mod tests {
                 session_name.clone(),
                 false,
             ),
-            second_tx,
+            second_tx.into(),
         );
         wait_for_event(
             &second_rx,

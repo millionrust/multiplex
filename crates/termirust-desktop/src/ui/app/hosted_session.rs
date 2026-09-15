@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{BufRead as _, BufReader, Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc::{RecvTimeoutError, Sender};
+use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Condvar, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -27,7 +27,7 @@ use tokio::runtime::Builder;
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 use tokio_util::sync::CancellationToken;
 
-use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent};
+use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent, SshEventSender};
 use crate::ui::localization;
 
 const HOST_READY_DEADLINE: Duration = Duration::from_secs(5);
@@ -168,7 +168,7 @@ pub(super) struct DurableLaunch {
 
 pub(super) fn spawn_durable_session(
     spec: DurableSessionSpec,
-    event_tx: Sender<SshEvent>,
+    event_tx: SshEventSender,
 ) -> SessionRuntimeHandle {
     let (command_tx, command_rx) = mpsc::unbounded_channel();
     let pane_id = spec.pane_id;
@@ -206,7 +206,7 @@ pub(super) fn spawn_durable_session(
 fn run_durable_session(
     mut spec: DurableSessionSpec,
     mut command_rx: UnboundedReceiver<SessionCommand>,
-    event_tx: Sender<SshEvent>,
+    event_tx: SshEventSender,
 ) -> Result<(), String> {
     let startup_permit = StartupPermit::acquire();
     if let Some(launch) = spec.launch.take() {
@@ -235,7 +235,7 @@ fn launch_host_process(
     spec: &DurableSessionSpec,
     launch: DurableLaunch,
     command_rx: &mut UnboundedReceiver<SessionCommand>,
-    event_tx: &Sender<SshEvent>,
+    event_tx: &SshEventSender,
 ) -> Result<bool, String> {
     let host_executable = fs::canonicalize(default_host_executable()?)
         .map_err(|error| format!("Unable to verify durable Host executable: {error}"))?;
@@ -451,7 +451,7 @@ fn terminate_unready_host(process: &mut Child) {
 async fn attach_loop(
     spec: DurableSessionSpec,
     mut command_rx: UnboundedReceiver<SessionCommand>,
-    event_tx: Sender<SshEvent>,
+    event_tx: SshEventSender,
     startup_permit: StartupPermit,
 ) -> Result<(), String> {
     let cancel = CancellationToken::new();
@@ -691,7 +691,7 @@ async fn attach_loop(
 
 fn report_client_failure(
     spec: &DurableSessionSpec,
-    event_tx: &Sender<SshEvent>,
+    event_tx: &SshEventSender,
     error: ClientError,
     sequence: OutputSequence,
 ) -> Result<(), String> {
@@ -735,7 +735,7 @@ fn recovery_for_client_error(
 
 fn report_recovery_state(
     spec: &DurableSessionSpec,
-    event_tx: &Sender<SshEvent>,
+    event_tx: &SshEventSender,
     state: termirust_domain::HostedSessionState,
     sequence: OutputSequence,
     detail: &str,
@@ -752,7 +752,7 @@ fn report_recovery_state(
 
 async fn replay_retained_output(
     spec: &DurableSessionSpec,
-    event_tx: &Sender<SshEvent>,
+    event_tx: &SshEventSender,
     cancel: &CancellationToken,
 ) -> Result<bool, String> {
     let recovery = HostReconciliationService::new(&spec.paths.runtime_root);
