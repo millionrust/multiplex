@@ -17,7 +17,7 @@ Startup loads the recorded secret and derives its public key again. Missing, loc
 
 Pairing composes the exact Controller-v1 state machine from the Controller security ADR over injected byte transport. The Host persists a device and consumes its offer before sending the final acknowledgement. A lost acknowledgement is an explicit uncertain state and reconciles by offer plus authenticated device public key without duplicating trust. Every request rechecks identity generation, device key/status, revocation epoch, session generation, deadline, and one closed capability. Revocation is committed before injected channels close.
 
-Settings exposes the public fingerprint, route state, trusted device names/status/capabilities, rename, revoke, and type-to-confirm identity reset. `Add Controller` stays disabled until a later approved route adapter exists. This goal creates no listener, PTY bridge, mobile client, relay, account, or network discovery.
+Settings exposes the public fingerprint, route state, trusted device names/status/capabilities, rename, revoke, and type-to-confirm identity reset. At the time of this goal `Add Controller` stayed disabled and the goal created no listener, PTY bridge, mobile client, relay, account, or network discovery. Later work added the LAN listener, code pairing, and Bonjour announcement; see `controller-security-v1.md` and `docs/remote-terminals.md`.
 
 ## Consequences
 

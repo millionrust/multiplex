@@ -32,8 +32,9 @@ reachable from then on.
 
 ## What works today
 
-- Pairing a phone with the desktop over Noise XX, with a `XXXX-XXXX` code compared by
-  eye. Host private key lives in the OS credential store.
+- Pairing a phone by typing a six-digit code the desktop shows (CPace bound into Noise XX;
+  see `docs/decisions/controller-security-v1.md`), or by scanning an offer and comparing a
+  `XXXX-XXXX` code. Host private key lives in the OS credential store.
 - Three routes: private LAN/VPN, Controller-over-SSH, and a self-hosted relay.
 - `ListSessions`, `Attach` with replay from a watermark, `Input`, and `Resize`, gated by
   capability bits and a single-writer lease. A device without `SendInput` is read-only
@@ -61,10 +62,16 @@ review). Treat this guide as LAN first.
 Nothing changes on install. Every step below is in **Devices** (or Settings → Remote
 Devices), and nothing touches your files until you have seen the change.
 
-1. **Start the listener and pair a device.** Choose the private network, then add a
-   controller: scan the QR code on the phone and compare the eight-character code shown
-   on both screens. New devices are observe-only; granting input is a separate, explicit
-   toggle per device.
+1. **Turn on remote access and pair a phone.** Under "Remote access", choose **Turn on**.
+   The listener accepts connections on every private address the computer has (Wi-Fi,
+   Ethernet, and VPNs such as Tailscale), on one port, and follows addresses as networks
+   change. Choose **Pair phone**: the desktop shows a six-digit code. On the phone, pick
+   the computer from the list of computers on the same network, or, over Tailscale, type
+   the address the desktop shows (for example `mac.tail1234.ts.net:55123`), then type the
+   code. A code allows three attempts and expires after five minutes. Scanning a QR code
+   and comparing an eight-character code remains available under **Other ways to pair**.
+   New devices are observe-only; granting input is a separate, explicit toggle per
+   device.
 2. **Show tmux sessions.** Under "Terminals opened in other apps", choose **Show**. The
    listener restarts, so a connected phone reconnects once.
 3. **Open new terminals in tmux.** Choose **Review changes**. The app lists every file it
@@ -159,8 +166,8 @@ tmux sessions survive the app, but something has to accept Controller connection
 - **Local network (macOS):** under "Keep reachable when TermiRust is closed", choose
   **Run in background**. This installs a per-user LaunchAgent,
   `~/Library/LaunchAgents/com.termirust.desktop.controller-service.plist`, which runs
-  `termirust controller-service run` at login. It serves already-paired devices on the saved
-  route; pairing a new device still needs the app. When you open TermiRust, the service
+  `termirust controller-service run` at login. It serves already-paired devices on every private
+  address; pairing a new device still needs the app. When you open TermiRust, the service
   hands the route to the app, and takes it back when the app quits. The same commands work
   from a terminal: `termirust controller-service install|remove|status`.
 - **Windows:** not built yet; the intended setup is a per-user scheduled task at logon.
@@ -188,9 +195,12 @@ Existing tmux sessions keep running; `tmux kill-server` ends them.
   to its screen. When no desktop client is attached, tmux sizes the window to the phone.
 - **Sessions on a non-default tmux server.** Only the default socket (honoring
   `TMUX_TMPDIR`) is listed; servers started with `-L` or `-S` are not.
-- **Automatic discovery on the network.** The LAN listener never advertises itself, never
-  opens a firewall hole, and binds only private interfaces on a high port. You supply the
-  address when pairing, and macOS may prompt for the incoming-connection permission.
+- **Discovery over a VPN.** The listener announces itself with Bonjour (`_termirust._tcp`,
+  named by an opaque identifier, not the computer name) only on Wi-Fi and Ethernet.
+  Multicast does not cross Tailscale, so type the address once there; the phone then keeps
+  every address it learns. The listener never opens a firewall hole and never binds a
+  public, loopback, or wildcard address; macOS may prompt for the incoming-connection
+  permission.
 
 ## What has to be built
 

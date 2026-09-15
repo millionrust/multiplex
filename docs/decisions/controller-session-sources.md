@@ -85,7 +85,7 @@ What changes is the set of terminals behind that boundary. Consequences accepted
 
 ## Background Listener (macOS)
 
-`termirust controller-service run` keeps the LAN listener for the saved route up while the
+`termirust controller-service run` keeps the LAN listener up on every private address while the
 desktop app is closed, installed as a per-user LaunchAgent only when the user chooses
 "Run in background" (or runs `termirust controller-service install`).
 

@@ -46,6 +46,11 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
   and SSH terminals, interactive or structured coding agents, sticky notes, and
   group frames in persisted, draggable, resizable nodes with reviewed context
   links and bounded dependency orchestration.
+- Remote access (Devices, or Settings → Remote Devices) is On/Off: the Controller listener
+  binds every private address (RFC 1918, Tailscale's 100.64/10, fc00::/7) on one port, follows
+  network changes, and announces `_termirust._tcp` with Bonjour on LAN interfaces only.
+  **Pair phone** shows a six-digit code (CPace bound into the Noise XX pairing, three attempts,
+  five minutes); the QR offer and SAS comparison remain under "Other ways to pair".
 - Paired mobile controllers can list, watch, and type into tmux sessions the app did not
   create when "Show tmux sessions" is on, over LAN, SSH, and relay routes. Devices also offers a previewed,
   reversible shell startup change that starts new Terminal, Zed, iTerm2, Ghostty, WezTerm,
