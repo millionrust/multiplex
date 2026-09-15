@@ -35,7 +35,7 @@ struct EnrollmentView: View {
                     Text("Local request only. Synchronization is unavailable here.")
                         .foregroundStyle(.secondary)
                     if model.loading { ProgressView().accessibilityLabel("Working") }
-                    if let problem = model.problem { Text(problem).foregroundStyle(.red) }
+                    if let problem = model.problem { Text(problem).foregroundStyle(Color.slateError) }
                     if let request = model.snapshot.request {
                         Button {
                             UIPasteboard.general.setItems([[UTType.utf8PlainText.identifier: request]],

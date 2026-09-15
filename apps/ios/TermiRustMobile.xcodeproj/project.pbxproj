@@ -74,6 +74,7 @@
 		A7016DD06887878E00C9219C /* TerminalGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = B93220992F2C832439502E21 /* TerminalGrid.swift */; };
 		A8904D00FF0F1BC603301077 /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = B719687746D6E74C57ECB3D9 /* NIOPosix */; };
 		AAB0819E064995753EAA1A3D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB3530D0D1EF49F4483F0D0C /* ContentView.swift */; };
+		ABD9CA9532A872B14006079D /* SlateColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE5C2C71C1D39ECA5CDD08FE /* SlateColors.swift */; };
 		ABE33A2A20FDCD0493C3344F /* ControllerRouteCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00196E38312C036FCD3CD034 /* ControllerRouteCredentialStore.swift */; };
 		ADB4199A0D6BD9F233718F1E /* KeychainSecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFF4D03BE0E942591F6EEC4A /* KeychainSecretStore.swift */; };
 		AE436BA7DDF91FD54C091DD6 /* PairedHostStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BFF20F68CB9FD0EEA4534F9 /* PairedHostStore.swift */; };
@@ -105,6 +106,7 @@
 		F0F6F22ED785C9BEA81E10F1 /* ControllerTerminalInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3E11BE5BC0BF55360124E4 /* ControllerTerminalInputView.swift */; };
 		F1044EA7B6FDD02A9EABAF7C /* TerminalBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C651FFCD87A3634799CA663F /* TerminalBuffer.swift */; };
 		F9170B64BB23CA3EF084EABF /* universal-session-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 0BB16F651E78CEA014BAC41F /* universal-session-v1.json */; };
+		F918DCD2C9B5D21545E74D22 /* SlateTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88E38D4F5550D42D8E7BD818 /* SlateTokens.swift */; };
 		FB6634C7E4DF4B6A967CB71A /* EnrollmentWorkflowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 938B1ACAB594425CA571469D /* EnrollmentWorkflowTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -178,6 +180,7 @@
 		8469494854C891EFB7A1F62A /* terminal-conformance-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "terminal-conformance-v1.json"; sourceTree = "<group>"; };
 		85A575F219252D9DC27053FD /* route-selection-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "route-selection-v1.json"; sourceTree = "<group>"; };
 		8836B5648A2FB0D8897C5F7D /* ControllerWriterControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerWriterControl.swift; sourceTree = "<group>"; };
+		88E38D4F5550D42D8E7BD818 /* SlateTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlateTokens.swift; sourceTree = "<group>"; };
 		88ED49DA30BE70BA0E0093B3 /* MobileCrossRouteAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileCrossRouteAcceptanceTests.swift; sourceTree = "<group>"; };
 		8AE2126D151AC4C903C6094B /* ControllerReadOnlyTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerReadOnlyTerminalView.swift; sourceTree = "<group>"; };
 		8F8A73060A2F2CB2C2B9A13A /* TermiRustReplicationSecurity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermiRustReplicationSecurity.swift; sourceTree = "<group>"; };
@@ -196,6 +199,7 @@
 		AA63124BE85CD3F731534E4C /* ControllerPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerPresentation.swift; sourceTree = "<group>"; };
 		AB27C662BBB0427BE57EAD95 /* NativeMobileVaultDecryptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMobileVaultDecryptor.swift; sourceTree = "<group>"; };
 		AC21F9172941D89CFE3131A7 /* MobileVaultImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileVaultImporter.swift; sourceTree = "<group>"; };
+		AE5C2C71C1D39ECA5CDD08FE /* SlateColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlateColors.swift; sourceTree = "<group>"; };
 		B820A5D658D609799EC6CC7C /* mobile-route-contract-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "mobile-route-contract-v1.json"; sourceTree = "<group>"; };
 		B8387375125313FDB8A0D114 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		B93220992F2C832439502E21 /* TerminalGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalGrid.swift; sourceTree = "<group>"; };
@@ -411,6 +415,8 @@
 				A4808B8FAD8D18B154844FEB /* ControllerRootView.swift */,
 				3D3E11BE5BC0BF55360124E4 /* ControllerTerminalInputView.swift */,
 				92D39B67AFDC7D7C61741A03 /* HostListView.swift */,
+				AE5C2C71C1D39ECA5CDD08FE /* SlateColors.swift */,
+				88E38D4F5550D42D8E7BD818 /* SlateTokens.swift */,
 				0D52C3569C68C273CCD11319 /* TerminalSessionView.swift */,
 			);
 			name = Views;
@@ -751,6 +757,8 @@
 				EC6A9535CFA6010A4109D33D /* ReplicationDocumentReader.swift in Sources */,
 				034AD326A8BB2267989C9CFB /* ReplicationKeychainStore.swift in Sources */,
 				1942F8158A5733E3E4B2FD71 /* SSHControllerTransport.swift in Sources */,
+				ABD9CA9532A872B14006079D /* SlateColors.swift in Sources */,
+				F918DCD2C9B5D21545E74D22 /* SlateTokens.swift in Sources */,
 				E6B48065F3DFFAE60DF55301 /* TermiRustControllerSecurity.swift in Sources */,
 				2B24DEAFB6911BFC68CC526D /* TermiRustMobileApp.swift in Sources */,
 				90D2386ADD12230937FDB5FB /* TermiRustReplicationSecurity.swift in Sources */,

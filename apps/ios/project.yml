@@ -74,6 +74,8 @@ targets:
       - TermiRustMobile/Views/ControllerRootView.swift
       - TermiRustMobile/Views/ControllerTerminalInputView.swift
       - TermiRustMobile/Views/HostListView.swift
+      - TermiRustMobile/Views/SlateColors.swift
+      - TermiRustMobile/Views/SlateTokens.swift
       - TermiRustMobile/Views/TerminalSessionView.swift
       - TermiRustMobile/Localizable.xcstrings
     dependencies:

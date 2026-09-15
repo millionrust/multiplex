@@ -32,12 +32,17 @@ fn run() -> Result<(), String> {
     let manifest_path = root.join("design/tokens.toml");
     let rust_path = root.join("crates/termirust-ui-contract/src/generated.rs");
     let fixture_path = root.join("design/generated/tokens-contract.json");
+    let swift_path = root.join("apps/ios/TermiRustMobile/Views/SlateTokens.swift");
+    let kotlin_path =
+        root.join("apps/android/app/src/main/java/com/termirust/mobile/ui/SlateTokens.kt");
     let (manifest, source) = load_manifest(&manifest_path).map_err(|error| error.to_string())?;
     let artifacts = generate_artifacts(&manifest, &source).map_err(|error| error.to_string())?;
 
     if check {
         check_file(&rust_path, &artifacts.rust)?;
         check_file(&fixture_path, &artifacts.platform_contract_json)?;
+        check_file(&swift_path, &artifacts.swift)?;
+        check_file(&kotlin_path, &artifacts.kotlin)?;
         println!(
             "design tokens are current (sha256:{})",
             artifacts.source_hash
@@ -53,6 +58,8 @@ fn run() -> Result<(), String> {
     .map_err(|error| format!("unable to create generated fixture directory: {error}"))?;
     write_atomic(&rust_path, &artifacts.rust)?;
     write_atomic(&fixture_path, &artifacts.platform_contract_json)?;
+    write_atomic(&swift_path, &artifacts.swift)?;
+    write_atomic(&kotlin_path, &artifacts.kotlin)?;
     println!("generated design tokens (sha256:{})", artifacts.source_hash);
     Ok(())
 }

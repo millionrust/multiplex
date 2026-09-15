@@ -97,6 +97,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
+import com.termirust.mobile.ui.SlateTheme
+import com.termirust.mobile.ui.SlateTokens
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1098,9 +1100,9 @@ private fun ControllerTerminalScreen(
     val canInput = terminal.writerLease == WriterLeaseState.Held &&
         terminal.attachState == ReadOnlyAttachState.Live && !terminal.privacyCovered
     val statusColor = when (terminal.attachState) {
-        ReadOnlyAttachState.Live -> androidx.compose.ui.graphics.Color(0xff22c55e)
+        ReadOnlyAttachState.Live -> terminalSlateColor(SlateTokens.colorStatusDone(TerminalSlateTheme))
         is ReadOnlyAttachState.Gap, is ReadOnlyAttachState.Failed ->
-            androidx.compose.ui.graphics.Color(0xfff59e0b)
+            terminalSlateColor(SlateTokens.colorStatusAttention(TerminalSlateTheme))
         ReadOnlyAttachState.Offline, ReadOnlyAttachState.Exited ->
             MaterialTheme.colorScheme.onSurfaceVariant
         else -> MaterialTheme.colorScheme.primary
@@ -1188,7 +1190,7 @@ private fun ControllerTerminalScreen(
             horizontalState.scrollTo(next.roundToInt().coerceIn(0, horizontalState.maxValue))
         }
     }
-    Column(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
+    Column(Modifier.fillMaxSize().background(terminalSlateColor(SlateTokens.colorBgTerminal(TerminalSlateTheme)))) {
         if (!focusedLandscape) Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
             BoxWithConstraints {
                 val compactStatus = maxWidth < 600.dp || density.fontScale >= 1.6f
@@ -1223,7 +1225,7 @@ private fun ControllerTerminalScreen(
                             writerLabel(terminal),
                             style = MaterialTheme.typography.labelSmall,
                             color = if (terminal.writerLease == WriterLeaseState.Held) {
-                                androidx.compose.ui.graphics.Color(0xff22c55e)
+                                terminalSlateColor(SlateTokens.colorStatusDone(TerminalSlateTheme))
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             },
@@ -1369,7 +1371,7 @@ private fun ControllerTerminalScreen(
             } else if (lines.all(String::isEmpty)) {
                 Text(
                     terminalEmptyText(terminal.attachState),
-                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.62f),
+                    color = terminalSlateColor(SlateTokens.colorTextMuted(TerminalSlateTheme)),
                     modifier = Modifier.padding(16.dp),
                 )
             } else {
@@ -1440,7 +1442,7 @@ private fun ControllerTerminalScreen(
                     if (focusedLandscape) {
                         Text(
                             stringResource(com.termirust.mobile.R.string.you_control),
-                            color = androidx.compose.ui.graphics.Color(0xff22c55e),
+                            color = terminalSlateColor(SlateTokens.colorStatusDone(TerminalSlateTheme)),
                             fontWeight = FontWeight.SemiBold,
                         )
                         TextButton(onClick = onReleaseControl) {
@@ -1507,12 +1509,12 @@ internal fun styledTerminalRow(
             withStyle(
                 SpanStyle(
                     color = if (column == cursorColumn) {
-                        androidx.compose.ui.graphics.Color.Black
+                        terminalSlateColor(SlateTokens.colorBgTerminal(TerminalSlateTheme))
                     } else {
                         colors.first
                     },
                     background = if (column == cursorColumn) {
-                        androidx.compose.ui.graphics.Color(0xff22c55e)
+                        terminalSlateColor(SlateTokens.colorTerminalCursor(TerminalSlateTheme))
                     } else {
                         colors.second
                     },
@@ -1535,9 +1537,12 @@ private fun resolvedTerminalColors(
 ): Pair<androidx.compose.ui.graphics.Color, androidx.compose.ui.graphics.Color> {
     val foreground = terminalColor(
         style.foreground,
-        androidx.compose.ui.graphics.Color(0xffe6e6e6),
+        terminalSlateColor(SlateTokens.colorTerminalFg(TerminalSlateTheme)),
     )
-    val background = terminalColor(style.background, androidx.compose.ui.graphics.Color.Black)
+    val background = terminalColor(
+        style.background,
+        terminalSlateColor(SlateTokens.colorBgTerminal(TerminalSlateTheme)),
+    )
     val resolvedForeground = if (style.inverse) background else foreground
     val resolvedBackground = if (style.inverse) foreground else background
     return (if (style.dim) resolvedForeground.copy(alpha = 0.55f) else resolvedForeground) to
@@ -1557,15 +1562,33 @@ private fun terminalColor(
     )
 }
 
+// The controller terminal is always drawn dark, so it uses the Slate Dark terminal tokens.
+private val TerminalSlateTheme = SlateTheme.Dark
+
+private fun terminalSlateColor(argb: Long) = androidx.compose.ui.graphics.Color(argb)
+
 private fun ansiColor(index: Int): androidx.compose.ui.graphics.Color {
-    val base = listOf(
-        0x000000, 0xcc0000, 0x00cc00, 0xcccc00,
-        0x0000cc, 0xcc00cc, 0x00cccc, 0xbfbfbf,
-        0x808080, 0xff0000, 0x00ff00, 0xffff00,
-        0x5959ff, 0xff00ff, 0x00ffff, 0xffffff,
-    )
-    if (index in base.indices) {
-        return androidx.compose.ui.graphics.Color(0xff000000 or base[index].toLong())
+    val named = when (index) {
+        0 -> SlateTokens.colorTerminalAnsiBlack(TerminalSlateTheme)
+        1 -> SlateTokens.colorTerminalAnsiRed(TerminalSlateTheme)
+        2 -> SlateTokens.colorTerminalAnsiGreen(TerminalSlateTheme)
+        3 -> SlateTokens.colorTerminalAnsiYellow(TerminalSlateTheme)
+        4 -> SlateTokens.colorTerminalAnsiBlue(TerminalSlateTheme)
+        5 -> SlateTokens.colorTerminalAnsiMagenta(TerminalSlateTheme)
+        6 -> SlateTokens.colorTerminalAnsiCyan(TerminalSlateTheme)
+        7 -> SlateTokens.colorTerminalAnsiWhite(TerminalSlateTheme)
+        8 -> SlateTokens.colorTerminalAnsiBrightBlack(TerminalSlateTheme)
+        9 -> SlateTokens.colorTerminalAnsiBrightRed(TerminalSlateTheme)
+        10 -> SlateTokens.colorTerminalAnsiBrightGreen(TerminalSlateTheme)
+        11 -> SlateTokens.colorTerminalAnsiBrightYellow(TerminalSlateTheme)
+        12 -> SlateTokens.colorTerminalAnsiBrightBlue(TerminalSlateTheme)
+        13 -> SlateTokens.colorTerminalAnsiBrightMagenta(TerminalSlateTheme)
+        14 -> SlateTokens.colorTerminalAnsiBrightCyan(TerminalSlateTheme)
+        15 -> SlateTokens.colorTerminalAnsiBrightWhite(TerminalSlateTheme)
+        else -> null
+    }
+    if (named != null) {
+        return terminalSlateColor(named)
     }
     if (index in 16..231) {
         val cube = index - 16
@@ -1773,7 +1796,7 @@ private fun PairHostDialog(
                     if (offer.isNotBlank()) {
                         Text(
                             stringResource(com.termirust.mobile.R.string.pairing_offer_ready),
-                            color = androidx.compose.ui.graphics.Color(0xff22c55e),
+                            color = terminalSlateColor(SlateTokens.colorStatusDone(TerminalSlateTheme)),
                             style = MaterialTheme.typography.labelMedium,
                         )
                     }

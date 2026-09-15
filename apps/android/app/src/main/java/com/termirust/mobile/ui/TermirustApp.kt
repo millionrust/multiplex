@@ -105,53 +105,38 @@ private data class TermirustMobileColors(
     val dangerBorder: Color,
 )
 
-private val LightMobileColors = TermirustMobileColors(
-    appBackground = Color(0xFFF5F7FA),
-    panelBackground = Color.White,
-    panelAltBackground = Color(0xFFF8FAFC),
-    panelBorder = Color(0xFFE0E6EF),
-    primaryText = Color(0xFF111827),
-    secondaryText = Color(0xFF64748B),
-    terminalBackground = Color(0xFF0B1020),
-    terminalForeground = Color(0xFFE5E7EB),
-    terminalMuted = Color(0xFF94A3B8),
-    accent = Color(0xFF2563EB),
-    accentSurface = Color(0xFFEFF6FF),
-    success = Color(0xFF0F9F6E),
-    successSurface = Color(0xFFEFFDF5),
-    successBorder = Color(0xFFBBF7D0),
-    warning = Color(0xFFB45309),
-    warningSurface = Color(0xFFFFF7ED),
-    warningBorder = Color(0xFFFED7AA),
-    danger = Color(0xFFDC2626),
-    dangerText = Color(0xFF7F1D1D),
-    dangerSurface = Color(0xFFFEF2F2),
-    dangerBorder = Color(0xFFFECACA),
-)
+private fun slateMobileColors(theme: SlateTheme): TermirustMobileColors {
+    val success = Color(SlateTokens.colorStatusDone(theme))
+    val warning = Color(SlateTokens.colorStatusAttention(theme))
+    val danger = Color(SlateTokens.colorStatusError(theme))
+    return TermirustMobileColors(
+        appBackground = Color(SlateTokens.colorBgCanvas(theme)),
+        panelBackground = Color(SlateTokens.colorBgElevated(theme)),
+        panelAltBackground = Color(SlateTokens.colorBgSurface(theme)),
+        panelBorder = Color(SlateTokens.colorBorderDefault(theme)),
+        primaryText = Color(SlateTokens.colorTextPrimary(theme)),
+        secondaryText = Color(SlateTokens.colorTextMuted(theme)),
+        terminalBackground = Color(SlateTokens.colorBgTerminal(theme)),
+        terminalForeground = Color(SlateTokens.colorTerminalFg(theme)),
+        terminalMuted = Color(SlateTokens.colorTextMuted(theme)),
+        accent = Color(SlateTokens.colorActionPrimary(theme)),
+        accentSurface = Color(SlateTokens.colorSelection(theme)),
+        success = success,
+        successSurface = success.copy(alpha = 0.12f),
+        successBorder = success.copy(alpha = 0.4f),
+        warning = warning,
+        warningSurface = warning.copy(alpha = 0.12f),
+        warningBorder = warning.copy(alpha = 0.4f),
+        danger = danger,
+        dangerText = danger,
+        dangerSurface = danger.copy(alpha = 0.12f),
+        dangerBorder = danger.copy(alpha = 0.4f),
+    )
+}
 
-private val DarkMobileColors = TermirustMobileColors(
-    appBackground = Color(0xFF0C0F14),
-    panelBackground = Color(0xFF151922),
-    panelAltBackground = Color(0xFF111827),
-    panelBorder = Color(0xFF303746),
-    primaryText = Color(0xFFF8FAFC),
-    secondaryText = Color(0xFF94A3B8),
-    terminalBackground = Color(0xFF050814),
-    terminalForeground = Color(0xFFF1F5F9),
-    terminalMuted = Color(0xFF94A3B8),
-    accent = Color(0xFF60A5FA),
-    accentSurface = Color(0xFF13233D),
-    success = Color(0xFF34D399),
-    successSurface = Color(0xFF062E22),
-    successBorder = Color(0xFF166846),
-    warning = Color(0xFFF59E0B),
-    warningSurface = Color(0xFF3B2507),
-    warningBorder = Color(0xFF92400E),
-    danger = Color(0xFFF87171),
-    dangerText = Color(0xFFFECACA),
-    dangerSurface = Color(0xFF3A1114),
-    dangerBorder = Color(0xFF7F1D1D),
-)
+private val LightMobileColors = slateMobileColors(SlateTheme.Light)
+
+private val DarkMobileColors = slateMobileColors(SlateTheme.Dark)
 
 private val LocalTermirustMobileColors = staticCompositionLocalOf { LightMobileColors }
 
@@ -389,7 +374,7 @@ private fun ProductHeader(
                 .background(TerminalBackground, RoundedCornerShape(10.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Text(">", color = Color.White, fontWeight = FontWeight.Bold)
+            Text(">", color = TerminalForeground, fontWeight = FontWeight.Bold)
         }
         Column {
             Text("TermiRust", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)

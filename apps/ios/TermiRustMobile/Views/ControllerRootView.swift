@@ -289,7 +289,7 @@ private struct ControllerSessionFleetView: View {
                         if routeSelectionError != nil {
                             Label("Route switch was not completed", systemImage: "exclamationmark.triangle")
                                 .font(.caption)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(Color.slateAttention)
                                 .accessibilityAddTraits(.isStaticText)
                         }
                     }
@@ -442,7 +442,7 @@ private struct RelayControllerConfigurationView: View {
                 if let message = localError ?? configurationError {
                     Section {
                         Label(message, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Color.slateError)
                     }
                 }
                 if hasExistingConfiguration {
@@ -604,7 +604,7 @@ private struct SSHControllerConfigurationView: View {
                 if let message = localError ?? configurationError {
                     Section {
                         Label(message, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Color.slateError)
                     }
                 }
                 if hasExistingConfiguration {
@@ -959,7 +959,7 @@ private struct PairHostView: View {
                                 }
                             } icon: {
                                 Image(systemName: "arrow.clockwise.circle.fill")
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(Color.slateAttention)
                             }
                             .accessibilityElement(children: .combine)
                         }
@@ -1024,12 +1024,12 @@ private struct PairHostView: View {
                             if let pairingOfferPasteError {
                                 Label(pairingOfferPasteError, systemImage: "exclamationmark.triangle")
                                     .font(.footnote)
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(Color.slateAttention)
                                     .fixedSize(horizontal: false, vertical: true)
                             } else if !viewModel.pairingOfferText.isEmpty {
                                 Label("Pairing offer ready", systemImage: "checkmark.circle.fill")
                                     .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(Color.slateDone)
                             }
                         }
                         Text("In TermiRust Desktop, open Settings, Remote Devices, Add Controller, then copy the pairing offer here.")
@@ -1040,7 +1040,7 @@ private struct PairHostView: View {
                                 ? "Camera access is off. Paste the pairing offer instead, or enable Camera in Settings."
                                 : "A camera is unavailable. Paste the pairing offer instead.")
                                 .font(.footnote)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(Color.slateAttention)
                         }
                     }
                     Section {

@@ -267,18 +267,18 @@ private struct CompactHostChip: View {
                 if host.persistentSession.enabled {
                     Text("tmux")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(Color.slateAccent)
                 }
             }
             .font(.subheadline.weight(.medium))
             .foregroundStyle(.primary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(selected ? Color.blue.opacity(0.08) : Color.mobilePanelBackground)
+            .background(selected ? Color.slateAccent.opacity(0.08) : Color.mobilePanelBackground)
             .clipShape(Capsule())
             .overlay(
                 Capsule()
-                    .stroke(selected ? Color.blue : Color.panelBorder)
+                    .stroke(selected ? Color.slateAccent : Color.panelBorder)
             )
         }
         .buttonStyle(.plain)
@@ -316,7 +316,7 @@ private struct EmptySessionView: View {
         VStack(spacing: 14) {
             Image(systemName: "terminal")
                 .font(.system(size: 34, weight: .semibold))
-                .foregroundStyle(.blue)
+                .foregroundStyle(Color.slateAccent)
             Text("Select a host")
                 .font(.title2.weight(.bold))
             Text("Import a mobile vault, save the credential, then connect to a tmux-backed terminal.")

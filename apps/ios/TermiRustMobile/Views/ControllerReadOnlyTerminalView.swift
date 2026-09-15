@@ -77,7 +77,7 @@ struct ControllerReadOnlyTerminalView: View {
             if let message = viewModel.writerMessage {
                 Label(message, systemImage: "exclamationmark.triangle")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.slateAttention)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityLabel("Terminal control warning. \(message)")
                     .padding(.horizontal, 10)
@@ -86,7 +86,7 @@ struct ControllerReadOnlyTerminalView: View {
             if let message = viewModel.connectionMessage {
                 Label(message, systemImage: "wifi.exclamationmark")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.slateAttention)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityLabel("Terminal connection warning. \(message)")
                     .padding(.horizontal, 10)
@@ -385,7 +385,7 @@ struct ControllerReadOnlyTerminalView: View {
         HStack(spacing: 10) {
             Label("You Control", systemImage: "hand.tap.fill")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.green)
+                .foregroundStyle(Color.slateDone)
             Spacer(minLength: 8)
             Button("Release") { viewModel.releaseControl() }
                 .buttonStyle(.bordered)
@@ -487,7 +487,7 @@ struct ControllerReadOnlyTerminalView: View {
             let colors = resolvedColors(for: cell.style)
             if column == cursorColumn {
                 segment.foregroundColor = .black
-                segment.backgroundColor = Color.green.opacity(0.9)
+                segment.backgroundColor = Color.terminalCursor
             } else {
                 segment.foregroundColor = colors.foreground
                 segment.backgroundColor = colors.background
@@ -554,15 +554,8 @@ struct ControllerReadOnlyTerminalView: View {
     }
 
     private func ansiColor(_ index: Int) -> Color {
-        let base: [(Double, Double, Double)] = [
-            (0, 0, 0), (0.80, 0, 0), (0, 0.80, 0), (0.80, 0.80, 0),
-            (0, 0, 0.80), (0.80, 0, 0.80), (0, 0.80, 0.80), (0.75, 0.75, 0.75),
-            (0.50, 0.50, 0.50), (1, 0, 0), (0, 1, 0), (1, 1, 0),
-            (0.35, 0.35, 1), (1, 0, 1), (0, 1, 1), (1, 1, 1)
-        ]
-        if base.indices.contains(index) {
-            let value = base[index]
-            return Color(red: value.0, green: value.1, blue: value.2)
+        if let named = Color.slateANSI(index) {
+            return named
         }
         if (16...231).contains(index) {
             let cube = index - 16

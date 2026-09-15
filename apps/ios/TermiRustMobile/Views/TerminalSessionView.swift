@@ -307,7 +307,7 @@ struct TerminalSessionView: View {
             var segment = AttributedString(cell.text)
             let colors = resolvedTerminalColors(cell.style)
             segment.foregroundColor = column == cursor ? .black : colors.foreground
-            segment.backgroundColor = column == cursor ? Color.green.opacity(0.9) : colors.background
+            segment.backgroundColor = column == cursor ? Color.terminalCursor : colors.background
             var font = Font.system(size: terminalFontSize, design: .monospaced)
             if cell.style.bold { font = font.weight(.bold) }
             if cell.style.italic { font = font.italic() }
@@ -338,15 +338,8 @@ struct TerminalSessionView: View {
     }
 
     private func directANSIColor(_ index: Int) -> Color {
-        let base: [(Double, Double, Double)] = [
-            (0, 0, 0), (0.8, 0, 0), (0, 0.8, 0), (0.8, 0.8, 0),
-            (0, 0, 0.8), (0.8, 0, 0.8), (0, 0.8, 0.8), (0.75, 0.75, 0.75),
-            (0.5, 0.5, 0.5), (1, 0, 0), (0, 1, 0), (1, 1, 0),
-            (0.35, 0.35, 1), (1, 0, 1), (0, 1, 1), (1, 1, 1)
-        ]
-        if base.indices.contains(index) {
-            let color = base[index]
-            return Color(red: color.0, green: color.1, blue: color.2)
+        if let named = Color.slateANSI(index) {
+            return named
         }
         if (16...231).contains(index) {
             let cube = index - 16
@@ -414,7 +407,7 @@ struct TerminalSessionView: View {
         HStack {
             Text("Multiline paste detected.")
                 .font(.caption)
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color.slateAttention)
             Spacer()
             Button("Confirm") {
                 sendInput(force: true)
@@ -426,11 +419,11 @@ struct TerminalSessionView: View {
             .buttonStyle(.bordered)
         }
         .padding(10)
-        .background(Color.orange.opacity(0.08))
+        .background(Color.slateAttention.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.orange.opacity(0.28))
+                .stroke(Color.slateAttention.opacity(0.28))
         )
         .padding(.horizontal, 14)
         .padding(.bottom, 8)
@@ -629,19 +622,19 @@ private struct ConnectionWarningBanner: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Connection blocked")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.red)
+                .foregroundStyle(Color.slateError)
             Text(message)
                 .font(.caption)
-                .foregroundStyle(Color(red: 0.50, green: 0.11, blue: 0.11))
+                .foregroundStyle(Color.slateError)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(Color.red.opacity(0.08))
+        .background(Color.slateError.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.red.opacity(0.25))
+                .stroke(Color.slateError.opacity(0.25))
         )
         .padding(.horizontal, 14)
         .padding(.bottom, 8)
@@ -668,17 +661,17 @@ private struct HostKeyPinPanel: View {
                     .lineLimit(1)
                 Text(pinDetail)
                     .font(.caption2.monospaced())
-                    .foregroundStyle(knownHost == nil ? Color(red: 0.50, green: 0.11, blue: 0.11) : .secondary)
+                    .foregroundStyle(knownHost == nil ? Color.slateError : .secondary)
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
         }
         .padding(10)
-        .background((knownHost == nil ? Color.red : Color.green).opacity(0.08))
+        .background((knownHost == nil ? Color.slateError : Color.slateDone).opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke((knownHost == nil ? Color.red : Color.green).opacity(0.24))
+                .stroke((knownHost == nil ? Color.slateError : Color.slateDone).opacity(0.24))
         )
         .padding(.horizontal, 14)
         .padding(.bottom, 8)
@@ -709,46 +702,14 @@ private extension String {
 extension View {
     func mobilePanel() -> some View {
         self
-            .padding(14)
+            .padding(SlateTokens.space4(.light))
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.mobilePanelBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: SlateTokens.radiusPanel(.light), style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: SlateTokens.radiusPanel(.light), style: .continuous)
                     .stroke(Color.panelBorder)
             )
     }
 }
 
-extension Color {
-    static let mobileBackground = Color(UIColor { trait in
-        trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.05, green: 0.06, blue: 0.08, alpha: 1)
-            : UIColor(red: 0.96, green: 0.97, blue: 0.98, alpha: 1)
-    })
-    static let mobilePanelBackground = Color(UIColor { trait in
-        trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.09, green: 0.10, blue: 0.12, alpha: 1)
-            : UIColor.white
-    })
-    static let panelBorder = Color(UIColor { trait in
-        trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.20, green: 0.23, blue: 0.28, alpha: 1)
-            : UIColor(red: 0.88, green: 0.90, blue: 0.94, alpha: 1)
-    })
-    static let terminalBackground = Color(UIColor { trait in
-        trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.02, green: 0.03, blue: 0.06, alpha: 1)
-            : UIColor(red: 0.04, green: 0.06, blue: 0.13, alpha: 1)
-    })
-    static let terminalForeground = Color(UIColor { trait in
-        trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.94, green: 0.95, blue: 0.97, alpha: 1)
-            : UIColor(red: 0.90, green: 0.92, blue: 0.95, alpha: 1)
-    })
-    static let terminalMuted = Color(UIColor { trait in
-        trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.62, green: 0.68, blue: 0.78, alpha: 1)
-            : UIColor(red: 0.58, green: 0.64, blue: 0.72, alpha: 1)
-    })
-}

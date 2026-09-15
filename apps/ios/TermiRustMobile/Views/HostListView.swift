@@ -165,17 +165,17 @@ private struct HostCard: View {
                 if let sessionName = host.persistentSession.sessionName {
                     Text(sessionName)
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(Color.slateAccent)
                         .lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(selected ? Color.blue.opacity(0.08) : Color(.secondarySystemBackground))
+            .background(selected ? Color.slateAccent.opacity(0.08) : Color.mobilePanelBackground)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(selected ? Color.blue : Color.panelBorder)
+                    .stroke(selected ? Color.slateAccent : Color.panelBorder)
             )
         }
         .buttonStyle(.plain)

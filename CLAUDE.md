@@ -170,7 +170,7 @@ cargo check
 cargo run            # debug build; use --release for performance testing
 cargo test --workspace --all-targets --locked   # everything, as CI runs it
 cargo run -p termirust-slate --example gallery  # Slate component gallery
-cargo run -p termirust-ui-contract --bin generate-tokens  # after editing design/tokens.toml
+cargo run -p termirust-ui-contract --bin generate-tokens  # after editing design/tokens.toml; also writes the mobile SlateTokens.swift and SlateTokens.kt
 ```
 
 The Docker-backed SSH/SFTP tests bind-mount files from `tests/fixtures/`, so they need a

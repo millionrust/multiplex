@@ -113,6 +113,8 @@ CONTROLLER_SOURCES=(
   TermiRustMobile/Controller/ControllerConnectionActor.swift
   TermiRustMobile/ViewModels/ControllerViewModel.swift
   TermiRustMobile/ViewModels/ControllerTerminalViewModel.swift
+  TermiRustMobile/Views/SlateTokens.swift
+  TermiRustMobile/Views/SlateColors.swift
   TermiRustMobile/Views/ControllerPresentation.swift
   TermiRustMobile/Views/ControllerRootView.swift
   TermiRustMobile/Views/ControllerReadOnlyTerminalView.swift
