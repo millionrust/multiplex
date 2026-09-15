@@ -57,9 +57,15 @@ metadata = json.loads(subprocess.check_output(
     text=True,
 ))
 versions = {package["name"]: package.get("rust_version") for package in metadata["packages"]}
-unexpected = {name: version for name, version in versions.items() if version != "1.88"}
+# Slate sits on gpui-pre, whose dependencies need a newer compiler; the CI MSRV job excludes it.
+expected_versions = {"termirust-slate": "1.92"}
+unexpected = {
+    name: version
+    for name, version in versions.items()
+    if version != expected_versions.get(name, "1.88")
+}
 if unexpected:
-    print(f"Workspace packages must declare rust-version 1.88: {unexpected}", file=sys.stderr)
+    print(f"Workspace packages must declare rust-version 1.88 (termirust-slate 1.92): {unexpected}", file=sys.stderr)
     raise SystemExit(1)
 
 policy = Path("deny.toml").read_text()

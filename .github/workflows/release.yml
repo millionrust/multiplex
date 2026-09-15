@@ -60,7 +60,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libxkbcommon-dev libssl-dev libfontconfig1-dev \
+            libxkbcommon-dev libssl-dev libfontconfig1-dev libdbus-1-dev \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
             pkg-config
 

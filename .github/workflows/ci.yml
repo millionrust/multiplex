@@ -36,7 +36,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libxkbcommon-dev libssl-dev libfontconfig1-dev libdbus-1-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libssl-dev libfontconfig1-dev libdbus-1-dev \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
             pkg-config tmux
 
@@ -80,12 +80,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libxkbcommon-dev libssl-dev libfontconfig1-dev libdbus-1-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libssl-dev libfontconfig1-dev libdbus-1-dev \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
             pkg-config
 
       - name: Check minimum supported Rust version
-        run: cargo +1.88.0 check --workspace --all-targets --all-features --locked
+        run: cargo +1.88.0 check --workspace --exclude termirust-slate --all-targets --all-features --locked
 
   windows:
     name: windows runtime and sidecars

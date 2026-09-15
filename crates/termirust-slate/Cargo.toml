@@ -2,7 +2,9 @@
 name = "termirust-slate"
 version.workspace = true
 edition = "2024"
-rust-version.workspace = true
+# gpui-pre brings smol_str (Rust 1.89) and, on Linux, oo7 (Rust 1.92). The desktop app does
+# not depend on Slate, so the rest of the workspace keeps the 1.88 contract.
+rust-version = "1.92"
 description = "Slate: TermiRust's styled component library on gpui-base"
 license = "MIT OR Apache-2.0"
 publish = false
