@@ -141,6 +141,38 @@ impl FrameBuffer {
         Ok(())
     }
 
+    /// Makes each row `y` of `rect` a copy of row `y + dy` as it was before the call. Overlapping
+    /// source and destination rows are handled.
+    pub fn apply_move(&mut self, rect: Rect, dy: i32) -> Result<(), CodecError> {
+        let bounds = self.size.bounds();
+        let source_top = i64::from(rect.y) + i64::from(dy);
+        let source_bottom = i64::from(rect.bottom()) + i64::from(dy);
+        if rect.is_empty()
+            || dy == 0
+            || !bounds.contains_rect(rect)
+            || source_top < 0
+            || source_bottom > i64::from(bounds.height)
+        {
+            return Err(CodecError::InvalidMove);
+        }
+        let stride = self.size.width() as usize * BYTES_PER_PIXEL;
+        let left = rect.x as usize * BYTES_PER_PIXEL;
+        let span = rect.width as usize * BYTES_PER_PIXEL;
+        let copy_row = |pixels: &mut Vec<u8>, y: u32| {
+            let destination = y as usize * stride + left;
+            let source = (i64::from(y) + i64::from(dy)) as usize * stride + left;
+            pixels.copy_within(source..source + span, destination);
+        };
+        if dy > 0 {
+            (rect.y..rect.bottom()).for_each(|y| copy_row(&mut self.pixels, y));
+        } else {
+            (rect.y..rect.bottom())
+                .rev()
+                .for_each(|y| copy_row(&mut self.pixels, y));
+        }
+        Ok(())
+    }
+
     /// Copies a whole frame of the same size into this buffer.
     pub fn copy_from_frame(&mut self, frame: &Frame<'_>) -> Result<(), CodecError> {
         if frame.size() != self.size {

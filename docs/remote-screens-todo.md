@@ -35,7 +35,7 @@ Pure Rust, no platform code, fully testable in CI.
   Hand-written big-endian layout, checked lengths, closed op kinds, fixture vectors.
 - [x] 1.7 `feat(screen-codec): reuse tiles the viewer already holds`
   Per-viewer LRU cache by content hash, host-side shadow, `Missing` recovery.
-- [ ] 1.8 `feat(screen-codec): detect vertical scrolls as moves`
+- [x] 1.8 `feat(screen-codec): detect vertical scrolls as moves`
 - [ ] 1.9 `feat(screen-codec): encode frames into ops and apply them to a framebuffer`
   Encoder and decoder end to end; decoded pixels equal the source for lossless tiles.
 - [ ] 1.10 `feat(screen-codec): send only what changed since the viewer's last acknowledgement`
