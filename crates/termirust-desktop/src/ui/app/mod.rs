@@ -80,7 +80,7 @@ use session_coordinator::{
 };
 use session_library::{SessionLibraryFilter, SessionLibraryState, SessionLibraryView};
 use session_resume::SessionResumeState;
-use terminal_grid::TerminalGridView;
+use terminal_grid::{GridBounds, TerminalGridView};
 use worktree_launch::WorktreeLaunchUiState;
 
 use std::collections::{HashMap, HashSet};
@@ -794,6 +794,8 @@ struct SessionPane {
     endpoint: String,
     terminal: TerminalState,
     terminal_grid: Entity<TerminalGridView>,
+    /// Where the grid was last painted; sizing and mouse mapping follow it.
+    grid_bounds: std::rc::Rc<GridBounds>,
     terminal_accessibility: TerminalAccessibilityBuffer,
     terminal_announcements: TerminalAnnouncementCoalescer,
     terminal_announcement: Option<TerminalAnnouncement>,
@@ -2029,6 +2031,7 @@ impl TermiRustApp {
                         let _ = this.update(cx, |app, cx| {
                             app.process_events(cx);
                             app.process_shell_accessibility_actions(window, cx);
+                            app.follow_grid_bounds(window, cx);
                             app.trace_focus_change(window, cx);
                             app.refresh_remote_listener_process(cx);
                             app.process_artifact_progress(cx);
@@ -7784,9 +7787,18 @@ impl TermiRustApp {
         let terminal = TerminalState::new(TerminalSize::default(), terminal_scrollback_rows);
         let snapshot = terminal.snapshot().clone();
         let font_family = self.terminal_font_family(cx);
+        let grid_bounds = std::rc::Rc::new(GridBounds::default());
+        let view_bounds = grid_bounds.clone();
         let font_size = self.terminal_font_size();
         let terminal_grid = cx.new(move |_| {
-            TerminalGridView::new(snapshot, None, Vec::new(), font_family, font_size)
+            TerminalGridView::new(
+                snapshot,
+                view_bounds,
+                None,
+                Vec::new(),
+                font_family,
+                font_size,
+            )
         });
 
         self.panes.push(SessionPane {
@@ -7796,6 +7808,7 @@ impl TermiRustApp {
             endpoint,
             terminal,
             terminal_grid,
+            grid_bounds,
             terminal_accessibility: TerminalAccessibilityBuffer::new(pane_id, title.clone()),
             terminal_announcements: TerminalAnnouncementCoalescer::new(),
             terminal_announcement: None,
@@ -9478,6 +9491,7 @@ impl TermiRustApp {
                         line_height,
                     })
                 })
+                .map(|layout| self.with_rendered_grid(layout))
                 .collect();
         }
         let (panes, _) = self.workspace_split_rects(window);
@@ -9501,7 +9515,27 @@ impl TermiRustApp {
                     line_height,
                 }
             })
+            .map(|layout| self.with_rendered_grid(layout))
             .collect()
+    }
+
+    /// Uses the grid's painted bounds when the pane has been drawn, so anything above the
+    /// grid, such as a durable session's header, is left out of the cell math.
+    fn with_rendered_grid(&self, mut layout: PaneLayout) -> PaneLayout {
+        let Some(bounds) = self
+            .pane(layout.pane_id)
+            .and_then(|pane| pane.grid_bounds.get())
+            .filter(|bounds| bounds.size.width > Pixels::ZERO && bounds.size.height > Pixels::ZERO)
+        else {
+            return layout;
+        };
+        layout.cell_x = bounds.origin.x.into();
+        layout.cell_y = bounds.origin.y.into();
+        layout.cell_width = bounds.size.width.into();
+        layout.cell_height = bounds.size.height.into();
+        layout.cols = (layout.cell_width / layout.char_width).floor().max(1.0) as u16;
+        layout.rows = (layout.cell_height / layout.line_height).floor().max(1.0) as u16;
+        layout
     }
 
     fn pane_layout_for(
@@ -9513,6 +9547,17 @@ impl TermiRustApp {
         self.pane_layouts(window, cx)
             .into_iter()
             .find(|layout| layout.pane_id == pane_id)
+    }
+
+    /// Resizes panes whose grid moved or changed size since the last frame.
+    fn follow_grid_bounds(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let mut moved = false;
+        for pane in &self.panes {
+            moved |= pane.grid_bounds.take_changed();
+        }
+        if moved {
+            self.sync_terminal_layout(window, cx);
+        }
     }
 
     fn sync_terminal_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -14388,6 +14433,83 @@ mod tests {
     }
 
     #[gpui::test]
+    fn durable_pane_cells_start_below_its_header(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let pane_id = window
+            .update(cx, |_, _window, cx| {
+                app.update(cx, |app, cx| {
+                    let pane_id = app.next_session_id();
+                    let request = ConnectRequest::local_shell_with_config(
+                        pane_id,
+                        LocalShellConfig::default(),
+                    );
+                    let (command_tx, _command_rx) = tokio::sync::mpsc::unbounded_channel();
+                    app.register_pane(
+                        request.clone(),
+                        SessionRuntimeHandle { command_tx },
+                        cx.focus_handle().tab_stop(true),
+                        cx.focus_handle().tab_stop(true),
+                        cx,
+                    );
+                    app.open_spawned_pane_workspace(&request, pane_id);
+                    let session_id = termirust_domain::HostedSessionId::new();
+                    if let Some(pane) = app.pane_mut(pane_id) {
+                        pane.connected = true;
+                        pane.app_attached = Some(super::AppAttachedPaneState {
+                            hosted_session_id: session_id,
+                            route: termirust_domain::SessionLaunchRoute::DurableHost,
+                            origin: termirust_domain::SessionOrigin {
+                                project_id: termirust_domain::ProjectId::new(),
+                                preset_id: termirust_domain::PresetId::new(),
+                            },
+                            pending_initial_input: None,
+                            cancel_requested: false,
+                            last_sequence: 0,
+                            has_writer_lease: true,
+                            dev_urls: termirust_client::DevUrlProjection::new(session_id),
+                        });
+                    }
+                    cx.notify();
+                    pane_id
+                })
+            })
+            .expect("test window should remain open");
+
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        let header = visual
+            .debug_bounds(Box::leak(
+                format!("terminal-surface-{pane_id}").into_boxed_str(),
+            ))
+            .expect("terminal surface is rendered");
+        let (layout, grid) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    (
+                        app.pane_layout_for(pane_id, window, cx).unwrap(),
+                        app.pane(pane_id).and_then(|pane| pane.grid_bounds.get()),
+                    )
+                })
+            })
+            .unwrap();
+        let grid = grid.expect("the grid records where it was painted");
+        let cell_y: f32 = grid.origin.y.into();
+        assert_eq!(
+            layout.cell_y, cell_y,
+            "cells start where the grid is painted"
+        );
+        assert!(
+            layout.cell_y >= f32::from(header.origin.y),
+            "the grid sits inside the terminal surface, below the durable header"
+        );
+        let expected_rows = (f32::from(grid.size.height) / layout.line_height)
+            .floor()
+            .max(1.0) as u16;
+        assert_eq!(layout.rows, expected_rows, "rows fit the painted grid");
+    }
+
+    #[gpui::test]
     fn failed_ssh_pane_shows_the_error_and_a_reconnect_action(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
@@ -16194,7 +16316,7 @@ mod tests {
                 .then_some(())
         });
 
-        let low_size = window
+        window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
@@ -16204,6 +16326,16 @@ mod tests {
                         .transform
                         .zoom = 0.5;
                     app.sync_terminal_layout(window, cx);
+                    cx.notify();
+                })
+            })
+            .expect("low zoom update should succeed");
+        // The PTY follows the grid once it is painted at the new zoom.
+        VisualTestContext::from_window(window.into(), cx).run_until_parked();
+        let low_size = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.follow_grid_bounds(window, cx);
                     let size = app.pane(pane_id).unwrap().last_size.unwrap();
                     assert!(app.run_command_in_active_pane(
                         "printf 'zoom-low-size='; stty size",
@@ -16224,7 +16356,7 @@ mod tests {
                 .then_some(())
         });
 
-        let high_size = window
+        window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.workspace_mut(workspace_id)
@@ -16233,6 +16365,16 @@ mod tests {
                         .transform
                         .zoom = 2.0;
                     app.sync_terminal_layout(window, cx);
+                    cx.notify();
+                })
+            })
+            .expect("high zoom update should succeed");
+        // The PTY follows the grid once it is painted at the new zoom.
+        VisualTestContext::from_window(window.into(), cx).run_until_parked();
+        let high_size = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.follow_grid_bounds(window, cx);
                     let size = app.pane(pane_id).unwrap().last_size.unwrap();
                     assert!(app.run_command_in_active_pane(
                         "printf 'zoom-high-size='; stty size",

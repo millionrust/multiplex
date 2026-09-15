@@ -6,6 +6,8 @@
 //! is shaped with its glyph advance forced to the cell width and painted at its exact
 //! cell position. No layout nodes are built per row or per run.
 
+use std::cell::Cell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui::{
@@ -20,8 +22,35 @@ use crate::ui::app::{SearchMatch, TERMINAL_LINE_HEIGHT};
 use crate::ui::render_terminal::{SelectionRange, selection_contains, style_for_render};
 use crate::ui::theme;
 
+/// Where a pane's grid was last painted, in window coordinates. The app sizes the PTY and
+/// maps mouse positions from it, the way Zed's terminal element reports its own bounds, so
+/// headers and banners above the grid never throw the cell math off.
+#[derive(Default)]
+pub(super) struct GridBounds {
+    bounds: Cell<Option<Bounds<Pixels>>>,
+    changed: Cell<bool>,
+}
+
+impl GridBounds {
+    pub(super) fn get(&self) -> Option<Bounds<Pixels>> {
+        self.bounds.get()
+    }
+
+    /// Whether the bounds changed since the last call.
+    pub(super) fn take_changed(&self) -> bool {
+        self.changed.replace(false)
+    }
+
+    fn record(&self, bounds: Bounds<Pixels>) {
+        if self.bounds.replace(Some(bounds)) != Some(bounds) {
+            self.changed.set(true);
+        }
+    }
+}
+
 pub(super) struct TerminalGridView {
     snapshot: Arc<TerminalSnapshot>,
+    bounds: Rc<GridBounds>,
     selection: Option<SelectionRange>,
     visible_matches: Vec<(usize, SearchMatch, bool)>,
     font_family: SharedString,
@@ -33,6 +62,7 @@ pub(super) struct TerminalGridView {
 impl TerminalGridView {
     pub(super) fn new(
         snapshot: Arc<TerminalSnapshot>,
+        bounds: Rc<GridBounds>,
         selection: Option<SelectionRange>,
         visible_matches: Vec<(usize, SearchMatch, bool)>,
         font_family: SharedString,
@@ -40,6 +70,7 @@ impl TerminalGridView {
     ) -> Self {
         Self {
             snapshot,
+            bounds,
             selection,
             visible_matches,
             font_family,
@@ -78,6 +109,7 @@ impl Render for TerminalGridView {
         }
         TerminalGridElement {
             snapshot: self.snapshot.clone(),
+            bounds: self.bounds.clone(),
             selection: self.selection,
             visible_matches: self.visible_matches.clone(),
             font_family: self.font_family.clone(),
@@ -88,6 +120,7 @@ impl Render for TerminalGridView {
 
 struct TerminalGridElement {
     snapshot: Arc<TerminalSnapshot>,
+    bounds: Rc<GridBounds>,
     selection: Option<SelectionRange>,
     visible_matches: Vec<(usize, SearchMatch, bool)>,
     font_family: SharedString,
@@ -403,6 +436,7 @@ impl Element for TerminalGridElement {
         window: &mut Window,
         _cx: &mut App,
     ) -> Self::PrepaintState {
+        self.bounds.record(bounds);
         let font_size = px(self.font_size);
         let text_system = window.text_system().clone();
         let font_id = text_system.resolve_font(&font(self.font_family.clone()));
@@ -542,6 +576,7 @@ mod tests {
         terminal.process_bytes(bytes);
         TerminalGridElement {
             snapshot: terminal.snapshot(),
+            bounds: Rc::default(),
             selection: None,
             visible_matches: Vec::new(),
             font_family: "Menlo".into(),
