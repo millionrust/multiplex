@@ -14,6 +14,14 @@ macro_rules! icon {
 }
 
 const ICONS: &[(&str, &[u8])] = &[
+    icon!("status/diamond"),
+    icon!("status/dashed-circle"),
+    icon!("status/filled-circle"),
+    icon!("status/hollow-circle"),
+    icon!("status/hollow-diamond"),
+    icon!("status/hollow-square"),
+    icon!("status/octagon"),
+    icon!("status/ring-spinner"),
     icon!("arrow-down"),
     icon!("arrow-left"),
     icon!("arrow-right"),

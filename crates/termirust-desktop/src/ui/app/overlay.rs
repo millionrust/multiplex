@@ -473,10 +473,9 @@ impl TermiRustApp {
                                                             ))
                                                         })
                                                         .when_some(status, |this, status| {
-                                                            this.child(self.status_badge(
+                                                            this.child(self.status_kind_badge(
+                                                                crate::ui::status::search_status(status),
                                                                 search_status_label(status),
-                                                                theme::library_bg(),
-                                                                status_tone(status),
                                                             ))
                                                         })
                                                         .when(is_command, |this| {
@@ -572,19 +571,6 @@ fn category_icon(category: PaletteCategory) -> IconName {
         PaletteCategory::Groups => IconName::Folder,
         PaletteCategory::Actions => IconName::Plus,
         PaletteCategory::Archive => IconName::Inbox,
-    }
-}
-
-fn status_tone(status: termirust_domain::SearchStatus) -> gpui::Hsla {
-    match status {
-        termirust_domain::SearchStatus::Attention => theme::warning(),
-        termirust_domain::SearchStatus::Busy | termirust_domain::SearchStatus::Running => {
-            theme::accent()
-        }
-        termirust_domain::SearchStatus::Done => theme::success(),
-        termirust_domain::SearchStatus::Idle => theme::slate(),
-        termirust_domain::SearchStatus::Unavailable => theme::danger(),
-        termirust_domain::SearchStatus::Unknown => theme::text_muted(),
     }
 }
 

@@ -397,19 +397,11 @@ fn classify_failure(error: &NotificationStoreError) -> ActivityCenterFailure {
     }
 }
 
-fn activity_icon(activity: NotificationActivity) -> IconName {
+fn activity_status(activity: NotificationActivity) -> termirust_ui_contract::StatusKind {
     match activity {
-        NotificationActivity::NeedsInput => IconName::Bell,
-        NotificationActivity::Done => IconName::CircleCheck,
-        NotificationActivity::Failed => IconName::TriangleAlert,
-    }
-}
-
-fn activity_tone(activity: NotificationActivity) -> Hsla {
-    match activity {
-        NotificationActivity::NeedsInput => theme::warning(),
-        NotificationActivity::Done => theme::success(),
-        NotificationActivity::Failed => theme::danger(),
+        NotificationActivity::NeedsInput => termirust_ui_contract::StatusKind::Attention,
+        NotificationActivity::Done => termirust_ui_contract::StatusKind::Done,
+        NotificationActivity::Failed => termirust_ui_contract::StatusKind::Error,
     }
 }
 
@@ -572,7 +564,8 @@ impl TermiRustApp {
                     .children(records.into_iter().enumerate().map(|(index, record)| {
                         let open_link = record.deep_link;
                         let dismiss_link = record.deep_link;
-                        let tone = activity_tone(record.key.activity);
+                        let status = activity_status(record.key.activity);
+                        let tone = crate::ui::status::status_color(status);
                         let title = record.display_title(policy.recording_friendly).to_string();
                         let age =
                             localized_activity_age(record.created_at_millis, current_unix_millis());
@@ -601,11 +594,7 @@ impl TermiRustApp {
                                     .justify_center()
                                     .rounded(px(theme::CARD_RADIUS))
                                     .bg(theme::with_alpha(tone, 0.12))
-                                    .child(
-                                        Icon::new(activity_icon(record.key.activity))
-                                            .size(px(theme::ICON_SIZE_STATUS))
-                                            .text_color(tone),
-                                    ),
+                                    .child(crate::ui::status::status_glyph(status)),
                             )
                             .child(
                                 v_flex()

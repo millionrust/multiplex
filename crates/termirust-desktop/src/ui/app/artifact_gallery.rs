@@ -919,11 +919,18 @@ impl TermiRustApp {
                                                 }),
                                         )
                                         .child(
-                                            div()
+                                            h_flex()
                                                 .flex_none()
+                                                .items_center()
+                                                .gap(px(theme::SPACE_1))
                                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                                 .text_color(artifact_state_color(
                                                     row.artifact.state,
+                                                ))
+                                                .child(crate::ui::status::status_glyph(
+                                                    crate::ui::status::artifact_status(
+                                                        row.artifact.state,
+                                                    ),
                                                 ))
                                                 .child(artifact_state_label(row.artifact.state)),
                                         ),
@@ -1828,9 +1835,14 @@ impl TermiRustApp {
                     ),
             )
             .child(
-                div()
+                h_flex()
+                    .items_center()
+                    .gap(px(theme::SPACE_1))
                     .text_size(px(theme::TYPE_CAPTION_SIZE))
                     .text_color(artifact_state_color(artifact.state))
+                    .child(crate::ui::status::status_glyph(
+                        crate::ui::status::artifact_status(artifact.state),
+                    ))
                     .child(artifact_preview_label(artifact)),
             )
             .when_some(preview, |this, preview| {
@@ -2325,12 +2337,7 @@ fn artifact_state_label(state: ArtifactState) -> String {
 }
 
 fn artifact_state_color(state: ArtifactState) -> gpui::Hsla {
-    match state {
-        ArtifactState::Ready => theme::success(),
-        ArtifactState::Staging => theme::accent(),
-        ArtifactState::Quarantined => theme::warning(),
-        ArtifactState::Corrupt => theme::danger(),
-    }
+    crate::ui::status::status_color(crate::ui::status::artifact_status(state))
 }
 
 fn artifact_preview_label(artifact: &ArtifactMetadata) -> String {

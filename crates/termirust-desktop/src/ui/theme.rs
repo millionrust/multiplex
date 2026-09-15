@@ -67,6 +67,10 @@ pub fn semantic_status(kind: StatusKind) -> StatusVisual {
     current_design_tokens().status(kind)
 }
 
+pub fn token_status_color(kind: StatusKind) -> Hsla {
+    token_color(semantic_status(kind).color)
+}
+
 pub fn set_theme_preset(preset: ThemePreset) {
     theme_state()
         .write()

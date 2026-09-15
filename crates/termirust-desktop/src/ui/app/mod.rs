@@ -13067,7 +13067,10 @@ impl TermiRustApp {
         foreground: Hsla,
     ) -> Div {
         let label: SharedString = label.into();
+        Self::badge_frame(background, foreground).child(label)
+    }
 
+    fn badge_frame(background: Hsla, foreground: Hsla) -> Div {
         div()
             .px_2()
             .py_0p5()
@@ -13078,7 +13081,21 @@ impl TermiRustApp {
             .text_size(px(theme::TYPE_CAPTION_SIZE))
             .font_medium()
             .text_color(foreground)
-            .child(label)
+    }
+
+    /// A status badge led by its Slate glyph, in the status color.
+    fn status_kind_badge(
+        &self,
+        kind: termirust_ui_contract::StatusKind,
+        label: impl Into<SharedString>,
+    ) -> Div {
+        let color = crate::ui::status::status_color(kind);
+        Self::badge_frame(theme::library_bg(), color)
+            .flex()
+            .items_center()
+            .gap_1()
+            .child(crate::ui::status::status_glyph(kind))
+            .child(label.into())
     }
 
     fn action_button_style(tone: theme::ActionTone, cx: &App) -> ButtonCustomVariant {

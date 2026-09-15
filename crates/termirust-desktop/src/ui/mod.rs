@@ -9,6 +9,7 @@ pub mod settings;
 pub mod sftp_local;
 pub mod shell;
 pub mod snippet;
+pub mod status;
 pub mod theme;
 pub mod util;
 

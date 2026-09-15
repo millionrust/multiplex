@@ -2833,7 +2833,7 @@ impl TermiRustApp {
                             .child(
                                 Icon::new(IconName::SquareTerminal)
                                     .size(px(theme::SPACE_4))
-                                    .text_color(session_state_color(session.state)),
+                                    .text_color(theme::text_muted()),
                             )
                             .child(
                                 v_flex()
@@ -2852,8 +2852,18 @@ impl TermiRustApp {
                                             .gap(px(theme::SPACE_2))
                                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                                             .text_color(theme::text_muted())
-                                            .child(session_state_label(metadata.lifecycle))
-                                            .child(activity_label(&metadata.activity))
+                                            .child(labeled_status(
+                                                crate::ui::status::session_state_status(
+                                                    metadata.lifecycle,
+                                                ),
+                                                session_state_label(metadata.lifecycle),
+                                            ))
+                                            .child(labeled_status(
+                                                crate::ui::status::activity_status(
+                                                    metadata.activity.state,
+                                                ),
+                                                activity_label(&metadata.activity),
+                                            ))
                                             .child(
                                                 div()
                                                     .debug_selector(|| {
@@ -3678,24 +3688,13 @@ fn session_state_label(state: HostedSessionState) -> String {
     }
 }
 
-fn session_state_color(state: HostedSessionState) -> gpui::Hsla {
-    match state {
-        HostedSessionState::RunningAppAttached | HostedSessionState::Live => theme::success(),
-        HostedSessionState::Starting
-        | HostedSessionState::Provisioning
-        | HostedSessionState::Attaching
-        | HostedSessionState::Replaying
-        | HostedSessionState::Stopping
-        | HostedSessionState::Validating => theme::warning(),
-        HostedSessionState::Failed
-        | HostedSessionState::RecordingPaused
-        | HostedSessionState::Offline
-        | HostedSessionState::Orphaned
-        | HostedSessionState::Gap
-        | HostedSessionState::PermissionDenied
-        | HostedSessionState::Incompatible => theme::danger(),
-        _ => theme::text_muted(),
-    }
+/// A status glyph beside its label, so the state never depends on color alone.
+fn labeled_status(kind: termirust_ui_contract::StatusKind, label: String) -> gpui::Div {
+    h_flex()
+        .items_center()
+        .gap(px(theme::SPACE_1))
+        .child(crate::ui::status::status_glyph(kind))
+        .child(label)
 }
 
 #[cfg(test)]
