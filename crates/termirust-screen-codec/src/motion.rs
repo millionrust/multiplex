@@ -19,6 +19,9 @@ pub struct MotionConfig {
     pub demote_hz: u32,
     pub demote_ms: u64,
     pub min_tiles: usize,
+    /// The area must span at least this many tiles across and down, so a strip of text revealed
+    /// by scrolling or a line being typed is never mistaken for video.
+    pub min_side_tiles: u32,
     /// Most tile updates per second sent for the region while it is on the tile path.
     pub tile_path_max_hz: u32,
 }
@@ -31,6 +34,7 @@ impl Default for MotionConfig {
             demote_hz: 4,
             demote_ms: 500,
             min_tiles: 12,
+            min_side_tiles: 3,
             tile_path_max_hz: 8,
         }
     }
@@ -98,11 +102,15 @@ impl MotionTracker {
             None => {
                 let hot = self.sustained_hot_tiles(now_ms);
                 let area = largest_component(self.grid, &hot);
-                if area.len() >= self.config.min_tiles {
-                    let rect = area
-                        .iter()
-                        .filter_map(|tile| self.grid.tile_rect(*tile))
-                        .fold(Rect::default(), Rect::union);
+                let rect = area
+                    .iter()
+                    .filter_map(|tile| self.grid.tile_rect(*tile))
+                    .fold(Rect::default(), Rect::union);
+                let min_side = self.config.min_side_tiles.saturating_sub(1) * crate::TILE_SIZE + 1;
+                if area.len() >= self.config.min_tiles
+                    && rect.width >= min_side
+                    && rect.height >= min_side
+                {
                     self.region = Some((rect, now_ms));
                     return Some(MotionEvent::Promoted(rect));
                 }
@@ -246,6 +254,11 @@ mod tests {
         assert!(
             feed(&mut tracker, Rect::new(0, 0, 640, 480), 0, 3_000, 250).is_empty(),
             "4 Hz updates"
+        );
+        let mut tracker = MotionTracker::new(grid(), MotionConfig::default());
+        assert!(
+            feed(&mut tracker, Rect::new(0, 900, 1512, 60), 0, 3_000, 33).is_empty(),
+            "a one-tile strip of revealed text"
         );
     }
 

@@ -304,7 +304,7 @@ impl Encoder {
             return Err(CodecError::FrameSizeMismatch);
         }
         let mut ops = Vec::new();
-        let mut changed = match &mut self.hashes {
+        let content_changed = match &mut self.hashes {
             None => {
                 self.hashes = Some(TileHashes::compute(frame));
                 TileSet::full(self.grid)
@@ -314,17 +314,41 @@ impl Encoder {
                 hashes.update(frame, candidates.as_ref())?
             }
         };
+        let mut changed = content_changed.clone();
+        for (index, state) in self.viewer.iter().enumerate() {
+            if *state == ViewerTile::Unknown {
+                changed.insert(TileIndex(index as u32));
+            }
+        }
+
+        if self.config.detect_scrolls
+            && changed.len() >= 4
+            && let Some(op) = self.try_move(frame, &mut changed)
+        {
+            ops.push(op);
+        }
 
         self.motion_event = None;
         let mut motion_throttled = false;
         if let Some(now) = now_ms {
-            for tile in changed.iter() {
+            // A scroll the move already explains is not motion: only tiles still different count.
+            let hashes = self
+                .hashes
+                .as_ref()
+                .expect("hashes exist after the first frame");
+            let mut still_different = TileSet::new(self.grid);
+            for tile in content_changed.iter() {
                 self.changed_at_ms[tile.0 as usize] = now;
+                let hash = hashes.get(tile).expect("tile from this grid");
+                if self.viewer[tile.0 as usize] != ViewerTile::Exact(hash) {
+                    still_different.insert(tile);
+                }
             }
-            self.motion_event = self.motion.observe(&changed, now);
+            self.motion_event = self.motion.observe(&still_different, now);
             if let Some(MotionEvent::Demoted(rect)) = self.motion_event {
                 for tile in self.grid.tiles_covering(rect).iter() {
                     self.viewer[tile.0 as usize] = ViewerTile::Unknown;
+                    changed.insert(tile);
                 }
                 self.motion_last_sent_ms = None;
             }
@@ -337,19 +361,6 @@ impl Encoder {
                     self.motion_last_sent_ms = Some(now);
                 }
             }
-        }
-
-        for (index, state) in self.viewer.iter().enumerate() {
-            if *state == ViewerTile::Unknown {
-                changed.insert(TileIndex(index as u32));
-            }
-        }
-
-        if self.config.detect_scrolls
-            && changed.len() >= 4
-            && let Some(op) = self.try_move(frame, &mut changed)
-        {
-            ops.push(op);
         }
 
         let hashes = self
