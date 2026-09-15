@@ -27,7 +27,7 @@ Pure Rust, no platform code, fully testable in CI.
   BGRA frame view with stride, xxh3-64 per tile, diff narrowed by damage.
 - [x] 1.3 `feat(screen-codec): classify tiles as solid, text and UI, or picture`
   Bounded distinct-colour count and edge density.
-- [ ] 1.4 `feat(screen-codec): encode text and UI tiles losslessly`
+- [x] 1.4 `feat(screen-codec): encode text and UI tiles losslessly`
   Palette + run-length when few colours, raw otherwise, then deflate (`miniz_oxide`).
 - [ ] 1.5 `feat(screen-codec): send pictures as a lossy first pass`
   Half-resolution, quantised pass for picture tiles; exact pixels arrive later by refinement.

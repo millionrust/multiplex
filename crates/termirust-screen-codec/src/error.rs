@@ -15,6 +15,8 @@ pub enum CodecError {
     RectOutsideSurface,
     /// A pixel payload did not match the size of its rectangle.
     PayloadSizeMismatch,
+    /// An encoded payload was malformed, truncated, or inconsistent with its tile size.
+    CorruptPayload,
 }
 
 impl CodecError {
@@ -27,6 +29,7 @@ impl CodecError {
             Self::FrameSizeMismatch => "frame_size_mismatch",
             Self::RectOutsideSurface => "rect_outside_surface",
             Self::PayloadSizeMismatch => "payload_size_mismatch",
+            Self::CorruptPayload => "corrupt_payload",
         }
     }
 }

@@ -13,6 +13,7 @@ mod error;
 mod frame;
 mod geometry;
 mod hash;
+mod lossless;
 
 pub use classify::{
     EDGE_CHANNEL_DELTA, MAX_PALETTE_COLORS, TEXT_EDGE_DENSITY_MILLI, TileClass, classify,
@@ -21,3 +22,4 @@ pub use error::CodecError;
 pub use frame::{BYTES_PER_PIXEL, Frame, FrameBuffer};
 pub use geometry::{MAX_SURFACE_DIMENSION, Rect, Size, TILE_SIZE, TileGrid, TileIndex, TileSet};
 pub use hash::{TileHash, TileHashes, hash_rect};
+pub use lossless::{decode_lossless, encode_lossless};
