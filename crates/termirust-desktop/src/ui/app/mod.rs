@@ -1429,6 +1429,8 @@ pub struct TermiRustApp {
     show_editor_panel: bool,
     connection_coordinator: ConnectionCoordinator,
     session_coordinator: SessionCoordinator,
+    // Sessions get their own senders from the coordinators; tests inject output through this one.
+    #[cfg(test)]
     event_tx: SshEventSender,
     event_rx: Receiver<SshEvent>,
     event_wake: Arc<SshEventWake>,
@@ -1872,6 +1874,7 @@ impl TermiRustApp {
             show_editor_panel: false,
             connection_coordinator,
             session_coordinator,
+            #[cfg(test)]
             event_tx,
             event_rx,
             event_wake,
@@ -14875,8 +14878,8 @@ mod tests {
         );
 
         assert!(startup < Duration::from_secs(5));
-        assert!(input_p99 < Duration::from_millis(100));
-        assert!(frame_p99 < Duration::from_millis(100));
+        assert!(input_p99 < Duration::from_micros(100_000));
+        assert!(frame_p99 < Duration::from_micros(100_000));
         assert!(throughput_mib >= 0.5);
         assert!(rss_growth_bytes < 128 * 1024 * 1024);
         assert!(max_rss_bytes < 2 * 1024 * 1024 * 1024);
