@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "3022e05324166dc2f94f9ecf82b06147f8490ed1076095aab767570c0a511a6d",
+  "sourceSha256": "58ccaee373e01db38c69db7a8228368cd07986cfb0547b72bd95cc5eb8f32e96",
   "statuses": [
     {
       "color": "color.status.attention",
@@ -1538,6 +1538,20 @@
       }
     },
     {
+      "allowedUse": "Segmented control options; the track adds its padding and border.",
+      "category": "dimension",
+      "description": "Height of one option inside a segmented control.",
+      "key": "layout.control.segment_height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "24",
+        "high_contrast": "24",
+        "light": "24",
+        "recording_friendly": "24",
+        "system": "24"
+      }
+    },
+    {
       "allowedUse": "Host-key and multi-field dialogs.",
       "category": "dimension",
       "description": "Wide dialog width.",
@@ -1773,6 +1787,34 @@
         "light": "440",
         "recording_friendly": "440",
         "system": "440"
+      }
+    },
+    {
+      "allowedUse": "Settings section content, so rows stay readable in wide windows.",
+      "category": "dimension",
+      "description": "Maximum width of the settings content column.",
+      "key": "layout.settings.content_max_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "760",
+        "high_contrast": "760",
+        "light": "760",
+        "recording_friendly": "760",
+        "system": "760"
+      }
+    },
+    {
+      "allowedUse": "The Settings category sidebar beside the settings content.",
+      "category": "dimension",
+      "description": "Settings category list width.",
+      "key": "layout.settings.nav_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "216",
+        "high_contrast": "216",
+        "light": "216",
+        "recording_friendly": "216",
+        "system": "216"
       }
     },
     {

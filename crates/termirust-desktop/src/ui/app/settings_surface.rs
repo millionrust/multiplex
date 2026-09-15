@@ -188,12 +188,7 @@ impl TermiRustApp {
                     .focus(window);
             }
             SettingsAccessibilityCommand::FocusSection(section) => {
-                Self::set_input_value(
-                    &self.settings_inputs.search,
-                    localization::static_message(section.title()),
-                    window,
-                    cx,
-                );
+                self.select_settings_section(section, window, cx);
                 self.settings_inputs
                     .search
                     .read(cx)
@@ -201,14 +196,33 @@ impl TermiRustApp {
                     .focus(window);
             }
             SettingsAccessibilityCommand::FocusSetting(id) => {
+                self.reveal_setting(id, cx);
                 self.focus_settings_input(id, window, cx);
             }
             SettingsAccessibilityCommand::ActivateSetting(id) => {
+                self.reveal_setting(id, cx);
                 self.activate_setting(id, window, cx);
             }
             SettingsAccessibilityCommand::SetSettingValue(id) => {
+                self.reveal_setting(id, cx);
                 self.set_setting_accessibility_value(id, value, window, cx);
             }
+        }
+    }
+
+    /// Switches to the section that holds a setting, unless a search is already showing it.
+    fn reveal_setting(&mut self, id: SettingId, cx: &mut Context<Self>) {
+        let searching = !self
+            .settings_inputs
+            .search
+            .read(cx)
+            .value()
+            .trim()
+            .is_empty();
+        if !searching && self.settings_section != id.section() {
+            self.settings_section = id.section();
+            self.settings_scroll.set_offset(gpui::Point::default());
+            cx.notify();
         }
     }
 

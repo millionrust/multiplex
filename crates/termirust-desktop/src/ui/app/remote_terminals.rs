@@ -401,38 +401,21 @@ impl TermiRustApp {
                             .child(localization::remote_terminals_description()),
                     ),
             )
-            .child(self.settings_subhead(
+            .child(self.settings_choice_row(
                 localization::remote_terminals_discovery_label(),
                 localization::remote_terminals_discovery_description(),
+                self.segmented_control(
+                    "remote-terminals-sharing",
+                    [
+                        (true, localization::remote_terminals_discovery_show()),
+                        (false, localization::remote_terminals_discovery_hide()),
+                    ],
+                    sharing,
+                    false,
+                    cx,
+                    |this, enabled, _, cx| this.update_remote_tmux_sessions(enabled, cx),
+                ),
             ))
-            .child(
-                h_flex()
-                    .p(px(theme::SPACE_MICRO))
-                    .rounded(px(theme::CONTROL_RADIUS))
-                    .bg(theme::hover())
-                    .children(
-                        [true, false]
-                            .into_iter()
-                            .enumerate()
-                            .map(|(index, enabled)| {
-                                Button::new(("remote-terminals-sharing", index))
-                                    .debug_selector(move || {
-                                        format!("remote-terminals-sharing-{index}")
-                                    })
-                                    .small()
-                                    .custom(Self::segmented_button_style(enabled == sharing, cx))
-                                    .label(if enabled {
-                                        localization::remote_terminals_discovery_show()
-                                    } else {
-                                        localization::remote_terminals_discovery_hide()
-                                    })
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.update_remote_tmux_sessions(enabled, cx);
-                                    }))
-                                    .into_any_element()
-                            }),
-                    ),
-            )
             .child(self.settings_subhead(
                 localization::remote_terminals_wrap_label(),
                 localization::remote_terminals_wrap_description(),

@@ -188,6 +188,7 @@ const ICON_TAG: &str = "icons/tag.svg";
 const ICON_CALENDAR: &str = "icons/calendar.svg";
 const ICON_PANEL_COLLAPSE_RIGHT: &str = "icons/panel-collapse-right.svg";
 const ICON_PALETTE: &str = "icons/palette.svg";
+const ICON_KEYBOARD: &str = "icons/keyboard.svg";
 
 fn app_icon(path: &'static str) -> Icon {
     Icon::new(Icon::empty().path(path))
@@ -1454,6 +1455,7 @@ pub struct TermiRustApp {
     replication_recovery_required: bool,
     replication_lifecycle: ReplicationLifecycleState,
     settings_scroll: ScrollHandle,
+    settings_section: termirust_ui_contract::SettingsSectionId,
     host_editor_scroll: ScrollHandle,
     hosts_list_scroll: ScrollHandle,
     tab_strip_scroll: ScrollHandle,
@@ -1851,6 +1853,7 @@ impl TermiRustApp {
             replication_recovery_required: false,
             replication_lifecycle: ReplicationLifecycleState::default(),
             settings_scroll: ScrollHandle::new(),
+            settings_section: termirust_ui_contract::SettingsSectionId::Appearance,
             host_editor_scroll: ScrollHandle::new(),
             hosts_list_scroll: ScrollHandle::new(),
             tab_strip_scroll: ScrollHandle::new(),
@@ -13119,15 +13122,96 @@ impl TermiRustApp {
             .active(theme::action_active(tone))
     }
 
+    /// Segment styling for segmented groups built from `Button`s, which need icons or
+    /// tooltips. It matches [`Self::segmented_control`]: the selected segment is raised and
+    /// neutral, the others are bare labels.
     fn segmented_button_style(active: bool, cx: &App) -> ButtonCustomVariant {
-        Self::action_button_style(
-            if active {
-                theme::ActionTone::Accent
-            } else {
-                theme::ActionTone::Neutral
-            },
-            cx,
-        )
+        if active {
+            ButtonCustomVariant::new(cx)
+                .color(theme::control_bg())
+                .foreground(theme::text_main())
+                .border(theme::border_strong())
+                .hover(theme::control_bg())
+                .active(theme::control_bg())
+        } else {
+            ButtonCustomVariant::new(cx)
+                .color(gpui::transparent_black())
+                .foreground(theme::text_muted())
+                .border(gpui::transparent_black())
+                .hover(theme::hover())
+                .active(theme::hover())
+        }
+    }
+
+    /// A compact segmented choice: sized to its labels, with the selection drawn as a raised
+    /// neutral segment rather than an accent-filled button. Option `index` answers to the
+    /// debug selector `{id}-{index}`.
+    fn segmented_control<T, L>(
+        &self,
+        id: &'static str,
+        options: impl IntoIterator<Item = (T, L)>,
+        selected: T,
+        disabled: bool,
+        cx: &Context<Self>,
+        on_select: impl Fn(&mut Self, T, &mut Window, &mut Context<Self>) + Clone + 'static,
+    ) -> Div
+    where
+        T: Copy + PartialEq + 'static,
+        L: Into<SharedString>,
+    {
+        h_flex()
+            .flex_none()
+            .items_center()
+            .gap(px(theme::SPACE_MICRO))
+            .p(px(theme::SPACE_MICRO))
+            .rounded(px(theme::CONTROL_RADIUS))
+            .bg(theme::library_sidebar())
+            .border_1()
+            .border_color(theme::border())
+            .when(disabled, |this| this.opacity(0.5))
+            .children(
+                options
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, (value, label))| {
+                        let active = value == selected;
+                        let on_select = on_select.clone();
+                        div()
+                            .id((id, index))
+                            .debug_selector(move || format!("{id}-{index}"))
+                            .flex()
+                            .items_center()
+                            .h(px(theme::SEGMENT_HEIGHT))
+                            .px(px(theme::SPACE_4))
+                            .rounded(px(theme::CONTROL_RADIUS - theme::SPACE_MICRO))
+                            .border_1()
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                            .whitespace_nowrap()
+                            .map(|this| {
+                                if active {
+                                    this.bg(theme::control_bg())
+                                        .border_color(theme::border_strong())
+                                        .shadow_xs()
+                                        .font_medium()
+                                        .text_color(theme::text_main())
+                                } else {
+                                    this.border_color(gpui::transparent_black())
+                                        .text_color(theme::text_muted())
+                                }
+                            })
+                            .when(!disabled, |this| {
+                                this.cursor_pointer()
+                                    .when(!active, |this| {
+                                        this.hover(|style| style.text_color(theme::text_main()))
+                                    })
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        on_select(this, value, window, cx);
+                                    }))
+                            })
+                            .child(label.into())
+                            .into_any_element()
+                    }),
+            )
     }
 }
 
@@ -27486,6 +27570,10 @@ sleep 1
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(theme_click, gpui::Modifiers::none());
 
+        let terminal_section = selector_click_center(window, cx, "settings-nav-1");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(terminal_section, gpui::Modifiers::none());
+
         let font_click = selector_click_center(window, cx, "settings-font-size-5");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(font_click, gpui::Modifiers::none());
@@ -27495,8 +27583,84 @@ sleep 1
             assert_eq!(settings.theme_preset, ThemePreset::Light);
             assert_eq!(settings.terminal_font_size, 18);
             assert_eq!(app.nav_section, NavSection::Settings);
+            assert_eq!(
+                app.settings_section,
+                termirust_ui_contract::SettingsSectionId::Terminal
+            );
             assert!(app.error_message.is_empty());
         });
+    }
+
+    #[gpui::test]
+    fn e2e_settings_sidebar_shows_one_section_and_search_spans_all(cx: &mut TestAppContext) {
+        use termirust_ui_contract::{SettingId, SettingsAccessibilityCommand, SettingsSectionId};
+
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        // GPUI keeps debug bounds from earlier frames, so "not rendered" only holds for
+        // selectors that have never been drawn.
+        let rendered = |cx: &mut TestAppContext, selector: &'static str| {
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.run_until_parked();
+            visual.debug_bounds(selector).is_some()
+        };
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Settings, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+        assert!(rendered(cx, "settings-theme-0"));
+        assert!(!rendered(cx, "settings-copy-on-select-0"));
+        assert!(!rendered(cx, "settings-local-shell-save"));
+
+        let shell_section = selector_click_center(window, cx, "settings-nav-3");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(shell_section, gpui::Modifiers::none());
+        assert!(rendered(cx, "settings-local-shell-save"));
+        assert!(!rendered(cx, "settings-copy-on-select-0"));
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.settings_section, SettingsSectionId::PresetsRuntimes);
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(&app.settings_inputs.search, "paste", window, cx);
+                })
+            })
+            .expect("window update should succeed");
+        assert!(rendered(cx, "settings-confirm-paste-0"));
+
+        let appearance_section = selector_click_center(window, cx, "settings-nav-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(appearance_section, gpui::Modifiers::none());
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.settings_section, SettingsSectionId::Appearance);
+            assert!(app.settings_inputs.search.read(cx).value().is_empty());
+        });
+        assert!(rendered(cx, "settings-theme-0"));
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.handle_settings_accessibility_command(
+                        SettingsAccessibilityCommand::ActivateSetting(SettingId::CopyOnSelect),
+                        None,
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.settings_section, SettingsSectionId::Terminal);
+        });
+        assert!(rendered(cx, "settings-copy-on-select-0"));
     }
 
     #[gpui::test]
@@ -27526,6 +27690,9 @@ sleep 1
             })
             .expect("window update should succeed");
 
+        let shell_section = selector_click_center(window, cx, "settings-nav-3");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(shell_section, gpui::Modifiers::none());
         scroll_selector_into_view(
             window,
             cx,
@@ -27567,6 +27734,9 @@ sleep 1
             assert!(app.error_message.is_empty());
         });
 
+        let sessions_section = selector_click_center(window, cx, "settings-nav-2");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(sessions_section, gpui::Modifiers::none());
         scroll_selector_into_view(
             window,
             cx,

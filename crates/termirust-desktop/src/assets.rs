@@ -44,6 +44,7 @@ const ICONS: &[(&str, &[u8])] = &[
     icon!("grid"),
     icon!("info"),
     icon!("key"),
+    icon!("keyboard"),
     icon!("magnifying-glass"),
     icon!("maximize"),
     icon!("minimize"),

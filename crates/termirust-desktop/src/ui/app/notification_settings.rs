@@ -16,84 +16,38 @@ impl TermiRustApp {
             localization::notification_settings_description(),
             v_flex()
                 .gap_3()
-                .child(
-                    h_flex().gap_2().flex_wrap().children(
-                        [
-                            (NotificationMode::Off, localization::notification_mode_off()),
-                            (
-                                NotificationMode::InApp,
-                                localization::notification_mode_in_app(),
-                            ),
-                            (NotificationMode::Os, localization::notification_mode_os()),
-                        ]
-                        .into_iter()
-                        .enumerate()
-                        .map(|(index, (mode, label))| {
-                            Button::new(("notification-mode", index))
-                                .small()
-                                .custom(Self::action_button_style(
-                                    if policy.mode == mode {
-                                        theme::ActionTone::Accent
-                                    } else {
-                                        theme::ActionTone::Neutral
-                                    },
-                                    cx,
-                                ))
-                                .label(label)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.update_notification_mode(mode, cx);
-                                }))
-                                .into_any_element()
-                        }),
-                    ),
-                )
-                .child(
-                    h_flex()
-                        .items_center()
-                        .justify_between()
-                        .flex_wrap()
-                        .gap_3()
-                        .child(
-                            v_flex()
-                                .gap_1()
-                                .child(
-                                    div()
-                                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                                        .font_medium()
-                                        .text_color(theme::text_main())
-                                        .child(localization::notification_recording_title()),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                        .text_color(theme::text_muted())
-                                        .child(localization::notification_recording_description()),
-                                ),
-                        )
-                        .child(
-                            Button::new("notification-recording-friendly")
-                                .small()
-                                .custom(Self::action_button_style(
-                                    if policy.recording_friendly {
-                                        theme::ActionTone::Accent
-                                    } else {
-                                        theme::ActionTone::Neutral
-                                    },
-                                    cx,
-                                ))
-                                .label(if policy.recording_friendly {
-                                    localization::notification_toggle_on()
-                                } else {
-                                    localization::notification_toggle_off()
-                                })
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.update_recording_friendly_notifications(
-                                        !policy.recording_friendly,
-                                        cx,
-                                    );
-                                })),
+                .child(h_flex().child(self.segmented_control(
+                    "notification-mode",
+                    [
+                        (NotificationMode::Off, localization::notification_mode_off()),
+                        (
+                            NotificationMode::InApp,
+                            localization::notification_mode_in_app(),
                         ),
-                )
+                        (NotificationMode::Os, localization::notification_mode_os()),
+                    ],
+                    policy.mode,
+                    false,
+                    cx,
+                    |this, mode, _, cx| this.update_notification_mode(mode, cx),
+                )))
+                .child(self.settings_choice_row(
+                    localization::notification_recording_title(),
+                    localization::notification_recording_description(),
+                    self.segmented_control(
+                        "notification-recording-friendly",
+                        [
+                            (true, localization::notification_toggle_on()),
+                            (false, localization::notification_toggle_off()),
+                        ],
+                        policy.recording_friendly,
+                        false,
+                        cx,
+                        |this, enabled, _, cx| {
+                            this.update_recording_friendly_notifications(enabled, cx)
+                        },
+                    ),
+                ))
                 .child(self.settings_divider())
                 .child(
                     h_flex()

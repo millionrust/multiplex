@@ -59,7 +59,7 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
   interactive remote agents reuse saved SSH and tmux settings.
 - Write-capable local coding agents default to app-managed Git worktrees with
   conservative status inspection and clean-only removal.
-- Settings view for appearance theme, terminal font, default local shell, workspace restore, history limits, and import/export.
+- Settings view for appearance theme, terminal font, default local shell, workspace restore, history limits, and import/export. A section sidebar shows one section at a time; search spans every section. Choices use the compact segmented control (`segmented_control` in `ui/app/mod.rs`).
 - TOFU known-host pinning; Known Hosts view supports deleting pinned host keys.
 - Keychain view shows imported key type, public key availability, and an "Add Key File" picker.
 - Build/distribution metadata for cargo-bundle (macOS .app, Linux deb/rpm) lives in `crates/termirust-desktop/Cargo.toml`; per-platform release flow is in `docs/building.md`.

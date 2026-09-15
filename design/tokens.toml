@@ -1600,6 +1600,27 @@ allowed_use = "Host-key and multi-field dialogs."
 values = { system = "460", light = "460", dark = "460", high_contrast = "460", recording_friendly = "460" }
 
 [[tokens]]
+key = "layout.settings.nav_width"
+category = "dimension"
+description = "Settings category list width."
+allowed_use = "The Settings category sidebar beside the settings content."
+values = { system = "216", light = "216", dark = "216", high_contrast = "216", recording_friendly = "216" }
+
+[[tokens]]
+key = "layout.settings.content_max_width"
+category = "dimension"
+description = "Maximum width of the settings content column."
+allowed_use = "Settings section content, so rows stay readable in wide windows."
+values = { system = "760", light = "760", dark = "760", high_contrast = "760", recording_friendly = "760" }
+
+[[tokens]]
+key = "layout.control.segment_height"
+category = "dimension"
+description = "Height of one option inside a segmented control."
+allowed_use = "Segmented control options; the track adds its padding and border."
+values = { system = "24", light = "24", dark = "24", high_contrast = "24", recording_friendly = "24" }
+
+[[tokens]]
 key = "layout.table.row_height"
 category = "dimension"
 description = "Data table row height."

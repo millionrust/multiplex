@@ -361,6 +361,20 @@ pub fn soft_border() -> Hsla {
     token_color(current_design_tokens().color_border_subtle())
 }
 
+pub fn border_strong() -> Hsla {
+    token_color(current_design_tokens().color_border_strong())
+}
+
+/// Resting fill of an input-like control, such as the selected segment of a segmented control.
+pub fn control_bg() -> Hsla {
+    token_color(current_design_tokens().color_bg_control())
+}
+
+/// Secondary text, between primary text and muted captions.
+pub fn text_secondary() -> Hsla {
+    token_color(current_design_tokens().color_text_secondary())
+}
+
 pub fn terminal_default_bg() -> Hsla {
     terminal_bg()
 }
@@ -529,6 +543,15 @@ pub const DIALOG_WIDE_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
     .layout_dialog_wide_width()
     .0;
 pub const DIALOG_RADIUS: f32 = DesignTokens::new(ThemeKind::System).radius_dialog().0;
+pub const SETTINGS_NAV_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_settings_nav_width()
+    .0;
+pub const SETTINGS_CONTENT_MAX_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_settings_content_max_width()
+    .0;
+pub const SEGMENT_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_control_segment_height()
+    .0;
 pub const SECURITY_DIALOG_MAXIMUM: f32 = DesignTokens::new(ThemeKind::System)
     .layout_security_dialog_maximum()
     .0;

@@ -18,8 +18,8 @@ use crate::models::{
 };
 use crate::replication::{desktop_replication_root, replication_is_configured};
 use crate::ui::app::{
-    ICON_KEY, ICON_SHIELD_CHECK, KeychainTab, NavSection, TermiRustApp, app_icon,
-    platform_shortcut_label,
+    ICON_GRID, ICON_KEY, ICON_KEYBOARD, ICON_PALETTE, ICON_SHIELD_CHECK, KeychainTab, NavSection,
+    TermiRustApp, app_icon, platform_shortcut_label,
 };
 use crate::ui::localization;
 use crate::ui::theme;
@@ -1519,32 +1519,17 @@ impl TermiRustApp {
                         library_copy(MessageId::SnippetCommandField),
                         Input::new(&self.snippet_inputs.command),
                     ))
-                    .child(
-                        h_flex()
-                            .p(px(theme::SPACE_MICRO))
-                            .rounded(px(theme::CONTROL_RADIUS))
-                            .bg(theme::hover())
-                            .children([true, false].into_iter().enumerate().map(
-                                |(index, pinned)| {
-                                    let active = self.snippet_pinned == pinned;
-                                    Button::new(("snippet-pin-toggle", index))
-                                        .debug_selector(move || {
-                                            format!("snippet-pin-toggle-{index}")
-                                        })
-                                        .small()
-                                        .custom(Self::segmented_button_style(active, _cx))
-                                        .label(if pinned {
-                                            library_copy(MessageId::SnippetPinnedLabel)
-                                        } else {
-                                            library_copy(MessageId::SnippetLibraryLabel)
-                                        })
-                                        .on_click(_cx.listener(move |this, _, _, cx| {
-                                            this.toggle_snippet_pinned(pinned, cx);
-                                        }))
-                                        .into_any_element()
-                                },
-                            )),
-                    )
+                    .child(h_flex().child(self.segmented_control(
+                        "snippet-pin-toggle",
+                        [
+                            (true, library_copy(MessageId::SnippetPinnedLabel)),
+                            (false, library_copy(MessageId::SnippetLibraryLabel)),
+                        ],
+                        self.snippet_pinned,
+                        false,
+                        _cx,
+                        |this, pinned, _, cx| this.toggle_snippet_pinned(pinned, cx),
+                    )))
                     .child(
                         h_flex()
                             .gap_2()
@@ -1813,6 +1798,121 @@ impl TermiRustApp {
             )
     }
 
+    /// One setting on a single line: label and hint on the left, its control on the right.
+    /// The control wraps under the label when the column is too narrow for both.
+    pub(super) fn settings_choice_row(
+        &self,
+        title: impl Into<SharedString>,
+        hint: impl Into<SharedString>,
+        control: impl IntoElement,
+    ) -> Div {
+        h_flex()
+            .w_full()
+            .flex_wrap()
+            .items_center()
+            .justify_between()
+            .gap(px(theme::SPACE_4))
+            .child(
+                self.settings_subhead(title, hint)
+                    .flex_1()
+                    .min_w(px(theme::SETTINGS_NAV_WIDTH)),
+            )
+            .child(control)
+    }
+
+    fn settings_section_icon(section: SettingsSectionId) -> Icon {
+        match section {
+            SettingsSectionId::Appearance => app_icon(ICON_PALETTE),
+            SettingsSectionId::Terminal => IconName::SquareTerminal.into(),
+            SettingsSectionId::ProjectsSessions => IconName::Folder.into(),
+            SettingsSectionId::PresetsRuntimes => app_icon(ICON_GRID),
+            SettingsSectionId::Notifications => IconName::Bell.into(),
+            SettingsSectionId::Keyboard => app_icon(ICON_KEYBOARD),
+            SettingsSectionId::StoragePrivacyDiagnostics => app_icon(ICON_SHIELD_CHECK),
+            SettingsSectionId::RemoteDevices => IconName::Globe.into(),
+        }
+    }
+
+    fn settings_nav_item(
+        &self,
+        index: usize,
+        section: SettingsSectionId,
+        active: bool,
+        matches: Option<usize>,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        h_flex()
+            .id(("settings-nav", index))
+            .debug_selector(move || format!("settings-nav-{index}"))
+            .w_full()
+            .items_center()
+            .gap(px(theme::SHELL_SPACE_COMPACT))
+            .px(px(theme::SPACE_4))
+            .h(px(theme::SHELL_NAVIGATION_ROW_HEIGHT))
+            .rounded(px(theme::CONTROL_RADIUS))
+            .cursor_pointer()
+            .map(|this| {
+                if active {
+                    this.bg(theme::chrome_tab_active())
+                } else {
+                    this.hover(|style| style.bg(theme::hover()))
+                }
+            })
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.select_settings_section(section, window, cx);
+            }))
+            .child(
+                Self::settings_section_icon(section)
+                    .size(px(theme::ICON_SIZE_DEFAULT))
+                    .text_color(if active {
+                        theme::text_main()
+                    } else {
+                        theme::text_muted()
+                    }),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                    .when(active, |this| this.font_medium())
+                    .text_color(if active {
+                        theme::text_main()
+                    } else {
+                        theme::text_secondary()
+                    })
+                    .child(library_copy(section.title())),
+            )
+            .when_some(matches, |this, count| {
+                this.child(
+                    div()
+                        .flex_none()
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                        .text_color(theme::text_muted())
+                        .child(count.to_string()),
+                )
+            })
+    }
+
+    /// Shows one Settings section. Choosing a section ends a search, since search results
+    /// span every section.
+    pub(super) fn select_settings_section(
+        &mut self,
+        section: SettingsSectionId,
+        window: &mut gpui::Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.settings_inputs.search.read(cx).value().is_empty() {
+            Self::set_input_value(&self.settings_inputs.search, "", window, cx);
+        }
+        if self.settings_section != section {
+            self.settings_section = section;
+            self.settings_scroll.set_offset(gpui::Point::default());
+        }
+        cx.notify();
+    }
+
     fn settings_hierarchy_heading(&self, section: SettingsSectionId) -> Div {
         v_flex()
             .gap(px(theme::SPACE_FINE))
@@ -1993,12 +2093,20 @@ impl TermiRustApp {
             .expect("Settings snapshot is available while rendering Settings");
         let query_active = settings_snapshot.query_active;
         let result_count = settings_snapshot.search_results.len();
+        let section_matches = |section: SettingsSectionId| {
+            settings_snapshot
+                .search_results
+                .iter()
+                .filter(|setting| setting.section() == section)
+                .count()
+        };
+        // One section at a time; a search shows every section with a match instead.
         let section_visible = |section: SettingsSectionId| {
-            !query_active
-                || settings_snapshot
-                    .search_results
-                    .iter()
-                    .any(|setting| setting.section() == section)
+            if query_active {
+                section_matches(section) > 0
+            } else {
+                section == self.settings_section
+            }
         };
         let appearance_visible = section_visible(SettingsSectionId::Appearance);
         let terminal_visible = section_visible(SettingsSectionId::Terminal);
@@ -2057,47 +2165,16 @@ impl TermiRustApp {
             v_flex()
                 .gap_3()
                 .child(
-                    h_flex().gap_2().flex_wrap().children(
-                        ThemePreset::ALL
-                            .into_iter()
-                            .enumerate()
-                            .map(|(index, preset)| {
-                                let selected = preset == theme_preset;
-                                div()
-                                    .id(("settings-theme", index))
-                                    .debug_selector(move || format!("settings-theme-{index}"))
-                                    .px_3()
-                                    .py(px(theme::SPACE_3))
-                                    .rounded(px(theme::PILL_RADIUS))
-                                    .bg(if selected {
-                                        theme::accent_soft()
-                                    } else {
-                                        theme::with_alpha(theme::hover(), 0.72)
-                                    })
-                                    .border_1()
-                                    .border_color(if selected {
-                                        theme::with_alpha(theme::accent(), 0.42)
-                                    } else {
-                                        theme::border()
-                                    })
-                                    .cursor_pointer()
-                                    .hover(|style| style.bg(theme::hover()))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.update_theme_preset(preset, cx);
-                                    }))
-                                    .child(
-                                        div()
-                                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                                            .font_medium()
-                                            .text_color(if selected {
-                                                theme::text_main()
-                                            } else {
-                                                theme::text_muted()
-                                            })
-                                            .child(localization::theme_preset_label(preset)),
-                                    )
-                                    .into_any_element()
-                            }),
+                    h_flex().child(
+                        self.segmented_control(
+                            "settings-theme",
+                            ThemePreset::ALL
+                                .map(|preset| (preset, localization::theme_preset_label(preset))),
+                            theme_preset,
+                            false,
+                            cx,
+                            |this, preset, _, cx| this.update_theme_preset(preset, cx),
+                        ),
                     ),
                 )
                 .child(
@@ -2157,33 +2234,24 @@ impl TermiRustApp {
             self.settings_section_card(
                 localization::development_localization_title(),
                 localization::development_localization_hint(),
-                h_flex().gap_2().flex_wrap().children(
-                    localization::development_locales()
-                        .into_iter()
-                        .enumerate()
-                        .map(|(index, locale)| {
-                            let selected = locale == localization::current_locale();
-                            Button::new(("settings-development-locale", index))
-                                .small()
-                                .custom(Self::action_button_style(
-                                    if selected {
-                                        theme::ActionTone::AccentSoft
-                                    } else {
-                                        theme::ActionTone::Neutral
-                                    },
-                                    cx,
-                                ))
-                                .label(locale.tag())
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    if localization::set_development_locale(locale.tag()).is_ok() {
-                                        this.status_message =
-                                            localization::development_locale_active(locale);
-                                        this.error_message.clear();
-                                        cx.notify();
-                                    }
-                                }))
-                                .into_any_element()
-                        }),
+                h_flex().child(
+                    self.segmented_control(
+                        "settings-development-locale",
+                        localization::development_locales()
+                            .into_iter()
+                            .map(|locale| (locale, locale.tag())),
+                        localization::current_locale(),
+                        false,
+                        cx,
+                        |this, locale, _, cx| {
+                            if localization::set_development_locale(locale.tag()).is_ok() {
+                                this.status_message =
+                                    localization::development_locale_active(locale);
+                                this.error_message.clear();
+                                cx.notify();
+                            }
+                        },
+                    ),
                 ),
             )
         });
@@ -2193,113 +2261,55 @@ impl TermiRustApp {
             library_copy(MessageId::SettingsSectionTerminalDescription),
             v_flex()
                 .gap_4()
-                .child(self.settings_subhead(
-                    library_copy(MessageId::SettingsTerminalFontSizeLabel),
-                    library_copy(MessageId::SettingsTerminalFontSizeDescription),
-                ))
-                .child(h_flex().gap_2().flex_wrap().children(
-                    [12u16, 13, 14, 15, 16, 18].into_iter().enumerate().map(
-                        |(index, font_size)| {
-                            let selected = font_size == terminal_font_size;
-                            div()
-                                .id(("settings-font-size", index))
-                                .debug_selector(move || format!("settings-font-size-{index}"))
-                                .px_3()
-                                .py(px(theme::SPACE_3))
-                                .rounded(px(theme::PILL_RADIUS))
-                                .bg(if selected {
-                                    theme::accent_soft()
-                                } else {
-                                    theme::with_alpha(theme::hover(), 0.72)
-                                })
-                                .border_1()
-                                .border_color(if selected {
-                                    theme::with_alpha(theme::accent(), 0.42)
-                                } else {
-                                    theme::border()
-                                })
-                                .cursor_pointer()
-                                .hover(|style| style.bg(theme::hover()))
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.update_terminal_font_size(font_size, window, cx);
-                                }))
-                                .child(
-                                    div()
-                                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                                        .font_medium()
-                                        .text_color(if selected {
-                                            theme::text_main()
-                                        } else {
-                                            theme::text_muted()
-                                        })
-                                        .child(localization::settings_font_size_option(font_size)),
-                                )
-                                .into_any_element()
-                        },
+                .child(
+                    self.settings_choice_row(
+                        library_copy(MessageId::SettingsTerminalFontSizeLabel),
+                        library_copy(MessageId::SettingsTerminalFontSizeDescription),
+                        self.segmented_control(
+                            "settings-font-size",
+                            [12u16, 13, 14, 15, 16, 18]
+                                .map(|size| (size, localization::settings_font_size_option(size))),
+                            terminal_font_size,
+                            false,
+                            cx,
+                            |this, size, window, cx| {
+                                this.update_terminal_font_size(size, window, cx)
+                            },
+                        ),
+                    ),
+                )
+                .child(self.settings_divider())
+                .child(self.settings_choice_row(
+                    library_copy(MessageId::SettingsCopyOnSelectLabel),
+                    library_copy(MessageId::SettingsCopyOnSelectDescription),
+                    self.segmented_control(
+                        "settings-copy-on-select",
+                        [
+                            (true, library_copy(MessageId::SettingsAutoCopyValue)),
+                            (false, library_copy(MessageId::SettingsManualCopyValue)),
+                        ],
+                        copy_on_select,
+                        false,
+                        cx,
+                        |this, enabled, _, cx| this.update_copy_on_select(enabled, cx),
                     ),
                 ))
                 .child(self.settings_divider())
-                .child(self.settings_subhead(
-                    library_copy(MessageId::SettingsCopyOnSelectLabel),
-                    library_copy(MessageId::SettingsCopyOnSelectDescription),
-                ))
-                .child(
-                    h_flex()
-                        .p(px(theme::SPACE_MICRO))
-                        .rounded(px(theme::CONTROL_RADIUS))
-                        .bg(theme::hover())
-                        .children(
-                            [true, false]
-                                .into_iter()
-                                .enumerate()
-                                .map(|(index, enabled)| {
-                                    let active = enabled == copy_on_select;
-                                    Button::new(("settings-copy-on-select", index))
-                                        .small()
-                                        .custom(Self::segmented_button_style(active, cx))
-                                        .label(library_copy(if enabled {
-                                            MessageId::SettingsAutoCopyValue
-                                        } else {
-                                            MessageId::SettingsManualCopyValue
-                                        }))
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.update_copy_on_select(enabled, cx);
-                                        }))
-                                        .into_any_element()
-                                }),
-                        ),
-                )
-                .child(self.settings_divider())
-                .child(self.settings_subhead(
+                .child(self.settings_choice_row(
                     library_copy(MessageId::SettingsConfirmMultilinePasteLabel),
                     library_copy(MessageId::SettingsConfirmMultilinePasteDescription),
+                    self.segmented_control(
+                        "settings-confirm-paste",
+                        [
+                            (true, library_copy(MessageId::SettingsConfirmPasteValue)),
+                            (false, library_copy(MessageId::SettingsDirectPasteValue)),
+                        ],
+                        confirm_multiline_paste,
+                        false,
+                        cx,
+                        |this, enabled, _, cx| this.update_confirm_multiline_paste(enabled, cx),
+                    ),
                 ))
-                .child(
-                    h_flex()
-                        .p(px(theme::SPACE_MICRO))
-                        .rounded(px(theme::CONTROL_RADIUS))
-                        .bg(theme::hover())
-                        .children(
-                            [true, false]
-                                .into_iter()
-                                .enumerate()
-                                .map(|(index, enabled)| {
-                                    let active = enabled == confirm_multiline_paste;
-                                    Button::new(("settings-confirm-paste", index))
-                                        .small()
-                                        .custom(Self::segmented_button_style(active, cx))
-                                        .label(library_copy(if enabled {
-                                            MessageId::SettingsConfirmPasteValue
-                                        } else {
-                                            MessageId::SettingsDirectPasteValue
-                                        }))
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.update_confirm_multiline_paste(enabled, cx);
-                                        }))
-                                        .into_any_element()
-                                }),
-                        ),
-                )
                 .child(self.settings_divider())
                 .child(self.settings_subhead(
                     library_copy(MessageId::SettingsTerminalFontFamilyLabel),
@@ -2350,35 +2360,23 @@ impl TermiRustApp {
             library_copy(MessageId::SettingsStartupDescription),
             v_flex()
                 .gap_3()
-                .child(
-                    h_flex()
-                        .p(px(theme::SPACE_MICRO))
-                        .rounded(px(theme::CONTROL_RADIUS))
-                        .bg(theme::hover())
-                        .children(
-                            [true, false]
-                                .into_iter()
-                                .enumerate()
-                                .map(|(index, restore)| {
-                                    let active = restore == restore_workspaces_on_launch;
-                                    Button::new(("settings-restore-workspaces", index))
-                                        .debug_selector(move || {
-                                            format!("settings-restore-workspaces-{index}")
-                                        })
-                                        .small()
-                                        .custom(Self::segmented_button_style(active, cx))
-                                        .label(library_copy(if restore {
-                                            MessageId::SettingsRestoreValue
-                                        } else {
-                                            MessageId::SettingsLibraryValue
-                                        }))
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.update_restore_workspaces_on_launch(restore, cx);
-                                        }))
-                                        .into_any_element()
-                                }),
-                        ),
-                )
+                .child(self.settings_choice_row(
+                    library_copy(MessageId::SettingsRestoreWorkspacesLabel),
+                    library_copy(MessageId::SettingsRestoreWorkspacesDescription),
+                    self.segmented_control(
+                        "settings-restore-workspaces",
+                        [
+                            (true, library_copy(MessageId::SettingsRestoreValue)),
+                            (false, library_copy(MessageId::SettingsLibraryValue)),
+                        ],
+                        restore_workspaces_on_launch,
+                        false,
+                        cx,
+                        |this, restore, _, cx| {
+                            this.update_restore_workspaces_on_launch(restore, cx)
+                        },
+                    ),
+                ))
                 .child(
                     h_flex()
                         .gap_2()
@@ -2416,33 +2414,19 @@ impl TermiRustApp {
             library_copy(MessageId::SettingsSessionsDescription),
             v_flex()
                 .gap_4()
-                .child(self.settings_subhead(
-                    library_copy(MessageId::SettingsSessionHistoryLimitLabel),
-                    library_copy(MessageId::SettingsSessionHistoryLimitDescription),
-                ))
                 .child(
-                    h_flex().gap_2().flex_wrap().children(
-                        [100u16, 200, 500, 1000]
-                            .into_iter()
-                            .enumerate()
-                            .map(|(index, limit)| {
-                                let selected = limit == session_log_limit;
-                                Button::new(("settings-session-log-limit", index))
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        if selected {
-                                            theme::ActionTone::Accent
-                                        } else {
-                                            theme::ActionTone::Neutral
-                                        },
-                                        cx,
-                                    ))
-                                    .label(localization::settings_history_option(limit))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.update_session_log_limit(limit, cx);
-                                    }))
-                                    .into_any_element()
-                            }),
+                    self.settings_choice_row(
+                        library_copy(MessageId::SettingsSessionHistoryLimitLabel),
+                        library_copy(MessageId::SettingsSessionHistoryLimitDescription),
+                        self.segmented_control(
+                            "settings-session-log-limit",
+                            [100u16, 200, 500, 1000]
+                                .map(|limit| (limit, localization::settings_history_option(limit))),
+                            session_log_limit,
+                            false,
+                            cx,
+                            |this, limit, _, cx| this.update_session_log_limit(limit, cx),
+                        ),
                     ),
                 )
                 .child(
@@ -2495,103 +2479,67 @@ impl TermiRustApp {
                         ),
                 )
                 .child(self.settings_divider())
-                .child(self.settings_subhead(
+                .child(self.settings_choice_row(
                     library_copy(MessageId::SettingsAutoReconnectLabel),
                     library_copy(MessageId::SettingsAutoReconnectDescription),
-                ))
-                .child(
-                    h_flex().gap_2().flex_wrap().children(
-                        [0u8, 1, 3, 5, 10]
-                            .into_iter()
-                            .enumerate()
-                            .map(|(index, attempts)| {
-                                let selected = attempts == auto_reconnect_attempts;
-                                Button::new(("settings-auto-reconnect-attempts", index))
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        if selected {
-                                            theme::ActionTone::Accent
-                                        } else {
-                                            theme::ActionTone::Neutral
-                                        },
-                                        cx,
-                                    ))
-                                    .label(if attempts == 0 {
-                                        library_copy(MessageId::SettingsValueOff)
-                                    } else {
-                                        localization::settings_attempts_option(attempts)
-                                    })
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.update_auto_reconnect_attempts(attempts, cx);
-                                    }))
-                                    .into_any_element()
-                            }),
+                    self.segmented_control(
+                        "settings-auto-reconnect-attempts",
+                        [0u8, 1, 3, 5, 10].map(|attempts| {
+                            (
+                                attempts,
+                                if attempts == 0 {
+                                    library_copy(MessageId::SettingsValueOff)
+                                } else {
+                                    localization::settings_attempts_option(attempts)
+                                },
+                            )
+                        }),
+                        auto_reconnect_attempts,
+                        false,
+                        cx,
+                        |this, attempts, _, cx| this.update_auto_reconnect_attempts(attempts, cx),
                     ),
-                )
+                ))
                 .child(self.settings_divider())
-                .child(self.settings_subhead(
+                .child(self.settings_choice_row(
                     library_copy(MessageId::SettingsSshKeepaliveLabel),
                     library_copy(MessageId::SettingsSshKeepaliveDescription),
-                ))
-                .child(
-                    h_flex().gap_2().flex_wrap().children(
-                        [0u16, 15, 30, 60, 120]
-                            .into_iter()
-                            .enumerate()
-                            .map(|(index, secs)| {
-                                let selected = secs == ssh_keepalive_secs;
-                                Button::new(("settings-ssh-keepalive", index))
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        if selected {
-                                            theme::ActionTone::Accent
-                                        } else {
-                                            theme::ActionTone::Neutral
-                                        },
-                                        cx,
-                                    ))
-                                    .label(if secs == 0 {
-                                        library_copy(MessageId::SettingsValueOff)
-                                    } else {
-                                        localization::settings_seconds_option(secs)
-                                    })
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.update_ssh_keepalive_secs(secs, cx);
-                                    }))
-                                    .into_any_element()
-                            }),
+                    self.segmented_control(
+                        "settings-ssh-keepalive",
+                        [0u16, 15, 30, 60, 120].map(|secs| {
+                            (
+                                secs,
+                                if secs == 0 {
+                                    library_copy(MessageId::SettingsValueOff)
+                                } else {
+                                    localization::settings_seconds_option(secs)
+                                },
+                            )
+                        }),
+                        ssh_keepalive_secs,
+                        false,
+                        cx,
+                        |this, secs, _, cx| this.update_ssh_keepalive_secs(secs, cx),
                     ),
-                )
+                ))
                 .child(self.settings_divider())
-                .child(self.settings_subhead(
+                .child(self.settings_choice_row(
                     library_copy(MessageId::SettingsReconnectDelayLabel),
                     library_copy(MessageId::SettingsReconnectDelayDescription),
-                ))
-                .child(
-                    h_flex().gap_2().flex_wrap().children(
-                        [2u8, 5, 10, 30]
-                            .into_iter()
-                            .enumerate()
-                            .map(|(index, delay)| {
-                                let selected = delay == auto_reconnect_delay_secs;
-                                Button::new(("settings-auto-reconnect-delay", index))
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        if selected {
-                                            theme::ActionTone::Accent
-                                        } else {
-                                            theme::ActionTone::Neutral
-                                        },
-                                        cx,
-                                    ))
-                                    .label(localization::settings_seconds_option(u16::from(delay)))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.update_auto_reconnect_delay(delay, cx);
-                                    }))
-                                    .into_any_element()
-                            }),
+                    self.segmented_control(
+                        "settings-auto-reconnect-delay",
+                        [2u8, 5, 10, 30].map(|delay| {
+                            (
+                                delay,
+                                localization::settings_seconds_option(u16::from(delay)),
+                            )
+                        }),
+                        auto_reconnect_delay_secs,
+                        false,
+                        cx,
+                        |this, delay, _, cx| this.update_auto_reconnect_delay(delay, cx),
                     ),
-                ),
+                )),
         );
 
         let local_shell_card = self.settings_section_card(
@@ -2665,89 +2613,53 @@ impl TermiRustApp {
                                 .child(diagnostics_model.status.clone()),
                         ),
                 )
-                .child(
-                    h_flex()
-                        .p(px(theme::SPACE_MICRO))
-                        .rounded(px(theme::CONTROL_RADIUS))
-                        .bg(theme::hover())
-                        .children(
-                            [true, false]
-                                .into_iter()
-                                .enumerate()
-                                .map(|(index, enabled)| {
-                                    Button::new(("settings-diagnostics-enabled", index))
-                                        .small()
-                                        .custom(Self::segmented_button_style(
-                                            enabled == diagnostics_enabled,
-                                            cx,
-                                        ))
-                                        .label(if enabled {
-                                            localization::diagnostics_enable_action()
-                                        } else {
-                                            localization::diagnostics_disable_action()
-                                        })
-                                        .disabled(diagnostics_busy)
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.update_diagnostics_enabled(enabled, cx);
-                                        }))
-                                        .into_any_element()
-                                }),
-                        ),
-                )
+                .child(h_flex().child(self.segmented_control(
+                    "settings-diagnostics-enabled",
+                    [
+                        (true, localization::diagnostics_enable_action()),
+                        (false, localization::diagnostics_disable_action()),
+                    ],
+                    diagnostics_enabled,
+                    diagnostics_busy,
+                    cx,
+                    |this, enabled, _, cx| this.update_diagnostics_enabled(enabled, cx),
+                )))
                 .child(
                     div()
                         .text_size(px(theme::TYPE_CAPTION_SIZE))
                         .text_color(theme::text_muted())
                         .child(diagnostics_model.usage.clone()),
                 )
-                .child(self.settings_subhead(
+                .child(self.settings_choice_row(
                     localization::diagnostics_file_limit_label(),
                     localization::diagnostics_privacy_notice(),
+                    self.segmented_control(
+                        "settings-diagnostics-file-limit",
+                        [1_u8, 5, 10].map(|limit| {
+                            (limit, localization::diagnostics_file_limit_option(limit))
+                        }),
+                        diagnostics_file_limit,
+                        diagnostics_busy,
+                        cx,
+                        |this, limit, _, cx| this.update_diagnostics_file_limit(limit, cx),
+                    ),
                 ))
-                .child(h_flex().gap_2().flex_wrap().children(
-                    [1_u8, 5, 10].into_iter().enumerate().map(|(index, limit)| {
-                        Button::new(("settings-diagnostics-file-limit", index))
-                            .small()
-                            .custom(Self::action_button_style(
-                                if limit == diagnostics_file_limit {
-                                    theme::ActionTone::Accent
-                                } else {
-                                    theme::ActionTone::Neutral
-                                },
-                                cx,
-                            ))
-                            .label(localization::diagnostics_file_limit_option(limit))
-                            .disabled(diagnostics_busy)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.update_diagnostics_file_limit(limit, cx);
-                            }))
-                            .into_any_element()
-                    }),
-                ))
-                .child(self.settings_subhead(
-                    localization::diagnostics_retention_label(),
-                    localization::diagnostics_clear_notice(),
-                ))
-                .child(h_flex().gap_2().flex_wrap().children(
-                    [1_u8, 7, 14].into_iter().enumerate().map(|(index, days)| {
-                        Button::new(("settings-diagnostics-retention", index))
-                            .small()
-                            .custom(Self::action_button_style(
-                                if days == diagnostics_retention {
-                                    theme::ActionTone::Accent
-                                } else {
-                                    theme::ActionTone::Neutral
-                                },
-                                cx,
-                            ))
-                            .label(localization::diagnostics_retention_option(days))
-                            .disabled(diagnostics_busy)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.update_diagnostics_retention(days, cx);
-                            }))
-                            .into_any_element()
-                    }),
-                ))
+                .child(
+                    self.settings_choice_row(
+                        localization::diagnostics_retention_label(),
+                        localization::diagnostics_clear_notice(),
+                        self.segmented_control(
+                            "settings-diagnostics-retention",
+                            [1_u8, 7, 14].map(|days| {
+                                (days, localization::diagnostics_retention_option(days))
+                            }),
+                            diagnostics_retention,
+                            diagnostics_busy,
+                            cx,
+                            |this, days, _, cx| this.update_diagnostics_retention(days, cx),
+                        ),
+                    ),
+                )
                 .child(self.settings_divider())
                 .child(
                     h_flex()
@@ -3502,15 +3414,23 @@ impl TermiRustApp {
         let remote_devices_card = self.render_remote_devices_settings_card(cx);
         let cli_card = self.render_cli_settings_card(cx);
 
-        v_flex()
-            .flex_1()
+        let nav = v_flex()
+            .id("settings-nav")
+            .debug_selector(|| "settings-nav".to_string())
+            .w(px(theme::SETTINGS_NAV_WIDTH))
+            .flex_none()
+            .h_full()
             .min_h_0()
-            .gap_4()
-            .p_5()
-            .bg(theme::library_bg())
+            .gap(px(theme::SPACE_4))
+            .px(px(theme::SPACE_3))
+            .py(px(theme::SPACE_5))
+            .border_r_1()
+            .border_color(theme::soft_border())
+            .overflow_y_scroll()
             .child(
                 v_flex()
                     .gap(px(theme::SPACE_1))
+                    .px(px(theme::SPACE_2))
                     .child(
                         div()
                             .text_size(px(theme::TYPE_HEADING_SIZE))
@@ -3520,52 +3440,84 @@ impl TermiRustApp {
                     )
                     .child(
                         div()
-                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
                             .child(library_copy(MessageId::SettingsSubtitle)),
                     ),
             )
             .child(
-                h_flex()
-                    .w_full()
-                    .gap_2()
-                    .items_center()
-                    .child(Input::new(&self.settings_inputs.search).flex_1())
+                v_flex()
+                    .gap(px(theme::SPACE_2))
+                    .child(Input::new(&self.settings_inputs.search).small())
                     .when(query_active, |this| {
                         this.child(
-                            Button::new("settings-search-clear")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label(library_copy(MessageId::SettingsSearchClear))
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    Self::set_input_value(
-                                        &this.settings_inputs.search,
-                                        "",
-                                        window,
-                                        cx,
-                                    );
-                                })),
+                            h_flex()
+                                .justify_between()
+                                .items_center()
+                                .gap_2()
+                                .px(px(theme::SPACE_2))
+                                .child(
+                                    div()
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                        .text_color(theme::text_muted())
+                                        .child(localization::settings_search_count(result_count)),
+                                )
+                                .child(
+                                    Button::new("settings-search-clear")
+                                        .xsmall()
+                                        .custom(Self::action_button_style(
+                                            theme::ActionTone::Neutral,
+                                            cx,
+                                        ))
+                                        .label(library_copy(MessageId::SettingsSearchClear))
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            Self::set_input_value(
+                                                &this.settings_inputs.search,
+                                                "",
+                                                window,
+                                                cx,
+                                            );
+                                        })),
+                                ),
                         )
                     }),
             )
-            .when(query_active, |this| {
-                this.child(
-                    div()
-                        .text_size(px(theme::TYPE_CAPTION_SIZE))
-                        .text_color(theme::text_muted())
-                        .child(localization::settings_search_count(result_count)),
-                )
-            })
+            .child(
+                v_flex().gap(px(theme::SPACE_1)).children(
+                    SettingsSectionId::ALL
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, section)| {
+                            let active = !query_active && section == self.settings_section;
+                            let matches = query_active.then(|| section_matches(section));
+                            self.settings_nav_item(index, section, active, matches, cx)
+                        }),
+                ),
+            );
+
+        h_flex()
+            .flex_1()
+            .min_h_0()
+            .min_w_0()
+            .items_start()
+            .bg(theme::library_bg())
+            .child(nav)
             .child(
                 v_flex()
                     .id("settings-scroll-viewport")
                     .debug_selector(|| "settings-scroll-viewport".to_string())
                     .flex_1()
+                    .h_full()
+                    .min_w_0()
                     .min_h_0()
                     .child(
                         v_flex()
                             .id("settings-scroll")
+                            .w_full()
+                            .max_w(px(theme::SETTINGS_CONTENT_MAX_WIDTH))
                             .gap_4()
+                            .px(px(theme::SPACE_7))
+                            .py(px(theme::SPACE_6))
                             .track_scroll(&self.settings_scroll)
                             .when(query_active && result_count == 0, |this| {
                                 this.child(
