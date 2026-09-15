@@ -45,6 +45,6 @@
     "future_major": "incompatible_version",
     "unknown_capability": "unknown_capability"
   },
-  "adr_sha256": "e37dd5f189e2e042ac12d44eec48986ad937f88990dcf17b11780070c5b124fe",
-  "cargo_lock_sha256": "6238ace60c0d27dda6559e722c90c7a7eba72bb31ad07b37e774310790db7135"
+  "adr_sha256": "a7203063d48c5bffbdaf5ea3359be3bca6fa907ad21cd0dd05f074d00380b683",
+  "cargo_lock_sha256": "89098bf33b858d4207eee8e95c9baff3d99ccb8a8992adfec244b271ae149f1a"
 }

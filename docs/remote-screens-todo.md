@@ -21,7 +21,7 @@ network and is run by the owner.
 
 Pure Rust, no platform code, fully testable in CI.
 
-- [ ] 1.1 `feat(screen-codec): add the crate with surface geometry and the tile grid`
+- [x] 1.1 `feat(screen-codec): add the crate with surface geometry and the tile grid`
   Rect, surface size, 64×64 tile indexing, partial edge tiles, damage rectangles to tile sets.
 - [ ] 1.2 `feat(screen-codec): hash tiles and find changed tiles between frames`
   BGRA frame view with stride, xxh3-64 per tile, diff narrowed by damage.
