@@ -11,7 +11,7 @@ PINNED_RUST_VERSION="1.97.1"
 UNIFFI_VERSION="0.32.0"
 PINNED_XCODE_VERSION="27.0"
 PINNED_IOS_SDK_VERSION="27.0"
-PINNED_ANDROID_NDK_VERSION="27.0.12077973"
+PINNED_ANDROID_NDK_VERSION="27.1.12297006"
 
 usage() {
   cat <<'USAGE'
@@ -242,7 +242,7 @@ swift_target=aarch64-apple-ios
 swift_simulator_targets=aarch64-apple-ios-sim,x86_64-apple-ios
 android_targets=aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 android_api=26
-android_ndk=27.0.12077973
+android_ndk=27.1.12297006
 android_page_alignment=16384
 kotlin_ffi=jna
 jna=5.17.0

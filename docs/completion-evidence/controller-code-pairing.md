@@ -11,7 +11,7 @@ Branch `dev`. Recorded 2026-09-15 on macOS (Darwin 27.0), rustc 1.97.1, Xcode 27
 | P2 Bonjour advertisement | Done | `443bc84` |
 | P3 Six-digit code pairing (CPace bound into Noise XX) | Done | `f1e33bd`, `84dcf50` |
 | P4 Desktop pairing mode UI | Done | `f1e33bd`, `e1df71f`, `3f78199` |
-| P5 Bindings and mobile apps | iOS done and installed on a device; Android written, not built | `1d77a18`, `f82899f`, `e47c140`, `416a1cf` |
+| P5 Bindings and mobile apps | iOS installed on a device; Android built and unit tested, not run on a device | `1d77a18`, `f82899f`, `e47c140`, `416a1cf` |
 | P6 Docs, gates, evidence | Done | `6fc32ca`, this document |
 
 ## What was verified, and how
@@ -64,19 +64,15 @@ Pairing a phone end to end on a real network was not recorded here.
 
 ### Android
 
-Not built. The Android SDK and NDK 27.0.12077973 live on a volume that was not mounted, so the
-Kotlin changes were reviewed but not compiled, and `app/src/main/jniLibs` still hold controller
-bindings from before code pairing. To finish:
-
-```bash
-scripts/build/mobile-controller-bindings.sh --all
-scripts/sync/mobile-controller-bindings.sh --write
-ANDROID_HOME=/Volumes/Footages/android ./apps/android/gradlew -p apps/android assembleDebug
-```
+Controller bindings rebuilt for arm64-v8a, armeabi-v7a, x86, and x86_64 with
+`scripts/build/mobile-controller-bindings.sh --all` (NDK pin moved from 27.0.12077973 to the
+installed 27.1.12297006) and synced with `scripts/sync/mobile-controller-bindings.sh --write`,
+whose `--check` passes. `./gradlew assembleDebug` succeeds and `./gradlew testDebugUnitTest` runs
+97 tests with no failures (4 skipped). No Android device was connected, so the app was not run.
 
 ## Open items
 
 - Independent cryptographic review of the CPace composition, as required by
   `docs/decisions/controller-security-v1.md`. Not claimed.
-- Android build, binding rebuild, and a device run.
+- An Android device run.
 - An end-to-end pairing run from a phone on LAN and over Tailscale, recorded as evidence.

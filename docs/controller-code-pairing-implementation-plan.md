@@ -1,6 +1,6 @@
 # Controller reachability and code pairing: implementation plan
 
-Status: Done except the Android build and binding rebuild; see [completion evidence](completion-evidence/controller-code-pairing.md).
+Status: Done; not yet run on an Android device. See [completion evidence](completion-evidence/controller-code-pairing.md).
 
 ## Goal
 
