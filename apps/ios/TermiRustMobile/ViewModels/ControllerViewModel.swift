@@ -9,6 +9,10 @@ final class ControllerViewModel: ObservableObject {
     @Published var pairingOfferText = ""
     @Published var pairingHostName = "My Mac"
     @Published var pairingDeviceName = UIDevice.current.name
+    @Published var pairingCode = ""
+    @Published var pairingAddressText = ""
+    /// Changes each time a pairing finishes and its Host is saved.
+    @Published private(set) var pairingCompletion: UUID?
     @Published private(set) var activeTerminal: ControllerTerminalViewModel?
     @Published private(set) var routeProjections: [AppleControllerRouteProjection]
     @Published private(set) var routeSelectionError: AppleControllerRouteCoordinatorError?
@@ -29,6 +33,7 @@ final class ControllerViewModel: ObservableObject {
     private var cache = ControllerFleetCache()
     private let deviceID: UUID
     private var operation: Task<Void, Never>?
+    let computerBrowser: ControllerComputerBrowser
 
     init(
         connectionActor: (any ControllerConnecting)? = nil,
@@ -42,6 +47,8 @@ final class ControllerViewModel: ObservableObject {
         retryPolicy: ControllerRetryPolicy = .live
     ) {
         let resolvedBlobStore = controllerBlobStore ?? ControllerKeychainBlobStore()
+        let computerBrowser = ControllerComputerBrowser()
+        self.computerBrowser = computerBrowser
         self.deviceID = Self.loadDeviceID(defaults: defaults)
         self.retryPolicy = retryPolicy
         self.defaults = defaults
@@ -60,7 +67,10 @@ final class ControllerViewModel: ObservableObject {
             )
         } else {
             self.routeConnections = AppleControllerRouteConnections(
-                privateNetwork: try? ControllerConnectionActor(blobStore: resolvedBlobStore)
+                privateNetwork: try? ControllerConnectionActor(
+                    blobStore: resolvedBlobStore,
+                    discovery: computerBrowser
+                )
             )
         }
         self.hostStore = hostStore ?? (try? PairedHostStore())
@@ -158,18 +168,7 @@ final class ControllerViewModel: ObservableObject {
             guard let self else { return }
             do {
                 let record = try await connectionActor.finishPairing(matches: matches)
-                hostRecords = try await hostStore.upsert(record)
-                defaults.set(record.id, forKey: Self.selectedHostDefaultsKey)
-                pairingChallenge = nil
-                pairingOfferText = ""
-                state = makeState(
-                    selectedHostID: record.id,
-                    sessions: [],
-                    connection: .pairedOffline,
-                    cacheUpdatedAt: nil,
-                    isCached: false
-                )
-                await refresh(host: record)
+                try await completePairing(record, hostStore: hostStore)
             } catch {
                 guard !Task.isCancelled else { return }
                 pairingChallenge = nil
@@ -177,6 +176,63 @@ final class ControllerViewModel: ObservableObject {
                 state = replacing(connection: .failed(Self.failure(error)), sessions: state.sessions)
             }
         }
+    }
+
+    /// True when `pairingCode` is exactly six digits.
+    var isPairingCodeComplete: Bool {
+        pairingCode.count == 6 && pairingCode.allSatisfy { $0.isASCII && $0.isNumber }
+    }
+
+    /// Keeps only digits, so pasted codes such as "123 456" fit, up to six of them.
+    func updatePairingCode(_ text: String) {
+        let digits = String(text.filter { $0.isASCII && $0.isNumber }.prefix(6))
+        if pairingCode != digits { pairingCode = digits }
+    }
+
+    func pairWithCode(target: ControllerPairingTarget) {
+        guard let connectionActor = routeConnections.privateNetwork, let hostStore else { return }
+        operation?.cancel()
+        pairingChallenge = nil
+        state = replacing(connection: .pairing, sessions: state.sessions)
+        let code = pairingCode
+        let hostName = String(target.displayName.prefix(256))
+        let deviceName = pairingDeviceName
+        operation = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let record = try await connectionActor.pairWithCode(
+                    target: target,
+                    code: code,
+                    hostName: hostName,
+                    deviceName: deviceName,
+                    deviceID: deviceID
+                )
+                guard !Task.isCancelled else { return }
+                try await completePairing(record, hostStore: hostStore)
+            } catch {
+                guard !Task.isCancelled else { return }
+                pairingCode = ""
+                state = replacing(connection: .failed(Self.failure(error)), sessions: state.sessions)
+            }
+        }
+    }
+
+    private func completePairing(_ record: PairedHostRecord, hostStore: PairedHostStore) async throws {
+        hostRecords = try await hostStore.upsert(record)
+        defaults.set(record.id, forKey: Self.selectedHostDefaultsKey)
+        pairingChallenge = nil
+        pairingOfferText = ""
+        pairingCode = ""
+        pairingAddressText = ""
+        pairingCompletion = UUID()
+        state = makeState(
+            selectedHostID: record.id,
+            sessions: [],
+            connection: .pairedOffline,
+            cacheUpdatedAt: nil,
+            isCached: false
+        )
+        await refresh(host: record)
     }
 
     func cancelPairing() {
@@ -523,20 +579,11 @@ final class ControllerViewModel: ObservableObject {
                     await self?.apply(progress: progress, route: route, forHostID: host.id)
                 }
                 guard !Task.isCancelled, state.selectedHostID == host.id else { return }
-                if host.capabilityBits != snapshot.capabilityBits, let hostStore {
-                    let refreshedHost = try PairedHostRecord(
-                        id: host.id,
-                        displayName: host.displayName,
-                        route: host.route,
-                        hostStaticPublicKey: host.hostStaticPublicKey,
-                        deviceStaticKeyId: host.deviceStaticKeyId,
-                        deviceId: host.deviceId,
-                        identityGeneration: host.identityGeneration,
-                        revocationEpoch: host.revocationEpoch,
-                        sessionGeneration: host.sessionGeneration,
-                        capabilityBits: snapshot.capabilityBits,
-                        pairedAt: host.pairedAt
-                    )
+                var refreshedHost = try snapshot.connectedRoute.map { try host.preferring($0) } ?? host
+                if host.capabilityBits != snapshot.capabilityBits {
+                    refreshedHost = try refreshedHost.replacing(capabilityBits: snapshot.capabilityBits)
+                }
+                if refreshedHost != host, let hostStore {
                     hostRecords = try await hostStore.upsert(refreshedHost)
                 }
                 if routePhase(route) == .authenticating {
@@ -730,7 +777,7 @@ final class ControllerViewModel: ObservableObject {
                  .invalidDeviceName, .randomUnavailable, .frameTooLarge,
                  .connectionClosed, .cancelled, .noPairingInProgress, .rejected,
                  .hostIdentityChanged, .invalidAcknowledgement,
-                 .acknowledgementUncertain:
+                 .acknowledgementUncertain, .invalidCode, .codeRejected, .invalidAddress:
                 return false
             }
         }
@@ -740,7 +787,8 @@ final class ControllerViewModel: ObservableObject {
                 return true
             case .cancelled, .invalidOffer, .offerExpired, .sasMismatch,
                  .authenticationFailed, .keychainUnavailable, .malformedResponse,
-                 .resourceLimit, .storageUnavailable, .pairingUncertain:
+                 .resourceLimit, .storageUnavailable, .pairingUncertain,
+                 .codeRejected, .invalidAddress:
                 return false
             }
         }
@@ -836,11 +884,13 @@ final class ControllerViewModel: ObservableObject {
         if let error = error as? ControllerPairingError {
             switch error {
             case .expiredOrIncompatibleOffer: return .offerExpired
-            case .invalidOffer, .publicRouteRejected, .invalidDeviceName: return .invalidOffer
+            case .invalidOffer, .invalidDeviceName: return .invalidOffer
             case .timedOut: return .timedOut
             case .rejected: return .sasMismatch
             case .randomUnavailable: return .keychainUnavailable
             case .acknowledgementUncertain: return .pairingUncertain
+            case .invalidCode, .codeRejected: return .codeRejected
+            case .publicRouteRejected, .invalidAddress: return .invalidAddress
             default: return .authenticationFailed
             }
         }

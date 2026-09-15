@@ -1,6 +1,10 @@
+import CryptoKit
 import Foundation
+@preconcurrency import Network
 
 struct HostRoute: Codable, Hashable, Sendable {
+    static let maxRoutesPerHost = 8
+
     let address: String
     let port: UInt16
 
@@ -12,6 +16,25 @@ struct HostRoute: Codable, Hashable, Sendable {
         self.address = trimmed
         self.port = port
     }
+
+    /// True for the addresses a Host may listen on: RFC 1918 and CGNAT IPv4, and IPv6
+    /// unique local addresses. Names, loopback, link-local, and public addresses are rejected.
+    var isPrivateNetworkRoute: Bool {
+        if let address = IPv4Address(address) {
+            let bytes = [UInt8](address.rawValue)
+            guard bytes.count == 4 else { return false }
+            let privateAddress = bytes[0] == 10
+                || (bytes[0] == 172 && (16...31).contains(bytes[1]))
+                || (bytes[0] == 192 && bytes[1] == 168)
+                || (bytes[0] == 100 && (64...127).contains(bytes[1]))
+            return privateAddress && bytes != [127, 0, 0, 1] && bytes != [0, 0, 0, 0]
+        }
+        if !address.contains("%"), let address = IPv6Address(address) {
+            let bytes = [UInt8](address.rawValue)
+            return bytes.count == 16 && (bytes[0] & 0xfe) == 0xfc
+        }
+        return false
+    }
 }
 
 struct PairedHostRecord: Codable, Identifiable, Hashable, Sendable {
@@ -20,7 +43,8 @@ struct PairedHostRecord: Codable, Identifiable, Hashable, Sendable {
     let schemaVersion: Int
     let id: String
     let displayName: String
-    let route: HostRoute
+    /// Every address the Host was reached on, most recently working first. Never empty.
+    let routes: [HostRoute]
     let hostStaticPublicKey: Data
     let deviceStaticKeyId: String
     let deviceId: UUID
@@ -29,6 +53,10 @@ struct PairedHostRecord: Codable, Identifiable, Hashable, Sendable {
     let sessionGeneration: UInt64
     let capabilityBits: UInt16
     let pairedAt: Date
+    /// The Bonjour `id` the Host announces, used to find it again after its address changes.
+    let discoveryId: String?
+
+    var route: HostRoute { routes[0] }
 
     init(
         id: String,
@@ -43,8 +71,40 @@ struct PairedHostRecord: Codable, Identifiable, Hashable, Sendable {
         capabilityBits: UInt16,
         pairedAt: Date = .now
     ) throws {
+        try self.init(
+            id: id,
+            displayName: displayName,
+            routes: [route],
+            hostStaticPublicKey: hostStaticPublicKey,
+            deviceStaticKeyId: deviceStaticKeyId,
+            deviceId: deviceId,
+            identityGeneration: identityGeneration,
+            revocationEpoch: revocationEpoch,
+            sessionGeneration: sessionGeneration,
+            capabilityBits: capabilityBits,
+            pairedAt: pairedAt
+        )
+    }
+
+    init(
+        id: String,
+        displayName: String,
+        routes: [HostRoute],
+        hostStaticPublicKey: Data,
+        deviceStaticKeyId: String,
+        deviceId: UUID,
+        identityGeneration: UInt64,
+        revocationEpoch: UInt64,
+        sessionGeneration: UInt64,
+        capabilityBits: UInt16,
+        pairedAt: Date = .now,
+        discoveryId: String? = nil
+    ) throws {
+        let uniqueRoutes = Self.uniqued(routes)
         guard hostStaticPublicKey.count == 32,
               identityGeneration > 0,
+              !uniqueRoutes.isEmpty,
+              uniqueRoutes.count <= HostRoute.maxRoutesPerHost,
               !deviceStaticKeyId.isEmpty,
               deviceStaticKeyId.utf8.count <= 128,
               !displayName.isEmpty,
@@ -54,7 +114,7 @@ struct PairedHostRecord: Codable, Identifiable, Hashable, Sendable {
         self.schemaVersion = Self.currentSchemaVersion
         self.id = id
         self.displayName = displayName
-        self.route = route
+        self.routes = uniqueRoutes
         self.hostStaticPublicKey = hostStaticPublicKey
         self.deviceStaticKeyId = deviceStaticKeyId
         self.deviceId = deviceId
@@ -63,10 +123,111 @@ struct PairedHostRecord: Codable, Identifiable, Hashable, Sendable {
         self.sessionGeneration = sessionGeneration
         self.capabilityBits = capabilityBits
         self.pairedAt = pairedAt
+        self.discoveryId = discoveryId ?? Self.discoveryID(hostStaticPublicKey: hostStaticPublicKey)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case id
+        case displayName
+        case route
+        case routes
+        case hostStaticPublicKey
+        case deviceStaticKeyId
+        case deviceId
+        case identityGeneration
+        case revocationEpoch
+        case sessionGeneration
+        case capabilityBits
+        case pairedAt
+        case discoveryId
+    }
+
+    /// Records saved before a Host could have several addresses carry only `route`.
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let routes = try values.decodeIfPresent([HostRoute].self, forKey: .routes)
+            ?? [try values.decode(HostRoute.self, forKey: .route)]
+        let schemaVersion = try values.decode(Int.self, forKey: .schemaVersion)
+        let record = try Self(
+            id: try values.decode(String.self, forKey: .id),
+            displayName: try values.decode(String.self, forKey: .displayName),
+            routes: routes,
+            hostStaticPublicKey: try values.decode(Data.self, forKey: .hostStaticPublicKey),
+            deviceStaticKeyId: try values.decode(String.self, forKey: .deviceStaticKeyId),
+            deviceId: try values.decode(UUID.self, forKey: .deviceId),
+            identityGeneration: try values.decode(UInt64.self, forKey: .identityGeneration),
+            revocationEpoch: try values.decode(UInt64.self, forKey: .revocationEpoch),
+            sessionGeneration: try values.decode(UInt64.self, forKey: .sessionGeneration),
+            capabilityBits: try values.decode(UInt16.self, forKey: .capabilityBits),
+            pairedAt: try values.decode(Date.self, forKey: .pairedAt),
+            discoveryId: try values.decodeIfPresent(String.self, forKey: .discoveryId)
+        )
+        guard schemaVersion == Self.currentSchemaVersion else {
+            throw ControllerModelError.invalidHost
+        }
+        self = record
+    }
+
+    /// Writes `route` alongside `routes` so an older build can still read the record.
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(schemaVersion, forKey: .schemaVersion)
+        try values.encode(id, forKey: .id)
+        try values.encode(displayName, forKey: .displayName)
+        try values.encode(route, forKey: .route)
+        try values.encode(routes, forKey: .routes)
+        try values.encode(hostStaticPublicKey, forKey: .hostStaticPublicKey)
+        try values.encode(deviceStaticKeyId, forKey: .deviceStaticKeyId)
+        try values.encode(deviceId, forKey: .deviceId)
+        try values.encode(identityGeneration, forKey: .identityGeneration)
+        try values.encode(revocationEpoch, forKey: .revocationEpoch)
+        try values.encode(sessionGeneration, forKey: .sessionGeneration)
+        try values.encode(capabilityBits, forKey: .capabilityBits)
+        try values.encode(pairedAt, forKey: .pairedAt)
+        try values.encodeIfPresent(discoveryId, forKey: .discoveryId)
     }
 
     var fingerprint: String {
         hostStaticPublicKey.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// The same record with `route` first, keeping at most `HostRoute.maxRoutesPerHost` routes.
+    func preferring(_ route: HostRoute) throws -> PairedHostRecord {
+        try replacing(routes: [route] + routes.filter { $0 != route })
+    }
+
+    func replacing(
+        routes: [HostRoute]? = nil,
+        capabilityBits: UInt16? = nil
+    ) throws -> PairedHostRecord {
+        try PairedHostRecord(
+            id: id,
+            displayName: displayName,
+            routes: Array((routes ?? self.routes).prefix(HostRoute.maxRoutesPerHost)),
+            hostStaticPublicKey: hostStaticPublicKey,
+            deviceStaticKeyId: deviceStaticKeyId,
+            deviceId: deviceId,
+            identityGeneration: identityGeneration,
+            revocationEpoch: revocationEpoch,
+            sessionGeneration: sessionGeneration,
+            capabilityBits: capabilityBits ?? self.capabilityBits,
+            pairedAt: pairedAt,
+            discoveryId: discoveryId
+        )
+    }
+
+    /// The first 16 bytes of the Host fingerprint in lowercase hex, matching the Bonjour TXT `id`.
+    static func discoveryID(hostStaticPublicKey: Data) -> String {
+        var hasher = SHA256()
+        hasher.update(data: Data("termirust-host-fingerprint-v1\0".utf8))
+        hasher.update(data: hostStaticPublicKey)
+        return hasher.finalize().prefix(16).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func uniqued(_ routes: [HostRoute]) -> [HostRoute] {
+        var seen = Set<HostRoute>()
+        return routes.filter { seen.insert($0).inserted }
     }
 }
 
@@ -218,6 +379,8 @@ struct ControllerFleetSnapshot: Equatable, Sendable {
     let updateSequence: UInt64
     let capabilityBits: UInt16
     let sessions: [ControllerSessionSummary]
+    /// The direct address that answered, when the transport connects by address.
+    var connectedRoute: HostRoute? = nil
 }
 
 enum ControllerConnectionState: Equatable, Sendable {
@@ -248,6 +411,8 @@ enum ControllerFailure: String, Codable, Error, Sendable {
     case resourceLimit
     case storageUnavailable
     case pairingUncertain
+    case codeRejected
+    case invalidAddress
 }
 
 struct ControllerViewState: Equatable, Sendable {

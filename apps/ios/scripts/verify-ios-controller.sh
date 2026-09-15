@@ -110,6 +110,7 @@ CONTROLLER_SOURCES=(
   TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift
   TermiRustMobile/Terminal/TerminalInteraction.swift
   TermiRustMobile/Terminal/TerminalAcceptance.swift
+  TermiRustMobile/Controller/ControllerComputerDiscovery.swift
   TermiRustMobile/Controller/ControllerConnectionActor.swift
   TermiRustMobile/ViewModels/ControllerViewModel.swift
   TermiRustMobile/ViewModels/ControllerTerminalViewModel.swift

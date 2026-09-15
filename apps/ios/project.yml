@@ -97,9 +97,10 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.termirust.mobile
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: TermiRustMobile/Info.plist
         TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: TermiRust connects directly to a paired TermiRust desktop on your local network.
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: TermiRust finds TermiRust desktops on your local network and connects to the ones you pair.
         INFOPLIST_KEY_NSCameraUsageDescription: Scan a TermiRust Desktop pairing code without saving camera images.
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight

@@ -3,17 +3,39 @@ import Foundation
 import Security
 
 protocol ControllerDuplexConnection: AnyObject, Sendable {
+    /// The address the connection reached, when the transport connects by address.
+    var remoteRoute: HostRoute? { get }
     func send(_ data: Data) async throws
     func receive(maximumLength: Int) async throws -> Data
     func cancel()
 }
 
+extension ControllerDuplexConnection {
+    var remoteRoute: HostRoute? { nil }
+}
+
 struct ControllerTransportFactory: Sendable {
     let open: @Sendable (HostRoute) async throws -> any ControllerDuplexConnection
+    /// Opens a Bonjour service. Only transports that reach the Host by its address set this,
+    /// and only those try each saved route in turn.
+    let openEndpoint: (@Sendable (NWEndpoint) async throws -> any ControllerDuplexConnection)?
 
-    static let tcp = Self { route in
-        try await NWControllerDuplexConnection.open(route: route)
+    init(
+        openEndpoint: (@Sendable (NWEndpoint) async throws -> any ControllerDuplexConnection)? = nil,
+        open: @escaping @Sendable (HostRoute) async throws -> any ControllerDuplexConnection
+    ) {
+        self.openEndpoint = openEndpoint
+        self.open = open
     }
+
+    static let tcp = Self(
+        openEndpoint: { endpoint in
+            try await NWControllerDuplexConnection.open(endpoint: endpoint)
+        },
+        open: { route in
+            try await NWControllerDuplexConnection.open(route: route)
+        }
+    )
 }
 
 private final class NWControllerDuplexConnection: ControllerDuplexConnection, @unchecked Sendable {
@@ -23,12 +45,31 @@ private final class NWControllerDuplexConnection: ControllerDuplexConnection, @u
         self.connection = connection
     }
 
+    var remoteRoute: HostRoute? {
+        guard case .hostPort(let host, let port) = connection.currentPath?.remoteEndpoint else {
+            return nil
+        }
+        let address: String
+        switch host {
+        case .ipv4(let value): address = "\(value)"
+        case .ipv6(let value): address = "\(value)"
+        case .name(let value, _): address = value
+        @unknown default: return nil
+        }
+        let unscoped = address.split(separator: "%", maxSplits: 1).first.map(String.init) ?? ""
+        return try? HostRoute(address: unscoped, port: port.rawValue)
+    }
+
     static func open(route: HostRoute) async throws -> NWControllerDuplexConnection {
         let host = NWEndpoint.Host(route.address)
         guard let port = NWEndpoint.Port(rawValue: route.port) else {
             throw ControllerPairingError.invalidOffer
         }
-        let connection = NWConnection(host: host, port: port, using: .tcp)
+        return try await open(endpoint: .hostPort(host: host, port: port))
+    }
+
+    static func open(endpoint: NWEndpoint) async throws -> NWControllerDuplexConnection {
+        let connection = NWConnection(to: endpoint, using: .tcp)
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 let gate = ConnectionStartGate()
@@ -97,6 +138,13 @@ protocol ControllerConnecting: Sendable {
         deviceID: UUID
     ) async throws -> ControllerPairingChallenge
     func finishPairing(matches: Bool) async throws -> PairedHostRecord
+    func pairWithCode(
+        target: ControllerPairingTarget,
+        code: String,
+        hostName: String,
+        deviceName: String,
+        deviceID: UUID
+    ) async throws -> PairedHostRecord
     func fetchSessions(
         host: PairedHostRecord,
         progress: @escaping @Sendable (ControllerConnectionProgress) async -> Void
@@ -206,6 +254,17 @@ final class AppleControllerRouteConnections: @unchecked Sendable {
 }
 
 extension ControllerConnecting {
+    func pairWithCode(
+        target: ControllerPairingTarget,
+        code: String,
+        hostName: String,
+        deviceName: String,
+        deviceID: UUID
+    ) async throws -> PairedHostRecord {
+        _ = (target, code, hostName, deviceName, deviceID)
+        throw ControllerConnectionError.capabilityDenied
+    }
+
     func attachReadOnly(
         host: PairedHostRecord,
         cursor: TerminalStreamCursor,
@@ -283,9 +342,7 @@ private struct ControllerPairingOfferEnvelope: Decodable, Sendable {
     let identityGeneration: UInt64
     let revocationEpoch: UInt64
     let sessionGeneration: UInt64
-    let addressFamily: String
-    let address: String
-    let port: UInt16
+    let routes: [PairingRoutePayload]
     let offerBytes: [UInt8]
 
     private enum CodingKeys: String, CodingKey {
@@ -294,10 +351,43 @@ private struct ControllerPairingOfferEnvelope: Decodable, Sendable {
         case identityGeneration = "identity_generation"
         case revocationEpoch = "revocation_epoch"
         case sessionGeneration = "session_generation"
-        case addressFamily = "address_family"
-        case address
-        case port
+        case routes
         case offerBytes = "offer_bytes"
+    }
+}
+
+private struct PairingRoutePayload: Decodable, Sendable {
+    let address: String
+    let port: UInt16
+}
+
+/// The offer a Host sends over a code pairing connection. It names no routes: the phone is
+/// already connected to one.
+private struct CodePairingOfferEnvelope: Decodable, Sendable {
+    let schemaVersion: UInt16
+    let offerId: UUID
+    let identityGeneration: UInt64
+    let revocationEpoch: UInt64
+    let sessionGeneration: UInt64
+    let offerBytes: [UInt8]
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case offerId = "offer_id"
+        case identityGeneration = "identity_generation"
+        case revocationEpoch = "revocation_epoch"
+        case sessionGeneration = "session_generation"
+        case offerBytes = "offer_bytes"
+    }
+}
+
+private struct CodePairingHelloPayload: Encodable {
+    let schemaVersion = 1
+    let deviceNonce: [UInt8]
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case deviceNonce = "device_nonce"
     }
 }
 
@@ -450,19 +540,29 @@ actor ControllerConnectionActor: ControllerConnecting {
     private static let maxSecureFrameBytes = 64 * 1_024
     private static let maxTerminalFrameBytes = 1 * 1_024 * 1_024
     private static let handshakeTimeout: Duration = .seconds(30)
+    /// The Host gives a code pairing connection this long, from its hello to its acknowledgement.
+    private static let codePairingTimeout: Duration = .seconds(60)
+    /// Used per address when a Host has several, so one unreachable address cannot use up the budget.
+    private static let routeAttemptTimeout: Duration = .seconds(10)
+    private static let discoveryLookupTimeout: Duration = .seconds(3)
+    private static let codePairingShareBytes = 32
+    private static let codePairingOfferBytes = 84
 
     private let securityEngine: ControllerSecurityEngine
     private let transportFactory: ControllerTransportFactory
+    private let discovery: (any ControllerComputerLookup)?
     private var connection: (any ControllerDuplexConnection)?
     private var pairing: PendingPairing?
     private var activeTerminal: ActiveTerminalConnection?
 
     init(
         blobStore: SecureBlobStore,
-        transportFactory: ControllerTransportFactory = .tcp
+        transportFactory: ControllerTransportFactory = .tcp,
+        discovery: (any ControllerComputerLookup)? = nil
     ) throws {
         self.securityEngine = try ControllerSecurityEngine(blobs: blobStore)
         self.transportFactory = transportFactory
+        self.discovery = discovery
     }
 
     func beginPairing(
@@ -472,14 +572,7 @@ actor ControllerConnectionActor: ControllerConnecting {
         deviceID: UUID
     ) async throws -> ControllerPairingChallenge {
         await cancel()
-        guard !hostName.isEmpty,
-              hostName.unicodeScalars.count <= 256,
-              !deviceName.isEmpty,
-              deviceName.unicodeScalars.count <= 64,
-              !deviceName.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
-        else {
-            throw ControllerPairingError.invalidDeviceName
-        }
+        try Self.validateNames(hostName: hostName, deviceName: deviceName)
 
         let envelope = try decodeOffer(offerText)
         let offerBytes = Data(envelope.offerBytes)
@@ -492,12 +585,12 @@ actor ControllerConnectionActor: ControllerConnecting {
               envelope.identityGeneration > 0 else {
             throw ControllerPairingError.expiredOrIncompatibleOffer
         }
-        let route = try HostRoute(address: envelope.address, port: envelope.port)
-        guard Self.isPrivateRoute(envelope: envelope) else {
+        let routes = try envelope.routes.map { try HostRoute(address: $0.address, port: $0.port) }
+        guard routes.allSatisfy(\.isPrivateNetworkRoute) else {
             throw ControllerPairingError.publicRouteRejected
         }
 
-        let keyID = "controller.device.\(deviceID.uuidString.lowercased()).\(Self.fingerprint(summary.hostStaticPublicKey).prefix(16))"
+        let keyID = Self.deviceKeyID(deviceID: deviceID, hostKey: summary.hostStaticPublicKey)
         var createdKey = false
         if try securityEngine.secureBlobStatus(keyId: keyID) == .missing {
             try securityEngine.storeSecureBlob(keyId: keyID, value: try Self.randomBytes(count: 32))
@@ -505,9 +598,7 @@ actor ControllerConnectionActor: ControllerConnecting {
         }
 
         do {
-            let network = try await withTimeout(Self.handshakeTimeout) {
-                try await self.transportFactory.open(route)
-            }
+            let (network, route) = try await openFirstRoute(routes)
             connection = network
             try await withTimeout(Self.handshakeTimeout) {
                 try await Self.send(Self.pairingPreface, over: network)
@@ -525,28 +616,11 @@ actor ControllerConnectionActor: ControllerConnecting {
                 nowUnixSeconds: nowSeconds
             ))
             try await withTimeout(Self.handshakeTimeout) {
-                let hello = try session.pairingOutbound(nowMillis: Self.uptimeMillis())
-                try await Self.sendFrame(
-                    hello,
-                    maximum: Self.maxHandshakeFrameBytes,
-                    over: network
-                )
-                let proof = try await Self.receiveFrame(
-                    maximum: Self.maxHandshakeFrameBytes,
-                    over: network
-                )
-                try session.pairingReceive(message: proof, nowMillis: Self.uptimeMillis())
-                let deviceProof = try session.pairingOutbound(nowMillis: Self.uptimeMillis())
-                try await Self.sendFrame(
-                    deviceProof,
-                    maximum: Self.maxHandshakeFrameBytes,
-                    over: network
-                )
+                try await Self.runPairingHandshake(session, over: network)
             }
             let sas = try session.sas().value
             pairing = PendingPairing(
-                envelope: envelope,
-                route: route,
+                routes: [route] + routes.filter { $0 != route },
                 hostName: hostName,
                 deviceName: deviceName,
                 deviceID: deviceID,
@@ -555,7 +629,10 @@ actor ControllerConnectionActor: ControllerConnecting {
                 session: session,
                 sas: sas,
                 hostKey: summary.hostStaticPublicKey,
-                capabilityBits: summary.capabilityBits
+                capabilityBits: summary.capabilityBits,
+                identityGeneration: envelope.identityGeneration,
+                revocationEpoch: envelope.revocationEpoch,
+                sessionGeneration: envelope.sessionGeneration
             )
             return ControllerPairingChallenge(
                 hostFingerprint: Self.fingerprint(summary.hostStaticPublicKey),
@@ -571,14 +648,14 @@ actor ControllerConnectionActor: ControllerConnecting {
     }
 
     func finishPairing(matches: Bool) async throws -> PairedHostRecord {
-        guard let pending = pairing, let connection else {
+        guard let pending = pairing, let sas = pending.sas, let connection else {
             throw ControllerPairingError.noPairingInProgress
         }
         guard matches else {
             _ = try? pending.session.confirmOrReject(
                 confirmation: .reject,
-                comparedSas: pending.sas,
-                revocationEpoch: pending.envelope.revocationEpoch
+                comparedSas: sas,
+                revocationEpoch: pending.revocationEpoch
             )
             if pending.createdKey {
                 try? securityEngine.deleteSecureBlob(keyId: pending.keyID)
@@ -587,13 +664,135 @@ actor ControllerConnectionActor: ControllerConnecting {
             throw ControllerPairingError.rejected
         }
 
+        return try await registerPairedDevice(pending, over: connection) {
+            try pending.session.confirmOrReject(
+                confirmation: .confirm,
+                comparedSas: sas,
+                revocationEpoch: pending.revocationEpoch
+            )
+        }
+    }
+
+    /// Pairs with the six-digit code the Host is showing. The code keys CPace, whose result is
+    /// bound into the pairing handshake, so no SAS comparison follows.
+    func pairWithCode(
+        target: ControllerPairingTarget,
+        code: String,
+        hostName: String,
+        deviceName: String,
+        deviceID: UUID
+    ) async throws -> PairedHostRecord {
+        await cancel()
+        try Self.validateNames(hostName: hostName, deviceName: deviceName)
+        guard code.utf8.count == 6, code.utf8.allSatisfy({ (0x30...0x39).contains($0) }) else {
+            throw ControllerPairingError.invalidCode
+        }
+        let deadline = ContinuousClock.now + Self.codePairingTimeout
+        let (network, route) = try await openPairingTarget(target, deadline: deadline)
+        connection = network
+
+        var keyID: String?
+        var createdKey = false
+        let pending: PendingPairing
+        do {
+            let nonce = try Self.randomBytes(count: 32)
+            let envelope: CodePairingOfferEnvelope = try await withTimeout(Self.remaining(until: deadline)) {
+                try await Self.send(Self.codePairingPreface, over: network)
+                let hello = try JSONEncoder().encode(CodePairingHelloPayload(deviceNonce: [UInt8](nonce)))
+                try await Self.sendFrame(hello, maximum: Self.maxOfferBytes, over: network)
+                let offer = try await Self.receiveFrame(maximum: Self.maxOfferBytes, over: network)
+                return try Self.decodeCodeOffer(offer)
+            }
+            let offerBytes = Data(envelope.offerBytes)
+            let summary = try securityEngine.decodeOfferSummary(offerBytes: offerBytes)
+            guard summary.version.major == 1,
+                  summary.version.minor == 0,
+                  summary.expiresAtUnixSeconds > UInt64(Date().timeIntervalSince1970),
+                  summary.hostStaticPublicKey.count == 32 else {
+                throw ControllerPairingError.expiredOrIncompatibleOffer
+            }
+
+            let deviceKeyID = Self.deviceKeyID(deviceID: deviceID, hostKey: summary.hostStaticPublicKey)
+            keyID = deviceKeyID
+            if try securityEngine.secureBlobStatus(keyId: deviceKeyID) == .missing {
+                try securityEngine.storeSecureBlob(keyId: deviceKeyID, value: try Self.randomBytes(count: 32))
+                createdKey = true
+            }
+
+            let exchange = try securityEngine.codePairingStart(request: CodePairingStartRequest(
+                code: code,
+                offerBytes: offerBytes,
+                deviceNonce: nonce,
+                scalarEntropy: try Self.randomBytes(count: 64)
+            ))
+            let ephemeralPrivateKey = try Self.randomBytes(count: 32)
+            let session: ControllerPairingSession = try await withTimeout(Self.remaining(until: deadline)) {
+                try await Self.sendFrame(
+                    try exchange.share(),
+                    maximum: Self.codePairingShareBytes,
+                    over: network
+                )
+                let hostShare = try await Self.receiveFrame(
+                    maximum: Self.codePairingShareBytes,
+                    over: network
+                )
+                guard hostShare.count == Self.codePairingShareBytes else {
+                    throw ControllerPairingError.codeRejected
+                }
+                let session = try exchange.finish(request: CodePairingFinishRequest(
+                    hostShare: hostShare,
+                    staticKeyId: deviceKeyID,
+                    ephemeralPrivateKey: ephemeralPrivateKey,
+                    nowMillis: Self.uptimeMillis(),
+                    nowUnixSeconds: UInt64(Date().timeIntervalSince1970)
+                ))
+                try await Self.runPairingHandshake(session, over: network)
+                return session
+            }
+            pending = PendingPairing(
+                routes: [route],
+                hostName: hostName,
+                deviceName: deviceName,
+                deviceID: deviceID,
+                keyID: deviceKeyID,
+                createdKey: createdKey,
+                session: session,
+                sas: nil,
+                hostKey: summary.hostStaticPublicKey,
+                capabilityBits: summary.capabilityBits,
+                identityGeneration: envelope.identityGeneration,
+                revocationEpoch: envelope.revocationEpoch,
+                sessionGeneration: envelope.sessionGeneration
+            )
+            pairing = pending
+        } catch {
+            if createdKey, let keyID { try? securityEngine.deleteSecureBlob(keyId: keyID) }
+            await cancel()
+            throw Self.codePairingFailure(error)
+        }
+
+        do {
+            return try await registerPairedDevice(pending, over: network) {
+                try pending.session.confirmCodePairing(revocationEpoch: pending.revocationEpoch)
+            }
+        } catch ControllerPairingError.acknowledgementUncertain {
+            throw ControllerPairingError.acknowledgementUncertain
+        } catch {
+            throw Self.codePairingFailure(error)
+        }
+    }
+
+    /// Confirms a finished pairing handshake, registers this device, and waits for the Host's
+    /// acknowledgement. When the acknowledgement is lost after registering, an authenticated
+    /// session list decides whether the Host saved the device.
+    private func registerPairedDevice(
+        _ pending: PendingPairing,
+        over connection: any ControllerDuplexConnection,
+        confirm: () throws -> PairingPublicResult
+    ) async throws -> PairedHostRecord {
         var registrationSent = false
         do {
-            let result = try pending.session.confirmOrReject(
-                confirmation: .confirm,
-                comparedSas: pending.sas,
-                revocationEpoch: pending.envelope.revocationEpoch
-            )
+            let result = try confirm()
             guard result.hostStaticPublicKey == pending.hostKey else {
                 throw ControllerPairingError.hostIdentityChanged
             }
@@ -604,7 +803,7 @@ actor ControllerConnectionActor: ControllerConnecting {
             let sealed = try pending.session.sealFrame(
                 kind: .control,
                 capability: .observeSessions,
-                revocationEpoch: pending.envelope.revocationEpoch,
+                revocationEpoch: pending.revocationEpoch,
                 payload: registration
             )
             try await withTimeout(Self.handshakeTimeout) {
@@ -623,23 +822,23 @@ actor ControllerConnectionActor: ControllerConnecting {
                 let opened = try pending.session.openFrame(frame: sealedAck)
                 guard opened.kind == .control,
                       opened.capability == .observeSessions,
-                      opened.revocationEpoch == pending.envelope.revocationEpoch else {
+                      opened.revocationEpoch == pending.revocationEpoch else {
                     throw ControllerPairingError.invalidAcknowledgement
                 }
                 return try Self.decodeStrict(PairingHostAckPayload.self, from: opened.payload)
             }
             guard ack.schemaVersion == 1,
                   ack.deviceId == pending.deviceID,
-                  ack.identityGeneration == pending.envelope.identityGeneration,
-                  ack.revocationEpoch == pending.envelope.revocationEpoch,
-                  ack.sessionGeneration == pending.envelope.sessionGeneration,
+                  ack.identityGeneration == pending.identityGeneration,
+                  ack.revocationEpoch == pending.revocationEpoch,
+                  ack.sessionGeneration == pending.sessionGeneration,
                   ack.capabilityBits & ~pending.capabilityBits == 0 else {
                 throw ControllerPairingError.invalidAcknowledgement
             }
             let record = try PairedHostRecord(
                 id: Self.fingerprint(pending.hostKey),
                 displayName: pending.hostName,
-                route: pending.route,
+                routes: pending.routes,
                 hostStaticPublicKey: pending.hostKey,
                 deviceStaticKeyId: pending.keyID,
                 deviceId: pending.deviceID,
@@ -657,13 +856,13 @@ actor ControllerConnectionActor: ControllerConnecting {
                     let provisionalRecord = try PairedHostRecord(
                         id: Self.fingerprint(pending.hostKey),
                         displayName: pending.hostName,
-                        route: pending.route,
+                        routes: pending.routes,
                         hostStaticPublicKey: pending.hostKey,
                         deviceStaticKeyId: pending.keyID,
                         deviceId: pending.deviceID,
-                        identityGeneration: pending.envelope.identityGeneration,
-                        revocationEpoch: pending.envelope.revocationEpoch,
-                        sessionGeneration: pending.envelope.sessionGeneration,
+                        identityGeneration: pending.identityGeneration,
+                        revocationEpoch: pending.revocationEpoch,
+                        sessionGeneration: pending.sessionGeneration,
                         capabilityBits: pending.capabilityBits
                     )
                     _ = try await fetchSessions(host: provisionalRecord) { _ in }
@@ -686,9 +885,7 @@ actor ControllerConnectionActor: ControllerConnecting {
               host.capabilityBits & Self.observeCapability == Self.observeCapability else {
             throw ControllerConnectionError.capabilityDenied
         }
-        let network = try await withTimeout(Self.handshakeTimeout) {
-            try await self.transportFactory.open(host.route)
-        }
+        let (network, connectedRoute) = try await openHostConnection(host)
         connection = network
         await progress(.authenticating)
         let started = Self.uptimeMillis()
@@ -744,7 +941,7 @@ actor ControllerConnectionActor: ControllerConnecting {
 
         await progress(.syncing)
 
-        return try await withTimeout(Self.handshakeTimeout) {
+        var snapshot = try await withTimeout(Self.handshakeTimeout) {
             try await Self.fetchStableSnapshot(
                 host: host,
                 session: authenticatedSession,
@@ -752,6 +949,8 @@ actor ControllerConnectionActor: ControllerConnecting {
                 capabilityBits: publicResult.grantedCapabilityBits
             )
         }
+        snapshot.connectedRoute = connectedRoute
+        return snapshot
     }
 
     func attachReadOnly(
@@ -769,9 +968,7 @@ actor ControllerConnectionActor: ControllerConnecting {
         try cursor.identity.validate()
         try TerminalLimits.controllerDefault.validate(viewport: viewport)
 
-        let network = try await withTimeout(Self.handshakeTimeout) {
-            try await self.transportFactory.open(host.route)
-        }
+        let (network, _) = try await openHostConnection(host)
         connection = network
         let started = Self.uptimeMillis()
         let request = ConnectionStartRequest(
@@ -906,9 +1103,7 @@ actor ControllerConnectionActor: ControllerConnecting {
         let requested = host.capabilityBits
             & (Self.attachCapability | Self.inputCapability
                 | Self.resizeCapability | Self.approvalCapability)
-        let network = try await withTimeout(Self.handshakeTimeout) {
-            try await self.transportFactory.open(host.route)
-        }
+        let (network, _) = try await openHostConnection(host)
         connection = network
         let authentication = try await authenticate(
             host: host,
@@ -1119,6 +1314,85 @@ actor ControllerConnectionActor: ControllerConnecting {
         connection = nil
     }
 
+    /// Connects to the first of `routes` that answers. Transports that do not connect by
+    /// address only ever use the first route.
+    private func openFirstRoute(
+        _ routes: [HostRoute],
+        deadline: ContinuousClock.Instant? = nil
+    ) async throws -> (network: any ControllerDuplexConnection, route: HostRoute) {
+        let candidates = transportFactory.openEndpoint == nil ? Array(routes.prefix(1)) : routes
+        var lastError: Error = ControllerPairingError.connectionClosed
+        for route in candidates {
+            var timeout = candidates.count == 1 ? Self.handshakeTimeout : Self.routeAttemptTimeout
+            if let deadline { timeout = min(timeout, Self.remaining(until: deadline)) }
+            do {
+                let network = try await withTimeout(timeout) {
+                    try await self.transportFactory.open(route)
+                }
+                return (network, route)
+            } catch {
+                if Task.isCancelled { throw CancellationError() }
+                lastError = error
+            }
+        }
+        throw lastError
+    }
+
+    /// Opens a paired Host by its saved routes, most recently working first. When none answers
+    /// and the Host is announcing itself on this network, its Bonjour service is tried instead
+    /// and the address it resolves to is returned so it can be saved.
+    private func openHostConnection(
+        _ host: PairedHostRecord
+    ) async throws -> (network: any ControllerDuplexConnection, route: HostRoute?) {
+        do {
+            let opened = try await openFirstRoute(host.routes)
+            return (opened.network, transportFactory.openEndpoint == nil ? nil : opened.route)
+        } catch {
+            guard !Task.isCancelled,
+                  let openEndpoint = transportFactory.openEndpoint,
+                  let discovery,
+                  let discoveryID = host.discoveryId,
+                  let endpoint = await discovery.endpoint(
+                      discoveryID: discoveryID,
+                      within: Self.discoveryLookupTimeout
+                  ) else {
+                throw error
+            }
+            let network = try await withTimeout(Self.handshakeTimeout) {
+                try await openEndpoint(endpoint)
+            }
+            guard let route = network.remoteRoute, route.isPrivateNetworkRoute else {
+                network.cancel()
+                throw error
+            }
+            return (network, route)
+        }
+    }
+
+    private func openPairingTarget(
+        _ target: ControllerPairingTarget,
+        deadline: ContinuousClock.Instant
+    ) async throws -> (network: any ControllerDuplexConnection, route: HostRoute) {
+        guard let openEndpoint = transportFactory.openEndpoint else {
+            throw ControllerConnectionError.capabilityDenied
+        }
+        switch target {
+        case .discovered(let computer):
+            let timeout = min(Self.handshakeTimeout, Self.remaining(until: deadline))
+            let network = try await withTimeout(timeout) {
+                try await openEndpoint(computer.endpoint)
+            }
+            guard let route = network.remoteRoute, route.isPrivateNetworkRoute else {
+                network.cancel()
+                throw ControllerPairingError.publicRouteRejected
+            }
+            return (network, route)
+        case .address(let text):
+            let routes = try await ControllerTypedAddress(text).resolvePrivateRoutes()
+            return try await openFirstRoute(routes, deadline: deadline)
+        }
+    }
+
     private func authenticate(
         host: PairedHostRecord,
         requestedCapabilityBits: UInt16,
@@ -1206,18 +1480,113 @@ actor ControllerConnectionActor: ControllerConnecting {
         guard !text.isEmpty, text.utf8.count <= Self.maxOfferBytes else {
             throw ControllerPairingError.invalidOffer
         }
-        let envelope = try Self.decodeStrict(
-            ControllerPairingOfferEnvelope.self,
-            from: Data(text.utf8)
+        let data = Data(text.utf8)
+        let object = try Self.exactPairingObject(
+            data,
+            keys: [
+                "schema_version", "offer_id", "identity_generation", "revocation_epoch",
+                "session_generation", "routes", "offer_bytes",
+            ]
         )
-        guard envelope.schemaVersion == 1,
+        guard let routes = object["routes"] as? [[String: Any]],
+              (1...HostRoute.maxRoutesPerHost).contains(routes.count),
+              routes.allSatisfy({ Set($0.keys) == ["address", "port"] }) else {
+            throw ControllerPairingError.invalidOffer
+        }
+        let envelope = try Self.decodeStrict(ControllerPairingOfferEnvelope.self, from: data)
+        guard envelope.schemaVersion == 2,
               envelope.offerBytes.count <= Self.maxOfferBytes else {
             throw ControllerPairingError.invalidOffer
         }
         return envelope
     }
 
+    private static func decodeCodeOffer(_ data: Data) throws -> CodePairingOfferEnvelope {
+        _ = try exactPairingObject(
+            data,
+            keys: [
+                "schema_version", "offer_id", "identity_generation", "revocation_epoch",
+                "session_generation", "offer_bytes",
+            ]
+        )
+        let envelope = try decodeStrict(CodePairingOfferEnvelope.self, from: data)
+        guard envelope.schemaVersion == 1,
+              envelope.identityGeneration > 0,
+              envelope.sessionGeneration > 0,
+              envelope.offerBytes.count == codePairingOfferBytes else {
+            throw ControllerPairingError.invalidOffer
+        }
+        return envelope
+    }
+
+    private static func exactPairingObject(_ data: Data, keys: Set<String>) throws -> [String: Any] {
+        guard data.count <= maxOfferBytes,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              Set(object.keys) == keys else {
+            throw ControllerPairingError.invalidOffer
+        }
+        return object
+    }
+
+    private static func validateNames(hostName: String, deviceName: String) throws {
+        guard !hostName.isEmpty,
+              hostName.unicodeScalars.count <= 256,
+              !deviceName.isEmpty,
+              deviceName.unicodeScalars.count <= 64,
+              !deviceName.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+        else {
+            throw ControllerPairingError.invalidDeviceName
+        }
+    }
+
+    private static func deviceKeyID(deviceID: UUID, hostKey: Data) -> String {
+        "controller.device.\(deviceID.uuidString.lowercased()).\(fingerprint(hostKey).prefix(16))"
+    }
+
+    /// The device side of the three-message pairing handshake.
+    private static func runPairingHandshake(
+        _ session: ControllerPairingSession,
+        over network: any ControllerDuplexConnection
+    ) async throws {
+        let hello = try session.pairingOutbound(nowMillis: uptimeMillis())
+        try await sendFrame(hello, maximum: maxHandshakeFrameBytes, over: network)
+        let proof = try await receiveFrame(maximum: maxHandshakeFrameBytes, over: network)
+        try session.pairingReceive(message: proof, nowMillis: uptimeMillis())
+        let deviceProof = try session.pairingOutbound(nowMillis: uptimeMillis())
+        try await sendFrame(deviceProof, maximum: maxHandshakeFrameBytes, over: network)
+    }
+
+    /// A wrong code shows up as a failed exchange or a closed connection, never as a distinct
+    /// answer, so every failure after connecting reads as a rejected code unless it is local.
+    private static func codePairingFailure(_ error: Error) -> Error {
+        if error is CancellationError || error is SecureBlobError { return error }
+        if let error = error as? ControllerPairingError {
+            switch error {
+            case .timedOut, .cancelled, .randomUnavailable, .invalidDeviceName,
+                 .expiredOrIncompatibleOffer, .acknowledgementUncertain:
+                return error
+            default:
+                return ControllerPairingError.codeRejected
+            }
+        }
+        if let error = error as? ControllerBindingError {
+            switch error {
+            case .IncompatibleVersion, .SecureBlobMissing, .SecureBlobLocked,
+                 .SecureBlobPermissionDenied, .SecureBlobInvalid, .SecureBlobUnavailable:
+                return error
+            default:
+                return ControllerPairingError.codeRejected
+            }
+        }
+        return ControllerPairingError.codeRejected
+    }
+
+    private static func remaining(until deadline: ContinuousClock.Instant) -> Duration {
+        max(deadline - ContinuousClock.now, .zero)
+    }
+
     private static let pairingPreface = Data([0x54, 0x52, 0x43, 0x4e, 0x00, 0x01, 0x02, 0x00])
+    private static let codePairingPreface = Data([0x54, 0x52, 0x43, 0x4e, 0x00, 0x01, 0x03, 0x00])
     private static let authenticationPreface = Data([0x54, 0x52, 0x43, 0x4e, 0x00, 0x01, 0x01, 0x00])
 
     private static func fetchStableSnapshot(
@@ -1455,23 +1824,6 @@ actor ControllerConnectionActor: ControllerConnecting {
         UInt64(ProcessInfo.processInfo.systemUptime * 1_000)
     }
 
-    private static func isPrivateRoute(envelope: ControllerPairingOfferEnvelope) -> Bool {
-        if envelope.addressFamily == "ipv4", let address = IPv4Address(envelope.address) {
-            let bytes = [UInt8](address.rawValue)
-            guard bytes.count == 4 else { return false }
-            let privateAddress = bytes[0] == 10
-                || (bytes[0] == 172 && (16...31).contains(bytes[1]))
-                || (bytes[0] == 192 && bytes[1] == 168)
-                || (bytes[0] == 100 && (64...127).contains(bytes[1]))
-            return privateAddress && bytes != [127, 0, 0, 1] && bytes != [0, 0, 0, 0]
-        }
-        if envelope.addressFamily == "ipv6", let address = IPv6Address(envelope.address) {
-            let bytes = [UInt8](address.rawValue)
-            return bytes.count == 16 && (bytes[0] & 0xfe) == 0xfc
-        }
-        return false
-    }
-
     private func withTimeout<T: Sendable>(
         _ duration: Duration,
         operation: @escaping @Sendable () async throws -> T
@@ -1521,17 +1873,20 @@ private struct ActiveTerminalConnection: Sendable {
 }
 
 private struct PendingPairing: Sendable {
-    let envelope: ControllerPairingOfferEnvelope
-    let route: HostRoute
+    let routes: [HostRoute]
     let hostName: String
     let deviceName: String
     let deviceID: UUID
     let keyID: String
     let createdKey: Bool
     let session: ControllerPairingSession
-    let sas: String
+    /// Nil for code pairing, which has no SAS to compare.
+    let sas: String?
     let hostKey: Data
     let capabilityBits: UInt16
+    let identityGeneration: UInt64
+    let revocationEpoch: UInt64
+    let sessionGeneration: UInt64
 }
 
 enum ControllerPairingError: Error, Equatable {
@@ -1549,6 +1904,9 @@ enum ControllerPairingError: Error, Equatable {
     case hostIdentityChanged
     case invalidAcknowledgement
     case acknowledgementUncertain
+    case invalidCode
+    case codeRejected
+    case invalidAddress
 }
 
 enum ControllerConnectionError: Error, Equatable {

@@ -32,7 +32,7 @@ struct ControllerRootView: View {
                     } description: {
                         Text("Pair with TermiRust Desktop on the same private network.")
                     } actions: {
-                        Button("Pair Host") { showingPairing = true }
+                        Button("Pair a Computer") { showingPairing = true }
                             .buttonStyle(.borderedProminent)
                     }
                 }
@@ -47,7 +47,7 @@ struct ControllerRootView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button { showingPairing = true } label: {
-                        Label("Pair Host", systemImage: "plus")
+                        Label("Pair a Computer", systemImage: "plus")
                     }
                 }
             }
@@ -889,12 +889,264 @@ private struct ControllerSessionRow: View {
 private struct PairHostView: View {
     @ObservedObject var viewModel: ControllerViewModel
     @Binding var isPresented: Bool
+    @State private var target: ControllerPairingTarget?
+    @State private var showingOtherWays = false
+
+    var body: some View {
+        NavigationStack {
+            PairComputerChooserView(
+                viewModel: viewModel,
+                browser: viewModel.computerBrowser,
+                onChoose: { target = $0 },
+                onOtherWays: { showingOtherWays = true }
+            )
+            .navigationTitle("Pair a Computer")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        viewModel.cancelPairing()
+                        isPresented = false
+                    }
+                }
+            }
+            .navigationDestination(item: $target) { target in
+                PairCodeView(viewModel: viewModel, target: target)
+            }
+            .navigationDestination(isPresented: $showingOtherWays) {
+                PairOfferView(viewModel: viewModel, isPresented: $isPresented)
+            }
+        }
+        .interactiveDismissDisabled(
+            viewModel.pairingChallenge != nil || viewModel.state.connection == .pairing
+        )
+        .onAppear { viewModel.computerBrowser.start() }
+        .onDisappear { viewModel.computerBrowser.stop() }
+        .onChange(of: viewModel.pairingCompletion) { _, completion in
+            if completion != nil { isPresented = false }
+        }
+    }
+}
+
+private struct PairComputerChooserView: View {
+    @ObservedObject var viewModel: ControllerViewModel
+    @ObservedObject var browser: ControllerComputerBrowser
+    let onChoose: (ControllerPairingTarget) -> Void
+    let onOtherWays: () -> Void
+    @State private var showingAddressError = false
+
+    var body: some View {
+        Form {
+            Section {
+                if browser.computers.isEmpty {
+                    if browser.isUnavailable {
+                        Label(
+                            "Allow Local Network access for TermiRust in Settings to find computers.",
+                            systemImage: "wifi.exclamationmark"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(Color.slateAttention)
+                    } else {
+                        HStack(spacing: 12) {
+                            ProgressView()
+                            Text("Looking for computers…")
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(minHeight: 44)
+                        .accessibilityElement(children: .combine)
+                    }
+                } else {
+                    ForEach(browser.computers) { computer in
+                        Button { onChoose(.discovered(computer)) } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "desktopcomputer")
+                                    .foregroundStyle(Color.accentColor)
+                                    .frame(width: 28, height: 28)
+                                Text(ControllerPresentation.isolated(computer.name))
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                Spacer(minLength: 8)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            } header: {
+                Text("Computers on This Network")
+            } footer: {
+                Text("In TermiRust on your computer, choose Pair phone to show a six-digit code.")
+            }
+            Section {
+                TextField("mac.tailnet.ts.net:55123", text: $viewModel.pairingAddressText)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .fontDesign(.monospaced)
+                    .accessibilityLabel("Computer address")
+                    .onSubmit(chooseAddress)
+                Button("Continue", action: chooseAddress)
+                    .disabled(
+                        viewModel.pairingAddressText
+                            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+                if showingAddressError {
+                    Label(
+                        "Enter the address as host:port, for example 100.101.102.103:55123.",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(Color.slateAttention)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+            } header: {
+                Text("Enter Address")
+            } footer: {
+                Text("Use a Tailscale name or private address when the computer is on another network.")
+            }
+            Section {
+                Button(action: onOtherWays) {
+                    Label("Other Ways to Pair", systemImage: "qrcode")
+                }
+            }
+        }
+        .onChange(of: viewModel.pairingAddressText) { _, _ in
+            showingAddressError = false
+        }
+    }
+
+    private func chooseAddress() {
+        let text = viewModel.pairingAddressText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (try? ControllerTypedAddress(text)) != nil else {
+            showingAddressError = true
+            return
+        }
+        showingAddressError = false
+        onChoose(.address(text))
+    }
+}
+
+private struct PairCodeView: View {
+    @ObservedObject var viewModel: ControllerViewModel
+    let target: ControllerPairingTarget
+    @State private var attempted = false
+    @FocusState private var codeFocused: Bool
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Computer") {
+                    Text(ControllerPresentation.isolated(target.displayName))
+                        .font(.body.weight(.semibold))
+                        .lineLimit(2)
+                }
+            }
+            if isPairing {
+                Section {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                        Text("Pairing…")
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .accessibilityElement(children: .combine)
+                }
+            } else if attempted, let failureMessage {
+                Section {
+                    Label(failureMessage, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(Color.slateError)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityElement(children: .combine)
+                }
+            }
+            Section {
+                TextField("000000", text: codeBinding)
+                    .keyboardType(.numberPad)
+                    .textContentType(.oneTimeCode)
+                    .font(.system(.largeTitle, design: .monospaced, weight: .bold))
+                    .multilineTextAlignment(.center)
+                    .focused($codeFocused)
+                    .disabled(isPairing)
+                    .accessibilityLabel("Pairing code")
+            } header: {
+                Text("Pairing Code")
+            } footer: {
+                Text("Enter the six-digit code shown on the computer.")
+            }
+            Section("Device Name") {
+                TextField("This device", text: $viewModel.pairingDeviceName)
+                    .textContentType(.name)
+                    .disabled(isPairing)
+            }
+            Section {
+                if isPairing {
+                    Button("Cancel", role: .cancel) { viewModel.cancelPairing() }
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                } else {
+                    Button("Pair") {
+                        attempted = true
+                        codeFocused = false
+                        viewModel.pairWithCode(target: target)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .frame(maxWidth: .infinity)
+                    .disabled(!viewModel.isPairingCodeComplete || viewModel.pairingDeviceName.isEmpty)
+                }
+            }
+        }
+        .navigationTitle("Enter Code")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(isPairing)
+        .onAppear { codeFocused = true }
+    }
+
+    private var codeBinding: Binding<String> {
+        Binding(
+            get: { viewModel.pairingCode },
+            set: { viewModel.updatePairingCode($0) }
+        )
+    }
+
+    private var isPairing: Bool {
+        viewModel.state.connection == .pairing
+    }
+
+    private var failureMessage: LocalizedStringKey? {
+        guard case .failed(let failure) = viewModel.state.connection else { return nil }
+        switch failure {
+        case .cancelled:
+            return nil
+        case .codeRejected:
+            return "That code didn't work. Check the code on the computer and try again."
+        case .invalidAddress:
+            return "That address can't be used. Enter a private or Tailscale address as host:port."
+        case .offerExpired:
+            return "The code expired. Show a new code on the computer and try again."
+        case .timedOut, .networkUnavailable:
+            return "Couldn't reach the computer. Check that both devices are on the same network or Tailscale, then try again."
+        case .keychainUnavailable:
+            return "Unlock this device, then try again."
+        case .pairingUncertain:
+            return "The computer may have saved this device, but confirmation was interrupted. Check its device list before pairing again."
+        default:
+            return "Pairing didn't finish. Try again."
+        }
+    }
+}
+
+private struct PairOfferView: View {
+    @ObservedObject var viewModel: ControllerViewModel
+    @Binding var isPresented: Bool
     @State private var showingScanner = false
     @State private var scannerFailure: ControllerScannerFailure?
     @State private var pairingOfferPasteError: String?
 
     var body: some View {
-        NavigationStack {
+        Group {
             Form {
                 if let challenge = viewModel.pairingChallenge {
                     Section("Compare on Both Devices") {
@@ -1055,21 +1307,16 @@ private struct PairHostView: View {
                     }
                 }
             }
-            .navigationTitle("Pair Host")
+            .navigationTitle("Other Ways to Pair")
             .navigationBarTitleDisplayMode(.inline)
-            .interactiveDismissDisabled(viewModel.pairingChallenge != nil)
-            .onChange(of: viewModel.state.connection) { _, connection in
-                if viewModel.pairingChallenge == nil,
-                   viewModel.pairingOfferText.isEmpty,
-                   connection != .pairing {
-                    isPresented = false
-                }
-            }
+            .navigationBarBackButtonHidden(isBusy)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        viewModel.cancelPairing()
-                        isPresented = false
+                    if isBusy {
+                        Button("Cancel") {
+                            viewModel.cancelPairing()
+                            isPresented = false
+                        }
                     }
                 }
             }
@@ -1096,6 +1343,10 @@ private struct PairHostView: View {
                 .ignoresSafeArea()
             }
         }
+    }
+
+    private var isBusy: Bool {
+        viewModel.pairingChallenge != nil || viewModel.state.connection == .pairing
     }
 
     private func pastePairingOffer() {
