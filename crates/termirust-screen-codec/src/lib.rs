@@ -8,6 +8,7 @@
 
 #![forbid(unsafe_code)]
 
+mod cache;
 mod classify;
 mod error;
 mod frame;
@@ -17,6 +18,10 @@ mod lossless;
 mod lossy;
 mod wire;
 
+pub use cache::{
+    CacheIndex, CacheMiss, CacheShadow, CachedTile, DESKTOP_CACHE_BYTES, PHONE_CACHE_BYTES,
+    ViewerCache,
+};
 pub use classify::{
     EDGE_CHANNEL_DELTA, MAX_PALETTE_COLORS, TEXT_EDGE_DENSITY_MILLI, TileClass, classify,
 };

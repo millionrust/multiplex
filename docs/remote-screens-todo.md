@@ -33,7 +33,7 @@ Pure Rust, no platform code, fully testable in CI.
   Half-resolution, quantised pass for picture tiles; exact pixels arrive later by refinement.
 - [x] 1.6 `feat(screen-codec): define the bounded tile-op wire format with golden vectors`
   Hand-written big-endian layout, checked lengths, closed op kinds, fixture vectors.
-- [ ] 1.7 `feat(screen-codec): reuse tiles the viewer already holds`
+- [x] 1.7 `feat(screen-codec): reuse tiles the viewer already holds`
   Per-viewer LRU cache by content hash, host-side shadow, `Missing` recovery.
 - [ ] 1.8 `feat(screen-codec): detect vertical scrolls as moves`
 - [ ] 1.9 `feat(screen-codec): encode frames into ops and apply them to a framebuffer`
