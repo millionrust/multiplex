@@ -3,6 +3,7 @@ use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
+use termirust_ui_contract::StatusKind;
 
 use crate::localization::{TextId, TuiLocale, localize, text};
 use crate::management::{
@@ -10,6 +11,7 @@ use crate::management::{
 };
 use crate::model::{FleetHealth, LoadState, PaneFocus, ProjectAvailability, ScopeId, TuiModel};
 use crate::resume::{ResumeModel, ResumeProgress};
+use crate::status;
 use crate::{
     AttachedTerminal, DeviceProgress, DevicesModel, InteractiveLease, TuiAttachState, TuiDevice,
     TuiFocus,
@@ -990,7 +992,13 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, model: &TuiModel, options: R
         Span::raw("  "),
         Span::styled(text(options.locale, TextId::ReadOnly), muted(options)),
         Span::raw("  "),
-        Span::styled(state, state_style(model.load_state(), options)),
+        Span::styled(
+            format!(
+                "{} {state}",
+                status::glyph(status::load_state(model.load_state()))
+            ),
+            state_style(model.load_state(), options),
+        ),
     ]);
     frame.render_widget(Paragraph::new(title), area);
 }
@@ -1087,11 +1095,19 @@ fn render_sessions(frame: &mut Frame<'_>, area: Rect, model: &TuiModel, options:
             let archived = if session.archived { " archived" } else { "" };
             let title = display_user(&session.title, "session", options);
             ListItem::new(Line::from(vec![
-                Span::raw(format!("{marker} {title}")),
-                Span::styled(
-                    format!("  {} / {}{archived}", session.state, session.activity),
-                    muted(options),
+                Span::raw(format!("{marker} {title}  ")),
+                status_span(
+                    status::session_state(&session.state),
+                    &session.state,
+                    options,
                 ),
+                Span::styled(" / ", muted(options)),
+                status_span(
+                    status::activity(&session.activity),
+                    &session.activity,
+                    options,
+                ),
+                Span::styled(archived, muted(options)),
             ]))
             .style(row_style(
                 index == selected,
@@ -1303,7 +1319,7 @@ fn row_style(selected: bool, focused: bool, options: RenderOptions) -> Style {
     if options.no_color || !focused {
         style
     } else {
-        style.fg(Color::Black).bg(Color::Cyan)
+        style.fg(Color::Black).bg(status::ACCENT)
     }
 }
 
@@ -1316,7 +1332,7 @@ fn emphasis(options: RenderOptions, strong: bool) -> Style {
     if options.no_color {
         style
     } else {
-        style.fg(Color::Cyan)
+        style.fg(status::ACCENT)
     }
 }
 
@@ -1332,13 +1348,20 @@ fn state_style(state: LoadState, options: RenderOptions) -> Style {
     if options.no_color {
         return Style::default().add_modifier(Modifier::BOLD);
     }
-    let color = match state {
-        LoadState::Ready | LoadState::Empty => Color::Green,
-        LoadState::Starting | LoadState::Loading => Color::Yellow,
-        LoadState::Partial | LoadState::RecoveryRequired => Color::Magenta,
-        LoadState::Unavailable => Color::Red,
+    Style::default()
+        .fg(status::color(status::load_state(state)))
+        .add_modifier(Modifier::BOLD)
+}
+
+/// A status as its Slate glyph and label, in the status color, or dimmed without color so the
+/// glyph shape alone carries the state.
+fn status_span(kind: StatusKind, label: &str, options: RenderOptions) -> Span<'static> {
+    let style = if options.no_color {
+        muted(options)
+    } else {
+        Style::default().fg(status::color(kind))
     };
-    Style::default().fg(color).add_modifier(Modifier::BOLD)
+    Span::styled(format!("{} {label}", status::glyph(kind)), style)
 }
 
 fn state_label(state: LoadState, locale: TuiLocale) -> String {

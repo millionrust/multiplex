@@ -9,6 +9,7 @@ pub mod model;
 pub mod render;
 pub mod resume;
 pub mod source;
+pub mod status;
 pub mod terminal;
 pub mod terminal_view;
 

@@ -16,6 +16,7 @@ termirust-cli = { version = "0.1.0", path = "../termirust-cli" }
 termirust-domain = { version = "0.1.0", path = "../termirust-domain" }
 termirust-host-protocol = { version = "0.1.0", path = "../termirust-host-protocol" }
 termirust-store = { version = "0.1.0", path = "../termirust-store" }
+termirust-ui-contract = { version = "0.1.0", path = "../termirust-ui-contract" }
 tokio = { version = "1", features = ["rt", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 vt100 = "=0.16.2"

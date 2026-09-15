@@ -63,7 +63,7 @@ fn draw(width: u16, height: u16, options: RenderOptions) -> String {
 fn snapshots_keep_status_textual_and_hide_sensitive_labels_when_requested() {
     let normal = draw(140, 30, RenderOptions::default());
     assert!(normal.contains("permission denied"));
-    assert!(normal.contains("permission_denied / needs_input"));
+    assert!(normal.contains("\u{25A1} permission_denied / \u{25C6} needs_input"));
     assert!(normal.contains("partial; 2 skipped"));
 
     let hidden = draw(

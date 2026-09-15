@@ -10519,6 +10519,7 @@ dependencies = [
  "termirust-host-protocol",
  "termirust-session-host",
  "termirust-store",
+ "termirust-ui-contract",
  "tokio",
  "tokio-util",
  "uuid",
