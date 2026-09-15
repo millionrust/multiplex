@@ -24377,7 +24377,7 @@ sleep 1
         });
 
         let duplicate = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-d").expect("cmd-d should parse"),
+            keystroke: Keystroke::parse("secondary-d").expect("cmd-d should parse"),
             is_held: false,
         };
 
@@ -24467,7 +24467,7 @@ sleep 1
         }
 
         let settings_event = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-,").expect("settings shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-,").expect("settings shortcut should parse"),
             is_held: false,
         };
         window
@@ -24483,7 +24483,7 @@ sleep 1
         });
 
         let logs_shortcut = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-l").expect("logs shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-l").expect("logs shortcut should parse"),
             is_held: false,
         };
         window
@@ -24499,7 +24499,7 @@ sleep 1
         });
 
         let new_host = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-n").expect("new-host shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-n").expect("new-host shortcut should parse"),
             is_held: false,
         };
         window
@@ -24554,7 +24554,7 @@ sleep 1
         let (app, window) = open_test_app(cx);
         cx.run_until_parked();
         let open_palette = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-k").expect("palette shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-k").expect("palette shortcut should parse"),
             is_held: false,
         };
         let enter = KeyDownEvent {
@@ -26406,7 +26406,7 @@ sleep 1
         });
 
         let open_files = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-shift-f").expect("files shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-shift-f").expect("files shortcut should parse"),
             is_held: false,
         };
         window
@@ -26427,7 +26427,8 @@ sleep 1
         });
 
         let toggle_files = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-shift-t").expect("toggle-files shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-shift-t")
+                .expect("toggle-files shortcut should parse"),
             is_held: false,
         };
         window
@@ -26446,7 +26447,8 @@ sleep 1
         });
 
         let broadcast = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-shift-b").expect("broadcast shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-shift-b")
+                .expect("broadcast shortcut should parse"),
             is_held: false,
         };
         window
@@ -26464,7 +26466,8 @@ sleep 1
         });
 
         let local_shortcut = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-t").expect("local terminal shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-t")
+                .expect("local terminal shortcut should parse"),
             is_held: false,
         };
         window
@@ -26487,7 +26490,8 @@ sleep 1
         });
 
         let cycle_left = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-alt-left").expect("cycle-left shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-alt-left")
+                .expect("cycle-left shortcut should parse"),
             is_held: false,
         };
         window
@@ -26502,7 +26506,7 @@ sleep 1
         });
 
         let cycle_right = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-alt-right")
+            keystroke: Keystroke::parse("secondary-alt-right")
                 .expect("cycle-right shortcut should parse"),
             is_held: false,
         };
@@ -26518,7 +26522,7 @@ sleep 1
         });
 
         let logs = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-l").expect("logs shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-l").expect("logs shortcut should parse"),
             is_held: false,
         };
         window
@@ -26544,7 +26548,7 @@ sleep 1
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let open_palette = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-k").expect("palette shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-k").expect("palette shortcut should parse"),
             is_held: false,
         };
 
@@ -26648,7 +26652,7 @@ sleep 1
         });
 
         let open_search = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-f").expect("search shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-f").expect("search shortcut should parse"),
             is_held: false,
         };
         window
@@ -26674,7 +26678,7 @@ sleep 1
             .expect("terminal search should close");
 
         let open_palette = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-k").expect("palette shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-k").expect("palette shortcut should parse"),
             is_held: false,
         };
         window
@@ -26715,7 +26719,7 @@ sleep 1
         });
 
         let close_workspace = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-w").expect("close shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-w").expect("close shortcut should parse"),
             is_held: false,
         };
         window
@@ -26915,7 +26919,7 @@ sleep 1
             .expect("window update should succeed");
 
         let copy_event = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-c").expect("copy shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-c").expect("copy shortcut should parse"),
             is_held: false,
         };
         window
@@ -26937,7 +26941,7 @@ sleep 1
         ));
 
         let paste_event = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-v").expect("paste shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-v").expect("paste shortcut should parse"),
             is_held: false,
         };
         window
@@ -27071,7 +27075,7 @@ sleep 1
             .expect("window update should succeed");
 
         let clear = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-shift-l").expect("clear shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-shift-l").expect("clear shortcut should parse"),
             is_held: false,
         };
         window
@@ -27089,7 +27093,7 @@ sleep 1
         });
 
         let open_files = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-shift-f").expect("files shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-shift-f").expect("files shortcut should parse"),
             is_held: false,
         };
         window
