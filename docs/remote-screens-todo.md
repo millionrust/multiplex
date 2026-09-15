@@ -29,7 +29,7 @@ Pure Rust, no platform code, fully testable in CI.
   Bounded distinct-colour count and edge density.
 - [x] 1.4 `feat(screen-codec): encode text and UI tiles losslessly`
   Palette + run-length when few colours, raw otherwise, then deflate (`miniz_oxide`).
-- [ ] 1.5 `feat(screen-codec): send pictures as a lossy first pass`
+- [x] 1.5 `feat(screen-codec): send pictures as a lossy first pass`
   Half-resolution, quantised pass for picture tiles; exact pixels arrive later by refinement.
 - [ ] 1.6 `feat(screen-codec): define the bounded tile-op wire format with golden vectors`
   Hand-written big-endian layout, checked lengths, closed op kinds, fixture vectors.
