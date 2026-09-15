@@ -874,7 +874,7 @@ impl TermiRustApp {
             }
             HostConnectionAction::ConnectHost(row) => {
                 if let Some(profile_id) = self.profile_id_for_host_row(row) {
-                    self.open_connect_dialog_tab(&profile_id, window, cx);
+                    self.connect_saved_host(&profile_id, window, cx);
                 }
             }
             HostConnectionAction::ToggleFavorite(row) => {
@@ -1084,7 +1084,7 @@ impl TermiRustApp {
                         ClickEvent::Keyboard(_) => 1,
                     };
                     if click_count >= 2 {
-                        this.open_connect_dialog_tab(&profile_id, window, cx);
+                        this.connect_saved_host(&profile_id, window, cx);
                     } else {
                         this.select_profile_from_library(&profile_id, window, cx);
                     }
@@ -1257,7 +1257,7 @@ impl TermiRustApp {
                         ClickEvent::Keyboard(_) => 1,
                     };
                     if click_count >= 2 {
-                        this.open_connect_dialog_tab(&pid, window, cx);
+                        this.connect_saved_host(&pid, window, cx);
                     } else {
                         this.select_profile_from_library(&pid, window, cx);
                     }

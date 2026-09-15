@@ -9483,6 +9483,36 @@ context = "Button over a disconnected terminal pane that starts its session agai
 description = "Reconnect terminal pane action"
 
 [[messages]]
+id = "terminal-pane-show-logs"
+context = "Button on the connecting card of an SSH pane that reveals what happened while connecting."
+description = "Show connection logs action"
+
+[[messages]]
+id = "terminal-pane-hide-logs"
+context = "Button on the connecting card of an SSH pane that hides the connection log."
+description = "Hide connection logs action"
+
+[[messages]]
+id = "terminal-pane-log-starting"
+context = "First line of a pane's connection log."
+description = "Connection log: starting"
+[[messages.args]]
+name = "endpoint"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "user"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "terminal-pane-log-connected"
+context = "Connection log line when the session becomes live."
+description = "Connection log: connected"
+
+[[messages]]
 id = "terminal-input-action"
 context = "Action that explicitly returns focus to authorized terminal input."
 description = "Use terminal input"

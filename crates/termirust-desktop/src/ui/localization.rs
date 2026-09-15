@@ -870,6 +870,16 @@ static_message!(
     terminal_pane_reconnect_action,
     TerminalPaneReconnectActionArgs
 );
+static_message!(terminal_pane_show_logs, TerminalPaneShowLogsArgs);
+static_message!(terminal_pane_hide_logs, TerminalPaneHideLogsArgs);
+static_message!(terminal_pane_log_connected, TerminalPaneLogConnectedArgs);
+
+pub fn terminal_pane_log_starting(endpoint: &str, user: &str) -> String {
+    text(&TerminalPaneLogStartingArgs::new(
+        UserData::new(endpoint),
+        UserData::new(user),
+    ))
+}
 
 pub fn remote_devices_pairing_tailscale_hint(address: &str) -> String {
     text(&RemoteDevicesPairingTailscaleHintArgs::new(UserData::new(

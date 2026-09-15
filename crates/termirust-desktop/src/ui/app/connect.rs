@@ -30,6 +30,38 @@ impl TermiRustApp {
         self.open_connect_dialog_tab_mode(profile_id, ConnectDialogMode::Username, window, cx);
     }
 
+    /// Double-clicking a saved host connects right away and the pane shows the connection
+    /// progress. A host without a username still asks for one first.
+    pub(super) fn connect_saved_host(
+        &mut self,
+        profile_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(profile) = self
+            .saved
+            .profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .cloned()
+        else {
+            return;
+        };
+        if profile.username.trim().is_empty() {
+            self.open_connect_dialog_tab(profile_id, window, cx);
+            return;
+        }
+        self.load_profile_into_inputs(&profile.id, window, cx);
+        self.show_editor_panel = false;
+        let workspaces_before = self.workspaces.len();
+        self.connect_current(window, cx);
+        if self.workspaces.len() == workspaces_before {
+            // The saved host cannot start a session as it is, such as a password host with no
+            // stored password, so ask in the connect dialog instead of doing nothing.
+            self.open_connect_dialog_tab(profile_id, window, cx);
+        }
+    }
+
     pub(super) fn open_choose_protocol_tab(
         &mut self,
         profile_id: &str,

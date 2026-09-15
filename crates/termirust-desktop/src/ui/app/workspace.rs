@@ -740,6 +740,239 @@ impl TermiRustApp {
             .unwrap_or_else(|| cx.theme().mono_font_family.clone())
     }
 
+    /// Covers an SSH pane until its first connection: the host, a progress line from plug to
+    /// terminal, and the connection log on request. A failed first attempt stays on this card
+    /// with the error, Retry, and Close.
+    fn render_pane_connecting_card(&self, pane: &SessionPane, cx: &mut Context<Self>) -> Div {
+        let pane_id = pane.id;
+        let failed = pane.last_error.is_some();
+        let waiting_to_retry = pane.auto_reconnect_at.is_some();
+        let tone = if failed {
+            theme::danger()
+        } else {
+            theme::accent()
+        };
+        let endpoint = format!("SSH {}", pane.request.address());
+        let step = |icon: IconName, color: gpui::Hsla| {
+            div()
+                .size(px(theme::STATUS_HEIGHT))
+                .flex_none()
+                .rounded(px(theme::PILL_RADIUS))
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(color)
+                .child(
+                    Icon::new(icon)
+                        .size(px(theme::HOST_ICON_SIZE_BODY))
+                        .text_color(theme::library_card()),
+                )
+        };
+        let track = div()
+            .flex_1()
+            .h(px(theme::SPACE_1))
+            .rounded(px(theme::PILL_RADIUS))
+            .bg(theme::with_alpha(theme::text_muted(), 0.35))
+            .overflow_hidden()
+            .child(if failed || waiting_to_retry {
+                div()
+                    .h_full()
+                    .w(relative(if failed { 1.0 } else { 0.5 }))
+                    .bg(tone)
+                    .into_any_element()
+            } else {
+                div()
+                    .h_full()
+                    .bg(tone)
+                    .with_animation(
+                        ("pane-connecting-progress", pane_id),
+                        Animation::new(theme::motion_duration(
+                            theme::current_design_tokens().motion_progress(false),
+                        ))
+                        .repeat(),
+                        |bar, delta| bar.w(relative(delta)),
+                    )
+                    .into_any_element()
+            });
+
+        div()
+            .absolute()
+            .top(px(theme::SPACE_0))
+            .left(px(theme::SPACE_0))
+            .size_full()
+            .bg(theme::terminal_bg())
+            .child(
+                v_flex()
+                    .id(("pane-connecting-card", pane_id))
+                    .debug_selector(move || format!("pane-connecting-card-{pane_id}"))
+                    .size_full()
+                    .items_center()
+                    .pt(px(theme::CONNECT_CONTENT_TOP))
+                    .px(px(theme::SPACE_4))
+                    .gap(px(theme::STATUS_HEIGHT))
+                    .child(
+                        h_flex()
+                            .w(px(theme::CONNECT_PANEL_WIDTH))
+                            .max_w_full()
+                            .gap(px(theme::SPACE_4))
+                            .items_center()
+                            .child(
+                                div()
+                                    .size(px(theme::CHROME_HEIGHT))
+                                    .flex_none()
+                                    .rounded(px(theme::CARD_RADIUS))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .bg(theme::with_alpha(tone, 0.18))
+                                    .child(
+                                        Icon::new(IconName::SquareTerminal)
+                                            .size(px(theme::ICON_SIZE_MEDIUM))
+                                            .text_color(tone),
+                                    ),
+                            )
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .gap(px(theme::SPACE_1))
+                                    .child(
+                                        div()
+                                            .text_size(px(theme::ICON_SIZE_COMPACT))
+                                            .font_semibold()
+                                            .text_color(theme::text_on_dark())
+                                            .child(pane.title.clone()),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(theme::TYPE_MICRO_SIZE))
+                                            .text_color(theme::text_muted_dark())
+                                            .child(endpoint),
+                                    ),
+                            )
+                            .child(
+                                Button::new(("pane-connect-logs", pane_id))
+                                    .debug_selector(move || format!("pane-connect-logs-{pane_id}"))
+                                    .small()
+                                    .label(if pane.show_connect_log {
+                                        localization::terminal_pane_hide_logs()
+                                    } else {
+                                        localization::terminal_pane_show_logs()
+                                    })
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        if let Some(pane) = this.pane_mut(pane_id) {
+                                            pane.show_connect_log = !pane.show_connect_log;
+                                        }
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .w(px(theme::CONNECT_PANEL_WIDTH))
+                            .max_w_full()
+                            .items_center()
+                            .gap(px(theme::SPACE_3))
+                            .child(step(IconName::Globe, tone))
+                            .child(track)
+                            .child(step(
+                                IconName::SquareTerminal,
+                                if failed {
+                                    theme::with_alpha(theme::text_muted(), 0.5)
+                                } else {
+                                    theme::accent()
+                                },
+                            )),
+                    )
+                    .when_some(pane.last_error.clone(), |this, error| {
+                        this.child(
+                            v_flex()
+                                .w(px(theme::CONNECT_PANEL_WIDTH))
+                                .max_w_full()
+                                .gap(px(theme::SPACE_2))
+                                .child(
+                                    div()
+                                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                        .font_semibold()
+                                        .text_color(theme::danger())
+                                        .child(localization::terminal_pane_connect_failed(
+                                            &pane.request.address(),
+                                        )),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                        .text_color(theme::text_on_dark())
+                                        .child(error),
+                                )
+                                .when(waiting_to_retry, |this| {
+                                    this.child(
+                                        div()
+                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                            .text_color(theme::text_muted_dark())
+                                            .child(pane.status.clone()),
+                                    )
+                                })
+                                .child(
+                                    h_flex()
+                                        .gap(px(theme::SPACE_2))
+                                        .when(pane.closed, |this| {
+                                            this.child(
+                                                Button::new(("pane-connect-retry", pane_id))
+                                                    .debug_selector(move || {
+                                                        format!("pane-connect-retry-{pane_id}")
+                                                    })
+                                                    .small()
+                                                    .primary()
+                                                    .icon(IconName::Redo)
+                                                    .label(localization::common_retry())
+                                                    .on_click(cx.listener(
+                                                        move |this, _, window, cx| {
+                                                            this.reconnect_pane(
+                                                                pane_id, window, cx,
+                                                            );
+                                                        },
+                                                    )),
+                                            )
+                                        })
+                                        .child(
+                                            Button::new(("pane-connect-close", pane_id))
+                                                .small()
+                                                .ghost()
+                                                .label(localization::common_close())
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.close_pane(pane_id, cx);
+                                                })),
+                                        ),
+                                ),
+                        )
+                    })
+                    .when(pane.show_connect_log, |this| {
+                        this.child(
+                            v_flex()
+                                .id(("pane-connect-log", pane_id))
+                                .w(px(theme::CONNECT_PANEL_WIDTH))
+                                .max_w_full()
+                                .p(px(theme::SPACE_3))
+                                .gap(px(theme::SPACE_1))
+                                .rounded(px(theme::CARD_RADIUS))
+                                .bg(theme::terminal_panel())
+                                .border_1()
+                                .border_color(theme::border_dark())
+                                .children(pane.connect_log.iter().map(|line| {
+                                    div()
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                        .font_family(
+                                            theme::current_design_tokens().font_mono_family().0,
+                                        )
+                                        .text_color(theme::text_on_dark())
+                                        .child(line.clone())
+                                })),
+                        )
+                    }),
+            )
+    }
+
     /// A banner along the bottom of an SSH or local pane that is not connected: why it
     /// failed or closed, when it retries, and a way to reconnect now. Durable sessions show
     /// this in their header instead.
@@ -750,6 +983,9 @@ impl TermiRustApp {
     ) -> Option<Div> {
         if pane.connected || pane.app_attached.is_some() {
             return None;
+        }
+        if !pane.ever_connected && !pane.request.is_local_shell() {
+            return Some(self.render_pane_connecting_card(pane, cx));
         }
         let pane_id = pane.id;
         let endpoint = pane.request.endpoint_label();

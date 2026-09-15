@@ -809,6 +809,12 @@ struct SessionPane {
     status: String,
     /// Why the session last failed, kept across automatic retries until it connects.
     last_error: Option<String>,
+    /// Whether this session, or one it reconnected for, has ever been live. Until then the pane
+    /// shows the connecting card instead of an empty terminal.
+    ever_connected: bool,
+    /// What happened while connecting, shown under Show logs.
+    connect_log: Vec<String>,
+    show_connect_log: bool,
     selection: Option<SelectionRange>,
     dragging_selection: bool,
     /// Trackpad scroll distance not yet large enough to move one line.
@@ -836,6 +842,18 @@ struct AppAttachedPaneState {
 }
 
 impl SessionPane {
+    /// Adds a line to the connecting log, skipping a repeat of the last one.
+    fn push_connect_log(&mut self, line: String) {
+        const MAX_CONNECT_LOG_LINES: usize = 200;
+        if line.trim().is_empty() || self.connect_log.last() == Some(&line) {
+            return;
+        }
+        if self.connect_log.len() == MAX_CONNECT_LOG_LINES {
+            self.connect_log.remove(0);
+        }
+        self.connect_log.push(line);
+    }
+
     fn append_accessible_output(&mut self, data: &[u8], sequence: Option<u64>) {
         self.terminal_accessibility.append(data, sequence);
         self.terminal_announcements.observe_output(data.len());
@@ -7821,6 +7839,9 @@ impl TermiRustApp {
             closed: false,
             status: "Connecting".to_string(),
             last_error: None,
+            ever_connected: false,
+            connect_log: Vec::new(),
+            show_connect_log: false,
             selection: None,
             dragging_selection: false,
             scroll_remainder: 0.0,
@@ -7833,6 +7854,16 @@ impl TermiRustApp {
             app_attached: None,
             controller_session_id: HostedSessionId::new(),
         });
+
+        if let Some(pane) = self.panes.last_mut()
+            && !pane.request.is_local_shell()
+        {
+            let line = localization::terminal_pane_log_starting(
+                &pane.request.address(),
+                &pane.request.username,
+            );
+            pane.push_connect_log(line);
+        }
 
         pane_id
     }
@@ -8063,6 +8094,9 @@ impl TermiRustApp {
             .expect("reconnect pane should remain available while scheduling");
         pane.auto_reconnect_attempts = attempts;
         pane.auto_reconnect_at = Some(at_millis);
+        if !pane.ever_connected {
+            pane.push_connect_log(status.clone());
+        }
         pane.status = status;
         true
     }
@@ -8154,11 +8188,23 @@ impl TermiRustApp {
             }
         }
 
-        let last_error = self.pane(pane_id).and_then(|pane| pane.last_error.clone());
+        let carried = self.pane(pane_id).map(|pane| {
+            (
+                pane.last_error.clone(),
+                pane.ever_connected,
+                pane.connect_log.clone(),
+                pane.show_connect_log,
+            )
+        });
         request.session_id = self.next_session_id();
         let new_pane_id = self.spawn_pane(request.clone(), window, cx);
-        if let Some(pane) = self.pane_mut(new_pane_id) {
+        if let Some((last_error, ever_connected, connect_log, show_connect_log)) = carried
+            && let Some(pane) = self.pane_mut(new_pane_id)
+        {
             pane.last_error = last_error;
+            pane.ever_connected = ever_connected;
+            pane.connect_log.splice(0..0, connect_log);
+            pane.show_connect_log = show_connect_log;
         }
 
         if let Some(workspace_id) = workspace_id {
@@ -8681,6 +8727,9 @@ impl TermiRustApp {
                         pane.closed = false;
                         pane.status = "Live".to_string();
                         pane.last_error = None;
+                        pane.ever_connected = true;
+                        pane.connect_log
+                            .push(localization::terminal_pane_log_connected());
                         pane.set_accessible_lifecycle(TerminalLifecycle::Live);
                         let log_id = pane.log_id.clone();
                         self.saved
@@ -8952,6 +9001,7 @@ impl TermiRustApp {
                         pane.closed = true;
                         pane.status = "Error".to_string();
                         pane.last_error = Some(message.clone());
+                        pane.push_connect_log(message.clone());
                         pane.set_accessible_lifecycle(TerminalLifecycle::Error);
                         if let Some(attached) = pane.app_attached.as_mut() {
                             attached.dev_urls.mark_host_unavailable();
@@ -9027,6 +9077,9 @@ impl TermiRustApp {
                         }
                         if !durable {
                             pane.status = "Closed".to_string();
+                        }
+                        if !pane.ever_connected {
+                            pane.push_connect_log(message.clone());
                         }
                         let log_id = pane.log_id.clone();
                         self.saved
@@ -14510,7 +14563,9 @@ mod tests {
     }
 
     #[gpui::test]
-    fn failed_ssh_pane_shows_the_error_and_a_reconnect_action(cx: &mut TestAppContext) {
+    fn a_first_ssh_connection_shows_the_connecting_card_then_its_error_and_retry(
+        cx: &mut TestAppContext,
+    ) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let pane_id = window
@@ -14539,15 +14594,17 @@ mod tests {
                 })
             })
             .expect("test window should remain open");
+        let card = format!("pane-connecting-card-{pane_id}");
+        let retry = format!("pane-connect-retry-{pane_id}");
         let notice = format!("pane-connection-notice-{pane_id}");
         let reconnect = format!("pane-reconnect-{pane_id}");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.run_until_parked();
         assert!(
             visual
-                .debug_bounds(Box::leak(notice.clone().into_boxed_str()))
+                .debug_bounds(Box::leak(card.clone().into_boxed_str()))
                 .is_some(),
-            "a connecting SSH pane says so"
+            "a connecting SSH pane shows the connecting card"
         );
 
         let event_tx = app.read_with(cx, |app, _| app.event_tx.clone());
@@ -14573,6 +14630,33 @@ mod tests {
         });
         assert!(
             visual
+                .debug_bounds(Box::leak(card.into_boxed_str()))
+                .is_some()
+        );
+        assert!(
+            visual
+                .debug_bounds(Box::leak(retry.into_boxed_str()))
+                .is_some(),
+            "a failed first connection offers Retry on the card"
+        );
+        app.read_with(cx, |app, _| {
+            let log = &app.pane(pane_id).unwrap().connect_log;
+            assert!(
+                log.first()
+                    .is_some_and(|line| line.contains("203.0.113.9:22"))
+            );
+            assert!(log.iter().any(|line| line == message));
+        });
+
+        // A session that was live and then failed gets the bottom banner instead.
+        app.update(cx, |app, cx| {
+            app.pane_mut(pane_id).unwrap().ever_connected = true;
+            cx.notify();
+        });
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        assert!(
+            visual
                 .debug_bounds(Box::leak(notice.into_boxed_str()))
                 .is_some()
         );
@@ -14580,7 +14664,7 @@ mod tests {
             visual
                 .debug_bounds(Box::leak(reconnect.into_boxed_str()))
                 .is_some(),
-            "a failed pane offers Reconnect"
+            "a dropped session offers Reconnect"
         );
     }
 
@@ -28764,6 +28848,8 @@ sleep 1
             click_count: 2,
         });
 
+        // A password host with no stored password cannot start a session, so double click
+        // falls back to the connect dialog.
         app.read_with(cx, |app, _| {
             let workspace = app
                 .active_workspace()
@@ -28777,7 +28863,6 @@ sleep 1
             assert_eq!(pending.label, "Grid Host");
             assert_eq!(pending.host, "127.0.0.1");
             assert_eq!(pending.username, "ops");
-            assert!(app.error_message.is_empty());
         });
     }
 
@@ -28792,6 +28877,7 @@ sleep 1
             host: "127.0.0.1".to_string(),
             port: 22,
             username: "ops".to_string(),
+            auth_mode: AuthMode::LocalAgent,
             source: ProfileSource::User,
             ..HostProfile::default()
         });
@@ -28837,17 +28923,17 @@ sleep 1
         app.read_with(cx, |app, _| {
             let workspace = app
                 .active_workspace()
-                .expect("connect dialog workspace should exist");
-            let pending = workspace
-                .pending_connect
-                .as_ref()
-                .expect("double click should open connect dialog tab");
-            assert_eq!(workspace.title, "List Host");
-            assert!(workspace.pending_connect_mode == ConnectDialogMode::Username);
-            assert_eq!(pending.label, "List Host");
-            assert_eq!(pending.host, "127.0.0.1");
-            assert_eq!(pending.username, "ops");
-            assert!(app.error_message.is_empty());
+                .expect("double click should open a connecting workspace");
+            assert!(
+                workspace.pending_connect.is_none(),
+                "a host with a username connects without asking"
+            );
+            let pane = app
+                .pane(workspace.active_pane_id)
+                .expect("double click should start a session");
+            assert_eq!(pane.request.host, "127.0.0.1");
+            assert_eq!(pane.request.username, "ops");
+            assert!(!pane.ever_connected);
         });
     }
 
