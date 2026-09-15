@@ -144,6 +144,21 @@ final class ControllerTerminalViewModel: ObservableObject, Identifiable {
         launch(interactive: true, cancelExisting: true)
     }
 
+    /// Tapping the control status takes control when it is free and gives it back when held.
+    func toggleControl() {
+        if writerLease == .held {
+            releaseControl()
+            return
+        }
+        guard supportsWriterControl else {
+            writerMessage = "This phone is view-only. In TermiRust on your Mac, open Devices, choose Allow input for this phone, then reconnect."
+            return
+        }
+        if canRequestControl {
+            requestControl()
+        }
+    }
+
     func releaseControl() {
         guard writerLease == .held else { return }
         reacquireControlOnResume = false

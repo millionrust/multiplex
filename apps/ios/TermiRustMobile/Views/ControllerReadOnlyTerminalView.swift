@@ -117,19 +117,27 @@ struct ControllerReadOnlyTerminalView: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 2)
-            if compact {
-                Label(writerLabel, systemImage: writerIcon)
-                    .labelStyle(.iconOnly)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(writerColor)
-                    .accessibilityLabel("Terminal control status: \(writerLabel)")
-            } else {
-                Label(writerLabel, systemImage: writerIcon)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(writerColor)
-                    .lineLimit(1)
-                    .accessibilityLabel("Terminal control status: \(writerLabel)")
+            // The control status is the toggle: tap to take control, tap again to give it back.
+            Button(action: viewModel.toggleControl) {
+                if compact {
+                    Label(writerLabel, systemImage: writerIcon)
+                        .labelStyle(.iconOnly)
+                } else {
+                    Label(writerLabel, systemImage: writerIcon)
+                        .lineLimit(1)
+                }
             }
+            .buttonStyle(.plain)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(writerColor)
+            .frame(minWidth: 44, minHeight: TerminalAcceptance.minimumTouchTarget)
+            .contentShape(Rectangle())
+            .accessibilityLabel("Terminal control status: \(writerLabel)")
+            .accessibilityHint(
+                viewModel.writerLease == .held
+                    ? "Returns this terminal to view-only mode"
+                    : "Requests control of this terminal"
+            )
             controlAction(compact: compact)
         }
         .padding(.horizontal, 10)
@@ -142,33 +150,6 @@ struct ControllerReadOnlyTerminalView: View {
 
     @ViewBuilder
     private func controlAction(compact: Bool) -> some View {
-        if viewModel.writerLease == .held {
-            Button(action: viewModel.releaseControl) {
-                if compact {
-                    Image(systemName: "hand.raised")
-                } else {
-                    Label("Release", systemImage: "hand.raised")
-                }
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .frame(minWidth: 44, minHeight: TerminalAcceptance.minimumTouchTarget)
-            .accessibilityLabel("Release Control")
-            .accessibilityHint("Returns this terminal to view-only mode")
-        } else if viewModel.canRequestControl {
-            Button(action: viewModel.requestControl) {
-                if compact {
-                    Image(systemName: "hand.tap")
-                } else {
-                    Label("Control", systemImage: "hand.tap")
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .frame(minWidth: 44, minHeight: TerminalAcceptance.minimumTouchTarget)
-            .accessibilityLabel("Request Control")
-            .accessibilityHint("Requests the single writer lease for this exact session")
-        }
         if showsRetry {
             Button(action: viewModel.retry) {
                 if compact {
