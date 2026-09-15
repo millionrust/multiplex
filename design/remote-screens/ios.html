@@ -1,0 +1,485 @@
+<title>Remote Screens iOS</title>
+<meta name="description" content="Interactive iPhone prototype for TermiRust Remote Screens with a live network simulator.">
+<link rel="stylesheet" href="shared/remote-sim.css">
+<style>
+  :root {
+    --canvas: #17191D; --panel: #1B1E23; --panel-2: #23262B; --sep: #2A2E35; --chrome: #111316;
+    --t1: #E6E8EB; --t2: #B4B9C2; --t3: #8C929C; --t4: #6F7580;
+    --accent: #74A7F2; --on-accent: #0E1622; --done: #6CCB8F; --attention: #E9B061; --error: #E5787A; --violet: #B69CF0;
+    --accent-wash: #74A7F226; --attention-wash: #E9B06126; --done-wash: #6CCB8F1F;
+    --bar: #17191DCC; --float: #1B1E23E6; --float-line: #FFFFFF1A;
+    --page: #0F1114; --page-panel: #15171B; --page-line: #23262C; --page-text: #E6E8EB; --page-muted: #8C929C; --page-control: #1D2025; --page-control-on: #2B3B52;
+    --bezel: #2B2E33;
+    --rs-spark: #74A7F2; --rs-spark-fill: #74A7F226; --rs-spark-warn: #E9B061; --rs-spark-warn-fill: #E9B06126; --rs-spark-grid: #2A2E35;
+    --ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --canvas: #F1F3F6; --panel: #FFFFFF; --panel-2: #E9ECF0; --sep: #D6DAE0; --chrome: #E9ECF0;
+      --t1: #1A1D22; --t2: #3A404A; --t3: #4F5661; --t4: #626974;
+      --accent: #2A64C8; --on-accent: #FFFFFF; --done: #1A7A45; --attention: #8F5300; --error: #B8343A; --violet: #6B4FB8;
+      --accent-wash: #2A64C81F; --attention-wash: #8F53001F; --done-wash: #1A7A451A;
+      --bar: #F1F3F6D9; --float: #FFFFFFE6; --float-line: #1A1D221A;
+      --page: #E7EAEE; --page-panel: #F4F6F8; --page-line: #D0D5DC; --page-text: #1A1D22; --page-muted: #4F5661; --page-control: #FFFFFF; --page-control-on: #D7E4FA;
+      --bezel: #C9CED6;
+      --rs-spark: #2A64C8; --rs-spark-fill: #2A64C81F; --rs-spark-warn: #8F5300; --rs-spark-warn-fill: #8F53001F; --rs-spark-grid: #D6DAE0;
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="light"] {
+    --canvas: #F1F3F6; --panel: #FFFFFF; --panel-2: #E9ECF0; --sep: #D6DAE0; --chrome: #E9ECF0;
+    --t1: #1A1D22; --t2: #3A404A; --t3: #4F5661; --t4: #626974;
+    --accent: #2A64C8; --on-accent: #FFFFFF; --done: #1A7A45; --attention: #8F5300; --error: #B8343A; --violet: #6B4FB8;
+    --accent-wash: #2A64C81F; --attention-wash: #8F53001F; --done-wash: #1A7A451A;
+    --bar: #F1F3F6D9; --float: #FFFFFFE6; --float-line: #1A1D221A;
+    --page: #E7EAEE; --page-panel: #F4F6F8; --page-line: #D0D5DC; --page-text: #1A1D22; --page-muted: #4F5661; --page-control: #FFFFFF; --page-control-on: #D7E4FA;
+    --bezel: #C9CED6;
+    --rs-spark: #2A64C8; --rs-spark-fill: #2A64C81F; --rs-spark-warn: #8F5300; --rs-spark-warn-fill: #8F53001F; --rs-spark-grid: #D6DAE0;
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] { color-scheme: dark; }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--page); color: var(--page-text); font-family: var(--ui); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- page ---------- */
+  .review { max-width: 1320px; margin: 0 auto; padding-block: 36px 80px; padding-inline: 24px; }
+  .review-head { display: grid; gap: 8px; max-width: 76ch; margin-bottom: 28px; }
+  .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--page-muted); margin: 0; }
+  .review-head h1 { margin: 0; font-size: 30px; line-height: 1.2; font-weight: 650; letter-spacing: -0.02em; text-wrap: balance; }
+  .review-head p { margin: 0; color: var(--page-muted); font-size: 15px; }
+  .proto { display: grid; grid-template-columns: minmax(0, 460px) minmax(0, 1fr); gap: 32px; align-items: start; }
+  @media (max-width: 900px) { .proto { grid-template-columns: minmax(0, 1fr); } }
+  .phone-col { position: sticky; top: 16px; display: grid; justify-items: center; }
+  @media (max-width: 900px) { .phone-col { position: static; } }
+  .proto.landscape { grid-template-columns: minmax(0, 1fr); }
+  .proto.landscape .phone-col { position: static; }
+  .fit { position: relative; width: 100%; }
+  .fit > .device { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  .side { display: grid; gap: 16px; min-width: 0; }
+  .card { background: var(--page-panel); border: 1px solid var(--page-line); border-radius: 10px; padding: 16px; display: grid; gap: 12px; }
+  .card h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--page-muted); display: flex; justify-content: space-between; gap: 8px; }
+  .card h2 small { text-transform: none; letter-spacing: 0; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .card p { margin: 0; color: var(--page-muted); font-size: 13px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pbtn { height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--page-line); background: var(--page-control); cursor: pointer; font-size: 13px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .pbtn:hover { border-color: var(--accent); }
+  .pbtn[aria-pressed="true"] { background: var(--page-control-on); border-color: var(--accent); }
+  .pbtn .sw { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .tour { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; counter-reset: t; }
+  .tour li { display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start; font-size: 13.5px; color: var(--page-text); }
+  .tour .tick { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--page-line); margin-top: 1px; display: grid; place-items: center; }
+  .tour li.done { color: var(--page-muted); }
+  .tour li.done .tick { background: var(--done); border-color: var(--done); }
+  .tour li.done .tick::after { content: ""; width: 8px; height: 4px; border: 2px solid var(--page); border-top: 0; border-right: 0; transform: rotate(-45deg) translate(1px, -1px); }
+  .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 360px; overflow-y: auto; font-size: 13px; }
+  .log li { display: grid; grid-template-columns: 64px 1fr; gap: 8px; padding: 6px 8px; border-radius: 6px; border-left: 3px solid var(--page-line); background: color-mix(in srgb, var(--page-panel) 60%, var(--page)); }
+  .log time { color: var(--page-muted); font-variant-numeric: tabular-nums; font-size: 12px; padding-top: 1px; }
+  .log .rs-log-text { border-left-color: var(--done); } .log .rs-log-tile { border-left-color: var(--accent); }
+  .log .rs-log-warn { border-left-color: var(--attention); } .log .rs-log-good { border-left-color: var(--done); }
+  .log .rs-log-input { border-left-color: var(--violet); }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--page-muted); }
+  .legend span { display: inline-flex; gap: 6px; align-items: center; }
+  .legend i { width: 10px; height: 10px; border-radius: 2px; display: block; }
+
+  /* ---------- device ---------- */
+  .device { border-radius: 64px; padding: 11px; background: var(--bezel); box-shadow: 0 30px 60px #00000059, inset 0 0 0 1px #FFFFFF14; }
+  .screen { position: relative; width: 402px; height: 874px; border-radius: 54px; overflow: hidden; background: var(--canvas); color: var(--t1); font-size: 17px; line-height: 22px; }
+  .device.land .screen { width: 874px; height: 402px; }
+  .island { position: absolute; left: 50%; top: 11px; transform: translateX(-50%); width: 124px; height: 36px; border-radius: 20px; background: #000; z-index: 90; }
+  .device.land .island { left: 11px; top: 50%; transform: translateY(-50%); width: 36px; height: 124px; }
+  .scr { position: absolute; inset: 0; }
+  .status { position: absolute; left: 0; right: 0; top: 0; height: 54px; display: flex; align-items: center; justify-content: space-between; padding: 6px 34px 0 44px; font-size: 16px; font-weight: 600; z-index: 40; pointer-events: none; }
+  .status .icons { display: flex; gap: 6px; align-items: center; }
+  .status.onmedia { color: #fff; }
+  .device.land .status { display: none; }
+  .home { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); width: 140px; height: 5px; border-radius: 3px; background: var(--t1); opacity: 0.9; z-index: 60; pointer-events: none; }
+  .home.onmedia { background: #fff; }
+  .tap { cursor: pointer; }
+
+  .navbar { position: absolute; left: 0; right: 0; top: 54px; height: 44px; display: flex; align-items: center; padding: 0 16px; z-index: 30; }
+  .navbar .back { display: flex; align-items: center; gap: 4px; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; font-size: 17px; }
+  .navbar .actions { display: flex; gap: 18px; color: var(--accent); margin-left: auto; }
+  .navbar svg { width: 22px; height: 22px; }
+  .navbar .mid { position: absolute; left: 50%; transform: translateX(-50%); font-weight: 600; white-space: nowrap; }
+  .scroll { position: absolute; left: 0; right: 0; top: 98px; bottom: 0; overflow-y: auto; padding: 0 16px 110px; scrollbar-width: none; }
+  .scroll::-webkit-scrollbar { display: none; }
+  .large { font-size: 34px; line-height: 41px; font-weight: 700; margin: 2px 4px 12px; }
+  .sec-h { font-size: 13px; line-height: 18px; color: var(--t3); text-transform: uppercase; letter-spacing: 0.02em; margin: 18px 16px 7px; }
+  .sec-f { font-size: 13px; line-height: 18px; color: var(--t3); margin: 7px 16px 0; }
+  .list { background: var(--panel); border-radius: 12px; overflow: hidden; }
+  .li { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 10px 16px; position: relative; width: 100%; border: 0; background: none; text-align: left; font-size: 17px; }
+  .li + .li::before { content: ""; position: absolute; top: 0; right: 0; left: 56px; height: 1px; background: var(--sep); }
+  .li.plain + .li.plain::before { left: 16px; }
+  .li .ic { width: 28px; height: 28px; display: grid; place-items: center; color: var(--t3); flex: none; }
+  .li .ic svg { width: 22px; height: 22px; }
+  .li .tx { flex: 1; min-width: 0; display: grid; }
+  .li .tx small { font-size: 15px; line-height: 20px; color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .li .chev { color: var(--t4); width: 10px; flex: none; }
+  .li .val { color: var(--t3); }
+  .li .check { color: var(--accent); width: 18px; }
+  .attn { color: var(--attention) !important; }
+  .attn.quiet, small.quiet { color: var(--t3) !important; }
+  .ccard { background: var(--panel); border-radius: 14px; overflow: hidden; display: block; width: 100%; border: 0; padding: 0; text-align: left; font-size: 17px; }
+  .ccard + .ccard { margin-top: 12px; }
+  .cthumb { position: relative; aspect-ratio: 5 / 2; background: #0B0D10; overflow: hidden; }
+  .cthumb .badge { position: absolute; left: 10px; top: 10px; display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 12px; background: #111316CC; color: #E6E8EB; font-size: 13px; font-weight: 500; z-index: 2; }
+  .cthumb .badge i { width: 7px; height: 7px; border-radius: 50%; background: #6CCB8F; }
+  .cbody { padding: 11px 14px 13px; display: grid; gap: 3px; }
+  .ctitle { display: flex; align-items: baseline; gap: 8px; }
+  .ctitle b { font-size: 17px; font-weight: 600; }
+  .ctitle .chev { margin-left: auto; color: var(--t4); width: 9px; }
+  .csub { font-size: 15px; line-height: 20px; color: var(--t3); font-variant-numeric: tabular-nums; }
+  .cattn { font-size: 15px; line-height: 20px; display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+  .dot.live { background: var(--done); } .dot.off { border: 1.5px solid var(--t4); }
+  .tabbar { position: absolute; left: 0; right: 0; bottom: 0; height: 90px; background: var(--bar); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--sep); display: flex; justify-content: space-around; padding-top: 8px; z-index: 30; }
+  .tabbar div { display: grid; justify-items: center; gap: 2px; font-size: 10.5px; font-weight: 500; color: var(--t4); width: 120px; }
+  .tabbar svg { width: 28px; height: 24px; }
+  .tabbar .on { color: var(--accent); }
+  .prominent { display: flex; align-items: center; justify-content: center; gap: 8px; height: 50px; border-radius: 12px; background: var(--accent); color: var(--on-accent); font-weight: 600; font-size: 17px; border: 0; width: 100%; cursor: pointer; margin-top: 12px; }
+  .prominent svg { width: 20px; height: 20px; }
+  .bordered { display: flex; align-items: center; justify-content: center; height: 50px; border-radius: 12px; background: var(--accent-wash); color: var(--accent); font-weight: 600; font-size: 17px; border: 0; cursor: pointer; flex: 1; }
+
+  .termview { position: absolute; left: 0; right: 0; top: 98px; bottom: 0; background: #17191D; padding: 14px 14px 150px; font: 13px/19px var(--mono); color: #C9CDD4; white-space: pre-wrap; overflow: hidden; }
+  .termview .ln-row { display: block; min-height: 19px; }
+  .termview .g { color: #6CCB8F; } .termview .y { color: #E9B061; } .termview .b { color: #74A7F2; } .termview .m { color: #8C929C; } .termview .r { color: #E5787A; }
+  .termview [data-hit] { color: #74A7F2; }
+  .termbar { position: absolute; left: 12px; right: 12px; bottom: 30px; z-index: 30; display: grid; gap: 8px; }
+  .termbar .row { display: flex; gap: 8px; }
+  .termbar p { margin: 0; font-size: 13px; line-height: 18px; color: #8C929C; text-align: center; }
+
+  /* viewer */
+  .viewer { position: absolute; inset: 0; background: #07080A; }
+  .viewer .stage { position: absolute; inset: 0; }
+  .kbd-open .viewer .stage { bottom: 300px; }
+  .device.land.kbd-open .viewer .stage { bottom: 248px; }
+  .vtop { position: absolute; left: 12px; right: 12px; top: 56px; z-index: 20; display: flex; align-items: center; gap: 8px; pointer-events: none; }
+  .vtop > * { pointer-events: auto; }
+  .device.land .vtop { top: 12px; left: 64px; right: 24px; }
+  .fbtn { width: 40px; height: 40px; border-radius: 20px; display: grid; place-items: center; background: var(--float); border: 1px solid var(--float-line); color: var(--t1); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); flex: none; cursor: pointer; padding: 0; }
+  .fbtn svg { width: 18px; height: 18px; }
+  .fpill { height: 40px; border-radius: 20px; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: var(--float); border: 1px solid var(--float-line); color: var(--t1); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); font-size: 15px; white-space: nowrap; min-width: 0; cursor: pointer; }
+  .fpill b { font-weight: 600; }
+  .fpill small { color: var(--t3); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .fpill .dot { background: var(--done); }
+  .fpill.warn { border-color: color-mix(in srgb, var(--attention) 55%, transparent); }
+  .fpill.warn small { color: var(--attention); } .fpill.warn .dot { background: var(--attention); }
+  .fpill.off .dot { background: transparent; border: 1.5px solid var(--t4); }
+  .vtop .grow { flex: 1; }
+  .zoomchip { height: 28px; padding: 0 10px; border-radius: 14px; background: #111316CC; color: #E6E8EB; font-size: 13px; display: flex; align-items: center; font-variant-numeric: tabular-nums; }
+  .dock { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: 4px; padding: 6px; border-radius: 30px; background: var(--float); border: 1px solid var(--float-line); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+  .kbd-open .dock { display: none; }
+  .device.land .dock { bottom: 16px; }
+  .dbtn { width: 50px; height: 48px; border-radius: 24px; display: grid; place-items: center; color: var(--t1); background: none; border: 0; cursor: pointer; }
+  .dbtn svg { width: 22px; height: 22px; }
+  .dbtn.on { background: var(--accent-wash); color: var(--accent); }
+  .ctl { height: 48px; border-radius: 24px; padding: 0 16px; display: flex; align-items: center; gap: 7px; background: var(--accent); color: var(--on-accent); font-weight: 600; font-size: 15px; margin-left: 4px; white-space: nowrap; border: 1px solid transparent; cursor: pointer; }
+  .ctl svg { width: 16px; height: 16px; }
+  .ctl.watch { background: transparent; color: var(--t1); border-color: var(--float-line); }
+  .ctl.watch svg { display: none; }
+  .mini { position: absolute; right: 12px; top: 106px; width: 118px; aspect-ratio: 1512 / 982; z-index: 20; border-radius: 10px; overflow: hidden; border: 1px solid #FFFFFF33; box-shadow: 0 8px 20px #00000080; cursor: pointer; }
+  .device.land .mini { top: 64px; }
+  .kbd-open .mini { display: none; }
+  .banner { position: absolute; left: 12px; right: 12px; top: 106px; z-index: 22; display: flex; gap: 10px; align-items: flex-start; padding: 11px 12px 11px 14px; border-radius: 14px; background: var(--float); border: 1px solid color-mix(in srgb, var(--attention) 50%, transparent); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); font-size: 15px; line-height: 20px; }
+  .banner > svg { width: 18px; height: 18px; color: var(--attention); flex: none; margin-top: 1px; }
+  .banner small { display: block; color: var(--t3); font-size: 13px; line-height: 18px; }
+  .banner .grow { flex: 1; }
+  .banner button { background: none; border: 0; color: var(--accent); font-weight: 600; font-size: 15px; cursor: pointer; padding: 0 2px; }
+  .device.land .banner { top: 60px; left: 64px; right: 160px; }
+  .banner ~ .mini { top: 186px; }
+  .reconnect { position: absolute; inset: 0; z-index: 25; display: grid; place-items: center; background: #07080A99; }
+  .reconnect .box { display: grid; justify-items: center; gap: 10px; text-align: center; color: #E6E8EB; max-width: 280px; padding: 18px; border-radius: 18px; background: #111316D9; }
+  .spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid #FFFFFF33; border-top-color: #FFFFFF; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .reconnect b { font-size: 17px; font-weight: 600; }
+  .reconnect small { color: #B4B9C2; font-size: 15px; line-height: 20px; }
+  .reconnect button { margin-top: 4px; height: 36px; padding: 0 16px; border-radius: 18px; background: #FFFFFF26; color: #fff; border: 0; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .toast { position: absolute; left: 50%; top: 104px; transform: translateX(-50%); z-index: 70; max-width: 340px; padding: 10px 14px; border-radius: 16px; background: #111316E6; color: #E6E8EB; font-size: 14px; line-height: 19px; text-align: center; box-shadow: 0 8px 24px #00000080; }
+
+  .scrim { position: absolute; inset: 0; background: #0000004D; z-index: 33; }
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 35; background: var(--canvas); border-radius: 16px 16px 0 0; box-shadow: 0 -10px 40px #00000066; padding: 8px 16px 36px; max-height: 76%; overflow-y: auto; }
+  .device.land .sheet { left: 160px; right: 160px; max-height: 92%; }
+  .grabber { width: 36px; height: 5px; border-radius: 3px; background: var(--t4); margin: 0 auto 10px; opacity: 0.6; }
+  .sheet-h { display: flex; align-items: center; justify-content: space-between; margin: 0 4px 12px; }
+  .sheet-h b { font-size: 20px; font-weight: 600; }
+  .sheet-h button { color: var(--accent); font-weight: 600; background: none; border: 0; cursor: pointer; font-size: 17px; }
+  .kv { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--sep); border-radius: 12px; overflow: hidden; }
+  .kv div { background: var(--panel); padding: 10px 14px; display: grid; }
+  .kv small { font-size: 13px; color: var(--t3); }
+  .kv b { font-size: 20px; line-height: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .kv .is-warn { color: var(--attention); }
+  .sparkbox { background: var(--panel); border-radius: 12px; padding: 10px 14px; margin-top: 10px; display: grid; gap: 4px; }
+  .sparkbox small { font-size: 13px; color: var(--t3); display: flex; justify-content: space-between; }
+  .sparkbox svg { width: 100%; height: 40px; display: block; }
+  .ladder { list-style: none; margin: 0; padding: 0; background: var(--panel); border-radius: 12px; overflow: hidden; }
+  .rs-step { display: grid; grid-template-columns: 20px 1fr; gap: 12px; align-items: center; min-height: 44px; padding: 8px 16px; position: relative; font-size: 16px; }
+  .rs-step + .rs-step::before { content: ""; position: absolute; top: 0; right: 0; left: 48px; height: 1px; background: var(--sep); }
+  .rs-step svg { width: 18px; height: 18px; color: var(--t3); }
+  .rs-step.now { background: var(--attention-wash); } .rs-step.now svg { color: var(--attention); }
+  .rs-step.next { color: var(--t3); }
+  .choice { width: 100%; }
+  .choice[aria-pressed="true"] .check { visibility: visible; }
+  .choice .check { visibility: hidden; }
+
+  /* keyboard */
+  .keyboard { position: absolute; left: 0; right: 0; bottom: 0; height: 300px; z-index: 30; display: none; flex-direction: column; background: #1C1C1E; }
+  .kbd-open .keyboard { display: flex; }
+  .device.land .keyboard { height: 248px; }
+  .accessory { height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--chrome); border-top: 1px solid var(--sep); flex: none; overflow: hidden; }
+  .device.land .accessory { padding: 0 56px; }
+  .accessory button { height: 30px; min-width: 38px; padding: 0 8px; border-radius: 6px; background: var(--panel-2); color: var(--t1); border: 0; font: 13px var(--mono); cursor: pointer; flex: none; }
+  .accessory .grow { flex: 1; }
+  .accessory .hide { font-family: var(--ui); font-size: 13px; }
+  .keys { flex: 1; padding: 8px 4px 30px; display: grid; gap: 10px; align-content: start; }
+  .device.land .keys { padding: 6px 56px 14px; gap: 6px; }
+  .keys .r { display: flex; gap: 6px; justify-content: center; }
+  .keys button { height: 42px; flex: 1; max-width: 36px; border-radius: 6px; background: #5A5A5E; color: #fff; border: 0; font-size: 20px; cursor: pointer; box-shadow: 0 1px 0 #00000080; padding: 0; }
+  .device.land .keys button { height: 36px; max-width: 70px; font-size: 18px; }
+  .keys button.s { background: #3A3A3C; font-size: 15px; max-width: 48px; }
+  .keys button.space { max-width: 190px; flex: 5; font-size: 15px; }
+  .device.land .keys button.space { max-width: 360px; }
+  .keys button.ret { max-width: 88px; font-size: 15px; background: #3A3A3C; }
+  .keys button:active { background: #8A8A8E; }
+
+  .lock { position: absolute; inset: 0; z-index: 80; background: radial-gradient(600px 500px at 50% 30%, #2B3B52, #0B0D10); color: #fff; display: grid; justify-items: center; align-content: start; padding-top: 120px; gap: 4px; text-align: center; }
+  .lock b { font-size: 84px; line-height: 1; font-weight: 600; letter-spacing: -2px; }
+  .lock small { font-size: 18px; opacity: 0.8; }
+  .lock .note { margin-top: 32px; padding: 12px 16px; border-radius: 18px; background: #FFFFFF26; font-size: 15px; max-width: 320px; }
+</style>
+
+<div class="review">
+  <header class="review-head">
+    <p class="eyebrow">TermiRust · Interactive prototype · iOS app</p>
+    <h1>Remote Screens on iPhone</h1>
+    <p>A working iPhone 17 Pro. Tap through it like the real app: open mac-studio, zoom around its desktop, take control and approve the agent, type, and change the network on the right to watch TermiRust adapt. The log explains every byte it would send.</p>
+  </header>
+
+  <div class="proto">
+    <div class="phone-col">
+      <div class="fit" id="fit">
+        <div class="device" data-phone-root>
+          <div class="screen">
+            <div class="island"></div>
+
+            <!-- ================= Fleet ================= -->
+            <section class="scr" data-screen="fleet" aria-label="Fleet">
+              <div class="status"><span>9:41</span><span class="icons" data-status></span></div>
+              <div class="navbar"><div class="actions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="8" cy="12" r=".6" fill="currentColor"/><circle cx="12" cy="12" r=".6" fill="currentColor"/><circle cx="16" cy="12" r=".6" fill="currentColor"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></div></div>
+              <div class="scroll">
+                <div class="large">Fleet</div>
+                <button class="ccard tap" type="button" data-go="detail">
+                  <div class="cthumb"><div data-preview="mac"></div><div class="badge"><i></i>Live</div></div>
+                  <div class="cbody">
+                    <div class="ctitle"><b>mac-studio</b><svg class="chev" viewBox="0 0 10 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m2 2 6 6-6 6"/></svg></div>
+                    <div class="csub"><span data-conn-text>Direct · 38 ms</span> · 3 terminals</div>
+                    <div class="cattn attn" data-agent-text>1 agent waiting for approval</div>
+                  </div>
+                </button>
+                <div class="ccard">
+                  <div class="cthumb"><div data-preview="linux"></div><div class="badge"><i></i>Live</div></div>
+                  <div class="cbody"><div class="ctitle"><b>build-box</b></div><div class="csub">Relay · 124 ms · 6 terminals</div></div>
+                </div>
+                <div class="sec-h">Other computers</div>
+                <div class="list">
+                  <div class="li"><div class="ic"><span class="dot off"></span></div><div class="tx">macbook-air<small>Asleep · last seen 14:02</small></div></div>
+                  <div class="li"><div class="ic"><span class="dot live"></span></div><div class="tx">office-imac<small>Screen sharing off · 2 terminals</small></div></div>
+                </div>
+              </div>
+              <div class="tabbar" data-tabbar></div>
+              <div class="home"></div>
+            </section>
+
+            <!-- ================= Detail ================= -->
+            <section class="scr" data-screen="detail" aria-label="mac-studio" hidden>
+              <div class="status"><span>9:41</span><span class="icons" data-status></span></div>
+              <div class="navbar"><button class="back" type="button" data-back><svg viewBox="0 0 12 22" fill="none" stroke="currentColor" stroke-width="2.4" style="width:12px"><path d="M10 2 2 11l8 9"/></svg>Fleet</button><div class="mid">mac-studio</div></div>
+              <div class="scroll" style="top:104px">
+                <button class="ccard tap" type="button" data-go="viewer"><div class="cthumb" style="aspect-ratio:1512/982"><div data-preview="mac"></div><div class="badge"><i></i>Live · 1 fps preview</div></div></button>
+                <button class="prominent" type="button" data-go="viewer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg>Open Screen</button>
+                <div class="sec-h">Open terminals</div>
+                <div class="list">
+                  <div class="li"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M12 15h5"/></svg></div><div class="tx">zsh — termirust<small>cargo watch · 49 passed</small></div></div>
+                  <button class="li tap" type="button" data-go="terminal"><div class="ic" style="color:var(--attention)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 22 20H2z"/></svg></div><div class="tx">agent — screen-codec<small class="attn" data-agent-sub>Waiting for approval</small></div><svg class="chev" viewBox="0 0 10 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m2 2 6 6-6 6"/></svg></button>
+                  <div class="li"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M12 15h5"/></svg></div><div class="tx">api-prod<small>tmux · idle 6 min</small></div></div>
+                </div>
+                <div class="sec-h">Connection route</div>
+                <div class="list">
+                  <div class="li plain"><div class="tx">Local network</div><span class="val">38 ms</span><svg class="check" viewBox="0 0 18 14" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m1.5 7 5 5 10-10"/></svg></div>
+                  <div class="li plain"><div class="tx">Self-hosted relay</div><span class="val">Ready</span></div>
+                </div>
+              </div>
+              <div class="tabbar" data-tabbar></div>
+              <div class="home"></div>
+            </section>
+
+            <!-- ================= Terminal (text path) ================= -->
+            <section class="scr" data-screen="terminal" aria-label="Agent terminal" hidden style="background:#17191D;color:#E6E8EB">
+              <div class="status onmedia"><span>9:41</span><span class="icons" data-status></span></div>
+              <div class="navbar" style="background:#14161A"><button class="back" type="button" data-back style="color:#74A7F2"><svg viewBox="0 0 12 22" fill="none" stroke="currentColor" stroke-width="2.4" style="width:12px"><path d="M10 2 2 11l8 9"/></svg>mac-studio</button><div class="mid" style="color:#E6E8EB">agent — screen-codec</div></div>
+              <div class="termview" data-term-live></div>
+              <div class="termbar">
+                <div class="row" data-agent-live><button class="bordered" type="button" data-approve style="background:#74A7F2;color:#0E1622">Yes</button><button class="bordered" type="button" data-deny style="background:#FFFFFF1F;color:#E6E8EB">No</button></div>
+                <p>This view is terminal text, not pixels. It keeps working at 20 kbps.</p>
+              </div>
+              <div class="home onmedia"></div>
+            </section>
+
+            <!-- ================= Viewer ================= -->
+            <section class="scr viewer" data-screen="viewer" aria-label="mac-studio screen" hidden>
+              <div class="stage" data-rs-stage></div>
+              <div class="status onmedia"><span>9:41</span><span class="icons" data-status></span></div>
+              <div class="vtop">
+                <button class="fbtn" type="button" data-back aria-label="Close"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 3 10 10M13 3 3 13"/></svg></button>
+                <button class="fpill" type="button" data-act="conn" data-conn-chip aria-label="Connection details"><span class="dot"></span><b>mac-studio</b><small data-conn-text>Direct · 38 ms</small></button>
+                <div class="grow"></div>
+                <span class="zoomchip" data-zoom-label>Fit</span>
+              </div>
+              <div class="banner" data-weak-banner hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2 1.5 13.5h13z"/><path d="M8 6.5v3.2M8 11.6v.1"/></svg><div class="grow">Weak connection<small>Detail is reduced so the screen keeps up. Terminal text stays sharp.</small></div><button type="button" data-act="conn">Details</button></div>
+              <div class="mini" data-mini aria-label="Minimap"></div>
+              <div class="dock">
+                <button class="dbtn" type="button" data-act="keyboard" aria-label="Keyboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></button>
+                <button class="dbtn" type="button" data-act="pointer" aria-label="Pointer mode"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 11V5a2 2 0 0 1 4 0v5l4.5.9a2 2 0 0 1 1.6 2.3l-.9 5.1A2 2 0 0 1 16.2 20H11a2 2 0 0 1-1.6-.8L6 14.5a1.6 1.6 0 0 1 2.4-2.1z"/></svg></button>
+                <button class="dbtn" type="button" data-act="displays" aria-label="Displays"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="4" width="13" height="9" rx="1.5"/><rect x="9" y="9" width="13" height="9" rx="1.5"/></svg></button>
+                <button class="ctl watch" type="button" data-act="control" aria-pressed="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5 6.5 12 13 4.5"/></svg><span data-control-label>Take control</span></button>
+              </div>
+              <div class="reconnect" data-reconnect hidden><div class="box"><div class="spinner" role="progressbar" aria-label="Reconnecting"></div><b>mac-studio</b><small data-reconnect-text>Reconnecting…</small><button type="button" data-act="terminals-only">Terminals only</button></div></div>
+              <div class="keyboard">
+                <div class="accessory">
+                  <button type="button" data-key="Escape">esc</button><button type="button" data-key="Tab">tab</button><button type="button" data-key="Control">ctrl</button><button type="button" data-key="ArrowLeft">←</button><button type="button" data-key="ArrowUp">↑</button><button type="button" data-key="ArrowDown">↓</button><button type="button" data-key="ArrowRight">→</button><button type="button" data-key="|">|</button><button type="button" data-key="-">-</button>
+                  <div class="grow"></div><button type="button" class="hide" data-act="keyboard">Done</button>
+                </div>
+                <div class="keys" data-keys></div>
+              </div>
+              <div class="home onmedia"></div>
+            </section>
+
+            <!-- sheets -->
+            <div class="scrim" data-scrim hidden></div>
+            <div class="sheet" data-sheet="conn" hidden>
+              <div class="grabber"></div>
+              <div class="sheet-h"><b>Connection</b><button type="button" data-close-sheet>Done</button></div>
+              <div class="kv">
+                <div><small>Delay</small><b data-stat="rtt">38 ms</b></div>
+                <div><small>Loss</small><b data-stat="loss">0.2 %</b></div>
+                <div><small>Route</small><b data-stat="route">Direct</b></div>
+                <div><small>Updates</small><b data-stat="ups" data-short="1">60 / s</b></div>
+              </div>
+              <div class="sparkbox"><small><span>Using <span data-stat="bandwidth">1.4 Mbps</span></span><span data-stat="pathname">Motion path</span></small><svg data-rs-spark aria-label="Bandwidth, last 40 seconds"></svg></div>
+              <div class="sec-h" style="margin-top:14px">Keeping up</div>
+              <ul class="ladder" data-rs-ladder></ul>
+              <div class="sec-f">Steps apply in order as the connection weakens and undo as it recovers. Terminal text is never reduced.</div>
+            </div>
+            <div class="sheet" data-sheet="displays" hidden>
+              <div class="grabber"></div>
+              <div class="sheet-h"><b>Displays</b><button type="button" data-close-sheet>Done</button></div>
+              <div class="list">
+                <button class="li plain choice tap" type="button" data-display-choice="all" aria-pressed="false"><div class="tx">All displays<small>Studio Display and built-in, side by side</small></div><svg class="check" viewBox="0 0 18 14" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m1.5 7 5 5 10-10"/></svg></button>
+                <button class="li plain choice tap" type="button" data-display-choice="studio" aria-pressed="true"><div class="tx">Studio Display<small>5K · main display</small></div><svg class="check" viewBox="0 0 18 14" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m1.5 7 5 5 10-10"/></svg></button>
+                <button class="li plain choice tap" type="button" data-display-choice="builtin" aria-pressed="false"><div class="tx">Built-in Display<small>Messages is open here</small></div><svg class="check" viewBox="0 0 18 14" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m1.5 7 5 5 10-10"/></svg></button>
+              </div>
+            </div>
+            <div class="toast" data-toast hidden><span data-toast-text></span></div>
+            <div class="lock" data-lock hidden><small>Tuesday 15 September</small><b>9:41</b><div class="note">Phone locked. The connection to mac-studio is closed to save battery.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="side">
+      <section class="card" aria-labelledby="sim-h">
+        <h2 id="sim-h">Network</h2>
+        <div class="btns">
+          <button class="pbtn" type="button" data-rs-net="good"><span class="sw" style="background:var(--done)"></span>Good Wi-Fi</button>
+          <button class="pbtn" type="button" data-rs-net="cafe"><span class="sw" style="background:var(--accent)"></span>Busy café</button>
+          <button class="pbtn" type="button" data-rs-net="weak"><span class="sw" style="background:var(--attention)"></span>Weak cellular</button>
+          <button class="pbtn" type="button" data-rs-net="barely"><span class="sw" style="background:var(--error)"></span>Barely there</button>
+          <button class="pbtn" type="button" data-rs-net="offline"><span class="sw" style="border:1.5px solid var(--page-muted)"></span>Offline</button>
+        </div>
+        <p>Delay, loss and bandwidth change the way the screen is sent. Watch the connection pill, open its details, and read the log below.</p>
+      </section>
+
+      <section class="card" aria-labelledby="dev-h">
+        <h2 id="dev-h">Phone and computer</h2>
+        <div class="btns">
+          <button class="pbtn" type="button" data-phone="zoomin">Pinch out</button>
+          <button class="pbtn" type="button" data-phone="zoomout">Pinch in</button>
+          <button class="pbtn" type="button" data-phone="rotate">Rotate</button>
+          <button class="pbtn" type="button" data-phone="lock">Lock for 4 s</button>
+          <button class="pbtn" type="button" data-rs-video>Video playing</button>
+          <button class="pbtn" type="button" data-rs-agent>Agent asks again</button>
+        </div>
+        <div class="btns">
+          <span style="font-size:12px;color:var(--page-muted);align-self:center">Jump to</span>
+          <button class="pbtn" type="button" data-jump="fleet">Fleet</button>
+          <button class="pbtn" type="button" data-jump="detail">Computer</button>
+          <button class="pbtn" type="button" data-jump="viewer">Screen</button>
+          <button class="pbtn" type="button" data-jump="weak">Weak connection</button>
+          <button class="pbtn" type="button" data-jump="typing">Typing in landscape</button>
+        </div>
+        <p>In the screen: drag to move, double-click or scroll to zoom, drag the minimap to jump. A computer keyboard types into mac-studio once you have control.</p>
+      </section>
+
+      <section class="card" aria-labelledby="tour-h">
+        <h2 id="tour-h">Try this <small data-rs-tour-count>0 of 7</small></h2>
+        <ol class="tour" data-rs-tour></ol>
+      </section>
+
+      <section class="card" aria-labelledby="log-h">
+        <h2 id="log-h">What TermiRust is sending</h2>
+        <div class="legend"><span><i style="background:var(--accent)"></i>Tiles</span><span><i style="background:var(--done)"></i>Text or recovery</span><span><i style="background:var(--violet)"></i>Your input</span><span><i style="background:var(--attention)"></i>Adapting</span></div>
+        <ul class="log" data-rs-log aria-live="polite"></ul>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="shared/remote-sim.js"></script>
+<script src="shared/phone.js"></script>
+<script>
+(function () {
+  const statusIcons = '<svg viewBox="0 0 18 12" width="18" height="12"><rect x="0" y="8" width="3" height="4" rx=".7" fill="currentColor"/><rect x="5" y="5.5" width="3" height="6.5" rx=".7" fill="currentColor"/><rect x="10" y="3" width="3" height="9" rx=".7" fill="currentColor"/><rect x="15" y="0" width="3" height="12" rx=".7" fill="currentColor"/></svg><svg viewBox="0 0 16 12" width="16" height="12"><path d="M8 11.5 5.6 9a3.4 3.4 0 0 1 4.8 0zM3.6 7a6.2 6.2 0 0 1 8.8 0l-1.4 1.4a4.2 4.2 0 0 0-6 0zM1.2 4.6a9.6 9.6 0 0 1 13.6 0l-1.4 1.4a7.6 7.6 0 0 0-10.8 0z" fill="currentColor"/></svg><svg viewBox="0 0 27 12" width="27" height="12"><rect x=".5" y=".5" width="23" height="11" rx="3" fill="none" stroke="currentColor" opacity=".5"/><rect x="2" y="2" width="17" height="8" rx="1.6" fill="currentColor"/><rect x="24.5" y="4" width="2" height="4" rx="1" fill="currentColor" opacity=".5"/></svg>';
+  document.querySelectorAll('[data-status]').forEach(e => e.innerHTML = statusIcons);
+  const tabbar = '<div><svg viewBox="0 0 28 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="22" height="18" rx="3"/><path d="m8 9 4 3-4 3M14 15h6"/></svg>Connections</div><div class="on"><svg viewBox="0 0 28 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="4" width="17" height="12" rx="1.5"/><path d="M6 20h9"/><rect x="20" y="8" width="6" height="12" rx="1.5"/></svg>Devices</div>';
+  document.querySelectorAll('[data-tabbar]').forEach(e => e.innerHTML = tabbar);
+  const rows = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+  const btn = (k, label, cls) => '<button type="button" data-key="' + k + '"' + (cls ? ' class="' + cls + '"' : '') + '>' + label + '</button>';
+  document.querySelector('[data-keys]').innerHTML =
+    '<div class="r">' + [...rows[0]].map(c => btn(c, c)).join('') + '</div>' +
+    '<div class="r">' + [...rows[1]].map(c => btn(c, c)).join('') + '</div>' +
+    '<div class="r">' + btn('Shift', '⇧', 's') + [...rows[2]].map(c => btn(c, c)).join('') + btn('Backspace', '⌫', 's') + '</div>' +
+    '<div class="r">' + btn('Numbers', '123', 's') + btn(' ', 'space', 'space') + btn('Enter', 'return', 'ret') + '</div>';
+
+  function refit() {
+    const f = document.getElementById('fit'), d = f.firstElementChild;
+    const land = d.classList.contains('land');
+    const w = land ? 896 : 424, h = land ? 424 : 896;
+    document.querySelector(".proto").classList.toggle("landscape", land);
+    const avail = land ? Math.min(f.parentElement.clientWidth, 896) : Math.min(f.parentElement.clientWidth, 424);
+    const s = Math.min(1, avail / w);
+    f.style.width = (w * s) + "px";
+    d.style.transform = 'scale(' + s + ')';
+    f.style.height = (h * s) + 'px';
+  }
+  window.addEventListener('rs-refit', () => { refit(); requestAnimationFrame(refit); });
+  new ResizeObserver(refit).observe(document.querySelector('.review'));
+  refit();
+
+  RS.tour([
+    { id: 'open', text: 'Open mac-studio from Fleet, then Open Screen.' },
+    { id: 'zoom', text: 'Zoom and move around: double-click, scroll, or drag the minimap.' },
+    { id: 'control', text: 'Tap Take control.' },
+    { id: 'approve', text: 'Tap "1 Yes" in the agent\'s prompt on the right-hand terminal.' },
+    { id: 'type', text: 'Open the keyboard, type ls and press return.' },
+    { id: 'network', text: 'Switch the network to Weak cellular and watch the steps in the log.' },
+    { id: 'lock', text: 'Lock the phone for 4 s and see it catch up without a full refresh.' }
+  ]);
+  RSPhone.init({ device: 'iPhone 17 Pro' });
+  RS.start();
+})();
+</script>
