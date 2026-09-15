@@ -797,17 +797,8 @@ impl TermiRustApp {
                     )
                 }));
         let input_authorized = pane.input_authorized();
-        let show_terminal_chrome = self
-            .active_workspace()
-            .is_none_or(|workspace| workspace.layout_mode != WorkspaceLayoutMode::Canvas)
-            || is_app_attached;
-        let focus_mode_message = match pane.terminal_focus_mode {
-            termirust_ui_contract::TerminalFocusMode::Chrome => MessageId::TerminalExitAction,
-            termirust_ui_contract::TerminalFocusMode::Input => MessageId::TerminalInputAction,
-            termirust_ui_contract::TerminalFocusMode::AccessibleReview => {
-                MessageId::TerminalReviewAction
-            }
-        };
+        // Only durable sessions have a header: it carries their writer state, retry, and stop.
+        let show_terminal_chrome = is_app_attached;
 
         v_flex()
             .id(("terminal-pane", pane.id))
@@ -872,11 +863,6 @@ impl TermiRustApp {
                                 .gap(px(theme::SPACE_2))
                                 .flex_wrap()
                                 .justify_end()
-                                .child(self.status_badge(
-                                    localization::static_message(focus_mode_message),
-                                    theme::terminal_bg(),
-                                    theme::text_on_dark(),
-                                ))
                                 .when(is_app_attached, |this| {
                                     this.child(self.status_badge(
                                         localization::static_message(if input_authorized {
@@ -892,31 +878,6 @@ impl TermiRustApp {
                                         },
                                     ))
                                 })
-                                .child(
-                                    Button::new(("terminal-input-mode", pane_id))
-                                        .small()
-                                        .ghost()
-                                        .icon(IconName::SquareTerminal)
-                                        .label(localization::static_message(
-                                            MessageId::TerminalInputAction,
-                                        ))
-                                        .disabled(!input_authorized)
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.enter_terminal_input(pane_id, window, cx);
-                                        })),
-                                )
-                                .child(
-                                    Button::new(("terminal-review-mode", pane_id))
-                                        .small()
-                                        .ghost()
-                                        .icon(IconName::Eye)
-                                        .label(localization::static_message(
-                                            MessageId::TerminalReviewAction,
-                                        ))
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.enter_terminal_review(pane_id, window, cx);
-                                        })),
-                                )
                                 .when_some(self.render_dev_url_header(pane, cx), |this, chip| {
                                     this.child(chip)
                                 })
