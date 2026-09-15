@@ -188,7 +188,7 @@ async fn production_probe_authenticates_the_running_host_instance() {
         expected_occupant_generation: None,
         runtime_root: runtime_root.clone(),
         session_dir: session_dir.clone(),
-        executable: "/bin/sh".into(),
+        executable: std::fs::canonicalize("/bin/sh").unwrap(),
         runtime_detection: None,
         arguments: vec!["-c".into(), "while :; do sleep 1; done".into()],
         environment: BTreeMap::from([

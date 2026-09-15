@@ -23,7 +23,7 @@ fn descriptor(root: &Path, session_id: HostedSessionId, executable: &str) -> Lau
         expected_occupant_generation: None,
         runtime_root: root.join(format!("r{runtime}")),
         session_dir: root.join(format!("session-{session_id}")),
-        executable: executable.into(),
+        executable: std::fs::canonicalize(executable).unwrap(),
         runtime_detection: None,
         arguments: Vec::new(),
         environment: BTreeMap::from([("PATH".to_string(), "/usr/bin:/bin".to_string())]),

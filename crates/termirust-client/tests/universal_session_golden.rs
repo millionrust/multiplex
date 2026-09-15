@@ -121,7 +121,7 @@ async fn universal_session_fixture_proves_identity_writer_and_reconnect_contract
         expected_occupant_generation: None,
         runtime_root: temp.path().join("runtime"),
         session_dir: temp.path().join("session"),
-        executable: "/bin/sh".into(),
+        executable: std::fs::canonicalize("/bin/sh").unwrap(),
         runtime_detection: None,
         arguments: vec![
             "-c".into(),

@@ -446,7 +446,7 @@ fn host_descriptor(
         expected_occupant_generation: None,
         runtime_root: runtime_parent.join(session_id.to_string()),
         session_dir: sessions.session_data_path(session_id),
-        executable: PathBuf::from("/bin/sh"),
+        executable: std::fs::canonicalize("/bin/sh").expect("resolve /bin/sh"),
         runtime_detection: None,
         arguments: vec![
             "-c".to_owned(),

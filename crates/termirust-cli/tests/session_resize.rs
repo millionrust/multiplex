@@ -317,7 +317,7 @@ fn descriptor(seed: &SeededStore, session_dir: std::path::PathBuf) -> LaunchDesc
             .runtime_root()
             .to_path_buf(),
         session_dir,
-        executable: "/bin/sh".into(),
+        executable: std::fs::canonicalize("/bin/sh").unwrap(),
         runtime_detection: None,
         arguments: vec![
             "-c".into(),
