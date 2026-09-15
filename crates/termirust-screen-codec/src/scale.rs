@@ -1,4 +1,4 @@
-use termirust_screen_codec::{BYTES_PER_PIXEL, Frame, FrameBuffer, Size};
+use crate::{BYTES_PER_PIXEL, Frame, FrameBuffer, Size};
 
 /// Averages `factor` × `factor` blocks, for live previews on the Devices list. Partial blocks on
 /// the right and bottom edges average only the pixels they contain.
@@ -42,10 +42,18 @@ pub fn downscale(frame: &Frame<'_>, factor: u32) -> FrameBuffer {
     buffer
 }
 
+/// The smallest block factor that makes the longer side of `size` at most `longest`.
+pub fn preview_factor(size: Size, longest: u32) -> u32 {
+    size.width()
+        .max(size.height())
+        .div_ceil(longest.max(1))
+        .max(1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use termirust_screen_codec::Rect;
+    use crate::Rect;
 
     #[test]
     fn averages_blocks_including_partial_edges() {
@@ -77,5 +85,12 @@ mod tests {
             .unwrap();
         assert_eq!(downscale(&buffer.as_frame(), 1), buffer);
         assert_eq!(downscale(&buffer.as_frame(), 0), buffer);
+    }
+
+    #[test]
+    fn preview_factor_fits_the_longest_side() {
+        assert_eq!(preview_factor(Size::new(3024, 1964).unwrap(), 320), 10);
+        assert_eq!(preview_factor(Size::new(200, 100).unwrap(), 320), 1);
+        assert_eq!(preview_factor(Size::new(1964, 3024).unwrap(), 0), 3024);
     }
 }

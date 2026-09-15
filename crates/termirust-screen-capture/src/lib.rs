@@ -13,12 +13,10 @@ mod error;
 #[cfg(target_os = "macos")]
 mod macos;
 mod replay;
-mod scale;
 mod source;
 
 pub use error::CaptureError;
 #[cfg(target_os = "macos")]
 pub use macos::{ScreenCaptureKitSource, displays};
 pub use replay::ReplaySource;
-pub use scale::downscale;
 pub use source::{CaptureConfig, CapturedFrame, Damage, DisplayInfo, FrameSource};
