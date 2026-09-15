@@ -10,6 +10,8 @@
 
 mod cache;
 mod classify;
+mod decoder;
+mod encoder;
 mod error;
 mod frame;
 mod geometry;
@@ -26,6 +28,8 @@ pub use cache::{
 pub use classify::{
     EDGE_CHANNEL_DELTA, MAX_PALETTE_COLORS, TEXT_EDGE_DENSITY_MILLI, TileClass, classify,
 };
+pub use decoder::{Applied, Decoder};
+pub use encoder::{Encoder, EncoderConfig};
 pub use error::CodecError;
 pub use frame::{BYTES_PER_PIXEL, Frame, FrameBuffer};
 pub use geometry::{MAX_SURFACE_DIMENSION, Rect, Size, TILE_SIZE, TileGrid, TileIndex, TileSet};

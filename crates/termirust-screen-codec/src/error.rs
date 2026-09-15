@@ -27,6 +27,8 @@ pub enum CodecError {
     TileOutOfRange,
     /// A move was empty, zero-distance, or read outside the surface.
     InvalidMove,
+    /// A batch repeated an applied sequence or belonged to an older surface generation.
+    StaleBatch,
 }
 
 impl CodecError {
@@ -45,6 +47,7 @@ impl CodecError {
             Self::BatchTooLarge => "batch_too_large",
             Self::TileOutOfRange => "tile_out_of_range",
             Self::InvalidMove => "invalid_move",
+            Self::StaleBatch => "stale_batch",
         }
     }
 }
