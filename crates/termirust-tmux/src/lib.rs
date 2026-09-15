@@ -169,8 +169,9 @@ impl Tmux {
         Self::select([executable], Path::is_file, version_at)
     }
 
-    /// Talks to the server under `directory` instead of the inherited `TMUX_TMPDIR`.
-    /// Tests use this so they never touch the developer's own server.
+    /// Talks to the server under `directory` instead of the inherited `TMUX_TMPDIR`, and starts
+    /// that server without reading any tmux configuration file. Tests use this so they never
+    /// touch the developer's own server and behave the same whatever `~/.tmux.conf` sets.
     pub fn with_socket_directory(mut self, directory: impl Into<PathBuf>) -> Self {
         self.socket_directory = Some(directory.into());
         self
@@ -204,6 +205,7 @@ impl Tmux {
         command.env_remove("TMUX").env_remove("TMUX_PANE");
         if let Some(directory) = &self.socket_directory {
             command.env(TMUX_TMPDIR_ENV, directory);
+            command.args(["-f", "/dev/null"]);
         }
         command
     }
@@ -864,6 +866,11 @@ mod tests {
         assert!(tmux.server_identity().starts_with("/fixture/sockets/tmux-"));
         let command = tmux.command();
         let envs = command.get_envs().collect::<Vec<_>>();
+        assert_eq!(
+            command.get_args().collect::<Vec<_>>(),
+            ["-f", "/dev/null"],
+            "a private server ignores the developer's tmux configuration"
+        );
         assert!(envs.contains(&(std::ffi::OsStr::new("TMUX"), None)));
         assert!(envs.contains(&(
             std::ffi::OsStr::new(TMUX_TMPDIR_ENV),
