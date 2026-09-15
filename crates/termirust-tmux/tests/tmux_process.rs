@@ -222,3 +222,193 @@ fn missing_binary_is_unavailable() {
         TmuxError::Unavailable
     );
 }
+
+#[test]
+fn verification_proves_listing_and_leaves_other_sessions_alone() {
+    let Some(server) = IsolatedServer::start() else {
+        return;
+    };
+    server.run(&["new-session", "-d", "-s", "users-work", "/bin/sh"]);
+    server.tmux.verify_listing().unwrap();
+    let names = server
+        .tmux
+        .list_sessions()
+        .unwrap()
+        .sessions
+        .into_iter()
+        .map(|session| session.name)
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["users-work"], "only the throwaway session is ended");
+}
+
+#[test]
+fn verification_reports_old_and_broken_tmux() {
+    let fixture = tempfile::tempdir().unwrap();
+    let old = fake_tmux(fixture.path(), "echo 'tmux 3.1c'");
+    assert_eq!(
+        Tmux::at(&old).unwrap().verify_listing(),
+        Err(termirust_tmux::VerificationError::TooOld)
+    );
+    let other = tempfile::tempdir().unwrap();
+    let silent = fake_tmux(
+        other.path(),
+        r#"if [ "$1" = "-V" ]; then echo 'tmux 3.4'; exit 0; fi
+if [ "$1" = "new-session" ]; then echo '$9'; exit 0; fi
+exit 0"#,
+    );
+    assert_eq!(
+        Tmux::at(&silent).unwrap().verify_listing(),
+        Err(termirust_tmux::VerificationError::NotListed)
+    );
+}
+
+/// Runs `shell -i` the way a terminal app would, inside an outer tmux pane standing in for
+/// the app's window, and returns the names of the sessions the server ends up with.
+fn run_wrapped_shell(
+    server: &IsolatedServer,
+    home: &Path,
+    shell: &str,
+    extra_environment: &[&str],
+) -> Vec<String> {
+    let ready = home.join(format!("ready-{}", extra_environment.len()));
+    let outer = format!("outer-{}", extra_environment.len());
+    let mut command = vec![
+        "env".to_owned(),
+        "-u".to_owned(),
+        "TMUX".to_owned(),
+        format!("HOME={}", home.display()),
+    ];
+    command.extend(extra_environment.iter().map(|value| (*value).to_owned()));
+    command.extend([shell.to_owned(), "-i".to_owned()]);
+    let mut arguments = vec!["new-session", "-d", "-s", &outer, "-x", "100", "-y", "30"];
+    let command_refs = command.iter().map(String::as_str).collect::<Vec<_>>();
+    arguments.extend(command_refs);
+    server.run(&arguments);
+    // A command typed at the prompt runs only after the startup file has finished.
+    server.run(&[
+        "send-keys",
+        "-t",
+        &format!("={outer}:"),
+        "-l",
+        &format!("touch '{}'\n", ready.display()),
+    ]);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let names = server
+            .tmux
+            .list_sessions()
+            .unwrap()
+            .sessions
+            .into_iter()
+            .map(|session| session.name)
+            .collect::<Vec<_>>();
+        let wrapped = names.iter().any(|name| name.starts_with("termirust-"));
+        if ready.exists() || wrapped {
+            // Either the plain shell ran the command, or the wrapper started tmux; give the
+            // other outcome no chance to race by re-reading once more.
+            return server
+                .tmux
+                .list_sessions()
+                .unwrap()
+                .sessions
+                .into_iter()
+                .map(|session| session.name)
+                .collect();
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "{shell} neither started tmux nor reached its prompt"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn shell_integration_starts_new_terminal_app_shells_inside_tmux() {
+    use termirust_tmux::shell_integration::{Shell, ShellIntegration};
+
+    for (shell, kind) in [("/bin/zsh", Shell::Zsh), ("/bin/bash", Shell::Bash)] {
+        if !Path::new(shell).is_file() {
+            eprintln!("skipping {shell}: not installed");
+            continue;
+        }
+        let Some(server) = IsolatedServer::start() else {
+            return;
+        };
+        let home = tempfile::tempdir().unwrap();
+        let home_path = fs::canonicalize(home.path()).unwrap();
+        let workspace = home_path.join("my project");
+        fs::create_dir(&workspace).unwrap();
+        ShellIntegration::new(&home_path, server.tmux.canonical_executable().unwrap())
+            .plan_enable(&[kind])
+            .unwrap()
+            .apply()
+            .unwrap();
+        let socket = format!(
+            "TMUX_TMPDIR={}",
+            server
+                .tmux
+                .client_environment()
+                .into_iter()
+                .find(|(name, _)| name == "TMUX_TMPDIR")
+                .unwrap()
+                .1
+        );
+
+        let names = run_wrapped_shell(
+            &server,
+            &home_path,
+            shell,
+            &[&socket, "TERM_PROGRAM=Apple_Terminal"],
+        );
+        let wrapped = names
+            .iter()
+            .filter(|name| name.starts_with("termirust-"))
+            .count();
+        assert_eq!(
+            wrapped, 1,
+            "{shell}: a Terminal.app shell starts in tmux: {names:?}"
+        );
+
+        let names = run_wrapped_shell(
+            &server,
+            &home_path,
+            shell,
+            &[
+                &socket,
+                "TERM_PROGRAM=Apple_Terminal",
+                "TERMIRUST_NO_WRAP=1",
+                "X=1",
+            ],
+        );
+        assert_eq!(
+            names
+                .iter()
+                .filter(|name| name.starts_with("termirust-"))
+                .count(),
+            1,
+            "{shell}: TERMIRUST_NO_WRAP keeps a shell out of tmux: {names:?}"
+        );
+
+        let names = run_wrapped_shell(
+            &server,
+            &home_path,
+            shell,
+            &[
+                &socket,
+                "TERM_PROGRAM=UnlistedTerminal",
+                "X=1",
+                "Y=1",
+                "Z=1",
+            ],
+        );
+        assert_eq!(
+            names
+                .iter()
+                .filter(|name| name.starts_with("termirust-"))
+                .count(),
+            1,
+            "{shell}: unlisted terminal apps are left alone: {names:?}"
+        );
+    }
+}

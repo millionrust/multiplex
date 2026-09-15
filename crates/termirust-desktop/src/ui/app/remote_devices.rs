@@ -371,6 +371,30 @@ impl RemoteDevicesState {
         Ok(())
     }
 
+    /// Changes whether paired devices see tmux sessions. A running listener restarts so the
+    /// change applies to new connections; open connections close with it.
+    #[cfg(test)]
+    pub(super) fn tmux_sessions(&self) -> bool {
+        self.tmux_sessions
+    }
+
+    pub(super) fn set_tmux_sessions(
+        &mut self,
+        enabled: bool,
+        controller_coordinator: &ControllerCoordinator,
+    ) -> Result<(), ()> {
+        if self.tmux_sessions == enabled {
+            return Ok(());
+        }
+        self.tmux_sessions = enabled;
+        let Some(mut process) = self.listener_process.take() else {
+            return Ok(());
+        };
+        controller_coordinator.stop_listener(&mut process);
+        self.clear_pairing(PairingUiState::Idle, controller_coordinator);
+        self.start_listener_process(controller_coordinator)
+    }
+
     fn begin_pairing(&mut self, controller_coordinator: &ControllerCoordinator) -> Result<(), ()> {
         let process = self.listener_process.as_mut().ok_or(())?;
         controller_coordinator
@@ -601,6 +625,8 @@ impl TermiRustApp {
         v_flex()
             .gap_3()
             .child(self.render_remote_route_section(cx))
+            .child(self.settings_divider())
+            .child(self.render_remote_terminals_section(cx))
             .child(self.settings_divider())
             .child(self.render_remote_identity_section(cx))
             .child(self.settings_divider())

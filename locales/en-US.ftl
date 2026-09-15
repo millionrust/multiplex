@@ -812,6 +812,48 @@ remote-devices-pairing-offer-copy-action = Copy pairing offer
 remote-devices-pairing-offer-copied = Pairing offer copied. It expires in five minutes.
 remote-devices-pairing-match-action = Codes match
 remote-devices-pairing-reject-action = Reject
+remote-terminals-title = Terminals opened in other apps
+remote-terminals-description = Paired devices can watch and type into tmux sessions, including terminals you open in Terminal, Zed, iTerm2, Ghostty, or WezTerm.
+remote-terminals-discovery-label = Show tmux sessions
+remote-terminals-discovery-description = Lists every tmux session on this computer for paired devices. Changing this restarts the listener, so connected devices reconnect.
+remote-terminals-discovery-show = Show
+remote-terminals-discovery-hide = Hide
+remote-terminals-discovery-saved = tmux session sharing updated.
+remote-terminals-wrap-label = Open new terminals in tmux
+remote-terminals-wrap-description = Adds one marked block to your shell startup file. Terminals that are already open stay unreachable until you open them again.
+remote-terminals-status-off = Not set up
+remote-terminals-status-on = Set up
+remote-terminals-status-partial = Partly set up. Review the changes to repair it.
+remote-terminals-tmux-missing = tmux is not installed. Install it with Homebrew (brew install tmux), then check again.
+remote-terminals-tmux-too-old = This version of tmux is too old. Remote terminals need tmux 3.2 or later.
+remote-terminals-unsupported = Terminal setup is available on macOS and Linux. Windows setup is not available yet.
+remote-terminals-review-enable-action = Review changes
+remote-terminals-review-disable-action = Review removal
+remote-terminals-apply-action = Apply changes
+remote-terminals-remove-action = Remove from my files
+remote-terminals-cancel-action = Cancel
+remote-terminals-preview-title = TermiRust will change these files
+remote-terminals-preview-empty = Everything is already set up. Nothing will change.
+remote-terminals-file-created = New file
+remote-terminals-file-deleted = Will be deleted
+remote-terminals-file-edited = Edited
+remote-terminals-diff-skipped = { $count ->
+    [zero] No unchanged lines
+    [one] 1 unchanged line
+    [many] { $count } unchanged lines
+   *[other] { $count } unchanged lines
+    }
+remote-terminals-applied-notice = Shell startup updated. New terminals open in tmux.
+remote-terminals-removed-notice = Removed from your files. New terminals open without tmux.
+remote-terminals-changed-error = A file changed after you reviewed it. Nothing was written. Review the changes again.
+remote-terminals-malformed-error = Your shell startup file has an incomplete TermiRust block. Delete the lines between the TermiRust markers, then try again.
+remote-terminals-write-error = TermiRust could not update your shell startup files. Check their permissions, then try again.
+remote-terminals-verify-action = Check setup
+remote-terminals-verify-running = Checking tmux
+remote-terminals-verify-ok = tmux sessions are listed correctly. Paired devices can see them.
+remote-terminals-verify-ok-hidden = tmux works, but paired devices cannot see sessions until Show tmux sessions is on.
+remote-terminals-verify-failed = TermiRust could not list tmux sessions. Open a terminal and check that tmux starts.
+remote-terminals-no-wrap-hint = To keep one app out of tmux, set TERMIRUST_NO_WRAP=1 in that app's environment.
 accessibility-lab-title = Accessibility laboratory
 accessibility-lab-description = Verify keyboard focus and screen-reader semantics without changing saved data.
 accessibility-lab-landmark = Reference controls

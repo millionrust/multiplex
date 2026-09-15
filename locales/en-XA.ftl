@@ -1473,6 +1473,48 @@ remote-devices-store-newer = ⟦Ţŕûšţ ɱéţåðåţå ŕéʠûîŕéš å 
 remote-devices-title = ⟦Ŕéɱøţé Ðéṽîçéš~~~~⟧
 remote-devices-trusted-title = ⟦Ţŕûšţéð Çøñţŕøļļéŕš~~~~~~⟧
 remote-devices-unavailable = ⟦Ŕéɱøţé Ðéṽîçéš ûñåṽåîļåƀļé · éẋîšţîñĝ ţŕûšţ ŵåš ñøţ çĥåñĝéð~~~~~~~~~~~~~~~~~~~~~~⟧
+remote-terminals-applied-notice = ⟦Šĥéļļ šţåŕţûþ ûþðåţéð. Ñéŵ ţéŕɱîñåļš øþéñ îñ ţɱûẋ.~~~~~~~~~~~~~~~~~~⟧
+remote-terminals-apply-action = ⟦Åþþļý çĥåñĝéš~~~~⟧
+remote-terminals-cancel-action = ⟦Çåñçéļ~⟧
+remote-terminals-changed-error = ⟦Å ƒîļé çĥåñĝéð åƒţéŕ ýøû ŕéṽîéŵéð îţ. Ñøţĥîñĝ ŵåš ŵŕîţţéñ. Ŕéṽîéŵ ţĥé çĥåñĝéš åĝåîñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+remote-terminals-description = ⟦Þåîŕéð ðéṽîçéš çåñ ŵåţçĥ åñð ţýþé îñţø ţɱûẋ šéššîøñš, îñçļûðîñĝ ţéŕɱîñåļš ýøû øþéñ îñ Ţéŕɱîñåļ, Žéð, îŢéŕɱ2, Ĝĥøšţţý, øŕ ŴéžŢéŕɱ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+remote-terminals-diff-skipped = { $count ->
+    [many] { $count }⟦ ûñçĥåñĝéð ļîñéš~~~~~⟧
+    [one] ⟦1 ûñçĥåñĝéð ļîñé~~~~~⟧
+   *[other] { $count }⟦ ûñçĥåñĝéð ļîñéš~~~~~⟧
+    [zero] ⟦Ñø ûñçĥåñĝéð ļîñéš~~~~~~⟧
+    }
+remote-terminals-discovery-description = ⟦Ļîšţš éṽéŕý ţɱûẋ šéššîøñ øñ ţĥîš çøɱþûţéŕ ƒøŕ þåîŕéð ðéṽîçéš. Çĥåñĝîñĝ ţĥîš ŕéšţåŕţš ţĥé ļîšţéñéŕ, šø çøññéçţéð ðéṽîçéš ŕéçøññéçţ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+remote-terminals-discovery-hide = ⟦Ĥîðé⟧
+remote-terminals-discovery-label = ⟦Šĥøŵ ţɱûẋ šéššîøñš~~~~~~⟧
+remote-terminals-discovery-saved = ⟦ţɱûẋ šéššîøñ šĥåŕîñĝ ûþðåţéð.~~~~~~~~~~⟧
+remote-terminals-discovery-show = ⟦Šĥøŵ⟧
+remote-terminals-file-created = ⟦Ñéŵ ƒîļé~~⟧
+remote-terminals-file-deleted = ⟦Ŵîļļ ƀé ðéļéţéð~~~~⟧
+remote-terminals-file-edited = ⟦Éðîţéð~⟧
+remote-terminals-malformed-error = ⟦Ýøûŕ šĥéļļ šţåŕţûþ ƒîļé ĥåš åñ îñçøɱþļéţé ŢéŕɱîŔûšţ ƀļøçķ. Ðéļéţé ţĥé ļîñéš ƀéţŵééñ ţĥé ŢéŕɱîŔûšţ ɱåŕķéŕš, ţĥéñ ţŕý åĝåîñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+remote-terminals-no-wrap-hint = ⟦Ţø ķééþ øñé åþþ øûţ øƒ ţɱûẋ, šéţ ŢÉŔṀÎŔÛŠŢ_ÑØ_ŴŔÅÞ=1 îñ ţĥåţ åþþ'š éñṽîŕøñɱéñţ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+remote-terminals-preview-empty = ⟦Éṽéŕýţĥîñĝ îš åļŕéåðý šéţ ûþ. Ñøţĥîñĝ ŵîļļ çĥåñĝé.~~~~~~~~~~~~~~~~~~⟧
+remote-terminals-preview-title = ⟦ŢéŕɱîŔûšţ ŵîļļ çĥåñĝé ţĥéšé ƒîļéš~~~~~~~~~~~~⟧
+remote-terminals-remove-action = ⟦Ŕéɱøṽé ƒŕøɱ ɱý ƒîļéš~~~~~~⟧
+remote-terminals-removed-notice = ⟦Ŕéɱøṽéð ƒŕøɱ ýøûŕ ƒîļéš. Ñéŵ ţéŕɱîñåļš øþéñ ŵîţĥøûţ ţɱûẋ.~~~~~~~~~~~~~~~~~~~~~⟧
+remote-terminals-review-disable-action = ⟦Ŕéṽîéŵ ŕéɱøṽåļ~~~~⟧
+remote-terminals-review-enable-action = ⟦Ŕéṽîéŵ çĥåñĝéš~~~~⟧
+remote-terminals-status-off = ⟦Ñøţ šéţ ûþ~~⟧
+remote-terminals-status-on = ⟦Šéţ ûþ~⟧
+remote-terminals-status-partial = ⟦Þåŕţļý šéţ ûþ. Ŕéṽîéŵ ţĥé çĥåñĝéš ţø ŕéþåîŕ îţ.~~~~~~~~~~~~~~~~~⟧
+remote-terminals-title = ⟦Ţéŕɱîñåļš øþéñéð îñ øţĥéŕ åþþš~~~~~~~~~~⟧
+remote-terminals-tmux-missing = ⟦ţɱûẋ îš ñøţ îñšţåļļéð. Îñšţåļļ îţ ŵîţĥ Ĥøɱéƀŕéŵ (ƀŕéŵ îñšţåļļ ţɱûẋ), ţĥéñ çĥéçķ åĝåîñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+remote-terminals-tmux-too-old = ⟦Ţĥîš ṽéŕšîøñ øƒ ţɱûẋ îš ţøø øļð. Ŕéɱøţé ţéŕɱîñåļš ñééð ţɱûẋ 3.2 øŕ ļåţéŕ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+remote-terminals-unsupported = ⟦Ţéŕɱîñåļ šéţûþ îš åṽåîļåƀļé øñ ɱåçØŠ åñð Ļîñûẋ. Ŵîñðøŵš šéţûþ îš ñøţ åṽåîļåƀļé ýéţ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+remote-terminals-verify-action = ⟦Çĥéçķ šéţûþ~~~⟧
+remote-terminals-verify-failed = ⟦ŢéŕɱîŔûšţ çøûļð ñøţ ļîšţ ţɱûẋ šéššîøñš. Øþéñ å ţéŕɱîñåļ åñð çĥéçķ ţĥåţ ţɱûẋ šţåŕţš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+remote-terminals-verify-ok = ⟦ţɱûẋ šéššîøñš åŕé ļîšţéð çøŕŕéçţļý. Þåîŕéð ðéṽîçéš çåñ šéé ţĥéɱ.~~~~~~~~~~~~~~~~~~~~~~~~⟧
+remote-terminals-verify-ok-hidden = ⟦ţɱûẋ ŵøŕķš, ƀûţ þåîŕéð ðéṽîçéš çåññøţ šéé šéššîøñš ûñţîļ Šĥøŵ ţɱûẋ šéššîøñš îš øñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+remote-terminals-verify-running = ⟦Çĥéçķîñĝ ţɱûẋ~~~~⟧
+remote-terminals-wrap-description = ⟦Åððš øñé ɱåŕķéð ƀļøçķ ţø ýøûŕ šĥéļļ šţåŕţûþ ƒîļé. Ţéŕɱîñåļš ţĥåţ åŕé åļŕéåðý øþéñ šţåý ûñŕéåçĥåƀļé ûñţîļ ýøû øþéñ ţĥéɱ åĝåîñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+remote-terminals-wrap-label = ⟦Øþéñ ñéŵ ţéŕɱîñåļš îñ ţɱûẋ~~~~~~~~~⟧
+remote-terminals-write-error = ⟦ŢéŕɱîŔûšţ çøûļð ñøţ ûþðåţé ýøûŕ šĥéļļ šţåŕţûþ ƒîļéš. Çĥéçķ ţĥéîŕ þéŕɱîššîøñš, ţĥéñ ţŕý åĝåîñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 runtime-capabilities-none = ⟦Ñø ṽéŕîƒîéð šéɱåñţîç çåþåƀîļîţîéš~~~~~~~~~~~~⟧
 runtime-capability-approvals = ⟦Åþþŕøṽåļ ŕéʠûéšţš~~~~~⟧
 runtime-capability-cancellation = ⟦Çåñçéļļåţîøñ~~~⟧

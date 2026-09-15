@@ -1785,7 +1785,7 @@ impl TermiRustApp {
             .child(body)
     }
 
-    fn settings_subhead(
+    pub(super) fn settings_subhead(
         &self,
         title: impl Into<SharedString>,
         hint: impl Into<SharedString>,

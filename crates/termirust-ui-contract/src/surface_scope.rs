@@ -51,6 +51,10 @@ pub fn files_for_surface(surface: &str) -> Option<&'static [SurfaceFile]> {
                 marked: false,
             },
             SurfaceFile {
+                path: "crates/termirust-desktop/src/ui/app/remote_terminals.rs",
+                marked: false,
+            },
+            SurfaceFile {
                 path: "crates/termirust-desktop/src/ui/settings.rs",
                 marked: false,
             },

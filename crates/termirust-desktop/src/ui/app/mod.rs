@@ -24,6 +24,7 @@ mod project;
 mod project_coordinator;
 mod projects;
 mod remote_devices;
+mod remote_terminals;
 mod replication_settings;
 mod runtimes;
 mod session_coordinator;
@@ -1323,6 +1324,7 @@ pub struct TermiRustApp {
     artifact_gallery: artifact_gallery::ArtifactGalleryState,
     activity_center: ActivityCenterState,
     remote_devices: RemoteDevicesState,
+    remote_terminals: remote_terminals::RemoteTerminalsState,
     desktop_panes: DesktopPaneRegistry,
     _desktop_pane_bridge_server: Option<DesktopPaneBridgeServer>,
     dev_url_ui: DevUrlUiState,
@@ -1690,6 +1692,7 @@ impl TermiRustApp {
             artifact_gallery,
             activity_center,
             remote_devices,
+            remote_terminals: remote_terminals::RemoteTerminalsState::open_default(),
             desktop_panes,
             _desktop_pane_bridge_server: desktop_pane_bridge_server,
             dev_url_ui: DevUrlUiState::open_default(cx),
@@ -26967,6 +26970,119 @@ sleep 1
                     .contains("Password is available from the system credential store.")
             );
         });
+    }
+
+    #[gpui::test]
+    fn e2e_remote_terminal_setup_previews_applies_and_removes_shell_changes(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let home = tempfile::tempdir().unwrap();
+        let zshrc = home.path().join(".zshrc");
+        let original = "setopt autocd\n";
+        std::fs::write(&zshrc, original).unwrap();
+        let home_path = home.path().to_path_buf();
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.remote_terminals = super::remote_terminals::RemoteTerminalsState::open(
+                        Some(home_path.clone()),
+                        Some("/bin/zsh".to_string()),
+                    );
+                    app.activate_library_section(NavSection::Devices, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let click = |cx: &mut TestAppContext, selector: &'static str| {
+            scroll_selector_into_view(window, cx, "devices-scroll", selector);
+            let point = selector_click_center(window, cx, selector);
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.simulate_click(point, gpui::Modifiers::none());
+            visual.run_until_parked();
+        };
+
+        click(cx, "remote-terminals-sharing-0");
+        app.read_with(cx, |app, _| {
+            assert!(app.saved.settings.remote_tmux_sessions);
+            assert!(app.remote_devices.tmux_sessions());
+        });
+        click(cx, "remote-terminals-sharing-1");
+        app.read_with(cx, |app, _| {
+            assert!(!app.saved.settings.remote_tmux_sessions);
+            assert!(!app.remote_devices.tmux_sessions());
+        });
+
+        let ready = app.read_with(cx, |app, _| {
+            app.remote_terminals.availability() == super::remote_terminals::TmuxAvailability::Ready
+        });
+        if !ready {
+            eprintln!("skipping remote terminal file changes: tmux is unavailable");
+            return;
+        }
+
+        click(cx, "remote-terminals-review-enable");
+        app.read_with(cx, |app, _| {
+            assert!(app.remote_terminals.has_pending_change());
+        });
+        assert_eq!(
+            std::fs::read_to_string(&zshrc).unwrap(),
+            original,
+            "reviewing must not write"
+        );
+        click(cx, "remote-terminals-cancel");
+        app.read_with(cx, |app, _| {
+            assert!(!app.remote_terminals.has_pending_change());
+        });
+        assert_eq!(std::fs::read_to_string(&zshrc).unwrap(), original);
+
+        click(cx, "remote-terminals-review-enable");
+        click(cx, "remote-terminals-apply");
+        app.read_with(cx, |app, _| {
+            assert!(!app.remote_terminals.has_pending_change());
+            assert_eq!(
+                app.remote_terminals.status(),
+                &termirust_tmux::shell_integration::IntegrationStatus::On(vec![
+                    termirust_tmux::shell_integration::Shell::Zsh
+                ])
+            );
+            assert_eq!(
+                app.status_message,
+                localization::remote_terminals_applied_notice()
+            );
+        });
+        let installed = std::fs::read_to_string(&zshrc).unwrap();
+        assert!(installed.starts_with(original));
+        assert!(installed.contains(termirust_tmux::shell_integration::BLOCK_START));
+        assert!(
+            home.path()
+                .join(".config/termirust/shell-init.zsh")
+                .is_file()
+        );
+
+        click(cx, "remote-terminals-review-disable");
+        click(cx, "remote-terminals-apply");
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.remote_terminals.status(),
+                &termirust_tmux::shell_integration::IntegrationStatus::Off
+            );
+            assert_eq!(
+                app.status_message,
+                localization::remote_terminals_removed_notice()
+            );
+        });
+        assert_eq!(std::fs::read_to_string(&zshrc).unwrap(), original);
+        assert!(
+            !home
+                .path()
+                .join(".config/termirust/shell-init.zsh")
+                .exists()
+        );
     }
 
     #[gpui::test]

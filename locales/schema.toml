@@ -4518,6 +4518,161 @@ description = "Controller pairing codes match action"
 id = "remote-devices-pairing-reject-action"
 context = "Safe-default action that rejects Controller pairing."
 description = "Reject Controller pairing action"
+[[messages]]
+id = "remote-terminals-title"
+context = "Heading for the Remote Devices section about terminals opened outside TermiRust."
+description = "Remote terminals section title"
+[[messages]]
+id = "remote-terminals-description"
+context = "Explanation below the remote terminals heading naming the supported terminal apps."
+description = "Remote terminals section explanation"
+[[messages]]
+id = "remote-terminals-discovery-label"
+context = "Label for the choice that lists tmux sessions to paired devices."
+description = "Show tmux sessions label"
+[[messages]]
+id = "remote-terminals-discovery-description"
+context = "Explains tmux session sharing and that changing it restarts the listener."
+description = "Show tmux sessions explanation"
+[[messages]]
+id = "remote-terminals-discovery-show"
+context = "Segmented choice that lists tmux sessions to paired devices."
+description = "Show tmux sessions choice"
+[[messages]]
+id = "remote-terminals-discovery-hide"
+context = "Segmented choice that hides tmux sessions from paired devices."
+description = "Hide tmux sessions choice"
+[[messages]]
+id = "remote-terminals-discovery-saved"
+context = "Notice after changing whether paired devices see tmux sessions."
+description = "tmux session sharing saved notice"
+[[messages]]
+id = "remote-terminals-wrap-label"
+context = "Label for the setup that starts new terminals inside tmux."
+description = "Open new terminals in tmux label"
+[[messages]]
+id = "remote-terminals-wrap-description"
+context = "Explains the shell startup change and that already open terminals stay unreachable."
+description = "Open new terminals in tmux explanation"
+[[messages]]
+id = "remote-terminals-status-off"
+context = "Status when new terminals are not set up to start in tmux."
+description = "Terminal setup off status"
+[[messages]]
+id = "remote-terminals-status-on"
+context = "Status when new terminals start in tmux."
+description = "Terminal setup on status"
+[[messages]]
+id = "remote-terminals-status-partial"
+context = "Status when the terminal setup is incomplete and can be repaired."
+description = "Terminal setup partial status"
+[[messages]]
+id = "remote-terminals-tmux-missing"
+context = "Guidance when tmux is not installed, naming the Homebrew install command."
+description = "tmux missing guidance"
+[[messages]]
+id = "remote-terminals-tmux-too-old"
+context = "Guidance when the installed tmux is older than the required version."
+description = "tmux too old guidance"
+[[messages]]
+id = "remote-terminals-unsupported"
+context = "Guidance on platforms where terminal setup is not available."
+description = "Terminal setup unsupported guidance"
+[[messages]]
+id = "remote-terminals-review-enable-action"
+context = "Action that previews the file changes that set up terminals in tmux."
+description = "Review setup changes action"
+[[messages]]
+id = "remote-terminals-review-disable-action"
+context = "Action that previews the file changes that remove the terminal setup."
+description = "Review removal action"
+[[messages]]
+id = "remote-terminals-apply-action"
+context = "Action that writes the previewed setup changes."
+description = "Apply setup changes action"
+[[messages]]
+id = "remote-terminals-remove-action"
+context = "Destructive action that writes the previewed removal."
+description = "Remove terminal setup action"
+[[messages]]
+id = "remote-terminals-cancel-action"
+context = "Action that closes the file change preview without writing."
+description = "Cancel file change preview action"
+[[messages]]
+id = "remote-terminals-preview-title"
+context = "Heading above the preview of file changes."
+description = "File change preview title"
+[[messages]]
+id = "remote-terminals-preview-empty"
+context = "Preview state when the setup is already complete."
+description = "Nothing to change status"
+[[messages]]
+id = "remote-terminals-file-created"
+context = "Badge on a file the preview will create."
+description = "New file badge"
+[[messages]]
+id = "remote-terminals-file-deleted"
+context = "Badge on an app-owned file the preview will delete."
+description = "Deleted file badge"
+[[messages]]
+id = "remote-terminals-file-edited"
+context = "Badge on an existing file the preview will edit."
+description = "Edited file badge"
+[[messages]]
+id = "remote-terminals-diff-skipped"
+context = "Placeholder for unchanged lines hidden in a file change preview."
+description = "Hidden unchanged lines count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "remote-terminals-applied-notice"
+context = "Notice after the setup changes were written."
+description = "Terminal setup applied notice"
+[[messages]]
+id = "remote-terminals-removed-notice"
+context = "Notice after the setup was removed from the user's files."
+description = "Terminal setup removed notice"
+[[messages]]
+id = "remote-terminals-changed-error"
+context = "Error when a file changed between preview and apply; nothing was written."
+description = "File changed after preview error"
+[[messages]]
+id = "remote-terminals-malformed-error"
+context = "Error when a startup file has an incomplete TermiRust block, with recovery steps."
+description = "Incomplete startup block error"
+[[messages]]
+id = "remote-terminals-write-error"
+context = "Error when the setup files could not be read or written, with a recovery step."
+description = "Terminal setup write error"
+[[messages]]
+id = "remote-terminals-verify-action"
+context = "Action that checks that tmux sessions can be listed."
+description = "Check terminal setup action"
+[[messages]]
+id = "remote-terminals-verify-running"
+context = "Status while the tmux check runs."
+description = "Checking tmux status"
+[[messages]]
+id = "remote-terminals-verify-ok"
+context = "Result when tmux sessions are listed and shared with paired devices."
+description = "tmux check passed result"
+[[messages]]
+id = "remote-terminals-verify-ok-hidden"
+context = "Result when tmux works but sessions are hidden from paired devices."
+description = "tmux check passed but hidden result"
+[[messages]]
+id = "remote-terminals-verify-failed"
+context = "Result when tmux sessions could not be listed, with a recovery step."
+description = "tmux check failed result"
+[[messages]]
+id = "remote-terminals-no-wrap-hint"
+context = "Hint naming the environment variable that keeps one app out of tmux."
+description = "Keep an app out of tmux hint"
 
 [[messages]]
 id = "accessibility-lab-title"

@@ -600,6 +600,120 @@ pub fn recovery_error_verification() -> String {
     health_error_storage()
 }
 
+static_message!(remote_terminals_title, RemoteTerminalsTitleArgs);
+static_message!(remote_terminals_description, RemoteTerminalsDescriptionArgs);
+static_message!(
+    remote_terminals_discovery_label,
+    RemoteTerminalsDiscoveryLabelArgs
+);
+static_message!(
+    remote_terminals_discovery_description,
+    RemoteTerminalsDiscoveryDescriptionArgs
+);
+static_message!(
+    remote_terminals_discovery_show,
+    RemoteTerminalsDiscoveryShowArgs
+);
+static_message!(
+    remote_terminals_discovery_hide,
+    RemoteTerminalsDiscoveryHideArgs
+);
+static_message!(
+    remote_terminals_discovery_saved,
+    RemoteTerminalsDiscoverySavedArgs
+);
+static_message!(remote_terminals_wrap_label, RemoteTerminalsWrapLabelArgs);
+static_message!(
+    remote_terminals_wrap_description,
+    RemoteTerminalsWrapDescriptionArgs
+);
+static_message!(remote_terminals_status_off, RemoteTerminalsStatusOffArgs);
+static_message!(remote_terminals_status_on, RemoteTerminalsStatusOnArgs);
+static_message!(
+    remote_terminals_status_partial,
+    RemoteTerminalsStatusPartialArgs
+);
+static_message!(
+    remote_terminals_tmux_missing,
+    RemoteTerminalsTmuxMissingArgs
+);
+static_message!(remote_terminals_tmux_too_old, RemoteTerminalsTmuxTooOldArgs);
+static_message!(remote_terminals_unsupported, RemoteTerminalsUnsupportedArgs);
+static_message!(
+    remote_terminals_review_enable_action,
+    RemoteTerminalsReviewEnableActionArgs
+);
+static_message!(
+    remote_terminals_review_disable_action,
+    RemoteTerminalsReviewDisableActionArgs
+);
+static_message!(
+    remote_terminals_apply_action,
+    RemoteTerminalsApplyActionArgs
+);
+static_message!(
+    remote_terminals_remove_action,
+    RemoteTerminalsRemoveActionArgs
+);
+static_message!(
+    remote_terminals_cancel_action,
+    RemoteTerminalsCancelActionArgs
+);
+static_message!(
+    remote_terminals_preview_title,
+    RemoteTerminalsPreviewTitleArgs
+);
+static_message!(
+    remote_terminals_preview_empty,
+    RemoteTerminalsPreviewEmptyArgs
+);
+static_message!(
+    remote_terminals_file_created,
+    RemoteTerminalsFileCreatedArgs
+);
+static_message!(
+    remote_terminals_file_deleted,
+    RemoteTerminalsFileDeletedArgs
+);
+static_message!(remote_terminals_file_edited, RemoteTerminalsFileEditedArgs);
+static_message!(
+    remote_terminals_applied_notice,
+    RemoteTerminalsAppliedNoticeArgs
+);
+static_message!(
+    remote_terminals_removed_notice,
+    RemoteTerminalsRemovedNoticeArgs
+);
+static_message!(
+    remote_terminals_changed_error,
+    RemoteTerminalsChangedErrorArgs
+);
+static_message!(
+    remote_terminals_malformed_error,
+    RemoteTerminalsMalformedErrorArgs
+);
+static_message!(remote_terminals_write_error, RemoteTerminalsWriteErrorArgs);
+static_message!(
+    remote_terminals_verify_action,
+    RemoteTerminalsVerifyActionArgs
+);
+static_message!(
+    remote_terminals_verify_running,
+    RemoteTerminalsVerifyRunningArgs
+);
+static_message!(remote_terminals_verify_ok, RemoteTerminalsVerifyOkArgs);
+static_message!(
+    remote_terminals_verify_ok_hidden,
+    RemoteTerminalsVerifyOkHiddenArgs
+);
+static_message!(
+    remote_terminals_verify_failed,
+    RemoteTerminalsVerifyFailedArgs
+);
+static_message!(remote_terminals_no_wrap_hint, RemoteTerminalsNoWrapHintArgs);
+pub fn remote_terminals_diff_skipped(count: usize) -> String {
+    text(&RemoteTerminalsDiffSkippedArgs::new(Count(count as u64)))
+}
 static_message!(remote_devices_title, RemoteDevicesTitleArgs);
 static_message!(remote_devices_description, RemoteDevicesDescriptionArgs);
 static_message!(remote_devices_route_label, RemoteDevicesRouteLabelArgs);

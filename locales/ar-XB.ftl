@@ -1473,6 +1473,48 @@ remote-devices-store-newer = ⁧noisrev tsuRimreT rewen a seriuqer atadatem tsur
 remote-devices-title = ⁧seciveD etomeR⁩
 remote-devices-trusted-title = ⁧srellortnoC detsurT⁩
 remote-devices-unavailable = ⁧degnahc ton saw tsurt gnitsixe · elbaliavanu seciveD etomeR⁩
+remote-terminals-applied-notice = ⁧.xumt ni nepo slanimret weN .detadpu putrats llehS⁩
+remote-terminals-apply-action = ⁧segnahc ylppA⁩
+remote-terminals-cancel-action = ⁧lecnaC⁩
+remote-terminals-changed-error = ⁧.niaga segnahc eht weiveR .nettirw saw gnihtoN .ti deweiver uoy retfa degnahc elif A⁩
+remote-terminals-description = ⁧.mreTzeW ro ,yttsohG ,2mreTi ,deZ ,lanimreT ni nepo uoy slanimret gnidulcni ,snoisses xumt otni epyt dna hctaw nac secived deriaP⁩
+remote-terminals-diff-skipped = { $count ->
+    [many] { $count }⁧senil degnahcnu ⁩
+    [one] ⁧enil degnahcnu 1⁩
+   *[other] { $count }⁧senil degnahcnu ⁩
+    [zero] ⁧senil degnahcnu oN⁩
+    }
+remote-terminals-discovery-description = ⁧.tcennocer secived detcennoc os ,renetsil eht stratser siht gnignahC .secived deriap rof retupmoc siht no noisses xumt yreve stsiL⁩
+remote-terminals-discovery-hide = ⁧ediH⁩
+remote-terminals-discovery-label = ⁧snoisses xumt wohS⁩
+remote-terminals-discovery-saved = ⁧.detadpu gnirahs noisses xumt⁩
+remote-terminals-discovery-show = ⁧wohS⁩
+remote-terminals-file-created = ⁧elif weN⁩
+remote-terminals-file-deleted = ⁧deteled eb lliW⁩
+remote-terminals-file-edited = ⁧detidE⁩
+remote-terminals-malformed-error = ⁧.niaga yrt neht ,srekram tsuRimreT eht neewteb senil eht eteleD .kcolb tsuRimreT etelpmocni na sah elif putrats llehs ruoY⁩
+remote-terminals-no-wrap-hint = ⁧.tnemnorivne s'ppa taht ni 1=PARW_ON_TSURIMRET tes ,xumt fo tuo ppa eno peek oT⁩
+remote-terminals-preview-empty = ⁧.egnahc lliw gnihtoN .pu tes ydaerla si gnihtyrevE⁩
+remote-terminals-preview-title = ⁧selif eseht egnahc lliw tsuRimreT⁩
+remote-terminals-remove-action = ⁧selif ym morf evomeR⁩
+remote-terminals-removed-notice = ⁧.xumt tuohtiw nepo slanimret weN .selif ruoy morf devomeR⁩
+remote-terminals-review-disable-action = ⁧lavomer weiveR⁩
+remote-terminals-review-enable-action = ⁧segnahc weiveR⁩
+remote-terminals-status-off = ⁧pu tes toN⁩
+remote-terminals-status-on = ⁧pu teS⁩
+remote-terminals-status-partial = ⁧.ti riaper ot segnahc eht weiveR .pu tes yltraP⁩
+remote-terminals-title = ⁧sppa rehto ni denepo slanimreT⁩
+remote-terminals-tmux-missing = ⁧.niaga kcehc neht ,(xumt llatsni werb) werbemoH htiw ti llatsnI .dellatsni ton si xumt⁩
+remote-terminals-tmux-too-old = ⁧.retal ro 2.3 xumt deen slanimret etomeR .dlo oot si xumt fo noisrev sihT⁩
+remote-terminals-unsupported = ⁧.tey elbaliava ton si putes swodniW .xuniL dna SOcam no elbaliava si putes lanimreT⁩
+remote-terminals-verify-action = ⁧putes kcehC⁩
+remote-terminals-verify-failed = ⁧.strats xumt taht kcehc dna lanimret a nepO .snoisses xumt tsil ton dluoc tsuRimreT⁩
+remote-terminals-verify-ok = ⁧.meht ees nac secived deriaP .yltcerroc detsil era snoisses xumt⁩
+remote-terminals-verify-ok-hidden = ⁧.no si snoisses xumt wohS litnu snoisses ees tonnac secived deriap tub ,skrow xumt⁩
+remote-terminals-verify-running = ⁧xumt gnikcehC⁩
+remote-terminals-wrap-description = ⁧.niaga meht nepo uoy litnu elbahcaernu yats nepo ydaerla era taht slanimreT .elif putrats llehs ruoy ot kcolb dekram eno sddA⁩
+remote-terminals-wrap-label = ⁧xumt ni slanimret wen nepO⁩
+remote-terminals-write-error = ⁧.niaga yrt neht ,snoissimrep rieht kcehC .selif putrats llehs ruoy etadpu ton dluoc tsuRimreT⁩
 runtime-capabilities-none = ⁧seitilibapac citnames deifirev oN⁩
 runtime-capability-approvals = ⁧stseuqer lavorppA⁩
 runtime-capability-cancellation = ⁧noitallecnaC⁩

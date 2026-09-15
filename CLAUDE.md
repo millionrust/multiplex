@@ -46,6 +46,10 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
   and SSH terminals, interactive or structured coding agents, sticky notes, and
   group frames in persisted, draggable, resizable nodes with reviewed context
   links and bounded dependency orchestration.
+- Paired mobile controllers can list, watch, and type into tmux sessions the app did not
+  create when "Show tmux sessions" is on (LAN route). Devices also offers a previewed,
+  reversible shell startup change that starts new Terminal, Zed, iTerm2, Ghostty, WezTerm,
+  and VS Code terminal tabs inside tmux. See `docs/remote-terminals.md`.
 - Saved host groups can open directly as SSH Fleet canvases. The fleet panel
   summarizes connection and tmux state and provides guarded reconnect,
   broadcast-input, and disconnect controls without removing canvas nodes.
@@ -106,6 +110,11 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
   context redaction, worktree ownership, and dependency scheduling.
 - [crates/termirust-desktop/src/ui/theme.rs](crates/termirust-desktop/src/ui/theme.rs)
   - App color system and layout constants.
+- `crates/termirust-tmux/` — the one GPUI-free tmux integration: binary discovery, bounded
+  `list-sessions` parsing, attach arguments, a listing self-check, and
+  `shell_integration` (the previewed, conflict-checked startup-file change and its removal).
+  The Controller listener's `tmux_sessions.rs` uses it to publish tmux sessions and attach
+  through shared in-process Session Hosts running `tmux attach-session -f ignore-size`.
 - `crates/termirust-slate/` — Slate, the styled component library the desktop app will move to.
   - Built on `gpui-base` 0.6 (behavior: focus, keyboard, overlays, accessibility) over the
     `gpui-pre` 0.3 snapshots, which coexist in the workspace with the app's `gpui` 0.2.2.

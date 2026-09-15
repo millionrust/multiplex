@@ -2,7 +2,7 @@
 //!
 //! It finds the tmux binary, lists the sessions on the user's default tmux server, and
 //! builds the arguments that attach a second client without resizing the user's window.
-//! It never starts or kills a session. Session names and commands are user data, so the
+//! It never ends a session it did not start. Session names and commands are user data, so the
 //! `Debug` output of [`TmuxSession`] redacts them.
 
 use std::ffi::OsString;
@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
+
+pub mod shell_integration;
 
 /// Overrides binary discovery with one exact tmux path.
 pub const TMUX_PATH_ENV: &str = "TERMIRUST_TMUX_PATH";
@@ -242,6 +244,65 @@ impl Tmux {
             diagnostic: bounded_diagnostic(stderr.trim()),
         })
     }
+
+    /// Proves the path a paired device uses: starts a throwaway detached session, finds it
+    /// in a listing, and ends it. Only the throwaway session is ever ended.
+    pub fn verify_listing(&self) -> Result<(), VerificationError> {
+        if !self.supports_ignore_size() {
+            return Err(VerificationError::TooOld);
+        }
+        let name = format!(
+            "termirust-check-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        );
+        let mut command = self.command();
+        command.args([
+            "new-session",
+            "-d",
+            "-P",
+            "-F",
+            "#{session_id}",
+            "-s",
+            &name,
+            "/bin/sh",
+        ]);
+        let output = run_bounded(command, COMMAND_TIMEOUT).map_err(VerificationError::Tmux)?;
+        if !output.status.success() {
+            return Err(VerificationError::Tmux(TmuxError::CommandFailed {
+                status: output.status.code(),
+                diagnostic: bounded_diagnostic(String::from_utf8_lossy(&output.stderr).trim()),
+            }));
+        }
+        let id = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        let listed = self.list_sessions();
+        if id.starts_with('$') {
+            let mut kill = self.command();
+            kill.args(["kill-session", "-t", &id]);
+            let _ = run_bounded(kill, COMMAND_TIMEOUT);
+        }
+        let listing = listed.map_err(VerificationError::Tmux)?;
+        if listing
+            .sessions
+            .iter()
+            .any(|session| session.id() == id && session.name == name)
+        {
+            Ok(())
+        } else {
+            Err(VerificationError::NotListed)
+        }
+    }
+}
+
+/// Why [`Tmux::verify_listing`] failed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum VerificationError {
+    TooOld,
+    Tmux(TmuxError),
+    NotListed,
 }
 
 /// `PATH` entries joined with `tmux`, then the well-known install locations.
