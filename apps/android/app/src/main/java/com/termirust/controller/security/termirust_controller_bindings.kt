@@ -709,6 +709,10 @@ internal object IntegrityCheckingUniffiLib {
         uniffiCheckContractApiVersion(this)
         uniffiCheckApiChecksums(this)
     }
+    external fun uniffi_termirust_controller_bindings_checksum_method_controllercodepairing_finish(
+    ): Int
+    external fun uniffi_termirust_controller_bindings_checksum_method_controllercodepairing_share(
+    ): Int
     external fun uniffi_termirust_controller_bindings_checksum_method_controllerconnectionsession_authorize(
     ): Int
     external fun uniffi_termirust_controller_bindings_checksum_method_controllerconnectionsession_finish(
@@ -725,6 +729,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_termirust_controller_bindings_checksum_method_controllerpairingsession_cancel(
     ): Int
+    external fun uniffi_termirust_controller_bindings_checksum_method_controllerpairingsession_confirm_code_pairing(
+    ): Int
     external fun uniffi_termirust_controller_bindings_checksum_method_controllerpairingsession_confirm_or_reject(
     ): Int
     external fun uniffi_termirust_controller_bindings_checksum_method_controllerpairingsession_finish(
@@ -740,6 +746,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_termirust_controller_bindings_checksum_method_controllerpairingsession_sas(
     ): Int
     external fun uniffi_termirust_controller_bindings_checksum_method_controllerpairingsession_seal_frame(
+    ): Int
+    external fun uniffi_termirust_controller_bindings_checksum_method_controllersecurityengine_code_pairing_start(
     ): Int
     external fun uniffi_termirust_controller_bindings_checksum_method_controllersecurityengine_connection_prelude(
     ): Int
@@ -784,6 +792,14 @@ internal object UniffiLib {
         uniffiCallbackInterfaceSecureBlobStore.register(this)
 
     }
+    external fun uniffi_termirust_controller_bindings_fn_clone_controllercodepairing(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_termirust_controller_bindings_fn_free_controllercodepairing(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_termirust_controller_bindings_fn_method_controllercodepairing_finish(`ptr`: Long,`request`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_termirust_controller_bindings_fn_method_controllercodepairing_share(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_termirust_controller_bindings_fn_clone_controllerconnectionsession(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_termirust_controller_bindings_fn_free_controllerconnectionsession(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -808,6 +824,8 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_termirust_controller_bindings_fn_method_controllerpairingsession_cancel(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_termirust_controller_bindings_fn_method_controllerpairingsession_confirm_code_pairing(`ptr`: Long,`revocationEpoch`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_termirust_controller_bindings_fn_method_controllerpairingsession_confirm_or_reject(`ptr`: Long,`confirmation`: RustBuffer.ByValue,`comparedSas`: RustBuffer.ByValue,`revocationEpoch`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     external fun uniffi_termirust_controller_bindings_fn_method_controllerpairingsession_finish(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -829,6 +847,8 @@ internal object UniffiLib {
     external fun uniffi_termirust_controller_bindings_fn_free_controllersecurityengine(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     external fun uniffi_termirust_controller_bindings_fn_constructor_controllersecurityengine_new(`blobs`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_termirust_controller_bindings_fn_method_controllersecurityengine_code_pairing_start(`ptr`: Long,`request`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_termirust_controller_bindings_fn_method_controllersecurityengine_connection_prelude(`ptr`: Long,`request`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
@@ -977,6 +997,12 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
+    if (lib.uniffi_termirust_controller_bindings_checksum_method_controllercodepairing_finish() != 36498) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_termirust_controller_bindings_checksum_method_controllercodepairing_share() != 25620) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_termirust_controller_bindings_checksum_method_controllerconnectionsession_authorize() != 53115) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1001,6 +1027,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_termirust_controller_bindings_checksum_method_controllerpairingsession_cancel() != 42824) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_termirust_controller_bindings_checksum_method_controllerpairingsession_confirm_code_pairing() != 29774) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_termirust_controller_bindings_checksum_method_controllerpairingsession_confirm_or_reject() != 1218) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1023,6 +1052,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_termirust_controller_bindings_checksum_method_controllerpairingsession_seal_frame() != 38254) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_termirust_controller_bindings_checksum_method_controllersecurityengine_code_pairing_start() != 49816) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_termirust_controller_bindings_checksum_method_controllersecurityengine_connection_prelude() != 51279) {
@@ -1372,6 +1404,299 @@ public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
     override fun write(value: ByteArray, buf: ByteBuffer) {
         buf.putInt(value.size)
         buf.put(value)
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * The phone's half of the code key exchange, used once.
+ */
+public interface ControllerCodePairingInterface {
+
+    /**
+     * Completes the exchange with the Host's share and returns a pairing session bound to the
+     * code. Run its three handshake messages, then call `confirm_code_pairing`.
+     */
+    fun `finish`(`request`: CodePairingFinishRequest): ControllerPairingSession
+
+    /**
+     * The 32-byte share to send to the Host.
+     */
+    fun `share`(): kotlin.ByteArray
+
+    companion object
+}
+
+/**
+ * The phone's half of the code key exchange, used once.
+ */
+open class ControllerCodePairing: Disposable, AutoCloseable, ControllerCodePairingInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_termirust_controller_bindings_fn_free_controllercodepairing(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_termirust_controller_bindings_fn_clone_controllercodepairing(handle, status)
+        }
+    }
+
+
+    /**
+     * Completes the exchange with the Host's share and returns a pairing session bound to the
+     * code. Run its three handshake messages, then call `confirm_code_pairing`.
+     */
+    @Throws(ControllerBindingException::class)override fun `finish`(`request`: CodePairingFinishRequest): ControllerPairingSession {
+            return FfiConverterTypeControllerPairingSession.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ControllerBindingException) { _status ->
+    UniffiLib.uniffi_termirust_controller_bindings_fn_method_controllercodepairing_finish(
+        it,
+
+        FfiConverterTypeCodePairingFinishRequest.lower(`request`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * The 32-byte share to send to the Host.
+     */
+    @Throws(ControllerBindingException::class)override fun `share`(): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ControllerBindingException) { _status ->
+    UniffiLib.uniffi_termirust_controller_bindings_fn_method_controllercodepairing_share(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeControllerCodePairing: FfiConverter<ControllerCodePairing, Long> {
+    override fun lower(value: ControllerCodePairing): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): ControllerCodePairing {
+        return ControllerCodePairing(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): ControllerCodePairing {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: ControllerCodePairing) = 8UL
+
+    override fun write(value: ControllerCodePairing, buf: ByteBuffer) {
+        buf.putLong(lower(value))
     }
 }
 
@@ -1822,6 +2147,12 @@ public interface ControllerPairingSessionInterface {
 
     fun `cancel`()
 
+    /**
+     * Confirms a session started by `ControllerCodePairing::finish` once its handshake has
+     * completed. Completing the handshake already proved both sides used the same code.
+     */
+    fun `confirmCodePairing`(`revocationEpoch`: kotlin.ULong): PairingPublicResult
+
     fun `confirmOrReject`(`confirmation`: PairingConfirmation, `comparedSas`: kotlin.String, `revocationEpoch`: kotlin.ULong): PairingPublicResult
 
     fun `finish`()
@@ -1969,6 +2300,25 @@ open class ControllerPairingSession: Disposable, AutoCloseable, ControllerPairin
 }
     }
 
+
+
+
+    /**
+     * Confirms a session started by `ControllerCodePairing::finish` once its handshake has
+     * completed. Completing the handshake already proved both sides used the same code.
+     */
+    @Throws(ControllerBindingException::class)override fun `confirmCodePairing`(`revocationEpoch`: kotlin.ULong): PairingPublicResult {
+            return FfiConverterTypePairingPublicResult.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ControllerBindingException) { _status ->
+    UniffiLib.uniffi_termirust_controller_bindings_fn_method_controllerpairingsession_confirm_code_pairing(
+        it,
+
+        FfiConverterULong.lower(`revocationEpoch`),_status)
+}
+    }
+    )
+    }
 
 
 
@@ -2228,6 +2578,12 @@ public object FfiConverterTypeControllerPairingSession: FfiConverter<ControllerP
 
 public interface ControllerSecurityEngineInterface {
 
+    /**
+     * Starts the code key exchange. Send `share()` to the Host, then pass the Host's share to
+     * `finish` to get the pairing session.
+     */
+    fun `codePairingStart`(`request`: CodePairingStartRequest): ControllerCodePairing
+
     fun `connectionPrelude`(`request`: ConnectionStartRequest): kotlin.ByteArray
 
     fun `connectionStart`(`request`: ConnectionStartRequest, `challengeBytes`: kotlin.ByteArray): ControllerConnectionSession
@@ -2356,6 +2712,25 @@ open class ControllerSecurityEngine: Disposable, AutoCloseable, ControllerSecuri
             UniffiLib.uniffi_termirust_controller_bindings_fn_clone_controllersecurityengine(handle, status)
         }
     }
+
+
+    /**
+     * Starts the code key exchange. Send `share()` to the Host, then pass the Host's share to
+     * `finish` to get the pairing session.
+     */
+    @Throws(ControllerBindingException::class)override fun `codePairingStart`(`request`: CodePairingStartRequest): ControllerCodePairing {
+            return FfiConverterTypeControllerCodePairing.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ControllerBindingException) { _status ->
+    UniffiLib.uniffi_termirust_controller_bindings_fn_method_controllersecurityengine_code_pairing_start(
+        it,
+
+        FfiConverterTypeCodePairingStartRequest.lower(`request`),_status)
+}
+    }
+    )
+    }
+
 
 
     @Throws(ControllerBindingException::class)override fun `connectionPrelude`(`request`: ConnectionStartRequest): kotlin.ByteArray {
@@ -2899,6 +3274,119 @@ public object FfiConverterTypeSecureBlobStore: FfiConverter<SecureBlobStore, Lon
 
     override fun write(value: SecureBlobStore, buf: ByteBuffer) {
         buf.putLong(lower(value))
+    }
+}
+
+
+
+data class CodePairingFinishRequest (
+    val `hostShare`: kotlin.ByteArray
+    ,
+    val `staticKeyId`: kotlin.String
+    ,
+    val `ephemeralPrivateKey`: kotlin.ByteArray
+    ,
+    val `nowMillis`: kotlin.ULong
+    ,
+    val `nowUnixSeconds`: kotlin.ULong
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCodePairingFinishRequest: FfiConverterRustBuffer<CodePairingFinishRequest> {
+    override fun read(buf: ByteBuffer): CodePairingFinishRequest {
+        return CodePairingFinishRequest(
+            FfiConverterByteArray.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CodePairingFinishRequest) = (
+            FfiConverterByteArray.allocationSize(value.`hostShare`) +
+            FfiConverterString.allocationSize(value.`staticKeyId`) +
+            FfiConverterByteArray.allocationSize(value.`ephemeralPrivateKey`) +
+            FfiConverterULong.allocationSize(value.`nowMillis`) +
+            FfiConverterULong.allocationSize(value.`nowUnixSeconds`)
+    )
+
+    override fun write(value: CodePairingFinishRequest, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`hostShare`, buf)
+            FfiConverterString.write(value.`staticKeyId`, buf)
+            FfiConverterByteArray.write(value.`ephemeralPrivateKey`, buf)
+            FfiConverterULong.write(value.`nowMillis`, buf)
+            FfiConverterULong.write(value.`nowUnixSeconds`, buf)
+    }
+}
+
+
+
+/**
+ * Starts code pairing on the phone after the Host sent its offer.
+ */
+data class CodePairingStartRequest (
+    /**
+     * Exactly six ASCII digits, as the user typed them.
+     */
+    val `code`: kotlin.String
+    ,
+    val `offerBytes`: kotlin.ByteArray
+    ,
+    /**
+     * The 32-byte nonce the phone sent in its hello.
+     */
+    val `deviceNonce`: kotlin.ByteArray
+    ,
+    /**
+     * 64 fresh random bytes for the key exchange scalar.
+     */
+    val `scalarEntropy`: kotlin.ByteArray
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCodePairingStartRequest: FfiConverterRustBuffer<CodePairingStartRequest> {
+    override fun read(buf: ByteBuffer): CodePairingStartRequest {
+        return CodePairingStartRequest(
+            FfiConverterString.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CodePairingStartRequest) = (
+            FfiConverterString.allocationSize(value.`code`) +
+            FfiConverterByteArray.allocationSize(value.`offerBytes`) +
+            FfiConverterByteArray.allocationSize(value.`deviceNonce`) +
+            FfiConverterByteArray.allocationSize(value.`scalarEntropy`)
+    )
+
+    override fun write(value: CodePairingStartRequest, buf: ByteBuffer) {
+            FfiConverterString.write(value.`code`, buf)
+            FfiConverterByteArray.write(value.`offerBytes`, buf)
+            FfiConverterByteArray.write(value.`deviceNonce`, buf)
+            FfiConverterByteArray.write(value.`scalarEntropy`, buf)
     }
 }
 

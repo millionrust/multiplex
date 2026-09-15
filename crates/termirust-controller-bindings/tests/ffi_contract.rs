@@ -249,3 +249,165 @@ fn ffi_contract_contains_callback_size_cancel_and_disposal_failures() {
     assert_eq!(session.sas(), Err(ControllerBindingError::Disposed));
     assert!(session.finish().is_ok());
 }
+
+#[derive(Deserialize)]
+struct CodeVector {
+    code: String,
+    device_nonce_hex: String,
+    device_scalar_entropy_byte: u8,
+    host_scalar_entropy_byte: u8,
+    offer_hex: String,
+    device_share_hex: String,
+    message_1_hex: String,
+    message_2_hex: String,
+    message_3_hex: String,
+}
+
+fn fixture_key(start: u8) -> [u8; 32] {
+    core::array::from_fn(|index| start.wrapping_add(index as u8))
+}
+
+#[test]
+fn ffi_code_pairing_matches_the_code_vectors_and_confirms_without_a_sas() {
+    use termirust_controller_bindings::{CodePairingFinishRequest, CodePairingStartRequest};
+    use termirust_controller_security::{
+        CodeKeyExchange, PairingCode, PairingMachine, PairingNonce, PairingRole as CoreRole,
+        RevocationEpoch, StaticPrivateKey, decode_offer,
+    };
+
+    let vector: CodeVector = serde_json::from_str(include_str!(
+        "../../termirust-controller-security/tests/vectors/controller-code-v1.json"
+    ))
+    .unwrap();
+    let store = Arc::new(MemoryBlobStore::default());
+    let device = ControllerSecurityEngine::new(store).unwrap();
+    device
+        .store_secure_blob("fixture-device".into(), fixture_key(0x20).to_vec())
+        .unwrap();
+
+    let code_pairing = device
+        .code_pairing_start(CodePairingStartRequest {
+            code: vector.code.clone(),
+            offer_bytes: bytes(&vector.offer_hex),
+            device_nonce: bytes(&vector.device_nonce_hex),
+            scalar_entropy: vec![vector.device_scalar_entropy_byte; 64],
+        })
+        .unwrap();
+    assert_eq!(
+        code_pairing.share().unwrap(),
+        bytes(&vector.device_share_hex)
+    );
+
+    let offer = decode_offer(&bytes(&vector.offer_hex)).unwrap();
+    let host_exchange = CodeKeyExchange::new(
+        CoreRole::HostResponder,
+        &PairingCode::parse(&vector.code).unwrap(),
+        &offer,
+        &PairingNonce(bytes(&vector.device_nonce_hex).try_into().unwrap()),
+        [vector.host_scalar_entropy_byte; 64],
+    )
+    .unwrap();
+    let host_share = host_exchange.share().to_vec();
+    let host_binding = host_exchange
+        .finish(&code_pairing.share().unwrap())
+        .unwrap();
+    let mut host = PairingMachine::new_host_responder_with_code(
+        offer,
+        &host_binding,
+        StaticPrivateKey::from_fixture_bytes(fixture_key(0x00)),
+        StaticPrivateKey::from_fixture_bytes(fixture_key(0x40)),
+        10_000,
+        1_000,
+    )
+    .unwrap();
+
+    let session = code_pairing
+        .finish(CodePairingFinishRequest {
+            host_share,
+            static_key_id: "fixture-device".into(),
+            ephemeral_private_key: fixture_key(0x60).to_vec(),
+            now_millis: 10_000,
+            now_unix_seconds: 1_000,
+        })
+        .unwrap();
+    assert_eq!(
+        code_pairing.share().unwrap_err(),
+        ControllerBindingError::Disposed,
+        "the exchange is single-use"
+    );
+
+    let message_1 = session.pairing_outbound(10_001).unwrap();
+    assert_eq!(message_1, bytes(&vector.message_1_hex));
+    host.read_next(&message_1, 10_002).unwrap();
+    let message_2 = host.write_next(10_003).unwrap();
+    assert_eq!(message_2.as_bytes(), bytes(&vector.message_2_hex));
+    session
+        .pairing_receive(message_2.as_bytes().to_vec(), 10_004)
+        .unwrap();
+    let message_3 = session.pairing_outbound(10_005).unwrap();
+    assert_eq!(message_3, bytes(&vector.message_3_hex));
+    host.read_next(&message_3, 10_006).unwrap();
+
+    let result = session.confirm_code_pairing(4).unwrap();
+    let host = host.confirm_code_authenticated(RevocationEpoch(4)).unwrap();
+    assert_eq!(result.host_static_public_key, host.host_key.0.to_vec());
+    assert_eq!(result.device_static_public_key, host.device_key.0.to_vec());
+    assert_eq!(
+        session
+            .authorize(ControllerCapability::ObserveSessions, 4)
+            .unwrap(),
+        AuthorizationDecision::Allow
+    );
+}
+
+#[test]
+fn ffi_code_pairing_rejects_malformed_codes_and_sas_sessions_cannot_skip_the_sas() {
+    use termirust_controller_bindings::CodePairingStartRequest;
+
+    let vector = vector();
+    let device = ControllerSecurityEngine::new(Arc::new(MemoryBlobStore::default())).unwrap();
+    for code in ["12345", "1234567", "12a456", ""] {
+        assert_eq!(
+            device
+                .code_pairing_start(CodePairingStartRequest {
+                    code: code.into(),
+                    offer_bytes: bytes(&vector.offer_hex),
+                    device_nonce: vec![1; 32],
+                    scalar_entropy: vec![2; 64],
+                })
+                .map(|_| ())
+                .unwrap_err(),
+            ControllerBindingError::InvalidEncoding
+        );
+    }
+    assert_eq!(
+        device
+            .code_pairing_start(CodePairingStartRequest {
+                code: "123456".into(),
+                offer_bytes: bytes(&vector.offer_hex),
+                device_nonce: vec![1; 31],
+                scalar_entropy: vec![2; 64],
+            })
+            .map(|_| ())
+            .unwrap_err(),
+        ControllerBindingError::InvalidEncoding
+    );
+
+    device
+        .store_secure_blob(
+            "fixture-device".into(),
+            bytes(&vector.device_static_private_hex),
+        )
+        .unwrap();
+    let sas_session = device
+        .pairing_start(PairingStartRequest {
+            role: PairingRole::DeviceInitiator,
+            offer_bytes: bytes(&vector.offer_hex),
+            static_key_id: "fixture-device".into(),
+            ephemeral_private_key: bytes(&vector.device_ephemeral_private_hex),
+            now_millis: 1_000,
+            now_unix_seconds: 1_000,
+        })
+        .unwrap();
+    assert!(sas_session.confirm_code_pairing(4).is_err());
+}

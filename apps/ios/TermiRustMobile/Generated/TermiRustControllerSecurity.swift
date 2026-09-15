@@ -567,6 +567,155 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 
 
+/**
+ * The phone's half of the code key exchange, used once.
+ */
+public protocol ControllerCodePairingProtocol: AnyObject, Sendable {
+
+    /**
+     * Completes the exchange with the Host's share and returns a pairing session bound to the
+     * code. Run its three handshake messages, then call `confirm_code_pairing`.
+     */
+    func finish(request: CodePairingFinishRequest) throws  -> ControllerPairingSession
+
+    /**
+     * The 32-byte share to send to the Host.
+     */
+    func share() throws  -> Data
+
+}
+/**
+ * The phone's half of the code key exchange, used once.
+ */
+open class ControllerCodePairing: ControllerCodePairingProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_termirust_controller_bindings_fn_clone_controllercodepairing(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_termirust_controller_bindings_fn_free_controllercodepairing(handle, $0) }
+    }
+
+
+
+
+    /**
+     * Completes the exchange with the Host's share and returns a pairing session bound to the
+     * code. Run its three handshake messages, then call `confirm_code_pairing`.
+     */
+open func finish(request: CodePairingFinishRequest)throws  -> ControllerPairingSession  {
+    return try  FfiConverterTypeControllerPairingSession_lift(try rustCallWithError(FfiConverterTypeControllerBindingError_lift) {
+        uniffiCallStatus in
+    uniffi_termirust_controller_bindings_fn_method_controllercodepairing_finish(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCodePairingFinishRequest_lower(request),uniffiCallStatus
+    )
+})
+}
+
+    /**
+     * The 32-byte share to send to the Host.
+     */
+open func share()throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeControllerBindingError_lift) {
+        uniffiCallStatus in
+    uniffi_termirust_controller_bindings_fn_method_controllercodepairing_share(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+
+
+
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeControllerCodePairing: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = ControllerCodePairing
+
+    public static func lift(_ handle: UInt64) throws -> ControllerCodePairing {
+        return ControllerCodePairing(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: ControllerCodePairing) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ControllerCodePairing {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: ControllerCodePairing, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeControllerCodePairing_lift(_ handle: UInt64) throws -> ControllerCodePairing {
+    return try FfiConverterTypeControllerCodePairing.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeControllerCodePairing_lower(_ value: ControllerCodePairing) -> UInt64 {
+    return FfiConverterTypeControllerCodePairing.lower(value)
+}
+
+
+
+
+
+
 public protocol ControllerConnectionSessionProtocol: AnyObject, Sendable {
 
     func authorize(capability: ControllerCapability, presentedRevocationEpoch: UInt64) throws  -> AuthorizationDecision
@@ -754,6 +903,12 @@ public protocol ControllerPairingSessionProtocol: AnyObject, Sendable {
 
     func cancel() throws
 
+    /**
+     * Confirms a session started by `ControllerCodePairing::finish` once its handshake has
+     * completed. Completing the handshake already proved both sides used the same code.
+     */
+    func confirmCodePairing(revocationEpoch: UInt64) throws  -> PairingPublicResult
+
     func confirmOrReject(confirmation: PairingConfirmation, comparedSas: String, revocationEpoch: UInt64) throws  -> PairingPublicResult
 
     func finish() throws
@@ -841,6 +996,20 @@ open func cancel()throws   {try rustCallWithError(FfiConverterTypeControllerBind
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+
+    /**
+     * Confirms a session started by `ControllerCodePairing::finish` once its handshake has
+     * completed. Completing the handshake already proved both sides used the same code.
+     */
+open func confirmCodePairing(revocationEpoch: UInt64)throws  -> PairingPublicResult  {
+    return try  FfiConverterTypePairingPublicResult_lift(try rustCallWithError(FfiConverterTypeControllerBindingError_lift) {
+        uniffiCallStatus in
+    uniffi_termirust_controller_bindings_fn_method_controllerpairingsession_confirm_code_pairing(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(revocationEpoch),uniffiCallStatus
+    )
+})
 }
 
 open func confirmOrReject(confirmation: PairingConfirmation, comparedSas: String, revocationEpoch: UInt64)throws  -> PairingPublicResult  {
@@ -976,6 +1145,12 @@ public func FfiConverterTypeControllerPairingSession_lower(_ value: ControllerPa
 
 public protocol ControllerSecurityEngineProtocol: AnyObject, Sendable {
 
+    /**
+     * Starts the code key exchange. Send `share()` to the Host, then pass the Host's share to
+     * `finish` to get the pairing session.
+     */
+    func codePairingStart(request: CodePairingStartRequest) throws  -> ControllerCodePairing
+
     func connectionPrelude(request: ConnectionStartRequest) throws  -> Data
 
     func connectionStart(request: ConnectionStartRequest, challengeBytes: Data) throws  -> ControllerConnectionSession
@@ -1054,6 +1229,20 @@ public convenience init(blobs: SecureBlobStore)throws  {
 
 
 
+
+    /**
+     * Starts the code key exchange. Send `share()` to the Host, then pass the Host's share to
+     * `finish` to get the pairing session.
+     */
+open func codePairingStart(request: CodePairingStartRequest)throws  -> ControllerCodePairing  {
+    return try  FfiConverterTypeControllerCodePairing_lift(try rustCallWithError(FfiConverterTypeControllerBindingError_lift) {
+        uniffiCallStatus in
+    uniffi_termirust_controller_bindings_fn_method_controllersecurityengine_code_pairing_start(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCodePairingStartRequest_lower(request),uniffiCallStatus
+    )
+})
+}
 
 open func connectionPrelude(request: ConnectionStartRequest)throws  -> Data  {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeControllerBindingError_lift) {
@@ -1455,6 +1644,155 @@ public func FfiConverterTypeSecureBlobStore_lower(_ value: SecureBlobStore) -> U
 }
 
 
+
+
+public struct CodePairingFinishRequest: Equatable, Hashable {
+    public var hostShare: Data
+    public var staticKeyId: String
+    public var ephemeralPrivateKey: Data
+    public var nowMillis: UInt64
+    public var nowUnixSeconds: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(hostShare: Data, staticKeyId: String, ephemeralPrivateKey: Data, nowMillis: UInt64, nowUnixSeconds: UInt64) {
+        self.hostShare = hostShare
+        self.staticKeyId = staticKeyId
+        self.ephemeralPrivateKey = ephemeralPrivateKey
+        self.nowMillis = nowMillis
+        self.nowUnixSeconds = nowUnixSeconds
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension CodePairingFinishRequest: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCodePairingFinishRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CodePairingFinishRequest {
+        return
+            try CodePairingFinishRequest(
+                hostShare: FfiConverterData.read(from: &buf),
+                staticKeyId: FfiConverterString.read(from: &buf),
+                ephemeralPrivateKey: FfiConverterData.read(from: &buf),
+                nowMillis: FfiConverterUInt64.read(from: &buf),
+                nowUnixSeconds: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CodePairingFinishRequest, into buf: inout [UInt8]) {
+        FfiConverterData.write(value.hostShare, into: &buf)
+        FfiConverterString.write(value.staticKeyId, into: &buf)
+        FfiConverterData.write(value.ephemeralPrivateKey, into: &buf)
+        FfiConverterUInt64.write(value.nowMillis, into: &buf)
+        FfiConverterUInt64.write(value.nowUnixSeconds, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCodePairingFinishRequest_lift(_ buf: RustBuffer) throws -> CodePairingFinishRequest {
+    return try FfiConverterTypeCodePairingFinishRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCodePairingFinishRequest_lower(_ value: CodePairingFinishRequest) -> RustBuffer {
+    return FfiConverterTypeCodePairingFinishRequest.lower(value)
+}
+
+
+/**
+ * Starts code pairing on the phone after the Host sent its offer.
+ */
+public struct CodePairingStartRequest: Equatable, Hashable {
+    /**
+     * Exactly six ASCII digits, as the user typed them.
+     */
+    public var code: String
+    public var offerBytes: Data
+    /**
+     * The 32-byte nonce the phone sent in its hello.
+     */
+    public var deviceNonce: Data
+    /**
+     * 64 fresh random bytes for the key exchange scalar.
+     */
+    public var scalarEntropy: Data
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Exactly six ASCII digits, as the user typed them.
+         */code: String, offerBytes: Data,
+        /**
+         * The 32-byte nonce the phone sent in its hello.
+         */deviceNonce: Data,
+        /**
+         * 64 fresh random bytes for the key exchange scalar.
+         */scalarEntropy: Data) {
+        self.code = code
+        self.offerBytes = offerBytes
+        self.deviceNonce = deviceNonce
+        self.scalarEntropy = scalarEntropy
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension CodePairingStartRequest: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCodePairingStartRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CodePairingStartRequest {
+        return
+            try CodePairingStartRequest(
+                code: FfiConverterString.read(from: &buf),
+                offerBytes: FfiConverterData.read(from: &buf),
+                deviceNonce: FfiConverterData.read(from: &buf),
+                scalarEntropy: FfiConverterData.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CodePairingStartRequest, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.code, into: &buf)
+        FfiConverterData.write(value.offerBytes, into: &buf)
+        FfiConverterData.write(value.deviceNonce, into: &buf)
+        FfiConverterData.write(value.scalarEntropy, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCodePairingStartRequest_lift(_ buf: RustBuffer) throws -> CodePairingStartRequest {
+    return try FfiConverterTypeCodePairingStartRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCodePairingStartRequest_lower(_ value: CodePairingStartRequest) -> RustBuffer {
+    return FfiConverterTypeCodePairingStartRequest.lower(value)
+}
 
 
 public struct ConnectionPublicResult: Equatable, Hashable {
@@ -2815,6 +3153,12 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_termirust_controller_bindings_checksum_method_controllercodepairing_finish() != 36498) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_termirust_controller_bindings_checksum_method_controllercodepairing_share() != 25620) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_termirust_controller_bindings_checksum_method_controllerconnectionsession_authorize() != 53115) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2839,6 +3183,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_termirust_controller_bindings_checksum_method_controllerpairingsession_cancel() != 42824) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_termirust_controller_bindings_checksum_method_controllerpairingsession_confirm_code_pairing() != 29774) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_termirust_controller_bindings_checksum_method_controllerpairingsession_confirm_or_reject() != 1218) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2861,6 +3208,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_termirust_controller_bindings_checksum_method_controllerpairingsession_seal_frame() != 38254) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_termirust_controller_bindings_checksum_method_controllersecurityengine_code_pairing_start() != 49816) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_termirust_controller_bindings_checksum_method_controllersecurityengine_connection_prelude() != 51279) {

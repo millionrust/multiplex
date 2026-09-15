@@ -9,11 +9,11 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use termirust_controller_security::{
     AuthorizationDecision as CoreAuthorizationDecision, AuthorizationPolicy, CONTROLLER_V1,
-    CapabilitySet, ConnectionChallenge, ConnectionInitiator, ConnectionPrelude,
+    CapabilitySet, CodeKeyExchange, ConnectionChallenge, ConnectionInitiator, ConnectionPrelude,
     ControllerCapability as CoreCapability, ControllerFrameKind as CoreFrameKind,
     ControllerSecurityError, ControllerTransport, ErrorCode, HostStaticPublicKey,
-    MAX_CONTROL_PAYLOAD_BYTES, MAX_TERMINAL_FRAME_BYTES, PairingMachine, RevocationEpoch,
-    StaticPrivateKey, decode_offer,
+    MAX_CONTROL_PAYLOAD_BYTES, MAX_TERMINAL_FRAME_BYTES, PairingCode, PairingMachine, PairingNonce,
+    PairingRole as CorePairingRole, RevocationEpoch, StaticPrivateKey, decode_offer,
 };
 use zeroize::Zeroize;
 
@@ -87,6 +87,27 @@ pub struct PublicOfferSummary {
 pub struct PairingStartRequest {
     pub role: PairingRole,
     pub offer_bytes: Vec<u8>,
+    pub static_key_id: String,
+    pub ephemeral_private_key: Vec<u8>,
+    pub now_millis: u64,
+    pub now_unix_seconds: u64,
+}
+
+/// Starts code pairing on the phone after the Host sent its offer.
+#[derive(Clone, Debug, Eq, PartialEq, uniffi::Record)]
+pub struct CodePairingStartRequest {
+    /// Exactly six ASCII digits, as the user typed them.
+    pub code: String,
+    pub offer_bytes: Vec<u8>,
+    /// The 32-byte nonce the phone sent in its hello.
+    pub device_nonce: Vec<u8>,
+    /// 64 fresh random bytes for the key exchange scalar.
+    pub scalar_entropy: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, uniffi::Record)]
+pub struct CodePairingFinishRequest {
+    pub host_share: Vec<u8>,
     pub static_key_id: String,
     pub ephemeral_private_key: Vec<u8>,
     pub now_millis: u64,
@@ -371,6 +392,49 @@ impl ControllerSecurityEngine {
         })
     }
 
+    /// Starts the code key exchange. Send `share()` to the Host, then pass the Host's share to
+    /// `finish` to get the pairing session.
+    pub fn code_pairing_start(
+        &self,
+        mut request: CodePairingStartRequest,
+    ) -> Result<Arc<ControllerCodePairing>, ControllerBindingError> {
+        boundary(|| {
+            let result = (|| {
+                let code = PairingCode::parse(&request.code)
+                    .map_err(|_| ControllerBindingError::InvalidEncoding)?;
+                if request.offer_bytes.len() != termirust_controller_security::PAIRING_OFFER_BYTES {
+                    return Err(ControllerBindingError::InvalidEncoding);
+                }
+                let offer =
+                    decode_offer(&request.offer_bytes).map_err(ControllerBindingError::from)?;
+                let nonce = PairingNonce(take_fixed_32(
+                    &request.device_nonce,
+                    ControllerBindingError::InvalidEncoding,
+                )?);
+                let entropy: [u8; 64] = request
+                    .scalar_entropy
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| ControllerBindingError::InvalidEncoding)?;
+                let exchange = CodeKeyExchange::new(
+                    CorePairingRole::DeviceInitiator,
+                    &code,
+                    &offer,
+                    &nonce,
+                    entropy,
+                )
+                .map_err(ControllerBindingError::from)?;
+                Ok(Arc::new(ControllerCodePairing {
+                    engine_blobs: Arc::clone(&self.blobs),
+                    inner: Mutex::new(Some((exchange, offer))),
+                }))
+            })();
+            request.code.zeroize();
+            request.scalar_entropy.zeroize();
+            result
+        })
+    }
+
     pub fn connection_prelude(
         &self,
         request: ConnectionStartRequest,
@@ -433,6 +497,87 @@ impl ControllerSecurityEngine {
         let result = take_private_key(&mut value);
         value.zeroize();
         result
+    }
+}
+
+/// The phone's half of the code key exchange, used once.
+#[derive(uniffi::Object)]
+pub struct ControllerCodePairing {
+    engine_blobs: Arc<dyn SecureBlobStore>,
+    inner: Mutex<
+        Option<(
+            CodeKeyExchange,
+            termirust_controller_security::PairingOfferCore,
+        )>,
+    >,
+}
+
+#[uniffi::export]
+impl ControllerCodePairing {
+    /// The 32-byte share to send to the Host.
+    pub fn share(&self) -> Result<Vec<u8>, ControllerBindingError> {
+        boundary(|| {
+            let inner = self
+                .inner
+                .lock()
+                .map_err(|_| ControllerBindingError::Unexpected)?;
+            inner
+                .as_ref()
+                .map(|(exchange, _)| exchange.share().to_vec())
+                .ok_or(ControllerBindingError::Disposed)
+        })
+    }
+
+    /// Completes the exchange with the Host's share and returns a pairing session bound to the
+    /// code. Run its three handshake messages, then call `confirm_code_pairing`.
+    pub fn finish(
+        &self,
+        mut request: CodePairingFinishRequest,
+    ) -> Result<Arc<ControllerPairingSession>, ControllerBindingError> {
+        boundary(|| {
+            validate_key_id(&request.static_key_id)?;
+            let taken = self
+                .inner
+                .lock()
+                .map_err(|_| ControllerBindingError::Unexpected)?
+                .take();
+            let Some((exchange, offer)) = taken else {
+                request.ephemeral_private_key.zeroize();
+                return Err(ControllerBindingError::Disposed);
+            };
+            let binding = match exchange.finish(&request.host_share) {
+                Ok(binding) => binding,
+                Err(error) => {
+                    request.ephemeral_private_key.zeroize();
+                    return Err(error.into());
+                }
+            };
+            let ephemeral_private = take_private_key(&mut request.ephemeral_private_key)?;
+            let mut static_bytes = self
+                .engine_blobs
+                .load(request.static_key_id)
+                .map_err(ControllerBindingError::from)?
+                .ok_or(ControllerBindingError::SecureBlobMissing)?;
+            let static_private = take_private_key(&mut static_bytes);
+            static_bytes.zeroize();
+            let machine = PairingMachine::new_device_initiator_with_code(
+                offer,
+                &binding,
+                static_private?,
+                ephemeral_private,
+                request.now_millis,
+                request.now_unix_seconds,
+            )
+            .map_err(ControllerBindingError::from)?;
+            Ok(Arc::new(ControllerPairingSession {
+                inner: Mutex::new(SessionInner {
+                    machine: Some(machine),
+                    transport: None,
+                    policy: None,
+                    closed: false,
+                }),
+            }))
+        })
     }
 }
 
@@ -550,6 +695,36 @@ impl ControllerPairingSession {
             }
             let confirmed = machine
                 .confirm(&actual, RevocationEpoch(revocation_epoch))
+                .map_err(ControllerBindingError::from)?;
+            let result = PairingPublicResult {
+                host_static_public_key: confirmed.host_key.0.to_vec(),
+                device_static_public_key: confirmed.device_key.0.to_vec(),
+                capability_bits: confirmed.capabilities.bits(),
+            };
+            inner.policy = Some(AuthorizationPolicy::new(
+                confirmed.capabilities,
+                RevocationEpoch(revocation_epoch),
+            ));
+            inner.transport = Some(confirmed.transport);
+            Ok(result)
+        })
+    }
+
+    /// Confirms a session started by `ControllerCodePairing::finish` once its handshake has
+    /// completed. Completing the handshake already proved both sides used the same code.
+    pub fn confirm_code_pairing(
+        &self,
+        revocation_epoch: u64,
+    ) -> Result<PairingPublicResult, ControllerBindingError> {
+        boundary(|| {
+            let mut inner = self.lock()?;
+            ensure_open(&inner)?;
+            let machine = inner
+                .machine
+                .take()
+                .ok_or(ControllerBindingError::WrongState)?;
+            let confirmed = machine
+                .confirm_code_authenticated(RevocationEpoch(revocation_epoch))
                 .map_err(ControllerBindingError::from)?;
             let result = PairingPublicResult {
                 host_static_public_key: confirmed.host_key.0.to_vec(),
