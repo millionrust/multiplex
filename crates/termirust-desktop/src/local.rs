@@ -246,6 +246,7 @@ fn build_command(request: &ConnectRequest, shell: &LocalShellConfig) -> Result<B
         }
         let terminal_type = local_pty_terminal_type(command.get_env("TERM"));
         command.env("TERM", terminal_type);
+        identify_terminal_program(&mut command);
         return Ok(BuiltLocalCommand {
             command,
             tmux_readiness: Some(TmuxReadinessTarget {
@@ -264,6 +265,7 @@ fn build_command(request: &ConnectRequest, shell: &LocalShellConfig) -> Result<B
     }
     let terminal_type = local_pty_terminal_type(command.get_env("TERM"));
     command.env("TERM", terminal_type);
+    identify_terminal_program(&mut command);
     if let Some(cwd) = shell.cwd.as_ref().filter(|cwd| !cwd.trim().is_empty()) {
         command.cwd(cwd);
     } else if let Some(home) = dirs::home_dir() {
@@ -275,6 +277,17 @@ fn build_command(request: &ConnectRequest, shell: &LocalShellConfig) -> Result<B
         command,
         tmux_readiness: None,
     })
+}
+
+/// The value TermiRust's shells see in `TERM_PROGRAM`.
+pub const TERMINAL_PROGRAM: &str = "TermiRust";
+
+/// Names this app as the terminal, replacing whatever `TERM_PROGRAM` it was launched with.
+/// Otherwise a shell started from Zed or iTerm2 would believe it runs there, and the
+/// startup file that opens new terminals in tmux would wrap TermiRust's own tabs.
+fn identify_terminal_program(command: &mut CommandBuilder) {
+    command.env("TERM_PROGRAM", TERMINAL_PROGRAM);
+    command.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
 }
 
 fn local_pty_terminal_type(inherited: Option<&OsStr>) -> OsString {
@@ -606,6 +619,31 @@ mod tests {
         }
         assert!(fixture.child.try_wait().unwrap().is_some());
         assert!(sentinel.child.try_wait().unwrap().is_none());
+    }
+
+    #[test]
+    fn local_shells_name_termirust_so_the_tmux_startup_file_leaves_them_alone() {
+        use super::{TERMINAL_PROGRAM, build_command};
+        use std::ffi::OsStr;
+
+        let request = ConnectRequest::local_shell_with_config(
+            904,
+            LocalShellConfig {
+                program: "/bin/zsh".to_string(),
+                args: Vec::new(),
+                cwd: None,
+            },
+        );
+        let built = build_command(&request, request.local_shell.as_ref().unwrap()).unwrap();
+        assert_eq!(
+            built.command.get_env("TERM_PROGRAM"),
+            Some(OsStr::new(TERMINAL_PROGRAM))
+        );
+        assert!(
+            !termirust_tmux::shell_integration::WRAPPED_TERMINAL_PROGRAMS
+                .contains(&TERMINAL_PROGRAM),
+            "TermiRust panes are reachable without tmux and must not be wrapped"
+        );
     }
 
     #[cfg(unix)]

@@ -256,6 +256,10 @@ fn launch_host_process(
     environment
         .entry("TERM".to_string())
         .or_insert_with(|| "xterm-256color".to_string());
+    environment.insert(
+        "TERM_PROGRAM".to_string(),
+        crate::local::TERMINAL_PROGRAM.to_string(),
+    );
     let descriptor = LaunchDescriptor {
         format_version: LaunchDescriptor::FORMAT_VERSION,
         session_id: spec.session_id,
