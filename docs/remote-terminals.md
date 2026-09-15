@@ -101,8 +101,10 @@ wrapped tab sources right after `new-session`, so its options apply to that sess
 - the mouse on, so the wheel scrolls tmux's history (a tmux pane's history lives in tmux, not in
   the terminal app) and programs that ask for the mouse, such as Codex, receive it;
 - a quiet grey selection and no `[n/n]` copy-mode position counter, also for new windows;
-- dragging selects and copies to the clipboard (`pbcopy` on macOS), the selection stays put
-  while you scroll, and a click clears it;
+- dragging selects and copies to the clipboard (`pbcopy` on macOS), and the selection stays put
+  while you scroll;
+- a click, or scrolling back to the bottom, leaves copy mode, so typing always reaches the
+  program;
 - two lines per wheel step instead of five.
 
 tmux key bindings belong to the whole server, so each binding checks the session name and keeps

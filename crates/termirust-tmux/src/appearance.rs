@@ -1,7 +1,7 @@
 //! How tmux behaves in the sessions the shell setup starts, so a wrapped tab feels like the
 //! terminal it replaced: no status bar, the mouse scrolls and selects, a quiet selection with no
 //! copy-mode position counter, a selection that stays put while scrolling and copies on release,
-//! and two lines per wheel step.
+//! two lines per wheel step, and copy mode that ends on a click or at the bottom of the history.
 //!
 //! Options and the new-window hook are set on the wrapped session and its windows only. tmux key
 //! bindings are global to a server, so each binding checks the session name and keeps tmux's
@@ -79,8 +79,10 @@ impl WrappedSessionAppearance {
                 default: "send-keys -X copy-pipe-and-cancel",
             },
             Binding {
+                // Leaving copy mode, not only clearing the selection: keys typed in copy mode
+                // drive copy mode, so a tab left in it looks like it stopped taking input.
                 key: "MouseDown1Pane",
-                wrapped: "select-pane ; send-keys -X clear-selection".to_owned(),
+                wrapped: "select-pane ; send-keys -X cancel".to_owned(),
                 default: "select-pane",
             },
             Binding {
@@ -90,7 +92,8 @@ impl WrappedSessionAppearance {
             },
             Binding {
                 key: "WheelDownPane",
-                wrapped: "select-pane ; send-keys -X -N 2 scroll-down".to_owned(),
+                // Scrolling back to the bottom leaves copy mode, however it was entered.
+                wrapped: "select-pane ; send-keys -X -N 2 scroll-down-and-cancel".to_owned(),
                 default: "select-pane ; send-keys -X -N 5 scroll-down",
             },
         ]
