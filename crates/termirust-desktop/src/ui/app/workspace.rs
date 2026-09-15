@@ -755,6 +755,11 @@ impl TermiRustApp {
             .active_workspace()
             .map(|workspace| workspace.active_pane_id)
             == Some(pane.id);
+        // Only a split needs to show which pane has focus, and it does so without the accent.
+        let marks_active_pane = is_active_pane
+            && self
+                .active_workspace()
+                .is_some_and(|workspace| workspace.pane_ids.len() > 1);
         let is_app_attached = pane.app_attached.is_some();
         let durable = pane
             .app_attached
@@ -810,8 +815,8 @@ impl TermiRustApp {
             .size_full()
             .rounded(px(theme::TYPE_NANO_SIZE))
             .border_1()
-            .border_color(if is_active_pane {
-                theme::focus_ring()
+            .border_color(if marks_active_pane {
+                theme::border_strong()
             } else {
                 theme::with_alpha(theme::border_dark(), 0.6)
             })

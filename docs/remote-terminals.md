@@ -92,6 +92,8 @@ and in the usual Homebrew and system locations, and writes its resolved path int
 init file so tabs started with a minimal `PATH` still find it. If tmux is missing, the
 section tells you how to install it and leaves the setup unavailable.
 
+The tmux status bar is turned off for these sessions only; your other tmux sessions keep theirs.
+
 One app-owned init file per shell, safe to delete —
 `~/.config/termirust/shell-init.zsh` for zsh (and `shell-init.bash` for bash):
 
@@ -101,7 +103,7 @@ if [[ -o interactive && -z "$TMUX" && -z "$TERMIRUST_NO_WRAP" ]]; then
   case "$TERM_PROGRAM" in
     Apple_Terminal|zed|iTerm.app|ghostty|WezTerm|vscode)
       if [[ -x '/opt/homebrew/Cellar/tmux/3.7c/bin/tmux' ]]; then
-        '/opt/homebrew/Cellar/tmux/3.7c/bin/tmux' new-session -s "termirust-${PWD:t}-$$" && exit
+        '/opt/homebrew/Cellar/tmux/3.7c/bin/tmux' new-session -s "termirust-${PWD:t}-$$" \; set-option status off && exit
       fi
       ;;
   esac

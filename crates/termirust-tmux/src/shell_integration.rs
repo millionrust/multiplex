@@ -238,7 +238,20 @@ impl ShellIntegration {
         let mut installed = Vec::new();
         let mut partial = false;
         for shell in Shell::ALL {
-            let init = self.init_path(shell).is_file();
+            // An init file written by an older version counts as partial, so enabling again
+            // offers to update it.
+            let init = match read_optional(&self.init_path(shell)) {
+                Ok(Some(contents)) if contents == self.init_file(shell) => true,
+                Ok(Some(_)) => {
+                    partial = true;
+                    true
+                }
+                Ok(None) => false,
+                Err(_) => {
+                    partial = true;
+                    false
+                }
+            };
             let block = match read_optional(&self.startup_path(shell)) {
                 Ok(Some(contents)) => match find_blocks(&contents) {
                     Ok(blocks) => !blocks.is_empty(),
@@ -365,13 +378,14 @@ impl ShellIntegration {
         let tmux = shell_single_quote(&self.tmux.to_string_lossy());
         let programs = WRAPPED_TERMINAL_PROGRAMS.join("|");
         // `&& exit` rather than `exec`: if tmux cannot start, the terminal keeps a plain
-        // shell instead of closing the moment it opens.
+        // shell instead of closing the moment it opens. The status bar is turned off for
+        // these sessions only, so the tab looks like the terminal it replaced.
         match shell {
             Shell::Zsh => format!(
-                "{INIT_FILE_HEADER}\nif [[ -o interactive && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        {tmux} new-session -s \"termirust-${{PWD:t}}-$$\" && exit\n      fi\n      ;;\n  esac\nfi\n"
+                "{INIT_FILE_HEADER}\nif [[ -o interactive && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        {tmux} new-session -s \"termirust-${{PWD:t}}-$$\" \\; set-option status off && exit\n      fi\n      ;;\n  esac\nfi\n"
             ),
             Shell::Bash => format!(
-                "{INIT_FILE_HEADER}\nif [[ $- == *i* && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        {tmux} new-session -s \"termirust-${{PWD##*/}}-$$\" && exit\n      fi\n      ;;\n  esac\nfi\n"
+                "{INIT_FILE_HEADER}\nif [[ $- == *i* && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        {tmux} new-session -s \"termirust-${{PWD##*/}}-$$\" \\; set-option status off && exit\n      fi\n      ;;\n  esac\nfi\n"
             ),
         }
     }
@@ -702,6 +716,36 @@ mod tests {
         );
         fs::write(&zshrc, format!("{BLOCK_END}\n")).unwrap();
         assert!(integration.plan_disable().is_err());
+    }
+
+    #[test]
+    fn wrapped_sessions_hide_the_status_bar_and_an_older_init_file_is_updated() {
+        let (home, integration) = home();
+        integration
+            .plan_enable(&[Shell::Zsh])
+            .unwrap()
+            .apply()
+            .unwrap();
+        let init_path = home.path().join(".config/termirust/shell-init.zsh");
+        let init = fs::read_to_string(&init_path).unwrap();
+        assert!(init.contains(
+            "new-session -s \"termirust-${PWD:t}-$$\" \\; set-option status off && exit"
+        ));
+
+        // The file an earlier version wrote, without the status bar setting.
+        fs::write(&init_path, init.replace(" \\; set-option status off", "")).unwrap();
+        assert_eq!(integration.status(), IntegrationStatus::Partial);
+        let update = integration.plan_enable(&[Shell::Zsh]).unwrap();
+        assert_eq!(update.changes.len(), 1);
+        assert_eq!(
+            update.changes[0].path,
+            PathBuf::from("~/.config/termirust/shell-init.zsh")
+        );
+        update.apply().unwrap();
+        assert_eq!(
+            integration.status(),
+            IntegrationStatus::On(vec![Shell::Zsh])
+        );
     }
 
     #[test]
