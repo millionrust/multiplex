@@ -10589,6 +10589,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "termirust-screen-input"
+version = "0.1.0"
+dependencies = [
+ "core-graphics 0.24.0",
+ "termirust-screen-codec",
+ "termirust-screen-protocol",
+ "termirust-screen-session",
+]
+
+[[package]]
 name = "termirust-screen-protocol"
 version = "0.1.0"
 dependencies = [

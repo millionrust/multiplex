@@ -15,6 +15,8 @@ pub enum InputEvent {
         button: PointerButton,
         pressed: bool,
     },
+    /// Scroll at (`x`, `y`) by `dx`, `dy` surface pixels. Positive `dy` shows content above and
+    /// positive `dx` content to the left, as a wheel turned away from the user does.
     Scroll {
         surface: u32,
         x: u32,

@@ -75,7 +75,13 @@ Pure Rust, no platform code, fully testable in CI.
   drawing into the desktop app happens in 2.12 and 2.13.
 - [ ] 2.9 `feat(screen-host): mask TermiRust terminal panes and publish their placement`
 - [x] 2.10 Viewer session: landed with 2.8.
-- [ ] 2.11 `feat(screen-host): inject pointer and keyboard input behind the writer lease`
+- [x] 2.11 `feat(screen-input): inject pointer and keyboard input behind the writer lease`
+  A GPUI-free crate (`termirust-screen-input`): a single-writer injector that maps surface pixels
+  onto the display arrangement, counts multi-clicks, keeps scroll fractions, chunks text, and
+  releases every held key and button when control moves. The macOS backend posts Core Graphics
+  events tagged `TRSI` and checks Accessibility first. Tested against a recording sink and a real
+  host session; the Core Graphics sink was checked for permission only, not driven on the desktop.
+  Sharing one lease with the text path's writer lease happens in 2.7.
 - [ ] 2.12 `feat(desktop): show computers with live previews in Devices`
 - [ ] 2.13 `feat(desktop): open a remote screen tab with zoom, minimap and inspector`
 - [ ] 2.14 `feat(desktop): add screen sharing settings, grants and the sharing indicator`
