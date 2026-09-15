@@ -1,6 +1,6 @@
 # Controller reachability and code pairing: implementation plan
 
-Status: In progress
+Status: Done except the Android build and binding rebuild; see [completion evidence](completion-evidence/controller-code-pairing.md).
 
 ## Goal
 
@@ -82,5 +82,5 @@ Decisions taken with the product owner on 2026-09-15:
   public and wildcard addresses.
 - Security tests cover CPace vectors, wrong-code failure, attempt exhaustion, transcript binding,
   and that a recorded failed attempt gives no offline test for other codes.
-- The iOS and Android builds cannot run on the current workstation (Xcode licence not accepted,
-  Android SDK volume not mounted); mobile changes are type-checked where possible and flagged.
+- iOS builds and installs with Xcode 27.0 on the workstation. The Android SDK volume is not
+  mounted, so Android changes are reviewed but not compiled; see the completion evidence.
