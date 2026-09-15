@@ -1392,7 +1392,6 @@ recovery-impact = ⟦Þļåñ: ŕéšţøŕé ~~~~⟧{ $changed }⟦ ɱéţåð�
 recovery-prepare-action = ⟦Ŕéṽîéŵ ŕéçøṽéŕý þļåñ~~~~~~⟧
 recovery-safety-notice = ⟦Ţĥîš ðøéš ñøţ ðéļéţé šéššîøñš, ţéŕɱîñåļ øûţþûţ, ĵøûŕñåļš, þŕøĵéçţ ƒîļéš, øŕ çøñţŕøļ ŕûññîñĝ Ĥøšţ þŕøçéššéš. Þûƀļîšĥ çåññøţ ƀé çåñçéļļéð; ṽéŕîƒîçåţîøñ ƒåîļûŕé ţŕîĝĝéŕš ŕøļļƀåçķ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 recovery-title = ⟦Ŕéçøṽéŕý~~⟧
-remote-devices-add-action = ⟦Åðð Çøñţŕøļļéŕ~~~~⟧
 remote-devices-allow-input-action = ⟦Åļļøŵ îñþûţ~~~⟧
 remote-devices-capabilities-saved = ⟦Çøñţŕøļļéŕ çåþåƀîļîţîéš ûþðåţéð.~~~~~~~~~~~⟧
 remote-devices-copy-action = ⟦Çøþý⟧
@@ -1431,13 +1430,31 @@ remote-devices-name-save-action = ⟦Šåṽé ñåɱé~~⟧
 remote-devices-name-saved = ⟦Çøñţŕøļļéŕ ðéṽîçé ñåɱé ûþðåţéð.~~~~~~~~~~~⟧
 remote-devices-never-seen = ⟦Ñøţ šééñ šîñçé þåîŕîñĝ~~~~~~~⟧
 remote-devices-operation-failed = ⟦Ŕéɱøţé Ðéṽîçéš øþéŕåţîøñ ƒåîļéð šåƒéļý. Éẋîšţîñĝ ţŕûšţ ŵåš ļéƒţ ûñçĥåñĝéð.~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+remote-devices-pair-phone-action = ⟦Þåîŕ þĥøñé~~⟧
+remote-devices-pairing-code-attempts = { $count ->
+    [many] { $count }⟦ åţţéɱþţš ļéƒţ~~~~⟧
+    [one] ⟦1 åţţéɱþţ ļéƒţ~~~~⟧
+   *[other] { $count }⟦ åţţéɱþţš ļéƒţ~~~~⟧
+    [zero] ⟦Ñø åţţéɱþţš ļéƒţ~~~~~⟧
+    }
+remote-devices-pairing-code-exhausted = ⟦Ţøø ɱåñý ŵŕøñĝ çøðéš. Çĥøøšé Þåîŕ þĥøñé ƒøŕ å ñéŵ çøðé.~~~~~~~~~~~~~~~~~~~~⟧
+remote-devices-pairing-code-expiry = { $count ->
+    [many] ⟦Éẋþîŕéš îñ ~~~⟧{ $count }⟦ ɱîñûţéš~~⟧
+    [one] ⟦Éẋþîŕéš îñ 1 ɱîñûţé~~~~~~⟧
+   *[other] ⟦Éẋþîŕéš îñ ~~~⟧{ $count }⟦ ɱîñûţéš~~⟧
+    [zero] ⟦Éẋþîŕéš îñ ļéšš ţĥåñ å ɱîñûţé~~~~~~~~~~⟧
+    }
+remote-devices-pairing-code-help = ⟦Øñ ýøûŕ þĥøñé, çĥøøšé ţĥîš çøɱþûţéŕ åñð éñţéŕ ţĥîš çøðé.~~~~~~~~~~~~~~~~~~~~~⟧
+remote-devices-pairing-code-stop-action = ⟦Šţøþ þåîŕîñĝ~~~⟧
+remote-devices-pairing-code-wrong = ⟦Å ŵŕøñĝ çøðé ŵåš éñţéŕéð øñ å þĥøñé.~~~~~~~~~~~~~⟧
 remote-devices-pairing-expired = ⟦Þåîŕîñĝ øƒƒéŕ éẋþîŕéð. Šţåŕţ åĝåîñ.~~~~~~~~~~~~⟧
 remote-devices-pairing-generating = ⟦Ĝéñéŕåţîñĝ å šĥøŕţ-ļîṽéð þåîŕîñĝ øƒƒéŕ…~~~~~~~~~~~~~~⟧
-remote-devices-pairing-idle = ⟦Çĥøøšé Åðð Çøñţŕøļļéŕ ţø þåîŕ å þĥøñé.~~~~~~~~~~~~~~⟧
+remote-devices-pairing-idle = ⟦Çĥøøšé Þåîŕ þĥøñé ţø šĥøŵ å þåîŕîñĝ çøðé.~~~~~~~~~~~~~~~⟧
 remote-devices-pairing-match-action = ⟦Çøðéš ɱåţçĥ~~~⟧
 remote-devices-pairing-offer-copied = ⟦Þåîŕîñĝ øƒƒéŕ çøþîéð. Îţ éẋþîŕéš îñ ƒîṽé ɱîñûţéš.~~~~~~~~~~~~~~~~~~⟧
 remote-devices-pairing-offer-copy-action = ⟦Çøþý þåîŕîñĝ øƒƒéŕ~~~~~~⟧
 remote-devices-pairing-offer-help = ⟦Îñ ŢéŕɱîŔûšţ Ṁøƀîļé, çĥøøšé Åðð Ðéšķţøþ åñð šçåñ ţĥîš ɊŔ çøðé. Çøþý åñð þåšţé ŕéɱåîñš åṽåîļåƀļé åš å ƒåļļƀåçķ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+remote-devices-pairing-other-ways-action = ⟦Øţĥéŕ ŵåýš ţø þåîŕ~~~~~~⟧
 remote-devices-pairing-paired = ⟦Çøñţŕøļļéŕ þåîŕéð.~~~~~~⟧
 remote-devices-pairing-rate-limited = ⟦Ţøø ɱåñý þåîŕîñĝ åţţéɱþţš. Ţŕý åĝåîñ ļåţéŕ.~~~~~~~~~~~~~~~~⟧
 remote-devices-pairing-reject-action = ⟦Ŕéĵéçţ~⟧
@@ -1445,6 +1462,7 @@ remote-devices-pairing-revoked = ⟦Çøñţŕøļļéŕ ŕéṽøķéð.~~~~~~�
 remote-devices-pairing-sas-mismatch = ⟦Çøðéš ðîƒƒéŕéð. Ţĥé øƒƒéŕ ŵåš ŕéĵéçţéð.~~~~~~~~~~~~~~⟧
 remote-devices-pairing-sas-ready = ⟦Çøɱþåŕé ţĥé šéçûŕîţý çøðé øñ ƀøţĥ ðéṽîçéš. Ŕéĵéçţ îš ţĥé šåƒé ðéƒåûļţ.~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 remote-devices-pairing-storage-failure = ⟦Ţŕûšţ çøûļð ñøţ ƀé šţøŕéð. Ţĥé Çøñţŕøļļéŕ ŵåš ñøţ åþþŕøṽéð.~~~~~~~~~~~~~~~~~~~~~~⟧
+remote-devices-pairing-tailscale-hint = ⟦Øṽéŕ Ţåîļšçåļé, ţýþé ~~~~~~~⟧{ $address }⟦ øñ ţĥé þĥøñé ƒîŕšţ.~~~~~~⟧
 remote-devices-pairing-uncertain = ⟦Ţŕûšţ ŵåš šţøŕéð, ƀûţ åçķñøŵļéðĝéɱéñţ ŵåš ļøšţ. Çĥéçķ ţĥîš ðéṽîçé ļîšţ ƀéƒøŕé ŕéţŕýîñĝ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 remote-devices-pairing-waiting = ⟦Ŵåîţîñĝ ƒøŕ ţĥé Çøñţŕøļļéŕ…~~~~~~~~~⟧
 remote-devices-permission-denied = ⟦Åççéšš ðéñîéð · ŕéɱøţé åûţĥøŕîţý ðîšåƀļéð~~~~~~~~~~~~~~~⟧

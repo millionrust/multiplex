@@ -120,6 +120,17 @@ impl ControllerListenerProcess {
         self.write_command(&ListenerControlCommand::begin_pairing())
     }
 
+    pub fn begin_code_pairing(&mut self) -> Result<(), ListenerProcessError> {
+        self.write_command(&ListenerControlCommand::begin_code_pairing())
+    }
+
+    pub fn cancel_code_pairing(
+        &mut self,
+        offer_id: PairingOfferId,
+    ) -> Result<(), ListenerProcessError> {
+        self.write_command(&ListenerControlCommand::cancel_code_pairing(offer_id))
+    }
+
     pub fn decide_pairing(
         &mut self,
         offer_id: PairingOfferId,

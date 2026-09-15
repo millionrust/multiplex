@@ -23,7 +23,7 @@ use crate::{
     ControllerPairingAuthority, ControllerResponse, InterfaceProvider, ListenerError,
     ListenerErrorCode, QueueClass, SourceBucket, SourceBucketKey, SystemBinder,
     SystemHandshakeEntropy, authenticate_controller, bind_address, decode_command, encode_response,
-    pair_controller, read_bounded_frame, write_bounded_frame,
+    pair_controller, pair_controller_with_code, read_bounded_frame, write_bounded_frame,
 };
 
 const AUTHORITY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
@@ -453,14 +453,27 @@ async fn serve_connection(
     )
     .await
     .map_err(|_| ListenerError::new(ListenerErrorCode::HandshakeTimeout))??;
-    if purpose == ControllerConnectionPurpose::Pair {
-        let result = pair_controller(
-            &mut stream,
-            pairing_authority.as_ref(),
-            &mut SystemHandshakeEntropy,
-            cancel,
-        )
-        .await;
+    if matches!(
+        purpose,
+        ControllerConnectionPurpose::Pair | ControllerConnectionPurpose::PairCode
+    ) {
+        let result = if purpose == ControllerConnectionPurpose::Pair {
+            pair_controller(
+                &mut stream,
+                pairing_authority.as_ref(),
+                &mut SystemHandshakeEntropy,
+                cancel,
+            )
+            .await
+        } else {
+            pair_controller_with_code(
+                &mut stream,
+                pairing_authority.as_ref(),
+                &mut SystemHandshakeEntropy,
+                cancel,
+            )
+            .await
+        };
         match result {
             Ok(_) => {
                 limiter

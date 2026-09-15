@@ -56,12 +56,14 @@ pub use launch::{
 };
 pub use ownership::ListenerOwnership;
 pub use pairing::{
-    ControllerClientPairingResult, ControllerPairingAuthority, HostPairingDecision,
-    PairingAuthoritySnapshot, pair_controller, pair_controller_client,
+    CodePairingAttempt, ControllerClientPairingResult, ControllerPairingAuthority,
+    HostPairingDecision, MAX_CODE_PAIRING_ATTEMPTS, PairingAuthoritySnapshot, pair_controller,
+    pair_controller_client, pair_controller_with_code, pair_controller_with_code_client,
 };
 pub use pairing_protocol::{
-    ControllerConnectionPurpose, ControllerPairingOffer, MAX_PAIRING_ROUTES, PairingConnectRequest,
-    PairingDeviceRegistration, PairingHostAck, PairingRoute, SshControllerPairingOffer,
+    CodePairingHello, ControllerConnectionPurpose, ControllerPairingOffer, MAX_PAIRING_ROUTES,
+    PairingConnectRequest, PairingDeviceRegistration, PairingHostAck, PairingRoute,
+    SshControllerPairingOffer,
 };
 pub use process_protocol::{
     ListenerControlCommand, ListenerProcessEvent, ProcessFirewallObservation,

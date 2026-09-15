@@ -11,12 +11,14 @@ use clatter::handshakepattern::noise_xx;
 use clatter::traits::{Dh, Handshaker};
 use rand_core::{CryptoRng, Error as RngError, RngCore};
 use subtle::ConstantTimeEq;
+use zeroize::Zeroize as _;
 
 use crate::authorization::AuthorizationPolicy;
 use crate::codec::{
-    PAIRING_PAYLOAD_BYTES, PairingPayload, decode_pairing_payload, encode_pairing_payload,
-    pairing_prologue,
+    PAIRING_PAYLOAD_BYTES, PairingPayload, code_pairing_prologue, decode_pairing_payload,
+    encode_pairing_payload, pairing_prologue,
 };
+use crate::cpace::CodeBinding;
 use crate::error::{ControllerSecurityError, ErrorCode, Result};
 use crate::sas::derive_sas_v1;
 use crate::transport::ControllerTransport;
@@ -63,6 +65,9 @@ pub struct PairingMachine {
     noise: Option<NoiseHandshake>,
     handshake_hash: Option<HandshakeHash>,
     sas: Option<SasCode>,
+    /// Whether the handshake was bound to a pairing code, which authenticates both static keys
+    /// without a SAS comparison.
+    code_bound: bool,
 }
 
 impl fmt::Debug for PairingMachine {
@@ -85,11 +90,48 @@ impl PairingMachine {
         now_millis: u64,
         now_unix_seconds: u64,
     ) -> Result<Self> {
+        Self::device(
+            offer,
+            None,
+            device_static_private,
+            device_ephemeral_private,
+            now_millis,
+            now_unix_seconds,
+        )
+    }
+
+    /// A device pairing whose handshake is bound to the key derived from the pairing code.
+    pub fn new_device_initiator_with_code(
+        offer: PairingOfferCore,
+        binding: &CodeBinding,
+        device_static_private: StaticPrivateKey,
+        device_ephemeral_private: StaticPrivateKey,
+        now_millis: u64,
+        now_unix_seconds: u64,
+    ) -> Result<Self> {
+        Self::device(
+            offer,
+            Some(binding),
+            device_static_private,
+            device_ephemeral_private,
+            now_millis,
+            now_unix_seconds,
+        )
+    }
+
+    fn device(
+        offer: PairingOfferCore,
+        binding: Option<&CodeBinding>,
+        device_static_private: StaticPrivateKey,
+        device_ephemeral_private: StaticPrivateKey,
+        now_millis: u64,
+        now_unix_seconds: u64,
+    ) -> Result<Self> {
         validate_offer_time(&offer, now_unix_seconds)?;
         let static_pair = keypair(&device_static_private);
         let device_key = DeviceStaticPublicKey(static_pair.public);
         let ephemeral_pair = keypair(&device_ephemeral_private);
-        let prologue = pairing_prologue(&offer)?;
+        let mut prologue = prologue_for(&offer, binding)?;
         let noise = NoiseHandshake::new(
             noise_xx(),
             &prologue,
@@ -99,7 +141,9 @@ impl PairingMachine {
             None,
             None,
         )
-        .map_err(|_| ErrorCode::CryptoFailure)?;
+        .map_err(|_| ErrorCode::CryptoFailure);
+        prologue.zeroize();
+        let noise = noise?;
         let deadline_millis = pairing_deadline(&offer, now_millis, now_unix_seconds);
         Ok(Self {
             role: PairingRole::DeviceInitiator,
@@ -111,6 +155,7 @@ impl PairingMachine {
             noise: Some(noise),
             handshake_hash: None,
             sas: None,
+            code_bound: binding.is_some(),
         })
     }
 
@@ -122,13 +167,50 @@ impl PairingMachine {
         now_millis: u64,
         now_unix_seconds: u64,
     ) -> Result<Self> {
+        Self::host(
+            offer,
+            None,
+            host_static_private,
+            host_ephemeral_private,
+            now_millis,
+            now_unix_seconds,
+        )
+    }
+
+    /// A Host pairing whose handshake is bound to the key derived from the pairing code.
+    pub fn new_host_responder_with_code(
+        offer: PairingOfferCore,
+        binding: &CodeBinding,
+        host_static_private: StaticPrivateKey,
+        host_ephemeral_private: StaticPrivateKey,
+        now_millis: u64,
+        now_unix_seconds: u64,
+    ) -> Result<Self> {
+        Self::host(
+            offer,
+            Some(binding),
+            host_static_private,
+            host_ephemeral_private,
+            now_millis,
+            now_unix_seconds,
+        )
+    }
+
+    fn host(
+        offer: PairingOfferCore,
+        binding: Option<&CodeBinding>,
+        host_static_private: StaticPrivateKey,
+        host_ephemeral_private: StaticPrivateKey,
+        now_millis: u64,
+        now_unix_seconds: u64,
+    ) -> Result<Self> {
         validate_offer_time(&offer, now_unix_seconds)?;
         let static_pair = keypair(&host_static_private);
         if static_pair.public != offer.host_static_public_key.0 {
             return Err(ErrorCode::WrongKey.into());
         }
         let ephemeral_pair = keypair(&host_ephemeral_private);
-        let prologue = pairing_prologue(&offer)?;
+        let mut prologue = prologue_for(&offer, binding)?;
         let noise = NoiseHandshake::new(
             noise_xx(),
             &prologue,
@@ -138,7 +220,9 @@ impl PairingMachine {
             None,
             None,
         )
-        .map_err(|_| ErrorCode::CryptoFailure)?;
+        .map_err(|_| ErrorCode::CryptoFailure);
+        prologue.zeroize();
+        let noise = noise?;
         let deadline_millis = pairing_deadline(&offer, now_millis, now_unix_seconds);
         Ok(Self {
             role: PairingRole::HostResponder,
@@ -150,6 +234,7 @@ impl PairingMachine {
             noise: Some(noise),
             handshake_hash: None,
             sas: None,
+            code_bound: binding.is_some(),
         })
     }
 
@@ -283,6 +368,22 @@ impl PairingMachine {
             self.noise = None;
             return Err(ErrorCode::SasMismatch.into());
         }
+        self.finalize(revocation_epoch)
+    }
+
+    /// Confirms a pairing whose handshake completed under a code binding. Completing the
+    /// handshake already proves both sides used the same code, so there is no SAS to compare.
+    pub fn confirm_code_authenticated(
+        self,
+        revocation_epoch: RevocationEpoch,
+    ) -> Result<ConfirmedPairing> {
+        if self.state != PairingState::SasReady || !self.code_bound {
+            return Err(ErrorCode::WrongState.into());
+        }
+        self.finalize(revocation_epoch)
+    }
+
+    fn finalize(mut self, revocation_epoch: RevocationEpoch) -> Result<ConfirmedPairing> {
         let noise = self.noise.take().ok_or(ErrorCode::WrongState)?;
         let cipherstates = noise
             .finalize()
@@ -450,6 +551,13 @@ pub fn host_public_key_from_private(private: &StaticPrivateKey) -> HostStaticPub
 #[must_use]
 pub fn device_public_key_from_private(private: &StaticPrivateKey) -> DeviceStaticPublicKey {
     DeviceStaticPublicKey(keypair(private).public)
+}
+
+fn prologue_for(offer: &PairingOfferCore, binding: Option<&CodeBinding>) -> Result<Vec<u8>> {
+    match binding {
+        Some(binding) => code_pairing_prologue(offer, binding),
+        None => pairing_prologue(offer),
+    }
 }
 
 fn validate_offer_time(offer: &PairingOfferCore, now_unix_seconds: u64) -> Result<()> {

@@ -4196,10 +4196,6 @@ id = "remote-devices-route-off"
 context = "Controller route state while no route adapter is enabled."
 description = "Controller route off state"
 [[messages]]
-id = "remote-devices-add-action"
-context = "Action to begin pairing a Controller device."
-description = "Add Controller action"
-[[messages]]
 id = "remote-devices-route-required"
 context = "Explanation shown while Controller pairing has no route."
 description = "Controller route required guidance"
@@ -4510,6 +4506,61 @@ description = "Controller pairing codes match action"
 id = "remote-devices-pairing-reject-action"
 context = "Safe-default action that rejects Controller pairing."
 description = "Reject Controller pairing action"
+[[messages]]
+id = "remote-devices-pair-phone-action"
+context = "Primary action that opens pairing mode and shows a six-digit code."
+description = "Open pairing mode action"
+[[messages]]
+id = "remote-devices-pairing-code-help"
+context = "Instruction shown next to the six-digit pairing code."
+description = "Pairing code instruction"
+[[messages]]
+id = "remote-devices-pairing-code-expiry"
+context = "Whole minutes until the pairing code expires, rounded up."
+description = "Pairing code minutes remaining"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "remote-devices-pairing-code-attempts"
+context = "Wrong-code attempts the pairing code still allows."
+description = "Pairing code attempts remaining"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "remote-devices-pairing-code-wrong"
+context = "Status after a phone tried a wrong pairing code while attempts remain."
+description = "Wrong pairing code entered"
+[[messages]]
+id = "remote-devices-pairing-code-exhausted"
+context = "The pairing code was discarded after too many wrong attempts."
+description = "Pairing code attempts exhausted"
+[[messages]]
+id = "remote-devices-pairing-code-stop-action"
+context = "Action that closes pairing mode and discards the code."
+description = "Close pairing mode action"
+[[messages]]
+id = "remote-devices-pairing-other-ways-action"
+context = "Secondary action that shows the QR code and code-comparison pairing flow."
+description = "Alternative pairing flow action"
+[[messages]]
+id = "remote-devices-pairing-tailscale-hint"
+context = "Tells the user which address to type on the phone when pairing over Tailscale, where phones cannot find the computer automatically."
+description = "Tailscale pairing address hint"
+[[messages.args]]
+name = "address"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
 [[messages]]
 id = "remote-terminals-title"
 context = "Heading for the Remote Devices section about terminals opened outside TermiRust."

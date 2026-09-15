@@ -256,9 +256,71 @@ struct RepositoryAuthority {
     host_private: StaticPrivateKey,
     events: ListenerEventSink,
     decisions: PairingDecisionBroker,
+    code_offer: Mutex<Option<ActiveCodeOffer>>,
+}
+
+/// The pairing mode the desktop is showing. It lives only in this process, so the code is
+/// never written to disk, and at most one attempt runs at a time.
+struct ActiveCodeOffer {
+    offer_id: PairingOfferId,
+    code: termirust_controller_security::PairingCode,
+    expires_at: u64,
+    attempts_left: u8,
+    attempt_running: bool,
 }
 
 impl RepositoryAuthority {
+    /// Opens pairing mode with a new code for the addresses the listener accepts on, replacing
+    /// any code already shown.
+    fn create_code_offer(
+        &self,
+        routes: &[ListeningAddress],
+    ) -> Result<ListenerProcessEvent, ListenerError> {
+        let ListenerProcessEvent::PairingOffer {
+            offer_id,
+            expires_at_unix_seconds,
+            ..
+        } = self.create_offer(routes)?
+        else {
+            return Err(ListenerError::new(ListenerErrorCode::AuthenticationFailed));
+        };
+        let code = termirust_controller_security::PairingCode::generate(&mut rand::rngs::OsRng);
+        let event = ListenerProcessEvent::pairing_code(
+            offer_id,
+            code.as_str().to_owned(),
+            expires_at_unix_seconds,
+            crate::MAX_CODE_PAIRING_ATTEMPTS,
+        );
+        let replaced = self
+            .code_offer
+            .lock()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::Io))?
+            .replace(ActiveCodeOffer {
+                offer_id,
+                code,
+                expires_at: expires_at_unix_seconds,
+                attempts_left: crate::MAX_CODE_PAIRING_ATTEMPTS,
+                attempt_running: false,
+            });
+        if let Some(replaced) = replaced {
+            let _ = self.set_offer_state(replaced.offer_id, PairingOfferState::Rejected);
+        }
+        Ok(event)
+    }
+
+    fn cancel_code_offer(&self, offer_id: PairingOfferId) -> Result<(), ListenerError> {
+        let mut active = self
+            .code_offer
+            .lock()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::Io))?;
+        if active.as_ref().map(|offer| offer.offer_id) == Some(offer_id) {
+            active.take();
+            drop(active);
+            self.set_offer_state(offer_id, PairingOfferState::Rejected)?;
+        }
+        Ok(())
+    }
+
     fn create_offer(
         &self,
         routes: &[ListeningAddress],
@@ -758,6 +820,76 @@ impl ControllerPairingAuthority for RepositoryAuthority {
             .send(&ListenerProcessEvent::pairing_complete(offer_id, device_id))?;
         Ok(())
     }
+
+    fn begin_code_attempt(&self) -> Result<crate::CodePairingAttempt, ListenerError> {
+        let (offer_id, code) = {
+            let mut active = self
+                .code_offer
+                .lock()
+                .map_err(|_| ListenerError::new(ListenerErrorCode::Io))?;
+            let offer = active
+                .as_mut()
+                .ok_or_else(|| ListenerError::new(ListenerErrorCode::Unauthorized))?;
+            if offer.expires_at < unix_seconds() {
+                let offer_id = offer.offer_id;
+                active.take();
+                drop(active);
+                let _ = self.set_offer_state(offer_id, PairingOfferState::Expired);
+                return Err(ListenerError::new(ListenerErrorCode::Unauthorized));
+            }
+            if offer.attempt_running || offer.attempts_left == 0 {
+                return Err(ListenerError::new(ListenerErrorCode::RateLimited));
+            }
+            offer.attempts_left -= 1;
+            offer.attempt_running = true;
+            (offer.offer_id, offer.code.clone())
+        };
+        match ControllerPairingAuthority::snapshot(self, offer_id) {
+            Ok(snapshot) => Ok(crate::CodePairingAttempt {
+                offer_id,
+                code,
+                snapshot,
+            }),
+            Err(error) => {
+                self.finish_code_attempt(offer_id, false);
+                Err(error)
+            }
+        }
+    }
+
+    fn finish_code_attempt(&self, offer_id: PairingOfferId, paired: bool) {
+        let Ok(mut active) = self.code_offer.lock() else {
+            return;
+        };
+        let Some(offer) = active.as_mut().filter(|offer| offer.offer_id == offer_id) else {
+            return;
+        };
+        offer.attempt_running = false;
+        if paired {
+            active.take();
+            return;
+        }
+        let attempts_left = offer.attempts_left;
+        if attempts_left == 0 {
+            active.take();
+        }
+        drop(active);
+        if attempts_left == 0 {
+            let _ = self.set_offer_state(offer_id, PairingOfferState::Rejected);
+            let _ = self.events.send(&ListenerProcessEvent::pairing_failed(
+                Some(offer_id),
+                "code_attempts_exhausted",
+            ));
+        } else {
+            let _ = self.set_offer_state(offer_id, PairingOfferState::Offered);
+            let _ = self
+                .events
+                .send(&ListenerProcessEvent::pairing_code_attempt_failed(
+                    offer_id,
+                    attempts_left,
+                ));
+        }
+    }
 }
 
 struct SplitControllerIo<R, W> {
@@ -865,6 +997,10 @@ where
             .await
             .map(|_| ())
         }
+        // SSH already authenticates the user; code pairing is only for the network listener.
+        ControllerConnectionPurpose::PairCode => {
+            Err(ListenerError::new(ListenerErrorCode::Unauthorized))
+        }
     }
 }
 
@@ -923,6 +1059,7 @@ where
         host_private: StaticPrivateKey::from_bytes(descriptor.host_private),
         events: events.clone(),
         decisions: decisions.clone(),
+        code_offer: Mutex::new(None),
     });
     let authority: Arc<dyn ControllerAuthorityProvider> = repository_authority.clone();
     let pairing: Arc<dyn ControllerPairingAuthority> = repository_authority.clone();
@@ -979,6 +1116,19 @@ where
                         .map_err(|_| ListenerError::new(ListenerErrorCode::Io))
                         .and_then(|addresses| control_authority.create_offer(&addresses))
                         .and_then(|event| control_events.send(&event)),
+                ),
+                ListenerControlCommand::BeginCodePairing { .. } => (
+                    None,
+                    control_listening
+                        .lock()
+                        .map(|addresses| addresses.clone())
+                        .map_err(|_| ListenerError::new(ListenerErrorCode::Io))
+                        .and_then(|addresses| control_authority.create_code_offer(&addresses))
+                        .and_then(|event| control_events.send(&event)),
+                ),
+                ListenerControlCommand::CancelCodePairing { offer_id, .. } => (
+                    Some(offer_id),
+                    control_authority.cancel_code_offer(offer_id),
                 ),
                 ListenerControlCommand::DecidePairing {
                     offer_id, decision, ..
@@ -1118,6 +1268,100 @@ mod tests {
     }
 
     #[test]
+    fn pairing_mode_spends_one_attempt_per_try_and_closes_after_the_last() {
+        let fixture = tempfile::tempdir().unwrap();
+        let repository = ControllerDeviceRepository::open(fixture.path()).unwrap();
+        let host_private = StaticPrivateKey::from_fixture_bytes([51; 32]);
+        let host_public = host_public_key_from_private(&host_private);
+        let snapshot = repository.load().unwrap();
+        repository
+            .update(snapshot.revision, |authority| {
+                authority.identity = Some(HostIdentityPublic::new(
+                    HostIdentityGeneration::INITIAL,
+                    HostPublicKey(host_public.0),
+                ));
+                authority.secret_ref =
+                    Some(HostIdentitySecretRef::new("identity:code-test").unwrap());
+                authority.state = HostIdentityState::Ready;
+                Ok(())
+            })
+            .unwrap();
+        let output = SharedBuffer::default();
+        let authority = RepositoryAuthority {
+            repository,
+            host_private,
+            events: ListenerEventSink::new(output.clone()),
+            decisions: PairingDecisionBroker::default(),
+            code_offer: Mutex::new(None),
+        };
+        let routes = [ListeningAddress {
+            interface_id: termirust_domain::NetworkInterfaceId::new("4:en0").unwrap(),
+            label: "en0".into(),
+            kind: termirust_domain::NetworkInterfaceKind::Lan,
+            address: "192.168.1.9:55555".parse().unwrap(),
+        }];
+
+        let ListenerProcessEvent::PairingCode {
+            offer_id,
+            code,
+            attempts_left,
+            ..
+        } = authority.create_code_offer(&routes).unwrap()
+        else {
+            panic!("pairing mode reports its code");
+        };
+        assert_eq!(attempts_left, crate::MAX_CODE_PAIRING_ATTEMPTS);
+        assert!(code.len() == 6 && code.bytes().all(|byte| byte.is_ascii_digit()));
+
+        let first = authority.begin_code_attempt().unwrap();
+        assert_eq!(first.code.as_str(), code);
+        assert_eq!(
+            authority.begin_code_attempt().unwrap_err().code,
+            ListenerErrorCode::RateLimited,
+            "only one attempt runs at a time"
+        );
+        authority.finish_code_attempt(offer_id, false);
+        for _ in 0..2 {
+            authority.begin_code_attempt().unwrap();
+            authority.finish_code_attempt(offer_id, false);
+        }
+        assert_eq!(
+            authority.begin_code_attempt().unwrap_err().code,
+            ListenerErrorCode::Unauthorized
+        );
+
+        let bytes = output.0.lock().unwrap().clone();
+        let mut reader = Cursor::new(bytes);
+        let mut events = Vec::new();
+        while let Some(event) = ListenerProcessEvent::read(&mut reader).unwrap() {
+            events.push(event);
+        }
+        assert!(matches!(
+            events.as_slice(),
+            [
+                ListenerProcessEvent::PairingCodeAttemptFailed { attempts_left: 2, .. },
+                ListenerProcessEvent::PairingCodeAttemptFailed { attempts_left: 1, .. },
+                ListenerProcessEvent::PairingFailed { code, .. },
+            ] if code == "code_attempts_exhausted"
+        ));
+        assert!(
+            !format!("{events:?}").contains(&code),
+            "events never log the code"
+        );
+        let state = authority
+            .repository
+            .load()
+            .unwrap()
+            .authority
+            .offers
+            .iter()
+            .find(|offer| offer.offer_id == offer_id)
+            .unwrap()
+            .state;
+        assert_eq!(state, PairingOfferState::Rejected);
+    }
+
+    #[test]
     fn authenticated_reconnect_reconciles_uncertain_pairing_without_duplicate_device() {
         let fixture = tempfile::tempdir().unwrap();
         let repository = ControllerDeviceRepository::open(fixture.path()).unwrap();
@@ -1179,6 +1423,7 @@ mod tests {
             host_private,
             events: ListenerEventSink::new(Vec::<u8>::new()),
             decisions: PairingDecisionBroker::default(),
+            code_offer: Mutex::new(None),
         };
 
         authority

@@ -6,6 +6,7 @@
 mod authorization;
 mod codec;
 mod connection;
+mod cpace;
 mod error;
 mod pairing;
 mod sas;
@@ -17,6 +18,9 @@ pub use codec::{PAIRING_OFFER_BYTES, decode_offer, encode_offer, pairing_prologu
 pub use connection::{
     AuthenticatedConnection, AuthenticatedPeerClaim, ConnectionChallenge, ConnectionInitiator,
     ConnectionPrelude, ConnectionResponder, NOISE_CONNECTION_PROTOCOL_NAME,
+};
+pub use cpace::{
+    CODE_PAIRING_SHARE_BYTES, CodeBinding, CodeKeyExchange, PAIRING_CODE_DIGITS, PairingCode,
 };
 pub use error::{ControllerSecurityError, ErrorCode};
 pub use pairing::{

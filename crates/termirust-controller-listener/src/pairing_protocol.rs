@@ -28,6 +28,8 @@ const MAX_PAIRING_CONTROL_BYTES: usize = 4 * 1024;
 pub enum ControllerConnectionPurpose {
     Authenticate = 1,
     Pair = 2,
+    /// Pairs with the six-digit code the desktop shows in pairing mode.
+    PairCode = 3,
 }
 
 impl ControllerConnectionPurpose {
@@ -69,6 +71,7 @@ impl ControllerConnectionPurpose {
         match bytes[6] {
             1 => Ok(Self::Authenticate),
             2 => Ok(Self::Pair),
+            3 => Ok(Self::PairCode),
             _ => Err(ListenerError::new(ListenerErrorCode::MalformedFrame)),
         }
     }
@@ -285,6 +288,49 @@ impl fmt::Debug for ControllerPairingOffer {
             .field("route", &"[REDACTED]")
             .field("offer_bytes", &"[REDACTED]")
             .finish()
+    }
+}
+
+/// The first frame of code pairing: the phone's fresh nonce, which becomes half of the CPace
+/// session identifier.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CodePairingHello {
+    pub schema_version: u16,
+    pub device_nonce: Vec<u8>,
+}
+
+impl CodePairingHello {
+    pub fn new(device_nonce: [u8; 32]) -> Self {
+        Self {
+            schema_version: PAIRING_ENVELOPE_VERSION,
+            device_nonce: device_nonce.to_vec(),
+        }
+    }
+
+    pub fn nonce(&self) -> Result<[u8; 32], ListenerError> {
+        if self.schema_version != PAIRING_ENVELOPE_VERSION {
+            return Err(ListenerError::new(ListenerErrorCode::MalformedFrame));
+        }
+        self.device_nonce
+            .as_slice()
+            .try_into()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))
+    }
+
+    pub async fn read_from<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Self, ListenerError> {
+        let value: Self =
+            decode_control(&read_bounded_frame(reader, MAX_PAIRING_CONTROL_BYTES).await?)?;
+        value.nonce()?;
+        Ok(value)
+    }
+
+    pub async fn write_to<W: AsyncWrite + Unpin>(
+        &self,
+        writer: &mut W,
+    ) -> Result<(), ListenerError> {
+        self.nonce()?;
+        write_bounded_frame(writer, &encode_control(self)?, MAX_PAIRING_CONTROL_BYTES).await
     }
 }
 

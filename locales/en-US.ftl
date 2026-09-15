@@ -735,7 +735,6 @@ remote-devices-title = Remote Devices
 remote-devices-description = Manage authenticated Controller devices and the public identity of this desktop.
 remote-devices-route-label = Remote access
 remote-devices-route-off = Off
-remote-devices-add-action = Add Controller
 remote-devices-route-required = Turn on remote access to pair a phone.
 remote-devices-listener-binding = Starting
 remote-devices-listener-ready = On for paired devices
@@ -794,7 +793,7 @@ remote-devices-reset-action = Reset identity
 remote-devices-reset-confirmation-required = Type RESET exactly before resetting the Host identity.
 remote-devices-reset-complete = Host identity reset. All previous Controller trust is invalid.
 remote-devices-reset-old-key-warning = Host identity reset and prior trust invalidated, but the old credential could not be deleted. Review the system credential store.
-remote-devices-pairing-idle = Choose Add Controller to pair a phone.
+remote-devices-pairing-idle = Choose Pair phone to show a pairing code.
 remote-devices-pairing-generating = Generating a short-lived pairing offer…
 remote-devices-pairing-waiting = Waiting for the Controller…
 remote-devices-pairing-sas-ready = Compare the security code on both devices. Reject is the safe default.
@@ -810,6 +809,25 @@ remote-devices-pairing-offer-copy-action = Copy pairing offer
 remote-devices-pairing-offer-copied = Pairing offer copied. It expires in five minutes.
 remote-devices-pairing-match-action = Codes match
 remote-devices-pairing-reject-action = Reject
+remote-devices-pair-phone-action = Pair phone
+remote-devices-pairing-code-help = On your phone, choose this computer and enter this code.
+remote-devices-pairing-code-expiry = { $count ->
+    [zero] Expires in less than a minute
+    [one] Expires in 1 minute
+    [many] Expires in { $count } minutes
+   *[other] Expires in { $count } minutes
+    }
+remote-devices-pairing-code-attempts = { $count ->
+    [zero] No attempts left
+    [one] 1 attempt left
+    [many] { $count } attempts left
+   *[other] { $count } attempts left
+    }
+remote-devices-pairing-code-wrong = A wrong code was entered on a phone.
+remote-devices-pairing-code-exhausted = Too many wrong codes. Choose Pair phone for a new code.
+remote-devices-pairing-code-stop-action = Stop pairing
+remote-devices-pairing-other-ways-action = Other ways to pair
+remote-devices-pairing-tailscale-hint = Over Tailscale, type { $address } on the phone first.
 remote-terminals-title = Terminals opened in other apps
 remote-terminals-description = Paired devices can watch and type into tmux sessions, including terminals you open in Terminal, Zed, iTerm2, Ghostty, or WezTerm.
 remote-terminals-discovery-label = Show tmux sessions

@@ -762,7 +762,6 @@ static_message!(remote_devices_title, RemoteDevicesTitleArgs);
 static_message!(remote_devices_description, RemoteDevicesDescriptionArgs);
 static_message!(remote_devices_route_label, RemoteDevicesRouteLabelArgs);
 static_message!(remote_devices_route_off, RemoteDevicesRouteOffArgs);
-static_message!(remote_devices_add_action, RemoteDevicesAddActionArgs);
 static_message!(
     remote_devices_route_required,
     RemoteDevicesRouteRequiredArgs
@@ -820,6 +819,46 @@ static_message!(
     RemoteDevicesListenerNoInterfaceArgs
 );
 static_message!(remote_devices_listening_on, RemoteDevicesListeningOnArgs);
+static_message!(
+    remote_devices_pair_phone_action,
+    RemoteDevicesPairPhoneActionArgs
+);
+static_message!(
+    remote_devices_pairing_code_help,
+    RemoteDevicesPairingCodeHelpArgs
+);
+static_message!(
+    remote_devices_pairing_code_wrong,
+    RemoteDevicesPairingCodeWrongArgs
+);
+static_message!(
+    remote_devices_pairing_code_exhausted,
+    RemoteDevicesPairingCodeExhaustedArgs
+);
+static_message!(
+    remote_devices_pairing_code_stop_action,
+    RemoteDevicesPairingCodeStopActionArgs
+);
+static_message!(
+    remote_devices_pairing_other_ways_action,
+    RemoteDevicesPairingOtherWaysActionArgs
+);
+
+pub fn remote_devices_pairing_code_expiry(minutes: u64) -> String {
+    text(&RemoteDevicesPairingCodeExpiryArgs::new(Count(minutes)))
+}
+
+pub fn remote_devices_pairing_code_attempts(attempts: u8) -> String {
+    text(&RemoteDevicesPairingCodeAttemptsArgs::new(Count(
+        u64::from(attempts),
+    )))
+}
+
+pub fn remote_devices_pairing_tailscale_hint(address: &str) -> String {
+    text(&RemoteDevicesPairingTailscaleHintArgs::new(UserData::new(
+        address,
+    )))
+}
 static_message!(
     remote_devices_private_address_hidden,
     RemoteDevicesPrivateAddressHiddenArgs

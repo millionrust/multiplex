@@ -26,12 +26,34 @@ pub enum ListenerControlCommand {
         offer_id: PairingOfferId,
         decision: ProcessPairingDecision,
     },
+    /// Opens pairing mode with a new six-digit code.
+    BeginCodePairing {
+        schema_version: u16,
+    },
+    /// Closes pairing mode and discards its code.
+    CancelCodePairing {
+        schema_version: u16,
+        offer_id: PairingOfferId,
+    },
 }
 
 impl ListenerControlCommand {
     pub fn begin_pairing() -> Self {
         Self::BeginPairing {
             schema_version: PROCESS_PROTOCOL_VERSION,
+        }
+    }
+
+    pub fn begin_code_pairing() -> Self {
+        Self::BeginCodePairing {
+            schema_version: PROCESS_PROTOCOL_VERSION,
+        }
+    }
+
+    pub fn cancel_code_pairing(offer_id: PairingOfferId) -> Self {
+        Self::CancelCodePairing {
+            schema_version: PROCESS_PROTOCOL_VERSION,
+            offer_id,
         }
     }
 
@@ -64,9 +86,10 @@ impl ListenerControlCommand {
 
     const fn schema_version(&self) -> u16 {
         match self {
-            Self::BeginPairing { schema_version } | Self::DecidePairing { schema_version, .. } => {
-                *schema_version
-            }
+            Self::BeginPairing { schema_version }
+            | Self::BeginCodePairing { schema_version }
+            | Self::DecidePairing { schema_version, .. }
+            | Self::CancelCodePairing { schema_version, .. } => *schema_version,
         }
     }
 }
@@ -95,6 +118,20 @@ pub enum ListenerProcessEvent {
         schema_version: u16,
         offer_id: PairingOfferId,
         sas: String,
+    },
+    /// Pairing mode is open. The code is shown on the desktop only.
+    PairingCode {
+        schema_version: u16,
+        offer_id: PairingOfferId,
+        code: String,
+        expires_at_unix_seconds: u64,
+        attempts_left: u8,
+    },
+    /// A phone tried the code and did not pair; the code stays open while attempts remain.
+    PairingCodeAttemptFailed {
+        schema_version: u16,
+        offer_id: PairingOfferId,
+        attempts_left: u8,
     },
     PairingComplete {
         schema_version: u16,
@@ -154,6 +191,29 @@ impl ListenerProcessEvent {
         }
     }
 
+    pub fn pairing_code(
+        offer_id: PairingOfferId,
+        code: String,
+        expires_at_unix_seconds: u64,
+        attempts_left: u8,
+    ) -> Self {
+        Self::PairingCode {
+            schema_version: PROCESS_PROTOCOL_VERSION,
+            offer_id,
+            code,
+            expires_at_unix_seconds,
+            attempts_left,
+        }
+    }
+
+    pub fn pairing_code_attempt_failed(offer_id: PairingOfferId, attempts_left: u8) -> Self {
+        Self::PairingCodeAttemptFailed {
+            schema_version: PROCESS_PROTOCOL_VERSION,
+            offer_id,
+            attempts_left,
+        }
+    }
+
     pub fn pairing_complete(offer_id: PairingOfferId, device_id: ControllerDeviceId) -> Self {
         Self::PairingComplete {
             schema_version: PROCESS_PROTOCOL_VERSION,
@@ -195,6 +255,8 @@ impl ListenerProcessEvent {
             | Self::ListeningAddresses { schema_version, .. }
             | Self::PairingOffer { schema_version, .. }
             | Self::PairingSasReady { schema_version, .. }
+            | Self::PairingCode { schema_version, .. }
+            | Self::PairingCodeAttemptFailed { schema_version, .. }
             | Self::PairingComplete { schema_version, .. }
             | Self::PairingFailed { schema_version, .. } => *schema_version,
         }
@@ -253,6 +315,8 @@ impl std::fmt::Debug for ListenerControlCommand {
                 &match self {
                     Self::BeginPairing { .. } => "begin_pairing",
                     Self::DecidePairing { .. } => "decide_pairing",
+                    Self::BeginCodePairing { .. } => "begin_code_pairing",
+                    Self::CancelCodePairing { .. } => "cancel_code_pairing",
                 },
             )
             .field("payload", &"[REDACTED]")
@@ -267,6 +331,8 @@ impl std::fmt::Debug for ListenerProcessEvent {
             Self::ListeningAddresses { .. } => "listening_addresses",
             Self::PairingOffer { .. } => "pairing_offer",
             Self::PairingSasReady { .. } => "pairing_sas_ready",
+            Self::PairingCode { .. } => "pairing_code",
+            Self::PairingCodeAttemptFailed { .. } => "pairing_code_attempt_failed",
             Self::PairingComplete { .. } => "pairing_complete",
             Self::PairingFailed { .. } => "pairing_failed",
         };

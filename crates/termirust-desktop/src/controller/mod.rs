@@ -10,6 +10,7 @@ pub mod relay_host;
 pub mod relay_host_service;
 pub mod route_coordinator;
 pub mod ssh_pairing;
+pub mod tailscale;
 
 use std::path::Path;
 

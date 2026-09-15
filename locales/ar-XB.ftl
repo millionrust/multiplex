@@ -1392,7 +1392,6 @@ recovery-impact = ⁧ erotser :nalP⁩{ $changed }⁧ evael ,selif atadatem ⁩{
 recovery-prepare-action = ⁧nalp yrevocer weiveR⁩
 recovery-safety-notice = ⁧.kcabllor sreggirt eruliaf noitacifirev ;dellecnac eb tonnac hsilbuP .sessecorp tsoH gninnur lortnoc ro ,selif tcejorp ,slanruoj ,tuptuo lanimret ,snoisses eteled ton seod sihT⁩
 recovery-title = ⁧yrevoceR⁩
-remote-devices-add-action = ⁧rellortnoC ddA⁩
 remote-devices-allow-input-action = ⁧tupni wollA⁩
 remote-devices-capabilities-saved = ⁧.detadpu seitilibapac rellortnoC⁩
 remote-devices-copy-action = ⁧ypoC⁩
@@ -1431,13 +1430,31 @@ remote-devices-name-save-action = ⁧eman evaS⁩
 remote-devices-name-saved = ⁧.detadpu eman ecived rellortnoC⁩
 remote-devices-never-seen = ⁧gniriap ecnis nees toN⁩
 remote-devices-operation-failed = ⁧.degnahcnu tfel saw tsurt gnitsixE .ylefas deliaf noitarepo seciveD etomeR⁩
+remote-devices-pair-phone-action = ⁧enohp riaP⁩
+remote-devices-pairing-code-attempts = { $count ->
+    [many] { $count }⁧tfel stpmetta ⁩
+    [one] ⁧tfel tpmetta 1⁩
+   *[other] { $count }⁧tfel stpmetta ⁩
+    [zero] ⁧tfel stpmetta oN⁩
+    }
+remote-devices-pairing-code-exhausted = ⁧.edoc wen a rof enohp riaP esoohC .sedoc gnorw ynam ooT⁩
+remote-devices-pairing-code-expiry = { $count ->
+    [many] ⁧ ni seripxE⁩{ $count }⁧setunim ⁩
+    [one] ⁧etunim 1 ni seripxE⁩
+   *[other] ⁧ ni seripxE⁩{ $count }⁧setunim ⁩
+    [zero] ⁧etunim a naht ssel ni seripxE⁩
+    }
+remote-devices-pairing-code-help = ⁧.edoc siht retne dna retupmoc siht esoohc ,enohp ruoy nO⁩
+remote-devices-pairing-code-stop-action = ⁧gniriap potS⁩
+remote-devices-pairing-code-wrong = ⁧.enohp a no deretne saw edoc gnorw A⁩
 remote-devices-pairing-expired = ⁧.niaga tratS .deripxe reffo gniriaP⁩
 remote-devices-pairing-generating = ⁧…reffo gniriap devil-trohs a gnitareneG⁩
-remote-devices-pairing-idle = ⁧.enohp a riap ot rellortnoC ddA esoohC⁩
+remote-devices-pairing-idle = ⁧.edoc gniriap a wohs ot enohp riaP esoohC⁩
 remote-devices-pairing-match-action = ⁧hctam sedoC⁩
 remote-devices-pairing-offer-copied = ⁧.setunim evif ni seripxe tI .deipoc reffo gniriaP⁩
 remote-devices-pairing-offer-copy-action = ⁧reffo gniriap ypoC⁩
 remote-devices-pairing-offer-help = ⁧.kcabllaf a sa elbaliava sniamer etsap dna ypoC .edoc RQ siht nacs dna potkseD ddA esoohc ,eliboM tsuRimreT nI⁩
+remote-devices-pairing-other-ways-action = ⁧riap ot syaw rehtO⁩
 remote-devices-pairing-paired = ⁧.deriap rellortnoC⁩
 remote-devices-pairing-rate-limited = ⁧.retal niaga yrT .stpmetta gniriap ynam ooT⁩
 remote-devices-pairing-reject-action = ⁧tcejeR⁩
@@ -1445,6 +1462,7 @@ remote-devices-pairing-revoked = ⁧.dekover rellortnoC⁩
 remote-devices-pairing-sas-mismatch = ⁧.detcejer saw reffo ehT .dereffid sedoC⁩
 remote-devices-pairing-sas-ready = ⁧.tluafed efas eht si tcejeR .secived htob no edoc ytiruces eht erapmoC⁩
 remote-devices-pairing-storage-failure = ⁧.devorppa ton saw rellortnoC ehT .derots eb ton dluoc tsurT⁩
+remote-devices-pairing-tailscale-hint = ⁧ epyt ,elacsliaT revO⁩{ $address }⁧.tsrif enohp eht no ⁩
 remote-devices-pairing-uncertain = ⁧.gniyrter erofeb tsil ecived siht kcehC .tsol saw tnemegdelwonkca tub ,derots saw tsurT⁩
 remote-devices-pairing-waiting = ⁧…rellortnoC eht rof gnitiaW⁩
 remote-devices-permission-denied = ⁧delbasid ytirohtua etomer · deined sseccA⁩

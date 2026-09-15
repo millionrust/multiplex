@@ -2,9 +2,10 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use termirust_controller_security::{
-    ControllerCapability, ControllerFrameKind, DeviceStaticPublicKey,
-    MAX_PAIRING_OFFER_LIFETIME_SECONDS, PairingMachine, PairingOfferCore, PairingState,
-    RevocationEpoch, SasCode, StaticPrivateKey,
+    CODE_PAIRING_SHARE_BYTES, CodeKeyExchange, ConfirmedPairing, ControllerCapability,
+    ControllerFrameKind, DeviceStaticPublicKey, MAX_PAIRING_OFFER_LIFETIME_SECONDS, PairingCode,
+    PairingMachine, PairingNonce, PairingOfferCore, PairingRole, PairingState, RevocationEpoch,
+    SasCode, StaticPrivateKey,
 };
 use termirust_domain::{
     AuthenticatedPeer, ControllerDeviceId, HostIdentityGeneration, PairingOfferId,
@@ -14,7 +15,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    HandshakeEntropy, ListenerError, ListenerErrorCode, PairingConnectRequest,
+    CodePairingHello, HandshakeEntropy, ListenerError, ListenerErrorCode, PairingConnectRequest,
     PairingDeviceRegistration, PairingHostAck, SshControllerPairingOffer, read_bounded_frame,
     write_bounded_frame,
 };
@@ -24,6 +25,8 @@ const MAX_PAIRING_SECURE_FRAME_BYTES: usize = 64 * 1024;
 // Pairing includes a deliberate human SAS comparison. Bound the connection by the
 // signed offer lifetime instead of the shorter machine-handshake deadline.
 const PAIRING_TIMEOUT: Duration = Duration::from_secs(MAX_PAIRING_OFFER_LIFETIME_SECONDS);
+// Code pairing starts after the code is typed, so it only needs the machine handshake budget.
+const CODE_PAIRING_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub struct PairingAuthoritySnapshot {
     pub offer: PairingOfferCore,
@@ -94,6 +97,232 @@ pub trait ControllerPairingAuthority: Send + Sync {
         offer_id: PairingOfferId,
         device_key: DeviceStaticPublicKey,
     ) -> Result<(), ListenerError>;
+
+    /// Takes one attempt at the code offer the desktop is showing. The attempt is spent
+    /// before the key exchange starts, so a wrong code, a dropped connection, and a
+    /// successful pairing all use it.
+    fn begin_code_attempt(&self) -> Result<CodePairingAttempt, ListenerError> {
+        Err(ListenerError::new(ListenerErrorCode::Unauthorized))
+    }
+
+    /// Reports how a code attempt ended. `paired` is true only once the device was saved
+    /// and acknowledged.
+    fn finish_code_attempt(&self, _offer_id: PairingOfferId, _paired: bool) {}
+}
+
+/// Most attempts one pairing code allows before the Host discards it.
+pub const MAX_CODE_PAIRING_ATTEMPTS: u8 = 3;
+
+/// One spent attempt at a code offer.
+pub struct CodePairingAttempt {
+    pub offer_id: PairingOfferId,
+    pub code: PairingCode,
+    pub snapshot: PairingAuthoritySnapshot,
+}
+
+impl std::fmt::Debug for CodePairingAttempt {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CodePairingAttempt")
+            .field("offer_id", &self.offer_id)
+            .field("code", &self.code)
+            .field("snapshot", &self.snapshot)
+            .finish()
+    }
+}
+
+/// The Host side of code pairing: CPace keyed by the displayed code, then the Noise XX
+/// pairing bound to its result. There is no SAS; the code already authenticated both keys.
+pub async fn pair_controller_with_code<S: AsyncRead + AsyncWrite + Unpin>(
+    stream: &mut S,
+    authority: &dyn ControllerPairingAuthority,
+    entropy: &mut impl HandshakeEntropy,
+    cancel: CancellationToken,
+) -> Result<AuthenticatedPeer, ListenerError> {
+    let hello = tokio::time::timeout(CODE_PAIRING_TIMEOUT, CodePairingHello::read_from(stream))
+        .await
+        .map_err(|_| ListenerError::new(ListenerErrorCode::HandshakeTimeout))??;
+    let attempt = authority.begin_code_attempt()?;
+    let offer_id = attempt.offer_id;
+    let result = tokio::time::timeout(
+        CODE_PAIRING_TIMEOUT,
+        pair_controller_with_code_inner(stream, authority, entropy, cancel, hello, attempt),
+    )
+    .await
+    .map_err(|_| ListenerError::new(ListenerErrorCode::HandshakeTimeout))
+    .and_then(|result| result);
+    authority.finish_code_attempt(offer_id, result.is_ok());
+    result
+}
+
+async fn pair_controller_with_code_inner<S: AsyncRead + AsyncWrite + Unpin>(
+    stream: &mut S,
+    authority: &dyn ControllerPairingAuthority,
+    entropy: &mut impl HandshakeEntropy,
+    cancel: CancellationToken,
+    hello: CodePairingHello,
+    attempt: CodePairingAttempt,
+) -> Result<AuthenticatedPeer, ListenerError> {
+    let started = Instant::now();
+    let CodePairingAttempt {
+        offer_id,
+        code,
+        snapshot,
+    } = attempt;
+    SshControllerPairingOffer::new(
+        offer_id,
+        &snapshot.offer,
+        snapshot.identity_generation.get(),
+        snapshot.revocation_epoch,
+        snapshot.session_generation,
+    )?
+    .write_to(stream)
+    .await?;
+    let device_share = read_bounded_frame(stream, CODE_PAIRING_SHARE_BYTES).await?;
+    authority.set_offer_state(offer_id, PairingOfferState::Handshaking)?;
+    let exchange = CodeKeyExchange::new(
+        PairingRole::HostResponder,
+        &code,
+        &snapshot.offer,
+        &PairingNonce(hello.nonce()?),
+        entropy.scalar_entropy()?,
+    )
+    .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    write_bounded_frame(stream, &exchange.share(), CODE_PAIRING_SHARE_BYTES).await?;
+    let binding = exchange
+        .finish(&device_share)
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    drop(code);
+
+    let mut machine = PairingMachine::new_host_responder_with_code(
+        snapshot.offer.clone(),
+        &binding,
+        snapshot.host_private.clone(),
+        entropy.ephemeral_private()?,
+        elapsed_millis(started),
+        unix_seconds(),
+    )
+    .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    drop(binding);
+    run_host_handshake(stream, &mut machine, started).await?;
+    authority.set_offer_state(offer_id, PairingOfferState::SasReady)?;
+    let confirmed = machine
+        .confirm_code_authenticated(RevocationEpoch(snapshot.revocation_epoch))
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    authority.set_offer_state(offer_id, PairingOfferState::HostConfirmed)?;
+    register_paired_device(stream, authority, offer_id, &snapshot, confirmed, &cancel).await
+}
+
+/// The phone side of code pairing, for tests and command-line clients. The caller sends the
+/// `PairCode` connection purpose first, as for the other connection kinds.
+#[allow(clippy::too_many_arguments)]
+pub async fn pair_controller_with_code_client<S, G>(
+    stream: &mut S,
+    code: &PairingCode,
+    device_static_private: StaticPrivateKey,
+    device_ephemeral_private: StaticPrivateKey,
+    entropy: &mut impl HandshakeEntropy,
+    device_id: ControllerDeviceId,
+    display_name: String,
+    prepare_registration: G,
+) -> Result<ControllerClientPairingResult, ListenerError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    G: FnOnce(&ControllerClientPairingResult) -> Result<(), ListenerError>,
+{
+    let device_nonce = entropy.nonce()?;
+    let scalar_entropy = entropy.scalar_entropy()?;
+    tokio::time::timeout(CODE_PAIRING_TIMEOUT, async {
+        CodePairingHello::new(device_nonce).write_to(stream).await?;
+        let envelope = SshControllerPairingOffer::read_from(stream).await?;
+        let offer = envelope.offer()?;
+        let exchange = CodeKeyExchange::new(
+            PairingRole::DeviceInitiator,
+            code,
+            &offer,
+            &PairingNonce(device_nonce),
+            scalar_entropy,
+        )
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        write_bounded_frame(stream, &exchange.share(), CODE_PAIRING_SHARE_BYTES).await?;
+        let host_share = read_bounded_frame(stream, CODE_PAIRING_SHARE_BYTES).await?;
+        let binding = exchange
+            .finish(&host_share)
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        let started = Instant::now();
+        let mut machine = PairingMachine::new_device_initiator_with_code(
+            offer.clone(),
+            &binding,
+            device_static_private,
+            device_ephemeral_private,
+            elapsed_millis(started),
+            unix_seconds(),
+        )
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        drop(binding);
+        run_device_handshake(stream, &mut machine, started).await?;
+        let confirmed = machine
+            .confirm_code_authenticated(RevocationEpoch(envelope.revocation_epoch))
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        send_registration(
+            stream,
+            &envelope,
+            &offer,
+            confirmed,
+            device_id,
+            display_name,
+            prepare_registration,
+        )
+        .await
+    })
+    .await
+    .map_err(|_| ListenerError::new(ListenerErrorCode::HandshakeTimeout))?
+}
+
+async fn run_host_handshake<S: AsyncRead + AsyncWrite + Unpin>(
+    stream: &mut S,
+    machine: &mut PairingMachine,
+    started: Instant,
+) -> Result<(), ListenerError> {
+    let device_hello = read_bounded_frame(stream, MAX_PAIRING_HANDSHAKE_BYTES).await?;
+    machine
+        .read_next(&device_hello, elapsed_millis(started))
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    let host_proof = machine
+        .write_next(elapsed_millis(started))
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    write_bounded_frame(stream, host_proof.as_bytes(), MAX_PAIRING_HANDSHAKE_BYTES).await?;
+    let device_proof = read_bounded_frame(stream, MAX_PAIRING_HANDSHAKE_BYTES).await?;
+    machine
+        .read_next(&device_proof, elapsed_millis(started))
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    if machine.state() != PairingState::SasReady {
+        return Err(ListenerError::new(ListenerErrorCode::AuthenticationFailed));
+    }
+    Ok(())
+}
+
+async fn run_device_handshake<S: AsyncRead + AsyncWrite + Unpin>(
+    stream: &mut S,
+    machine: &mut PairingMachine,
+    started: Instant,
+) -> Result<(), ListenerError> {
+    let device_hello = machine
+        .write_next(elapsed_millis(started))
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    write_bounded_frame(stream, device_hello.as_bytes(), MAX_PAIRING_HANDSHAKE_BYTES).await?;
+    let host_proof = read_bounded_frame(stream, MAX_PAIRING_HANDSHAKE_BYTES).await?;
+    machine
+        .read_next(&host_proof, elapsed_millis(started))
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    let device_proof = machine
+        .write_next(elapsed_millis(started))
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    write_bounded_frame(stream, device_proof.as_bytes(), MAX_PAIRING_HANDSHAKE_BYTES).await?;
+    if machine.state() != PairingState::SasReady {
+        return Err(ListenerError::new(ListenerErrorCode::AuthenticationFailed));
+    }
+    Ok(())
 }
 
 pub async fn pair_controller<S: AsyncRead + AsyncWrite + Unpin>(
@@ -162,8 +391,7 @@ where
     let started = Instant::now();
     let now = unix_seconds();
     let offer = envelope.offer()?;
-    let expected_host_public_key = offer.host_static_public_key;
-    let expected_capability_bits = offer.capabilities.bits();
+    let offer_for_result = offer.clone();
     PairingConnectRequest::new(envelope.offer_id)
         .write_to(stream)
         .await?;
@@ -198,16 +426,42 @@ where
         let _ = machine.reject();
         return Err(ListenerError::new(ListenerErrorCode::AuthenticationFailed));
     }
-    let mut confirmed = machine
+    let confirmed = machine
         .confirm(&sas, RevocationEpoch(envelope.revocation_epoch))
         .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    send_registration(
+        stream,
+        &envelope,
+        &offer_for_result,
+        confirmed,
+        device_id,
+        display_name,
+        prepare_registration,
+    )
+    .await
+}
+
+/// Registers the phone over a confirmed pairing and checks the Host's acknowledgement.
+async fn send_registration<S, G>(
+    stream: &mut S,
+    envelope: &SshControllerPairingOffer,
+    offer: &PairingOfferCore,
+    mut confirmed: ConfirmedPairing,
+    device_id: ControllerDeviceId,
+    display_name: String,
+    prepare_registration: G,
+) -> Result<ControllerClientPairingResult, ListenerError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    G: FnOnce(&ControllerClientPairingResult) -> Result<(), ListenerError>,
+{
     let result = ControllerClientPairingResult {
         device_id,
-        host_public_key: expected_host_public_key,
+        host_public_key: offer.host_static_public_key,
         identity_generation: envelope.identity_generation,
         revocation_epoch: envelope.revocation_epoch,
         session_generation: envelope.session_generation,
-        capability_bits: expected_capability_bits,
+        capability_bits: offer.capabilities.bits(),
     };
     prepare_registration(&result)?;
     let registration = PairingDeviceRegistration::new(device_id, display_name).encode()?;
@@ -261,8 +515,8 @@ async fn pair_controller_inner<S: AsyncRead + AsyncWrite + Unpin>(
     let initial = authority.snapshot(request.offer_id)?;
     authority.set_offer_state(request.offer_id, PairingOfferState::Handshaking)?;
     let mut machine = PairingMachine::new_host_responder(
-        initial.offer,
-        initial.host_private,
+        initial.offer.clone(),
+        initial.host_private.clone(),
         entropy.ephemeral_private()?,
         elapsed_millis(started),
         unix_seconds(),
@@ -306,6 +560,27 @@ async fn pair_controller_inner<S: AsyncRead + AsyncWrite + Unpin>(
     let confirmed = machine
         .confirm(&sas, RevocationEpoch(initial.revocation_epoch))
         .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    register_paired_device(
+        stream,
+        authority,
+        request.offer_id,
+        &initial,
+        confirmed,
+        &cancel,
+    )
+    .await
+}
+
+/// Receives the phone's registration over a confirmed pairing, saves the device, and
+/// acknowledges it.
+async fn register_paired_device<S: AsyncRead + AsyncWrite + Unpin>(
+    stream: &mut S,
+    authority: &dyn ControllerPairingAuthority,
+    offer_id: PairingOfferId,
+    initial: &PairingAuthoritySnapshot,
+    confirmed: ConfirmedPairing,
+    cancel: &CancellationToken,
+) -> Result<AuthenticatedPeer, ListenerError> {
     let mut transport = confirmed.transport;
     let registration_frame = tokio::select! {
         _ = cancel.cancelled() => return Err(ListenerError::new(ListenerErrorCode::Cancelled)),
@@ -322,7 +597,7 @@ async fn pair_controller_inner<S: AsyncRead + AsyncWrite + Unpin>(
     }
     let registration = PairingDeviceRegistration::decode(&registration.payload)?;
     let peer = authority.persist(
-        request.offer_id,
+        offer_id,
         registration.device_id,
         confirmed.device_key,
         registration.display_name,
@@ -347,10 +622,10 @@ async fn pair_controller_inner<S: AsyncRead + AsyncWrite + Unpin>(
     if let Err(error) =
         write_bounded_frame(stream, ack.as_bytes(), MAX_PAIRING_SECURE_FRAME_BYTES).await
     {
-        let _ = authority.set_offer_state(request.offer_id, PairingOfferState::Uncertain);
+        let _ = authority.set_offer_state(offer_id, PairingOfferState::Uncertain);
         return Err(error);
     }
-    authority.acknowledge(request.offer_id, confirmed.device_key)?;
+    authority.acknowledge(offer_id, confirmed.device_key)?;
     Ok(peer)
 }
 

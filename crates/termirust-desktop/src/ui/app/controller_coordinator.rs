@@ -47,6 +47,7 @@ pub(super) enum ControllerPairingCommandError {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ControllerPairingFailureKind {
     RateLimited,
+    CodeAttemptsExhausted,
     Expired,
     Uncertain,
     Storage,
@@ -67,6 +68,15 @@ pub(super) enum ControllerListenerEventProjection {
     },
     Addresses {
         addresses: Vec<termirust_domain::ListeningAddress>,
+    },
+    Code {
+        offer_id: PairingOfferId,
+        code: String,
+        expires_at_unix_seconds: u64,
+        attempts_left: u8,
+    },
+    CodeAttemptFailed {
+        attempts_left: u8,
     },
 }
 
@@ -212,6 +222,25 @@ impl ControllerCoordinator {
             .map_err(ControllerPairingCommandError::Listener)
     }
 
+    pub fn begin_code_pairing(
+        &self,
+        process: &mut ControllerListenerProcess,
+    ) -> Result<(), ControllerPairingCommandError> {
+        process
+            .begin_code_pairing()
+            .map_err(ControllerPairingCommandError::Listener)
+    }
+
+    pub fn cancel_code_pairing(
+        &self,
+        process: &mut ControllerListenerProcess,
+        offer_id: PairingOfferId,
+    ) -> Result<(), ControllerPairingCommandError> {
+        process
+            .cancel_code_pairing(offer_id)
+            .map_err(ControllerPairingCommandError::Listener)
+    }
+
     pub fn decide_listener_pairing(
         &self,
         process: &mut ControllerListenerProcess,
@@ -261,6 +290,26 @@ impl ControllerCoordinator {
             ListenerProcessEvent::ListeningAddresses { addresses, .. } => {
                 Ok(ControllerListenerEventProjection::Addresses { addresses })
             }
+            ListenerProcessEvent::PairingCode {
+                offer_id,
+                code,
+                expires_at_unix_seconds,
+                attempts_left,
+                ..
+            } => Ok(ControllerListenerEventProjection::Code {
+                offer_id,
+                code,
+                expires_at_unix_seconds,
+                attempts_left,
+            }),
+            ListenerProcessEvent::PairingCodeAttemptFailed {
+                offer_id,
+                attempts_left,
+                ..
+            } => {
+                require_matching_offer(current_offer_id, offer_id)?;
+                Ok(ControllerListenerEventProjection::CodeAttemptFailed { attempts_left })
+            }
             ListenerProcessEvent::PairingOffer {
                 offer_id,
                 offer_text,
@@ -283,6 +332,9 @@ impl ControllerCoordinator {
                 }
                 let failure = match code.as_str() {
                     "rate_limited" => ControllerPairingFailureKind::RateLimited,
+                    "code_attempts_exhausted" => {
+                        ControllerPairingFailureKind::CodeAttemptsExhausted
+                    }
                     "handshake_timeout" => ControllerPairingFailureKind::Expired,
                     "io" => ControllerPairingFailureKind::Uncertain,
                     _ => ControllerPairingFailureKind::Storage,

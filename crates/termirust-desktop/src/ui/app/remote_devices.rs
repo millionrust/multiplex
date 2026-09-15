@@ -54,6 +54,9 @@ enum PairingUiState {
     Uncertain,
     Paired,
     Revoked,
+    CodeShown,
+    CodeWrong,
+    CodeExhausted,
 }
 
 pub(super) struct RemoteDevicesState {
@@ -78,6 +81,12 @@ pub(super) struct RemoteDevicesState {
     pairing_offer_text: Option<String>,
     pairing_offer_qr: Option<Arc<RenderImage>>,
     pairing_sas: Option<String>,
+    /// The six-digit code while pairing mode is open. Shown on this desktop only.
+    pairing_code: Option<String>,
+    pairing_code_expires_at: Option<u64>,
+    pairing_code_attempts_left: u8,
+    /// This computer's Tailscale name, looked up in the background when pairing starts.
+    tailscale_name: Arc<std::sync::Mutex<Option<String>>>,
     ssh_pairing_broker: Option<SshPairingBroker>,
     ssh_pairing_active: bool,
     ssh_pairing_expires_at: Option<u64>,
@@ -145,6 +154,10 @@ impl RemoteDevicesState {
                     pairing_offer_text: None,
                     pairing_offer_qr: None,
                     pairing_sas: None,
+                    pairing_code: None,
+                    pairing_code_expires_at: None,
+                    pairing_code_attempts_left: 0,
+                    tailscale_name: Arc::default(),
                     ssh_pairing_broker,
                     ssh_pairing_active: false,
                     ssh_pairing_expires_at: None,
@@ -191,6 +204,10 @@ impl RemoteDevicesState {
             pairing_offer_text: None,
             pairing_offer_qr: None,
             pairing_sas: None,
+            pairing_code: None,
+            pairing_code_expires_at: None,
+            pairing_code_attempts_left: 0,
+            tailscale_name: Arc::default(),
             ssh_pairing_broker: None,
             ssh_pairing_active: false,
             ssh_pairing_expires_at: None,
@@ -223,6 +240,10 @@ impl RemoteDevicesState {
             pairing_offer_text: None,
             pairing_offer_qr: None,
             pairing_sas: None,
+            pairing_code: None,
+            pairing_code_expires_at: None,
+            pairing_code_attempts_left: 0,
+            tailscale_name: Arc::default(),
             ssh_pairing_broker: None,
             ssh_pairing_active: false,
             ssh_pairing_expires_at: None,
@@ -380,7 +401,62 @@ impl RemoteDevicesState {
         self.start_listener_process(controller_coordinator)
     }
 
+    /// Opens pairing mode: the listener makes a six-digit code a phone can pair with.
+    fn begin_code_pairing(
+        &mut self,
+        controller_coordinator: &ControllerCoordinator,
+    ) -> Result<(), ()> {
+        self.stop_code_pairing(controller_coordinator);
+        let process = self.listener_process.as_mut().ok_or(())?;
+        controller_coordinator
+            .begin_code_pairing(process)
+            .map_err(|_| ())?;
+        self.clear_pairing(PairingUiState::Generating, controller_coordinator);
+        if self.tailscale_address().is_some() {
+            let name = Arc::clone(&self.tailscale_name);
+            std::thread::spawn(move || {
+                let found = crate::controller::tailscale::magic_dns_name();
+                if let Ok(mut name) = name.lock() {
+                    *name = found;
+                }
+            });
+        }
+        Ok(())
+    }
+
+    /// Closes pairing mode, discarding its code, if it is open.
+    fn stop_code_pairing(&mut self, controller_coordinator: &ControllerCoordinator) {
+        if self.pairing_code.is_none() {
+            return;
+        }
+        if let (Some(offer_id), Some(process)) =
+            (self.pairing_offer_id, self.listener_process.as_mut())
+        {
+            let _ = controller_coordinator.cancel_code_pairing(process, offer_id);
+        }
+        self.clear_pairing(PairingUiState::Idle, controller_coordinator);
+    }
+
+    /// The Tailscale address a phone should type, as `name:port` or `100.x.y.z:port`, when
+    /// the listener is reachable over Tailscale.
+    fn tailscale_address(&self) -> Option<String> {
+        let tailnet = self.listening_addresses.iter().find(|listening| {
+            matches!(listening.address.ip(), std::net::IpAddr::V4(ip)
+                if ip.octets()[0] == 100 && (64..=127).contains(&ip.octets()[1]))
+        })?;
+        let name = self
+            .tailscale_name
+            .lock()
+            .ok()
+            .and_then(|name| name.clone());
+        Some(match name {
+            Some(name) => format!("{name}:{}", tailnet.address.port()),
+            None => tailnet.address.to_string(),
+        })
+    }
+
     fn begin_pairing(&mut self, controller_coordinator: &ControllerCoordinator) -> Result<(), ()> {
+        self.stop_code_pairing(controller_coordinator);
         let process = self.listener_process.as_mut().ok_or(())?;
         controller_coordinator
             .begin_pairing(process)
@@ -473,6 +549,14 @@ impl RemoteDevicesState {
                 changed = true;
             }
         }
+        if self
+            .pairing_code_expires_at
+            .is_some_and(|expires_at| unix_seconds() > expires_at)
+        {
+            self.stop_code_pairing(controller_coordinator);
+            self.pairing_state = PairingUiState::Expired;
+            changed = true;
+        }
         let events = match self.listener_process.as_mut() {
             Some(process) => controller_coordinator
                 .drain_listener_events(process)
@@ -528,11 +612,33 @@ impl RemoteDevicesState {
             ControllerListenerEventProjection::Failed { failure } => {
                 let state = match failure {
                     ControllerPairingFailureKind::RateLimited => PairingUiState::RateLimited,
+                    ControllerPairingFailureKind::CodeAttemptsExhausted => {
+                        PairingUiState::CodeExhausted
+                    }
                     ControllerPairingFailureKind::Expired => PairingUiState::Expired,
                     ControllerPairingFailureKind::Uncertain => PairingUiState::Uncertain,
                     ControllerPairingFailureKind::Storage => PairingUiState::StorageFailure,
                 };
                 self.clear_pairing(state, controller_coordinator);
+            }
+            ControllerListenerEventProjection::Code {
+                offer_id,
+                code,
+                expires_at_unix_seconds,
+                attempts_left,
+            } => {
+                self.pairing_offer_id = Some(offer_id);
+                self.pairing_offer_text = None;
+                self.pairing_offer_qr = None;
+                self.pairing_sas = None;
+                self.pairing_code = Some(code);
+                self.pairing_code_expires_at = Some(expires_at_unix_seconds);
+                self.pairing_code_attempts_left = attempts_left;
+                self.pairing_state = PairingUiState::CodeShown;
+            }
+            ControllerListenerEventProjection::CodeAttemptFailed { attempts_left } => {
+                self.pairing_code_attempts_left = attempts_left;
+                self.pairing_state = PairingUiState::CodeWrong;
             }
             ControllerListenerEventProjection::Addresses { addresses } => {
                 self.listening_addresses = addresses
@@ -565,6 +671,9 @@ impl RemoteDevicesState {
         self.pairing_offer_text = None;
         self.pairing_offer_qr = None;
         self.pairing_sas = None;
+        self.pairing_code = None;
+        self.pairing_code_expires_at = None;
+        self.pairing_code_attempts_left = 0;
         self.ssh_pairing_active = false;
         self.ssh_pairing_expires_at = None;
         self.ssh_pairing_device_count = self.devices.len();
@@ -689,6 +798,78 @@ impl TermiRustApp {
             ListenerState::Binding | ListenerState::ShuttingDown
         );
         let pairing_offer_qr = self.remote_devices.pairing_offer_qr.clone();
+        let pairing_busy = matches!(
+            self.remote_devices.pairing_state,
+            PairingUiState::Generating | PairingUiState::Waiting | PairingUiState::SasReady
+        );
+        let pairing_code = self.remote_devices.pairing_code.clone();
+        let code_card = pairing_code.map(|code| {
+            let minutes_left = self
+                .remote_devices
+                .pairing_code_expires_at
+                .map(|expires_at| expires_at.saturating_sub(unix_seconds()).div_ceil(60))
+                .unwrap_or_default();
+            let tailscale = self.remote_devices.tailscale_address();
+            v_flex()
+                .gap_2()
+                .p_3()
+                .rounded(px(theme::CONTROL_RADIUS))
+                .border_1()
+                .border_color(theme::with_alpha(theme::accent(), 0.45))
+                .bg(theme::accent_soft())
+                .child(
+                    div()
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                        .text_color(theme::text_muted())
+                        .child(localization::remote_devices_pairing_code_help()),
+                )
+                .child(
+                    div()
+                        .debug_selector(|| "remote-devices-pairing-code".to_string())
+                        .text_size(px(theme::TYPE_TITLE_SIZE))
+                        .font_family(theme::current_design_tokens().font_mono_family().0)
+                        .font_semibold()
+                        .text_color(theme::text_main())
+                        .child(grouped_pairing_code(&code)),
+                )
+                .child(
+                    div()
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                        .text_color(theme::text_muted())
+                        .child(format!(
+                            "{} | {}",
+                            localization::remote_devices_pairing_code_expiry(minutes_left),
+                            localization::remote_devices_pairing_code_attempts(
+                                self.remote_devices.pairing_code_attempts_left
+                            )
+                        )),
+                )
+                .when_some(tailscale, |this, address| {
+                    this.child(
+                        div()
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(localization::remote_devices_pairing_tailscale_hint(
+                                &if recording_friendly {
+                                    localization::remote_devices_private_address_hidden()
+                                } else {
+                                    address
+                                },
+                            )),
+                    )
+                })
+                .child(
+                    h_flex().child(
+                        Button::new("remote-devices-stop-code-pairing")
+                            .debug_selector(|| "remote-devices-stop-code-pairing".to_string())
+                            .small()
+                            .label(localization::remote_devices_pairing_code_stop_action())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.stop_code_pairing(cx);
+                            })),
+                    ),
+                )
+        });
         let content = v_flex()
             .gap_2()
             .child(
@@ -720,19 +901,15 @@ impl TermiRustApp {
                         h_flex()
                             .gap_2()
                             .child(
-                                Button::new("remote-devices-add-controller")
-                                    .debug_selector(|| "remote-devices-add-controller".to_string())
+                                Button::new("remote-devices-pair-phone")
+                                    .debug_selector(|| "remote-devices-pair-phone".to_string())
                                     .small()
+                                    .primary()
                                     .icon(IconName::Plus)
-                                    .label(localization::remote_devices_add_action())
-                                    .disabled(matches!(
-                                        self.remote_devices.pairing_state,
-                                        PairingUiState::Generating
-                                            | PairingUiState::Waiting
-                                            | PairingUiState::SasReady
-                                    ))
+                                    .label(localization::remote_devices_pair_phone_action())
+                                    .disabled(pairing_busy)
                                     .on_click(cx.listener(|this, _, _, cx| {
-                                        this.begin_controller_pairing(cx);
+                                        this.begin_code_pairing(cx);
                                     })),
                             )
                             .child(
@@ -823,6 +1000,26 @@ impl TermiRustApp {
                         .text_size(px(theme::TYPE_MICRO_SIZE))
                         .text_color(theme::text_muted())
                         .child(localization::remote_devices_listener_guidance()),
+                )
+                .when_some(code_card, |this, card| this.child(card))
+                .when(
+                    self.remote_devices.pairing_offer_text.is_none()
+                        && self.remote_devices.pairing_sas.is_none(),
+                    |this| {
+                        this.child(
+                            h_flex().child(
+                                Button::new("remote-devices-add-controller")
+                                    .debug_selector(|| "remote-devices-add-controller".to_string())
+                                    .xsmall()
+                                    .ghost()
+                                    .label(localization::remote_devices_pairing_other_ways_action())
+                                    .disabled(pairing_busy)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.begin_controller_pairing(cx);
+                                    })),
+                            ),
+                        )
+                    },
                 )
             })
             .when(!ready, |this| {
@@ -1300,6 +1497,25 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn begin_code_pairing(&mut self, cx: &mut Context<Self>) {
+        if self
+            .remote_devices
+            .begin_code_pairing(&self.controller_coordinator)
+            .is_err()
+        {
+            self.error_message = localization::remote_devices_operation_failed();
+        } else {
+            self.error_message.clear();
+        }
+        cx.notify();
+    }
+
+    fn stop_code_pairing(&mut self, cx: &mut Context<Self>) {
+        self.remote_devices
+            .stop_code_pairing(&self.controller_coordinator);
+        cx.notify();
+    }
+
     fn begin_controller_pairing(&mut self, cx: &mut Context<Self>) {
         if self
             .remote_devices
@@ -1593,6 +1809,15 @@ fn deduplicated_devices(devices: Vec<PairedDeviceRecord>) -> Vec<PairedDeviceRec
     unique
 }
 
+/// Shows a six-digit code as two groups of three, which is easier to read and type.
+fn grouped_pairing_code(code: &str) -> String {
+    if code.len() == 6 && code.is_ascii() {
+        format!("{} {}", &code[..3], &code[3..])
+    } else {
+        code.to_owned()
+    }
+}
+
 fn pairing_ui_status(state: PairingUiState) -> String {
     match state {
         PairingUiState::Idle => localization::remote_devices_pairing_idle(),
@@ -1606,6 +1831,9 @@ fn pairing_ui_status(state: PairingUiState) -> String {
         PairingUiState::Uncertain => localization::remote_devices_pairing_uncertain(),
         PairingUiState::Paired => localization::remote_devices_pairing_paired(),
         PairingUiState::Revoked => localization::remote_devices_pairing_revoked(),
+        PairingUiState::CodeShown => localization::remote_devices_pairing_code_help(),
+        PairingUiState::CodeWrong => localization::remote_devices_pairing_code_wrong(),
+        PairingUiState::CodeExhausted => localization::remote_devices_pairing_code_exhausted(),
     }
 }
 

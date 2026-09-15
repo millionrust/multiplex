@@ -141,6 +141,40 @@ SAS-v1 is byte-for-byte fixed:
 
 The comparison space is exactly 40 bits. SAS is comparison-only and is never entered as authentication. Accessible speech identifies each visible symbol as `letter` or `digit`. `Debug` output is redacted. The normative independent anchor is committed in `tests/vectors/controller-v1.json` and yields `YKHM-ZHBT`.
 
+## Amendment 2026-09-15: six-digit code pairing
+
+Phones may pair by typing a six-digit code the desktop shows in pairing mode, instead of scanning an offer and comparing a SAS. The XX handshake, payloads, SAS-v1, IK connections, and transport framing above are unchanged; code pairing adds a key exchange before XX and a binding in its prologue.
+
+### Why a PAKE
+
+A six-digit code carries about 20 bits. Using it directly as a Noise pre-shared key or prologue secret would let an active attacker who completes one handshake test all 10^6 codes offline against the recorded AEAD tags. The code is therefore used only as the password of a balanced PAKE, CPace ([draft-irtf-cfrg-cpace-14](https://datatracker.ietf.org/doc/draft-irtf-cfrg-cpace/)), which gives an active attacker one online guess per attempt and a passive observer nothing.
+
+### Construction
+
+- Group and hash: CPace over Ristretto255 with SHA-512, `DSI = "CPaceRistretto255"`, implemented in `termirust-controller-security::cpace` with `curve25519-dalek 4.1.3` (default features off, `zeroize` on) and the already pinned `sha2 0.10.9`. The implementation reproduces the draft's appendix B.3 generator, share, secret, ISK, and invalid-point vectors.
+- Code: exactly six ASCII digits, drawn uniformly with rejection sampling from the OS CSPRNG. `PRS` is the six ASCII bytes.
+- Offer: the 84-byte `PairingOfferCore` above, delivered by the Host in plaintext at the start of the connection. It is not secret.
+- `CI = "termirust-controller-code-v1" || offer_bytes`; `sid = device_nonce[32] || offer_nonce[32]`, where the device nonce is fresh per attempt.
+- Parties: the device is CPace party A with `ADa = "termirust-controller-device"`, the Host party B with `ADb = offer_bytes`. Shares that do not decode or multiply to the neutral element abort.
+- `ISK` is the draft's initiator-responder ISK. `binding = SHA-512("termirust-controller-code-binding-v1\0" || ISK)[..32]`.
+- The XX prologue becomes `ASCII("termirust-controller-v1\0") || u16be(84) || offer_bytes || ASCII("termirust-controller-code-v1\0") || binding`. A peer that used another code derives another binding, so Host proof decryption fails at message 2 and neither static key is accepted.
+- After message 3, `confirm_code_authenticated` finalizes only a code-bound machine. There is no SAS comparison; an unbound machine cannot use this path.
+
+### Wire sequence
+
+After the `TRCN` preface with purpose `3` (pair with code): device sends `CodePairingHello{device_nonce}`; Host sends the offer envelope; device sends its 32-byte share; Host sends its 32-byte share; then the three XX messages, the sealed registration, and the sealed acknowledgement exactly as for offer pairing.
+
+### Attempt limits and lifecycle
+
+- Pairing mode is opened only from the desktop app. The code lives in the listener process memory, is shown on the desktop, and is never persisted, logged, or sent on the network.
+- Each code allows three attempts and one attempt at a time. An attempt is spent before the Host sends its share, so wrong codes, dropped connections, and successes all count. After the third failure the offer is rejected and the desktop must open pairing mode again.
+- The code expires with its offer after at most 300 seconds. Opening pairing mode again rejects the previous code. Per-source failed-authentication limits apply as for other pairing.
+- The success probability of guessing within one code is at most 3 / 10^6, and each new code requires the user to open pairing mode on the desktop.
+
+### Dependency and checksum change
+
+`curve25519-dalek 4.1.3` was already in the workspace lock through `x25519-dalek`; this amendment adds it as a direct dependency of `termirust-controller-security`. The Controller offer, XX, SAS, key, and frame vectors in `controller-v1.json` are unchanged; the ADR and lockfile checksums were repinned. Code pairing vectors are in `tests/vectors/controller-code-v1.json`.
+
 ## Pairing state and failure model
 
 The only states are `Created -> Handshaking -> SasReady -> Confirmed | Rejected | Expired | Failed`. The handshake deadline is 30,000 milliseconds from construction, using a caller-supplied clock value. An offer already expired or more than 300 seconds in the future is rejected. Duplicate, reordered, malformed, oversized, role-confused, key-confused, nonce-confused, capability-confused, or unauthenticated input fails closed. There is no automatic retry or downgrade.
@@ -195,6 +229,7 @@ Controller-v1 has exact-version compatibility only. Unknown major or minor versi
 
 - Neither `clatter` nor this composition has been independently audited.
 - The 40-bit SAS assumes an attentive out-of-band human comparison and later Host-side attempt limiting. It does not protect a user who approves a mismatch.
+- Code pairing relies on CPace's security argument and on this implementation of it, neither of which has been independently reviewed here. A code read by an attacker (shoulder surfing, screen sharing) lets that attacker pair within the code's lifetime; recording-friendly mode does not hide the code.
 - Endpoint compromise, malicious platform secure storage, screen capture, accessibility-service compromise, memory disclosure outside zeroized values, and traffic analysis are out of scope for this cryptographic channel.
 - Atomic nonce use, device persistence, revocation races, lost final ACK, secure-store invalidation, and route-specific denial of service are required in later goals.
 - Direct remote exposure remains prohibited until D06, route-specific threat tests, native secure-store conformance, and independent professional cryptographic review are complete.

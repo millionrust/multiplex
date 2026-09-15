@@ -65,6 +65,18 @@ pub fn decode_offer(bytes: &[u8]) -> Result<PairingOfferCore> {
     })
 }
 
+/// The code pairing prologue: the offer prologue followed by the key both sides derived from
+/// the code. A peer that used a different code cannot complete the Noise handshake.
+pub(crate) fn code_pairing_prologue(
+    offer: &PairingOfferCore,
+    binding: &crate::cpace::CodeBinding,
+) -> Result<Vec<u8>> {
+    let mut bytes = pairing_prologue(offer)?;
+    bytes.extend_from_slice(b"termirust-controller-code-v1\0");
+    bytes.extend_from_slice(binding.as_bytes());
+    Ok(bytes)
+}
+
 pub fn pairing_prologue(offer: &PairingOfferCore) -> Result<Vec<u8>> {
     let encoded = encode_offer(offer)?;
     let mut bytes = Vec::with_capacity(30 + encoded.len());

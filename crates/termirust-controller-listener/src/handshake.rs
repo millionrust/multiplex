@@ -23,6 +23,14 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
 pub trait HandshakeEntropy {
     fn nonce(&mut self) -> Result<[u8; 32], ListenerError>;
     fn ephemeral_private(&mut self) -> Result<StaticPrivateKey, ListenerError>;
+
+    /// 64 uniformly random bytes for a code pairing scalar.
+    fn scalar_entropy(&mut self) -> Result<[u8; 64], ListenerError> {
+        let mut bytes = [0; 64];
+        bytes[..32].copy_from_slice(&self.nonce()?);
+        bytes[32..].copy_from_slice(&self.nonce()?);
+        Ok(bytes)
+    }
 }
 
 #[derive(Debug, Default)]

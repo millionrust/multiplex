@@ -10246,6 +10246,7 @@ name = "termirust-controller-security"
 version = "0.1.0"
 dependencies = [
  "clatter",
+ "curve25519-dalek",
  "hex",
  "hkdf",
  "proptest",
