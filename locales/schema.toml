@@ -7843,13 +7843,25 @@ id = "settings-confirm-passphrase-label"
 context = "Settings form label."
 description = "Confirm passphrase label"
 [[messages]]
-id = "settings-theme-ocean"
-context = "Ocean theme value in Settings semantics."
-description = "Ocean theme"
+id = "settings-theme-system"
+context = "Theme choice that follows the operating system light or dark appearance."
+description = "System theme"
 [[messages]]
-id = "settings-theme-daylight"
-context = "Daylight theme value in Settings semantics."
-description = "Daylight theme"
+id = "settings-theme-dark"
+context = "Dark theme choice in Settings."
+description = "Dark theme"
+[[messages]]
+id = "settings-theme-light"
+context = "Light theme choice in Settings."
+description = "Light theme"
+[[messages]]
+id = "settings-theme-high-contrast"
+context = "High contrast theme choice in Settings, with white borders and saturated status colors."
+description = "High contrast theme"
+[[messages]]
+id = "settings-theme-recording"
+context = "Theme choice tuned for screen recordings and video calls. Not the privacy masking setting."
+description = "Recording theme"
 [[messages]]
 id = "settings-locale-english"
 context = "English development locale value."

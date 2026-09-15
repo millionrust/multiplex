@@ -68,10 +68,9 @@ impl TermiRustApp {
         use SettingValuePresentation as Value;
 
         let value = match id {
-            SettingId::Theme => Value::Choice(match self.saved.settings.theme_preset {
-                ThemePreset::Daylight => MessageId::SettingsThemeDaylight,
-                _ => MessageId::SettingsThemeOcean,
-            }),
+            SettingId::Theme => Value::Choice(localization::theme_preset_message(
+                self.saved.settings.theme_preset,
+            )),
             SettingId::DevelopmentLocale => Value::Choice(match localization::current_locale() {
                 termirust_ui_contract::Locale::EnUs => MessageId::SettingsLocaleEnglish,
                 termirust_ui_contract::Locale::EnXa => MessageId::SettingsLocaleExpanded,
@@ -334,8 +333,11 @@ impl TermiRustApp {
                 self.update_auto_reconnect_delay(value as u8, cx);
             }
             (SettingId::Theme, Some(SemanticActionValue::Text(value))) => match value.as_str() {
-                "ocean" => self.update_theme_preset(ThemePreset::Ocean, cx),
-                "daylight" => self.update_theme_preset(ThemePreset::Daylight, cx),
+                "system" => self.update_theme_preset(ThemePreset::System, cx),
+                "dark" => self.update_theme_preset(ThemePreset::Dark, cx),
+                "light" => self.update_theme_preset(ThemePreset::Light, cx),
+                "high_contrast" => self.update_theme_preset(ThemePreset::HighContrast, cx),
+                "recording" => self.update_theme_preset(ThemePreset::Recording, cx),
                 _ => {}
             },
             (SettingId::DevelopmentLocale, Some(SemanticActionValue::Text(value))) => {

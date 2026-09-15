@@ -2054,7 +2054,7 @@ impl TermiRustApp {
                 .gap_3()
                 .child(
                     h_flex().gap_2().flex_wrap().children(
-                        [ThemePreset::Ocean, ThemePreset::Daylight]
+                        ThemePreset::ALL
                             .into_iter()
                             .enumerate()
                             .map(|(index, preset)| {
@@ -2090,12 +2090,7 @@ impl TermiRustApp {
                                             } else {
                                                 theme::text_muted()
                                             })
-                                            .child(library_copy(match preset {
-                                                ThemePreset::Daylight => {
-                                                    MessageId::SettingsThemeDaylight
-                                                }
-                                                _ => MessageId::SettingsThemeOcean,
-                                            })),
+                                            .child(localization::theme_preset_label(preset)),
                                     )
                                     .into_any_element()
                             }),

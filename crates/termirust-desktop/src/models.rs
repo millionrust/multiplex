@@ -141,82 +141,39 @@ pub enum IdentitySource {
     Generated,
 }
 
+/// The Slate themes. Values saved by earlier versions, which offered named palettes, still
+/// load: dark palettes become Dark and light palettes become Light.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ThemePreset {
+    /// Follows the operating system appearance.
     #[default]
-    Ocean,
-    Daylight,
-    FlexokiDark,
-    FlexokiLight,
-    KanagawaWave,
-    KanagawaDragon,
-    KanagawaLotus,
-    HackerBlue,
-    HackerGreen,
-    HackerRed,
+    System,
+    #[serde(
+        alias = "ocean",
+        alias = "flexoki_dark",
+        alias = "kanagawa_wave",
+        alias = "kanagawa_dragon",
+        alias = "hacker_blue",
+        alias = "hacker_green",
+        alias = "hacker_red"
+    )]
+    Dark,
+    #[serde(alias = "daylight", alias = "flexoki_light", alias = "kanagawa_lotus")]
+    Light,
+    HighContrast,
+    /// Tuned for screen recordings and video calls. Unrelated to the privacy masking setting.
+    Recording,
 }
 
 impl ThemePreset {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Ocean => "Ocean Dark",
-            Self::Daylight => "Daylight Light",
-            Self::FlexokiDark => "Flexoki Dark",
-            Self::FlexokiLight => "Flexoki Light",
-            Self::KanagawaWave => "Kanagawa Wave",
-            Self::KanagawaDragon => "Kanagawa Dragon",
-            Self::KanagawaLotus => "Kanagawa Lotus",
-            Self::HackerBlue => "Hacker Blue",
-            Self::HackerGreen => "Hacker Green",
-            Self::HackerRed => "Hacker Red",
-        }
-    }
-
-    pub fn all() -> [ThemePreset; 10] {
-        [
-            Self::Ocean,
-            Self::Daylight,
-            Self::FlexokiDark,
-            Self::FlexokiLight,
-            Self::KanagawaWave,
-            Self::KanagawaDragon,
-            Self::KanagawaLotus,
-            Self::HackerBlue,
-            Self::HackerGreen,
-            Self::HackerRed,
-        ]
-    }
-
-    pub fn preview_bg(self) -> u32 {
-        match self {
-            Self::Ocean => 0x07101c,
-            Self::Daylight => 0xf6f1e6,
-            Self::FlexokiDark => 0x100f0f,
-            Self::FlexokiLight => 0xfffcf0,
-            Self::KanagawaWave => 0x1f1f28,
-            Self::KanagawaDragon => 0x181616,
-            Self::KanagawaLotus => 0xf2ecbc,
-            Self::HackerBlue => 0x0b1226,
-            Self::HackerGreen => 0x06160a,
-            Self::HackerRed => 0x1c0707,
-        }
-    }
-
-    pub fn preview_accent(self) -> u32 {
-        match self {
-            Self::Ocean => 0x3ec97a,
-            Self::Daylight => 0x2f9d7e,
-            Self::FlexokiDark => 0xda702c,
-            Self::FlexokiLight => 0xaf3029,
-            Self::KanagawaWave => 0x7e9cd8,
-            Self::KanagawaDragon => 0xc4746e,
-            Self::KanagawaLotus => 0x4d699b,
-            Self::HackerBlue => 0x4ea1ff,
-            Self::HackerGreen => 0x3df36c,
-            Self::HackerRed => 0xff5252,
-        }
-    }
+    pub const ALL: [Self; 5] = [
+        Self::System,
+        Self::Dark,
+        Self::Light,
+        Self::HighContrast,
+        Self::Recording,
+    ];
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -817,7 +774,7 @@ fn default_diagnostics_retention_days() -> u8 {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            theme_preset: ThemePreset::Ocean,
+            theme_preset: ThemePreset::System,
             terminal_font_size: default_terminal_font_size(),
             onboarding_dismissed: false,
             restore_workspaces_on_launch: default_restore_workspaces_on_launch(),
@@ -5729,10 +5686,43 @@ mod tests {
     }
 
     #[test]
+    fn themes_saved_by_earlier_versions_load_as_slate_themes() {
+        let load = |value: &str| {
+            serde_json::from_value::<AppSettings>(serde_json::json!({ "theme_preset": value }))
+                .unwrap()
+                .theme_preset
+        };
+        for legacy in [
+            "ocean",
+            "flexoki_dark",
+            "kanagawa_wave",
+            "kanagawa_dragon",
+            "hacker_blue",
+            "hacker_green",
+            "hacker_red",
+        ] {
+            assert_eq!(load(legacy), ThemePreset::Dark, "{legacy}");
+        }
+        for legacy in ["daylight", "flexoki_light", "kanagawa_lotus"] {
+            assert_eq!(load(legacy), ThemePreset::Light, "{legacy}");
+        }
+        for preset in ThemePreset::ALL {
+            let saved = serde_json::to_value(preset).unwrap();
+            assert_eq!(load(saved.as_str().unwrap()), preset);
+        }
+        assert_eq!(
+            serde_json::from_value::<AppSettings>(serde_json::json!({}))
+                .unwrap()
+                .theme_preset,
+            ThemePreset::System
+        );
+    }
+
+    #[test]
     fn settings_are_normalized_on_saved_state() {
         let mut state = SavedState {
             settings: AppSettings {
-                theme_preset: ThemePreset::Daylight,
+                theme_preset: ThemePreset::Light,
                 terminal_font_size: 99,
                 onboarding_dismissed: false,
                 restore_workspaces_on_launch: true,
@@ -5748,7 +5738,7 @@ mod tests {
         };
         state.ensure_settings();
 
-        assert_eq!(state.settings.theme_preset, ThemePreset::Daylight);
+        assert_eq!(state.settings.theme_preset, ThemePreset::Light);
         assert_eq!(state.settings.terminal_font_size, 18);
         assert!(!state.settings.onboarding_dismissed);
         assert!(state.settings.restore_workspaces_on_launch);
@@ -5858,7 +5848,7 @@ mod tests {
         let mut original = AppSettings::default();
         original.copy_on_select = true;
         original.terminal_font_size = 16;
-        original.theme_preset = ThemePreset::Daylight;
+        original.theme_preset = ThemePreset::Light;
         original.auto_reconnect_attempts = 5;
         original.auto_reconnect_delay_secs = 30;
 
@@ -5867,7 +5857,7 @@ mod tests {
 
         assert!(parsed.copy_on_select);
         assert_eq!(parsed.terminal_font_size, 16);
-        assert_eq!(parsed.theme_preset, ThemePreset::Daylight);
+        assert_eq!(parsed.theme_preset, ThemePreset::Light);
         assert_eq!(parsed.auto_reconnect_attempts, 5);
         assert_eq!(parsed.auto_reconnect_delay_secs, 30);
 

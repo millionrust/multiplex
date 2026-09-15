@@ -165,7 +165,7 @@ impl TermiRustApp {
 
     fn editor_theme_row(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let preset = self.saved.settings.theme_preset;
-        let preset_label = preset.label();
+        let preset_label = localization::theme_preset_label(preset);
         h_flex()
             .id("editor-theme-toggle")
             .w_full()
@@ -221,13 +221,14 @@ impl TermiRustApp {
                     .size(px(theme::HOST_ICON_SIZE_BODY))
                     .text_color(theme::text_muted()),
             )
-            .on_click(cx.listener(|this, _, _, cx| {
-                let presets = ThemePreset::all();
+            .on_click(cx.listener(|this, _, window, cx| {
+                let presets = ThemePreset::ALL;
                 let current = this.saved.settings.theme_preset;
                 let idx = presets.iter().position(|p| *p == current).unwrap_or(0);
                 let next = presets[(idx + 1) % presets.len()];
                 this.saved.settings.theme_preset = next;
                 theme::set_theme_preset(next);
+                theme::apply_to_components(Some(window), cx);
                 this.persist_runtime_state();
                 cx.notify();
             }))

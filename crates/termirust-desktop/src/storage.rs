@@ -1500,11 +1500,13 @@ Host app-prod
 
     #[test]
     fn portable_data_bundle_round_trips_user_data() {
-        let mut state = SavedState::default();
-        state.settings = AppSettings {
-            theme_preset: ThemePreset::Daylight,
-            terminal_font_size: 16,
-            ..AppSettings::default()
+        let mut state = SavedState {
+            settings: AppSettings {
+                theme_preset: ThemePreset::Light,
+                terminal_font_size: 16,
+                ..AppSettings::default()
+            },
+            ..SavedState::default()
         };
         state.vaults.push(SavedVault {
             id: "vault-shared-ops".to_string(),
@@ -1591,7 +1593,7 @@ Host app-prod
         assert_eq!(report.known_hosts, 1);
 
         let mut imported = SavedState::default();
-        imported.settings.theme_preset = ThemePreset::Ocean;
+        imported.settings.theme_preset = ThemePreset::Dark;
         let imported_known_hosts_path =
             std::env::temp_dir().join(format!("termirust-known-hosts-import-{suffix}.json"));
         let imported_known_hosts = KnownHostStore {
@@ -1603,7 +1605,7 @@ Host app-prod
                 .unwrap();
         assert_eq!(import_report.profiles, 1);
         assert_eq!(import_report.known_hosts, 1);
-        assert_eq!(imported.settings.theme_preset, ThemePreset::Ocean);
+        assert_eq!(imported.settings.theme_preset, ThemePreset::Dark);
         assert!(
             imported
                 .vaults

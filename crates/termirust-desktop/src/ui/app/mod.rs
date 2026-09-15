@@ -1565,6 +1565,16 @@ impl TermiRustApp {
         saved.merge_imported_identities(load_local_ssh_identities().unwrap_or_default());
         saved.ensure_vaults();
         theme::set_theme_preset(saved.settings.theme_preset);
+        theme::set_system_appearance(window.appearance());
+        theme::apply_to_components(Some(window), cx);
+        cx.observe_window_appearance(window, |this, window, cx| {
+            theme::set_system_appearance(window.appearance());
+            if this.saved.settings.theme_preset == ThemePreset::System {
+                theme::apply_to_components(Some(window), cx);
+            }
+            cx.notify();
+        })
+        .detach();
 
         let draft_auth_mode = saved
             .selected_profile_id
@@ -4926,6 +4936,7 @@ impl TermiRustApp {
     fn update_theme_preset(&mut self, preset: ThemePreset, cx: &mut Context<Self>) {
         self.saved.settings.theme_preset = preset;
         theme::set_theme_preset(preset);
+        theme::apply_to_components(None, cx);
         self.save_settings();
         self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
@@ -27205,7 +27216,7 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.activate_library_section(NavSection::Settings, window, cx);
-                    app.update_theme_preset(ThemePreset::HackerGreen, cx);
+                    app.update_theme_preset(ThemePreset::HighContrast, cx);
                     app.update_terminal_font_size(18, window, cx);
                     app.update_restore_workspaces_on_launch(false, cx);
                     app.update_session_log_limit(100, cx);
@@ -27251,7 +27262,7 @@ sleep 1
         app.read_with(cx, |app, cx| {
             let settings = &app.saved.settings;
             assert_eq!(app.nav_section, NavSection::Settings);
-            assert_eq!(settings.theme_preset, ThemePreset::HackerGreen);
+            assert_eq!(settings.theme_preset, ThemePreset::HighContrast);
             assert_eq!(settings.terminal_font_size, 18);
             assert_eq!(settings.terminal_font_family.as_deref(), Some("Monaco"));
             assert!(!settings.restore_workspaces_on_launch);
@@ -27442,7 +27453,7 @@ sleep 1
             })
             .expect("window update should succeed");
 
-        let theme_click = selector_click_center(window, cx, "settings-theme-1");
+        let theme_click = selector_click_center(window, cx, "settings-theme-2");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(theme_click, gpui::Modifiers::none());
 
@@ -27452,7 +27463,7 @@ sleep 1
 
         app.read_with(cx, |app, _| {
             let settings = &app.saved.settings;
-            assert_eq!(settings.theme_preset, ThemePreset::Daylight);
+            assert_eq!(settings.theme_preset, ThemePreset::Light);
             assert_eq!(settings.terminal_font_size, 18);
             assert_eq!(app.nav_section, NavSection::Settings);
             assert!(app.error_message.is_empty());

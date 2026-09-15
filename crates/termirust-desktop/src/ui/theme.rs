@@ -16,23 +16,37 @@ const HOST_CHIP_COLORS: &[u32] = &[
     0x6366f1, // violet
 ];
 
-fn theme_preset_state() -> &'static RwLock<ThemePreset> {
-    static THEME_PRESET: OnceLock<RwLock<ThemePreset>> = OnceLock::new();
-    THEME_PRESET.get_or_init(|| RwLock::new(ThemePreset::Ocean))
+#[derive(Clone, Copy)]
+struct ThemeState {
+    preset: ThemePreset,
+    system_is_dark: bool,
 }
 
-fn design_theme_kind(preset: ThemePreset) -> ThemeKind {
+fn theme_state() -> &'static RwLock<ThemeState> {
+    static THEME: OnceLock<RwLock<ThemeState>> = OnceLock::new();
+    THEME.get_or_init(|| {
+        RwLock::new(ThemeState {
+            preset: ThemePreset::System,
+            system_is_dark: true,
+        })
+    })
+}
+
+fn read_theme_state() -> ThemeState {
+    *theme_state()
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// The token theme a choice resolves to. System follows the operating system appearance.
+pub fn design_theme_kind(preset: ThemePreset, system_is_dark: bool) -> ThemeKind {
     match preset {
-        ThemePreset::Daylight | ThemePreset::FlexokiLight | ThemePreset::KanagawaLotus => {
-            ThemeKind::Light
-        }
-        ThemePreset::Ocean
-        | ThemePreset::FlexokiDark
-        | ThemePreset::KanagawaWave
-        | ThemePreset::KanagawaDragon
-        | ThemePreset::HackerBlue
-        | ThemePreset::HackerGreen
-        | ThemePreset::HackerRed => ThemeKind::Dark,
+        ThemePreset::System if system_is_dark => ThemeKind::Dark,
+        ThemePreset::System => ThemeKind::Light,
+        ThemePreset::Dark => ThemeKind::Dark,
+        ThemePreset::Light => ThemeKind::Light,
+        ThemePreset::HighContrast => ThemeKind::HighContrast,
+        ThemePreset::Recording => ThemeKind::RecordingFriendly,
     }
 }
 
@@ -40,11 +54,13 @@ pub const fn design_tokens_for(theme: ThemeKind) -> DesignTokens {
     DesignTokens::new(theme)
 }
 
+pub fn current_theme_kind() -> ThemeKind {
+    let state = read_theme_state();
+    design_theme_kind(state.preset, state.system_is_dark)
+}
+
 pub fn current_design_tokens() -> DesignTokens {
-    let preset = *theme_preset_state()
-        .read()
-        .expect("theme preset lock poisoned");
-    design_tokens_for(design_theme_kind(preset))
+    design_tokens_for(current_theme_kind())
 }
 
 pub fn semantic_status(kind: StatusKind) -> StatusVisual {
@@ -52,9 +68,114 @@ pub fn semantic_status(kind: StatusKind) -> StatusVisual {
 }
 
 pub fn set_theme_preset(preset: ThemePreset) {
-    *theme_preset_state()
+    theme_state()
         .write()
-        .expect("theme preset lock poisoned") = preset;
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .preset = preset;
+}
+
+/// Records the operating system appearance, which the System theme follows.
+pub fn set_system_appearance(appearance: gpui::WindowAppearance) {
+    theme_state()
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .system_is_dark = matches!(
+        appearance,
+        gpui::WindowAppearance::Dark | gpui::WindowAppearance::VibrantDark
+    );
+}
+
+/// Recolors gpui-component controls (buttons, inputs, lists, scrollbars, popovers) from the
+/// current tokens, so they match the rest of the app in every theme.
+pub fn apply_to_components(window: Option<&mut gpui::Window>, cx: &mut gpui::App) {
+    let kind = current_theme_kind();
+    let tokens = design_tokens_for(kind);
+    let mode = if kind == ThemeKind::Light {
+        gpui_component::ThemeMode::Light
+    } else {
+        gpui_component::ThemeMode::Dark
+    };
+    gpui_component::Theme::change(mode, window, cx);
+    let c = |value: ColorValue| token_color(value);
+    let colors = &mut gpui_component::Theme::global_mut(cx).colors;
+    let canvas = c(tokens.color_bg_canvas());
+    let surface = c(tokens.color_bg_surface());
+    let elevated = c(tokens.color_bg_elevated());
+    let control = c(tokens.color_bg_control());
+    let control_hover = c(tokens.color_bg_control_hover());
+    let hover = c(tokens.color_bg_hover());
+    let selected = c(tokens.color_bg_selected());
+    let text = c(tokens.color_text_primary());
+    let muted_text = c(tokens.color_text_muted());
+    let border = c(tokens.color_border_default());
+    let strong_border = c(tokens.color_border_strong());
+    let accent = c(tokens.color_action_primary());
+    let accent_text = c(tokens.color_action_primary_text());
+    let status = |kind: StatusKind| c(tokens.status(kind).color);
+
+    colors.background = canvas;
+    colors.foreground = text;
+    colors.border = border;
+    colors.input = strong_border;
+    colors.ring = c(tokens.color_focus());
+    colors.selection = c(tokens.color_selection());
+    colors.caret = c(tokens.color_terminal_cursor());
+    colors.muted = control;
+    colors.muted_foreground = muted_text;
+    colors.accent = hover;
+    colors.accent_foreground = text;
+    colors.primary = accent;
+    colors.primary_hover = accent.opacity(0.9);
+    colors.primary_active = accent.opacity(0.8);
+    colors.primary_foreground = accent_text;
+    colors.secondary = control;
+    colors.secondary_hover = control_hover;
+    colors.secondary_active = selected;
+    colors.secondary_foreground = text;
+    colors.danger = status(StatusKind::Error);
+    colors.danger_hover = colors.danger.opacity(0.9);
+    colors.danger_active = colors.danger.opacity(0.8);
+    colors.danger_foreground = accent_text;
+    colors.success = status(StatusKind::Done);
+    colors.success_hover = colors.success.opacity(0.9);
+    colors.success_active = colors.success.opacity(0.8);
+    colors.success_foreground = accent_text;
+    colors.info = accent;
+    colors.info_hover = accent.opacity(0.9);
+    colors.info_active = accent.opacity(0.8);
+    colors.info_foreground = accent_text;
+    colors.link = accent;
+    colors.link_hover = accent.opacity(0.9);
+    colors.link_active = accent.opacity(0.8);
+    colors.popover = elevated;
+    colors.popover_foreground = text;
+    colors.list = canvas;
+    colors.list_even = canvas;
+    colors.list_head = surface;
+    colors.list_hover = hover;
+    colors.list_active = selected;
+    colors.list_active_border = accent;
+    colors.scrollbar = gpui::transparent_black();
+    colors.scrollbar_thumb = strong_border;
+    colors.scrollbar_thumb_hover = c(tokens.color_border_focus());
+    colors.sidebar = c(tokens.color_bg_chrome());
+    colors.sidebar_foreground = text;
+    colors.sidebar_border = border;
+    colors.sidebar_accent = selected;
+    colors.sidebar_accent_foreground = text;
+    colors.sidebar_primary = accent;
+    colors.sidebar_primary_foreground = accent_text;
+    colors.tab_bar = c(tokens.color_bg_chrome());
+    colors.tab = gpui::transparent_black();
+    colors.tab_active = selected;
+    colors.tab_foreground = muted_text;
+    colors.tab_active_foreground = text;
+    colors.switch = strong_border;
+    colors.switch_thumb = text;
+    colors.skeleton = control;
+    colors.drop_target = accent.opacity(0.18);
+    colors.drag_border = accent;
+    cx.refresh_windows();
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -545,3 +666,63 @@ pub const CANVAS_PANEL_LARGE_WIDTH: f32 = CANVAS_PROJECT_PANEL_WIDTH + SPACE_6 -
 pub const CANVAS_PROJECT_FILES_WIDTH: f32 =
     CANVAS_PROJECT_PANEL_WIDTH + SPACE_9 + SPACE_7 + SPACE_2;
 pub const CANVAS_DROP_ANIMATION_MILLIS: u64 = 140;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_theme_choice_resolves_to_its_token_theme() {
+        assert_eq!(
+            design_theme_kind(ThemePreset::System, true),
+            ThemeKind::Dark
+        );
+        assert_eq!(
+            design_theme_kind(ThemePreset::System, false),
+            ThemeKind::Light
+        );
+        for system_is_dark in [true, false] {
+            assert_eq!(
+                design_theme_kind(ThemePreset::Dark, system_is_dark),
+                ThemeKind::Dark
+            );
+            assert_eq!(
+                design_theme_kind(ThemePreset::Light, system_is_dark),
+                ThemeKind::Light
+            );
+            assert_eq!(
+                design_theme_kind(ThemePreset::HighContrast, system_is_dark),
+                ThemeKind::HighContrast
+            );
+            assert_eq!(
+                design_theme_kind(ThemePreset::Recording, system_is_dark),
+                ThemeKind::RecordingFriendly
+            );
+        }
+    }
+
+    #[gpui::test]
+    fn components_are_recolored_from_the_tokens_of_each_theme(cx: &mut gpui::TestAppContext) {
+        let _isolation = crate::test_support::TestIsolation::acquire();
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            for preset in ThemePreset::ALL {
+                set_theme_preset(preset);
+                apply_to_components(None, cx);
+                let tokens = current_design_tokens();
+                let colors = &gpui_component::Theme::global(cx).colors;
+                assert_eq!(colors.background, token_color(tokens.color_bg_canvas()));
+                assert_eq!(colors.foreground, token_color(tokens.color_text_primary()));
+                assert_eq!(colors.border, token_color(tokens.color_border_default()));
+                assert_eq!(colors.primary, token_color(tokens.color_action_primary()));
+                assert_eq!(colors.ring, token_color(tokens.color_focus()));
+                assert_eq!(
+                    gpui_component::Theme::global(cx).mode.is_dark(),
+                    current_theme_kind() != ThemeKind::Light,
+                    "{preset:?}"
+                );
+            }
+            set_theme_preset(ThemePreset::System);
+        });
+    }
+}
