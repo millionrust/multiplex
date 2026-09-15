@@ -1608,8 +1608,11 @@ impl TermiRustApp {
         let desktop_pane_bridge_endpoint = desktop_pane_bridge_server
             .as_ref()
             .map(DesktopPaneBridgeServer::endpoint);
-        let remote_devices =
-            RemoteDevicesState::open_default(&controller_coordinator, desktop_pane_bridge_endpoint);
+        let remote_devices = RemoteDevicesState::open_default(
+            &controller_coordinator,
+            desktop_pane_bridge_endpoint,
+            saved.settings.remote_tmux_sessions,
+        );
         let project_label_input = cx
             .new(|cx| InputState::new(window, cx).placeholder(localization::project_label_field()));
         let group_name_input =

@@ -10118,6 +10118,7 @@ dependencies = [
  "termirust-relay-client",
  "termirust-session-host",
  "termirust-store",
+ "termirust-tmux",
  "termirust-ui-contract",
  "tokio",
  "tokio-util",
@@ -10233,6 +10234,7 @@ dependencies = [
  "termirust-host-protocol",
  "termirust-session-host",
  "termirust-store",
+ "termirust-tmux",
  "tokio",
  "tokio-util",
  "uuid",
@@ -10489,6 +10491,14 @@ dependencies = [
  "termirust-replication-security",
  "uuid",
  "zeroize",
+]
+
+[[package]]
+name = "termirust-tmux"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tempfile",
 ]
 
 [[package]]

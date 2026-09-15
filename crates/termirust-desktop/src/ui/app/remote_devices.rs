@@ -73,6 +73,7 @@ pub(super) struct RemoteDevicesState {
     listener_state: ListenerState,
     listener_process: Option<ControllerListenerProcess>,
     desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
+    tmux_sessions: bool,
     listener_last_polled: Instant,
     host_private: Option<StaticPrivateKey>,
     pairing_state: PairingUiState,
@@ -92,6 +93,7 @@ impl RemoteDevicesState {
     pub(super) fn open_default(
         controller_coordinator: &ControllerCoordinator,
         desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
+        tmux_sessions: bool,
     ) -> Self {
         let root = match crate::storage::controller_store_dir() {
             Ok(root) => root,
@@ -142,6 +144,7 @@ impl RemoteDevicesState {
                     listener_state: ListenerState::Disabled,
                     listener_process: None,
                     desktop_pane_bridge,
+                    tmux_sessions,
                     listener_last_polled: Instant::now(),
                     host_private,
                     pairing_state: PairingUiState::Idle,
@@ -168,6 +171,7 @@ impl RemoteDevicesState {
     pub(super) fn open_default(
         _controller_coordinator: &ControllerCoordinator,
         _desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
+        tmux_sessions: bool,
     ) -> Self {
         Self {
             repository: None,
@@ -187,6 +191,7 @@ impl RemoteDevicesState {
             listener_state: ListenerState::Disabled,
             listener_process: None,
             desktop_pane_bridge: None,
+            tmux_sessions,
             listener_last_polled: Instant::now(),
             host_private: Some(StaticPrivateKey::from_fixture_bytes([3; 32])),
             pairing_state: PairingUiState::Idle,
@@ -219,6 +224,7 @@ impl RemoteDevicesState {
             listener_state: ListenerState::Failed(termirust_domain::ListenerFailureCode::Internal),
             listener_process: None,
             desktop_pane_bridge: None,
+            tmux_sessions: false,
             listener_last_polled: Instant::now(),
             host_private: None,
             pairing_state: PairingUiState::StorageFailure,
@@ -323,7 +329,9 @@ impl RemoteDevicesState {
             host_private,
         )
         .and_then(|descriptor| {
-            descriptor.with_desktop_pane_bridge(self.desktop_pane_bridge.clone())
+            descriptor
+                .with_desktop_pane_bridge(self.desktop_pane_bridge.clone())
+                .map(|descriptor| descriptor.with_tmux_sessions(self.tmux_sessions))
         })
         .map_err(|_| ())?;
         match controller_coordinator.start_listener(&descriptor) {
@@ -1690,7 +1698,8 @@ mod network_tests {
 
     #[test]
     fn remote_devices_add_controller_is_disabled_without_route() {
-        let state = RemoteDevicesState::open_default(&ControllerCoordinator::default(), None);
+        let state =
+            RemoteDevicesState::open_default(&ControllerCoordinator::default(), None, false);
         assert!(!state.route_available);
         assert!(state.devices.is_empty());
         assert_eq!(
@@ -1771,7 +1780,7 @@ mod network_tests {
     #[test]
     fn pairing_events_require_one_matching_offer_and_fail_closed() {
         let coordinator = ControllerCoordinator::default();
-        let mut state = RemoteDevicesState::open_default(&coordinator, None);
+        let mut state = RemoteDevicesState::open_default(&coordinator, None, false);
         let offer_id = PairingOfferId::new();
         state
             .apply_listener_event(

@@ -781,6 +781,9 @@ pub struct AppSettings {
     pub mobile_devices: Vec<MobileDeviceRecord>,
     #[serde(default)]
     pub mobile_device_keys: Vec<MobileDeviceVaultKey>,
+    /// Lets paired devices list and attach tmux sessions the app did not create.
+    #[serde(default)]
+    pub remote_tmux_sessions: bool,
 }
 
 fn default_confirm_multiline_paste() -> bool {
@@ -836,6 +839,7 @@ impl Default for AppSettings {
             mobile_device_id: None,
             mobile_devices: Vec::new(),
             mobile_device_keys: Vec::new(),
+            remote_tmux_sessions: false,
         }
     }
 }

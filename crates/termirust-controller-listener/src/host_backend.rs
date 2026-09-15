@@ -13,6 +13,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::DesktopPaneBridgeEndpoint;
 use crate::desktop_pane_bridge::DesktopPaneBridgeClient;
+use crate::tmux_sessions::{self, DiscoveredTmuxSession, TMUX_RUNTIME_ID, TmuxSessionSource};
 use crate::{
     ControllerBackendFactory, ControllerCommand, ControllerCommandEnvelope,
     ControllerConnectionBackend, ControllerResponse, ControllerSessionCapability,
@@ -26,6 +27,7 @@ pub struct HostBackendFactory {
     projects: ProjectRepository,
     runtime_parent: PathBuf,
     desktop_pane_bridge: Option<DesktopPaneBridgeEndpoint>,
+    tmux_sessions: Option<TmuxSessionSource>,
 }
 
 impl std::fmt::Debug for HostBackendFactory {
@@ -36,6 +38,7 @@ impl std::fmt::Debug for HostBackendFactory {
             .field("projects", &"[REDACTED]")
             .field("runtime_parent", &"[REDACTED]")
             .field("desktop_pane_bridge", &self.desktop_pane_bridge.is_some())
+            .field("tmux_sessions", &self.tmux_sessions.is_some())
             .finish()
     }
 }
@@ -51,11 +54,18 @@ impl HostBackendFactory {
             projects,
             runtime_parent: runtime_parent.into(),
             desktop_pane_bridge: None,
+            tmux_sessions: None,
         }
     }
 
     pub fn with_desktop_pane_bridge(mut self, endpoint: Option<DesktopPaneBridgeEndpoint>) -> Self {
         self.desktop_pane_bridge = endpoint;
+        self
+    }
+
+    /// Lists and attaches tmux sessions the app did not create. Off unless given a source.
+    pub fn with_tmux_sessions(mut self, source: Option<TmuxSessionSource>) -> Self {
+        self.tmux_sessions = source;
         self
     }
 }
@@ -77,7 +87,72 @@ impl ControllerBackendFactory for HostBackendFactory {
             desktop_pane_bridge: None,
             live_commands: HashSet::new(),
             live_attach: false,
+            tmux: TmuxConnectionState::new(self.tmux_sessions.clone()),
         }))
+    }
+}
+
+/// What one connection knows about tmux sessions: the last listing, for authorizing
+/// commands without asking tmux again, and the hosts it holds.
+struct TmuxConnectionState {
+    source: Option<TmuxSessionSource>,
+    known: HashMap<HostedSessionId, DiscoveredTmuxSession>,
+    attached: HashSet<HostedSessionId>,
+}
+
+impl TmuxConnectionState {
+    fn new(source: Option<TmuxSessionSource>) -> Self {
+        Self {
+            source,
+            known: HashMap::new(),
+            attached: HashSet::new(),
+        }
+    }
+
+    async fn refresh(&mut self) -> Vec<DiscoveredTmuxSession> {
+        let Some(source) = &self.source else {
+            return Vec::new();
+        };
+        let sessions = source.list().await;
+        self.known = sessions
+            .iter()
+            .map(|session| (session.session_id, session.clone()))
+            .collect();
+        sessions
+    }
+
+    /// Finds a session, asking tmux again when the last listing does not have it.
+    async fn resolve(&mut self, session_id: HostedSessionId) -> Option<DiscoveredTmuxSession> {
+        self.source.as_ref()?;
+        if let Some(session) = self.known.get(&session_id) {
+            return Some(session.clone());
+        }
+        self.refresh().await;
+        self.known.get(&session_id).cloned()
+    }
+
+    fn generation(&self, session_id: HostedSessionId) -> Option<OccupantGeneration> {
+        let source = self.source.as_ref()?;
+        (self.attached.contains(&session_id) || self.known.contains_key(&session_id))
+            .then(|| source.generation(session_id))
+    }
+
+    async fn release(&mut self, session_id: HostedSessionId) {
+        if self.attached.remove(&session_id)
+            && let Some(source) = &self.source
+        {
+            source.release(session_id).await;
+        }
+    }
+}
+
+impl Drop for TmuxConnectionState {
+    fn drop(&mut self) {
+        if let Some(source) = &self.source {
+            for session_id in self.attached.drain() {
+                source.release_in_background(session_id);
+            }
+        }
     }
 }
 
@@ -93,6 +168,8 @@ struct HostConnectionBackend {
     desktop_pane_bridge: Option<DesktopPaneBridgeClient>,
     live_commands: HashSet<termirust_domain::CommandId>,
     live_attach: bool,
+    // Declared last so hosts are released after this connection's clients disconnect.
+    tmux: TmuxConnectionState,
 }
 
 #[derive(Clone, Copy)]
@@ -130,7 +207,7 @@ impl ControllerConnectionBackend for HostConnectionBackend {
                 Err(_) => self.desktop_pane_bridge = None,
             }
         }
-        let occupant_generation = self.occupant_generation(session_id)?;
+        let occupant_generation = self.resolve_occupant_generation(session_id).await?;
         let has_writer_lease = if command.command.kind().requires_writer_lease() {
             let client = self
                 .clients
@@ -200,12 +277,23 @@ impl ControllerConnectionBackend for HostConnectionBackend {
                 columns,
                 rows,
             } => {
-                self.replace_active_session(session_id);
+                self.replace_active_session(session_id).await;
+                let mut from_sequence = from_sequence;
                 if !self.clients.contains_key(&session_id) {
-                    let endpoint = LocalEndpoint::new(
-                        self.runtime_parent.join(session_id.to_string()),
-                        session_id,
-                    );
+                    let endpoint = match self.acquire_tmux_host(session_id, columns, rows).await? {
+                        Some(acquired) => {
+                            if acquired.generation != occupant_generation {
+                                self.tmux.release(session_id).await;
+                                return Err(ListenerError::new(ListenerErrorCode::StaleGeneration));
+                            }
+                            from_sequence = tmux_sessions::attach_from(&acquired, from_sequence);
+                            acquired.endpoint
+                        }
+                        None => LocalEndpoint::new(
+                            self.runtime_parent.join(session_id.to_string()),
+                            session_id,
+                        ),
+                    };
                     let mut nonce = [0; 32];
                     rand::rngs::OsRng.fill_bytes(&mut nonce);
                     let client = HostClient::connect(
@@ -213,8 +301,11 @@ impl ControllerConnectionBackend for HostConnectionBackend {
                         ConnectOptions::local_read_only(session_id, nonce),
                         cancel,
                     )
-                    .await
-                    .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+                    .await;
+                    let Ok(client) = client else {
+                        self.tmux.release(session_id).await;
+                        return Err(ListenerError::new(ListenerErrorCode::HostUnavailable));
+                    };
                     self.clients.insert(session_id, client);
                 }
                 let client = self
@@ -368,6 +459,7 @@ impl ControllerConnectionBackend for HostConnectionBackend {
                 if let Some(mut client) = self.clients.remove(&session_id) {
                     client.disconnect();
                 }
+                self.tmux.release(session_id).await;
                 if self
                     .active_attach
                     .is_some_and(|active| active.session_id == session_id)
@@ -398,7 +490,7 @@ impl ControllerConnectionBackend for HostConnectionBackend {
         let Some(active) = self.active_attach else {
             return Ok(None);
         };
-        if self.occupant_generation(active.session_id)? != active.occupant_generation {
+        if self.current_occupant_generation(active.session_id)? != active.occupant_generation {
             return Err(ListenerError::new(ListenerErrorCode::HostUnavailable));
         }
         let client = self
@@ -448,15 +540,73 @@ impl HostConnectionBackend {
         }
     }
 
-    fn replace_active_session(&mut self, session_id: HostedSessionId) {
+    async fn replace_active_session(&mut self, session_id: HostedSessionId) {
         if let Some(active) = self.active_attach
             && active.session_id != session_id
-            && let Some(mut client) = self.clients.remove(&active.session_id)
         {
-            client.disconnect();
+            if let Some(mut client) = self.clients.remove(&active.session_id) {
+                client.disconnect();
+            }
+            self.tmux.release(active.session_id).await;
         }
         self.pending_output.clear();
         self.active_attach = None;
+    }
+
+    /// Starts or joins the host for a tmux session. `None` means the id is not a tmux
+    /// session, and the durable path applies.
+    async fn acquire_tmux_host(
+        &mut self,
+        session_id: HostedSessionId,
+        columns: u32,
+        rows: u32,
+    ) -> Result<Option<tmux_sessions::AcquiredHost>, ListenerError> {
+        if self.tmux.source.is_none() || self.occupant_generation(session_id).is_ok() {
+            return Ok(None);
+        }
+        // Ask tmux again: the session must exist, as the same session, right now.
+        self.tmux.known.remove(&session_id);
+        let Some(discovered) = self.tmux.resolve(session_id).await else {
+            return Ok(None);
+        };
+        self.tmux.release(session_id).await;
+        let source = self
+            .tmux
+            .source
+            .clone()
+            .expect("tmux source was checked above");
+        let acquired = source.acquire(&discovered, columns, rows).await?;
+        self.tmux.attached.insert(session_id);
+        Ok(Some(acquired))
+    }
+
+    /// The generation a command must present, asking tmux when the id is neither durable
+    /// nor in the last tmux listing.
+    async fn resolve_occupant_generation(
+        &mut self,
+        session_id: HostedSessionId,
+    ) -> Result<OccupantGeneration, ListenerError> {
+        if let Ok(generation) = self.current_occupant_generation(session_id) {
+            return Ok(generation);
+        }
+        self.tmux
+            .resolve(session_id)
+            .await
+            .and_then(|_| self.tmux.generation(session_id))
+            .ok_or_else(|| ListenerError::new(ListenerErrorCode::HostUnavailable))
+    }
+
+    fn current_occupant_generation(
+        &self,
+        session_id: HostedSessionId,
+    ) -> Result<OccupantGeneration, ListenerError> {
+        if self.tmux.attached.contains(&session_id)
+            && let Some(generation) = self.tmux.generation(session_id)
+        {
+            return Ok(generation);
+        }
+        self.occupant_generation(session_id)
+            .or_else(|error| self.tmux.generation(session_id).ok_or(error))
     }
 
     async fn list_sessions(
@@ -491,17 +641,30 @@ impl HostConnectionBackend {
         for session in &mut live_sessions {
             session.capabilities = live_capabilities.clone();
         }
-        let live_ids = live_sessions
+        let mut shadowing_ids = live_sessions
             .iter()
             .map(|session| session.session_id)
             .collect::<HashSet<_>>();
-        sessions.retain(|session| !live_ids.contains(&session.session_id));
+        let tmux_sessions = self.tmux.refresh().await;
+        let tmux_revision = tmux_sessions::listing_revision(&tmux_sessions);
+        let mut tmux_sessions = tmux_sessions
+            .iter()
+            .filter(|session| !shadowing_ids.contains(&session.session_id))
+            .map(|session| self.tmux_session_summary(session, &live_capabilities))
+            .collect::<Vec<_>>();
+        shadowing_ids.extend(tmux_sessions.iter().map(|session| session.session_id));
+        sessions.retain(|session| !shadowing_ids.contains(&session.session_id));
+        // Live terminals first, then tmux sessions, then durable history.
+        live_sessions.append(&mut tmux_sessions);
         live_sessions.append(&mut sessions);
         let sessions = live_sessions;
-        let revision = durable_revision
+        let mut revision = durable_revision
             .wrapping_mul(31)
-            .wrapping_add(live_revision)
-            .max(1);
+            .wrapping_add(live_revision);
+        if self.tmux.source.is_some() {
+            revision = revision.wrapping_mul(31).wrapping_add(tmux_revision);
+        }
+        let revision = revision.max(1);
         if expected_revision.is_some_and(|expected| expected != revision) {
             return Ok(vec![ControllerResponse::Error {
                 command_id,
@@ -543,6 +706,29 @@ impl HostConnectionBackend {
             sessions: page,
             next_offset,
         }])
+    }
+
+    fn tmux_session_summary(
+        &self,
+        session: &DiscoveredTmuxSession,
+        capabilities: &[ControllerSessionCapability],
+    ) -> ControllerSessionSummary {
+        ControllerSessionSummary {
+            session_id: session.session_id,
+            host_instance_id: None,
+            origin: ControllerSessionOrigin::Terminal,
+            runtime: Some(TMUX_RUNTIME_ID.to_owned()),
+            capabilities: capabilities.to_vec(),
+            title: session.title(),
+            project: None,
+            group: None,
+            lifecycle: lifecycle_code(HostedSessionState::Live).to_owned(),
+            activity: activity_code(ActivityState::Unknown).to_owned(),
+            occupant_generation: self.tmux.generation(session.session_id),
+            last_output_sequence: termirust_domain::OutputSequence::ZERO,
+            has_writer: false,
+            unread: false,
+        }
     }
 
     fn durable_session_summaries(
@@ -766,6 +952,7 @@ mod tests {
             desktop_pane_bridge: None,
             live_commands: HashSet::new(),
             live_attach: false,
+            tmux: TmuxConnectionState::new(None),
         };
 
         let responses = backend
@@ -836,6 +1023,7 @@ mod tests {
             desktop_pane_bridge: None,
             live_commands: HashSet::new(),
             live_attach: false,
+            tmux: TmuxConnectionState::new(None),
         };
         let cancel = CancellationToken::new();
         let generation = OccupantGeneration::new(1);

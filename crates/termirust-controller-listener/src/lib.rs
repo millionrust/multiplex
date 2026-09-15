@@ -23,6 +23,7 @@ mod queue;
 mod rate_limit;
 mod runtime;
 mod ssh_pairing_broker;
+mod tmux_sessions;
 
 pub use authorization::{BridgeAuthorization, BridgeCommand, BridgeCommandKind};
 pub use bind::{
@@ -77,3 +78,4 @@ pub use ssh_pairing_broker::{
     SshHostPairingDecision, SshHostPairingDecisionValue, SshHostPairingPrompt,
     request_ssh_host_pairing_decision,
 };
+pub use tmux_sessions::{TMUX_RUNTIME_ID, TmuxSessionSource};

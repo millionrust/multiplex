@@ -389,64 +389,20 @@ pub fn local_tmux_version() -> Result<String> {
 }
 
 fn local_tmux_probe() -> Result<(PathBuf, String)> {
-    if let Some(path) = std::env::var_os("TERMIRUST_TMUX_PATH") {
-        return probe_tmux_candidates([PathBuf::from(path)], |candidate| candidate.is_file());
-    }
-    let mut candidates = Vec::new();
-    if let Some(path) = std::env::var_os("PATH") {
-        candidates.extend(std::env::split_paths(&path).map(|directory| directory.join("tmux")));
-    }
-    candidates.extend(
-        [
-            "/opt/homebrew/bin/tmux",
-            "/usr/local/bin/tmux",
-            "/usr/bin/tmux",
-        ]
-        .into_iter()
-        .map(PathBuf::from),
-    );
-    candidates.dedup();
-    probe_tmux_candidates(candidates, |candidate| candidate.is_file())
+    let tmux = termirust_tmux::Tmux::discover()?;
+    Ok((tmux.executable().to_path_buf(), tmux.version().to_owned()))
 }
 
-fn probe_tmux_candidates(
-    candidates: impl IntoIterator<Item = PathBuf>,
-    mut is_file: impl FnMut(&std::path::Path) -> bool,
-) -> Result<(PathBuf, String)> {
-    probe_tmux_candidates_with(candidates, &mut is_file, tmux_version_at)
-}
-
+#[cfg(test)]
 fn probe_tmux_candidates_with(
     candidates: impl IntoIterator<Item = PathBuf>,
-    mut is_file: impl FnMut(&std::path::Path) -> bool,
+    is_file: impl FnMut(&std::path::Path) -> bool,
     mut version_probe: impl FnMut(&std::path::Path) -> Result<String>,
 ) -> Result<(PathBuf, String)> {
-    let tmux = select_tmux_candidate(candidates, &mut is_file)?;
-    let version = version_probe(&tmux)?;
-    Ok((tmux, version))
-}
-
-fn tmux_version_at(tmux: &std::path::Path) -> Result<String> {
-    let output = ProcessCommand::new(&tmux)
-        .arg("-V")
-        .output()
-        .with_context(|| format!("Unable to run {}", tmux.display()))?;
-    if !output.status.success() {
-        bail!("tmux -V exited with {}", output.status);
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-fn select_tmux_candidate(
-    candidates: impl IntoIterator<Item = PathBuf>,
-    mut is_file: impl FnMut(&std::path::Path) -> bool,
-) -> Result<PathBuf> {
-    candidates
-        .into_iter()
-        .find(|candidate| is_file(candidate))
-        .ok_or_else(|| {
-            anyhow::anyhow!("tmux is not installed or is not available in the app's PATH")
-        })
+    let tmux = termirust_tmux::Tmux::select(candidates, is_file, |candidate| {
+        version_probe(candidate).map_err(|error| format!("{error:#}"))
+    })?;
+    Ok((tmux.executable().to_path_buf(), tmux.version().to_owned()))
 }
 
 pub fn local_tmux_install_guidance() -> &'static str {

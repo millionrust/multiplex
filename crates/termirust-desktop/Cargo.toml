@@ -59,6 +59,7 @@ termirust-host-protocol = { version = "0.1.0", path = "../termirust-host-protoco
 termirust-relay-client = { version = "0.1.0", path = "../termirust-relay-client" }
 termirust-session-host = { version = "0.1.0", path = "../termirust-session-host" }
 termirust-store = { version = "0.1.0", path = "../termirust-store", features = ["os-keyring"] }
+termirust-tmux = { version = "0.1.0", path = "../termirust-tmux" }
 termirust-ui-contract = { version = "0.1.0", path = "../termirust-ui-contract" }
 tokio = { version = "1", features = ["io-std", "io-util", "net", "rt", "signal", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }

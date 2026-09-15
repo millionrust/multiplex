@@ -28,6 +28,7 @@ members = [
     "crates/termirust-session-host",
     "crates/termirust-slate",
     "crates/termirust-store",
+    "crates/termirust-tmux",
     "crates/termirust-tui",
     "crates/termirust-ui-contract",
     "crates/termirust-update-trust",

@@ -32,7 +32,7 @@ use crate::{
     ListenerRuntime, ListenerServices, PairingAuthoritySnapshot, ProcessPairingDecision,
     SourceBucketKey, SshControllerPairingOffer, SshHostPairingPrompt, SystemBinder,
     SystemFirewallObserver, SystemGeneratedPortSource, SystemHandshakeEntropy,
-    SystemInterfaceProvider, bind_selected_route, pair_controller,
+    SystemInterfaceProvider, TmuxSessionSource, bind_selected_route, pair_controller,
     request_ssh_host_pairing_decision,
 };
 
@@ -120,6 +120,9 @@ pub struct ListenerLaunchDescriptor {
     pub runtime_parent: PathBuf,
     #[serde(default)]
     pub desktop_pane_bridge: Option<crate::DesktopPaneBridgeEndpoint>,
+    /// Lists and attaches tmux sessions the app did not create. Opt-in.
+    #[serde(default)]
+    pub tmux_sessions: bool,
     pub network_revision: ControllerNetworkRevision,
     pub policy: ControllerListenPolicy,
     host_private: [u8; 32],
@@ -143,6 +146,7 @@ impl ListenerLaunchDescriptor {
             session_data_root,
             runtime_parent,
             desktop_pane_bridge: None,
+            tmux_sessions: false,
             network_revision,
             policy,
             host_private: host_private.copy_for_process_handoff(),
@@ -158,6 +162,11 @@ impl ListenerLaunchDescriptor {
         self.desktop_pane_bridge = endpoint;
         self.validate()?;
         Ok(self)
+    }
+
+    pub fn with_tmux_sessions(mut self, enabled: bool) -> Self {
+        self.tmux_sessions = enabled;
+        self
     }
 
     pub fn read(reader: impl BufRead) -> Result<Self, ListenerError> {
@@ -229,6 +238,7 @@ impl fmt::Debug for ListenerLaunchDescriptor {
             .field("format_version", &self.format_version)
             .field("paths", &"[REDACTED]")
             .field("network_revision", &self.network_revision)
+            .field("tmux_sessions", &self.tmux_sessions)
             .field("policy", &"[REDACTED]")
             .field("host_private", &"[REDACTED]")
             .finish()
@@ -883,7 +893,13 @@ where
     let pairing: Arc<dyn ControllerPairingAuthority> = repository_authority.clone();
     let backends = Arc::new(
         HostBackendFactory::new(sessions, projects, descriptor.runtime_parent.clone())
-            .with_desktop_pane_bridge(descriptor.desktop_pane_bridge.clone()),
+            .with_desktop_pane_bridge(descriptor.desktop_pane_bridge.clone())
+            .with_tmux_sessions(
+                descriptor
+                    .tmux_sessions
+                    .then(|| TmuxSessionSource::system(descriptor.runtime_parent.clone()))
+                    .transpose()?,
+            ),
     );
     let mut source_key = [0; 32];
     rand::rngs::OsRng
@@ -1039,6 +1055,21 @@ mod tests {
         descriptor.write(&mut bytes).unwrap();
         let decoded = ListenerLaunchDescriptor::read(bytes.as_slice()).unwrap();
         assert_eq!(decoded.policy, descriptor.policy);
+        assert!(
+            !decoded.tmux_sessions,
+            "tmux discovery is off unless asked for"
+        );
+        let mut bytes = Vec::new();
+        descriptor
+            .clone()
+            .with_tmux_sessions(true)
+            .write(&mut bytes)
+            .unwrap();
+        assert!(
+            ListenerLaunchDescriptor::read(bytes.as_slice())
+                .unwrap()
+                .tmux_sessions
+        );
         let debug = format!("{descriptor:?}");
         assert!(!debug.contains("private/controller"));
         assert!(!debug.contains("7, 7"));
