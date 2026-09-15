@@ -1,10 +1,29 @@
 //! Turns successive captured frames into batches of tile operations for one viewer.
+//!
+//! The encoder remembers which batch last changed each tile, which batches moved which areas,
+//! and which batches added which cache entries. A viewer that reconnects says which batch it
+//! applied last, and only tiles touched after that are sent again.
+
+use std::collections::VecDeque;
 
 use crate::{
     Batch, CacheMiss, CacheShadow, CodecError, DESKTOP_CACHE_BYTES, Frame, FrameBuffer, Generation,
     LossyDetail, Rect, Size, SurfaceId, TileClass, TileGrid, TileHash, TileHashes, TileIndex,
     TileOp, TileSet, classify, detect_vertical_move, encode_lossless, encode_lossy, hash_rect,
 };
+
+/// Moves and cache insertions remembered for resuming. A viewer that acknowledged a batch older
+/// than this history receives a full refresh instead.
+pub const MAX_RESUME_HISTORY: usize = 4_096;
+
+/// How a reconnecting viewer is brought up to date.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Resume {
+    /// Only tiles changed after the acknowledged batch are sent again.
+    Partial,
+    /// The acknowledgement was unknown or too old; every tile is sent again.
+    Full,
+}
 
 /// Tunables for one viewer's encoder.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -48,6 +67,13 @@ pub struct Encoder {
     pub(crate) viewer: Vec<ViewerTile>,
     shadow: CacheShadow,
     next_sequence: u64,
+    /// Batch that last changed each tile's viewer state.
+    sent_at: Vec<u64>,
+    moves: VecDeque<(u64, Rect)>,
+    inserted: VecDeque<(u64, TileHash)>,
+    acked: u64,
+    /// A resume must acknowledge at least this batch; older history was dropped.
+    oldest_resumable: u64,
 }
 
 impl Encoder {
@@ -68,7 +94,54 @@ impl Encoder {
             viewer: vec![ViewerTile::Unknown; grid.len()],
             shadow: CacheShadow::new(config.cache_bytes),
             next_sequence: 1,
+            sent_at: vec![0; grid.len()],
+            moves: VecDeque::new(),
+            inserted: VecDeque::new(),
+            acked: 0,
+            oldest_resumable: 1,
         }
+    }
+
+    /// The viewer applied every batch up to `sequence`; history at or before it is dropped.
+    pub fn acknowledge(&mut self, sequence: u64) {
+        let sequence = sequence.min(self.next_sequence - 1);
+        if sequence <= self.acked {
+            return;
+        }
+        self.acked = sequence;
+        while self.moves.front().is_some_and(|(at, _)| *at <= sequence) {
+            self.moves.pop_front();
+        }
+        while self.inserted.front().is_some_and(|(at, _)| *at <= sequence) {
+            self.inserted.pop_front();
+        }
+    }
+
+    /// Prepares the next batch for a viewer that reconnected having applied batches up to
+    /// `acknowledged`. Tiles, moves, and cache entries from later batches are treated as lost.
+    pub fn resume(&mut self, acknowledged: u64) -> Resume {
+        let acknowledged = acknowledged.min(self.next_sequence - 1);
+        if acknowledged == 0 || acknowledged < self.acked || acknowledged < self.oldest_resumable {
+            self.reset_viewer();
+            return Resume::Full;
+        }
+        for (state, at) in self.viewer.iter_mut().zip(&self.sent_at) {
+            if *at > acknowledged {
+                *state = ViewerTile::Unknown;
+            }
+        }
+        for (_, rect) in self.moves.iter().filter(|(at, _)| *at > acknowledged) {
+            for tile in self.grid.tiles_covering(*rect).iter() {
+                self.viewer[tile.0 as usize] = ViewerTile::Unknown;
+            }
+        }
+        for (_, hash) in self.inserted.iter().filter(|(at, _)| *at > acknowledged) {
+            self.shadow.forget(*hash);
+        }
+        self.moves.clear();
+        self.inserted.clear();
+        self.acked = acknowledged;
+        Resume::Partial
     }
 
     pub const fn surface(&self) -> SurfaceId {
@@ -145,6 +218,11 @@ impl Encoder {
                 }
                 TileClass::Text => {
                     self.shadow.record_sent(hash, pixel_bytes(rect));
+                    remember(
+                        &mut self.inserted,
+                        &mut self.oldest_resumable,
+                        (self.next_sequence, hash),
+                    );
                     let payload = encode_lossless(frame, rect);
                     (
                         TileOp::Lossless {
@@ -164,6 +242,7 @@ impl Encoder {
                 }
             };
             self.viewer[tile.0 as usize] = state;
+            self.sent_at[tile.0 as usize] = self.next_sequence;
             payload.clear();
             frame.copy_rect_into(rect, &mut payload);
             self.source.write_rect(rect, &payload)?;
@@ -195,6 +274,9 @@ impl Encoder {
             .iter_mut()
             .for_each(|state| *state = ViewerTile::Unknown);
         self.shadow.clear();
+        self.moves.clear();
+        self.inserted.clear();
+        self.oldest_resumable = self.next_sequence;
     }
 
     /// Detects a scroll inside the changed area and applies it to the source copy and to the
@@ -229,12 +311,28 @@ impl Encoder {
             } else {
                 ViewerTile::Unknown
             };
+            self.sent_at[tile.0 as usize] = self.next_sequence;
             changed.insert(tile);
         }
+        remember(
+            &mut self.moves,
+            &mut self.oldest_resumable,
+            (self.next_sequence, found.rect),
+        );
         Some(TileOp::Move {
             rect: found.rect,
             dy: found.dy,
         })
+    }
+}
+
+/// Appends to a bounded history; dropping an entry means resumes must acknowledge past it.
+fn remember<T>(history: &mut VecDeque<(u64, T)>, oldest_resumable: &mut u64, entry: (u64, T)) {
+    history.push_back(entry);
+    if history.len() > MAX_RESUME_HISTORY
+        && let Some((dropped, _)) = history.pop_front()
+    {
+        *oldest_resumable = (*oldest_resumable).max(dropped);
     }
 }
 

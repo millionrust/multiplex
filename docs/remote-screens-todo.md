@@ -38,7 +38,8 @@ Pure Rust, no platform code, fully testable in CI.
 - [x] 1.8 `feat(screen-codec): detect vertical scrolls as moves`
 - [x] 1.9 `feat(screen-codec): encode frames into ops and apply them to a framebuffer`
   Encoder and decoder end to end; decoded pixels equal the source for lossless tiles.
-- [ ] 1.10 `feat(screen-codec): send only what changed since the viewer's last acknowledgement`
+- [x] 1.10 `feat(screen-codec): send only what changed since the viewer's last acknowledgement`
+  A lost scroll still resends the scrolled area: the host has no copy of the viewer's older frame.
 - [ ] 1.11 `feat(screen-codec): promote fast-changing regions to a motion region`
 - [ ] 1.12 `feat(screen-codec): refine lossy tiles to exact pixels when idle`
 - [ ] 1.13 `test(screen-codec): add fuzz targets and a synthetic workload report`
