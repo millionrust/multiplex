@@ -27399,6 +27399,69 @@ sleep 1
     }
 
     #[gpui::test]
+    fn remote_access_section_stays_inside_the_devices_view(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let address = |label: &str, kind, value: &str| termirust_domain::ListeningAddress {
+            interface_id: termirust_domain::NetworkInterfaceId::new(format!("1:{label}")).unwrap(),
+            label: label.into(),
+            kind,
+            address: value.parse().unwrap(),
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.remote_devices.show_ready_listener_with_code(vec![
+                        address(
+                            "en0",
+                            termirust_domain::NetworkInterfaceKind::Lan,
+                            "192.168.88.4:63322",
+                        ),
+                        address(
+                            "utun100",
+                            termirust_domain::NetworkInterfaceKind::Vpn,
+                            "[fd19:eff7:9866:740d:44e1:8201:1927:6e7a]:63322",
+                        ),
+                    ]);
+                    app.activate_library_section(NavSection::Devices, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        // About the width of a window beside another app on a laptop screen.
+        visual.simulate_resize(gpui::size(gpui::px(1000.), gpui::px(700.)));
+        visual.run_until_parked();
+        let view = visual
+            .debug_bounds("devices-scroll")
+            .expect("devices view is rendered");
+        let window_width = visual.update(|window, _| window.viewport_size().width);
+        assert!(
+            view.right() <= window_width,
+            "the devices view ends at {:?}, past the window width {window_width:?}",
+            view.right()
+        );
+        for selector in [
+            "remote-devices-pair-phone",
+            "remote-devices-stop-listener",
+            "remote-devices-pairing-code",
+            "remote-devices-stop-code-pairing",
+        ] {
+            let bounds = visual
+                .debug_bounds(selector)
+                .unwrap_or_else(|| panic!("missing debug bounds for {selector}"));
+            assert!(
+                bounds.right() <= view.right(),
+                "{selector} ends at {:?}, past the view's right edge at {:?}",
+                bounds.right(),
+                view.right()
+            );
+        }
+    }
+
+    #[gpui::test]
     fn e2e_remote_terminal_setup_previews_applies_and_removes_shell_changes(
         cx: &mut TestAppContext,
     ) {

@@ -173,6 +173,18 @@ impl RemoteDevicesState {
         }
     }
 
+    /// Shows a ready listener on `addresses` with a live pairing code, for layout tests.
+    #[cfg(test)]
+    pub(super) fn show_ready_listener_with_code(&mut self, addresses: Vec<ListeningAddress>) {
+        self.listener_state = ListenerState::Ready {
+            authenticated_connections: 0,
+        };
+        self.listening_addresses = addresses;
+        self.pairing_code = Some("204026".to_owned());
+        self.pairing_code_expires_at = Some(unix_seconds() + 300);
+        self.pairing_code_attempts_left = 3;
+    }
+
     #[cfg(test)]
     pub(super) fn open_default(
         _controller_coordinator: &ControllerCoordinator,
@@ -750,6 +762,7 @@ impl TermiRustApp {
             .id("devices-view")
             .debug_selector(|| "devices-view".to_string())
             .flex_1()
+            .min_w_0()
             .min_h_0()
             .bg(theme::library_bg())
             .child(
@@ -779,6 +792,7 @@ impl TermiRustApp {
                     .id("devices-scroll")
                     .debug_selector(|| "devices-scroll".to_string())
                     .flex_1()
+                    .min_w_0()
                     .min_h_0()
                     .overflow_y_scroll()
                     .p(px(theme::SPACE_6))
