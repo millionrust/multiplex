@@ -95,13 +95,20 @@ section tells you how to install it and leaves the setup unavailable.
 
 The tmux status bar is turned off for these sessions only; your other tmux sessions keep theirs.
 
-Scrolling stays native. tmux normally switches the terminal to its alternate screen, so
-the terminal app has no scrollback and every wheel event goes through tmux's copy mode.
-The init file sets `terminal-overrides[97]` to `*:smcup@:rmcup@` on the tmux server
-before the session starts, so output lands in the terminal app's own scrollback and the
-trackpad scrolls it directly. This is a server option: it also applies to other clients
-of the same tmux server, and removing the setup unsets it. Tabs attached before you apply
-the setup keep the old behavior until they reattach.
+Scrolling and selecting happen in tmux. A tmux pane's history lives in tmux, not in the
+terminal app, so the app's own scrollback cannot hold it. With `set -g mouse on` in
+`~/.tmux.conf`, the wheel scrolls tmux's history and programs that ask for the mouse (Codex,
+vim) receive it; dragging selects in copy mode. An earlier version set
+`terminal-overrides[97]` to keep tmux off the alternate screen; that left programs such as
+Claude Code impossible to scroll, so applying or removing the setup now clears it. A tmux
+configuration that hides copy mode's position indicator and copies selections to the clipboard:
+
+```tmux
+set -g mouse on
+set -gw copy-mode-position-format ""
+set -s set-clipboard on
+bind -T copy-mode MouseDragEnd1Pane send -X copy-pipe-and-cancel "pbcopy"
+```
 
 One app-owned init file per shell, safe to delete —
 `~/.config/termirust/shell-init.zsh` for zsh (and `shell-init.bash` for bash):
@@ -112,7 +119,7 @@ if [[ -o interactive && -z "$TMUX" && -z "$TERMIRUST_NO_WRAP" ]]; then
   case "$TERM_PROGRAM" in
     Apple_Terminal|zed|iTerm.app|ghostty|WezTerm|vscode)
       if [[ -x '/opt/homebrew/bin/tmux' ]]; then
-        '/opt/homebrew/bin/tmux' start-server \; set-option -s 'terminal-overrides[97]' '*:smcup@:rmcup@' \; new-session -s "termirust-${PWD:t}-$$" \; set-option status off && exit
+        '/opt/homebrew/bin/tmux' new-session -s "termirust-${PWD:t}-$$" \; set-option status off && exit
       fi
       ;;
   esac

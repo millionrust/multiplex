@@ -414,7 +414,7 @@ fn shell_integration_starts_new_terminal_app_shells_inside_tmux() {
 }
 
 #[test]
-fn the_setup_hides_wrapped_status_bars_and_keeps_native_scrollback_then_undoes_both() {
+fn the_setup_hides_wrapped_status_bars_and_clears_the_old_scrollback_override() {
     let Some(server) = IsolatedServer::start() else {
         return;
     };
@@ -440,20 +440,23 @@ fn the_setup_hides_wrapped_status_bars_and_keeps_native_scrollback_then_undoes_b
         String::from_utf8_lossy(&output.stdout).into_owned()
     };
 
+    // An earlier version set this override; it kept output out of reach of scrolling.
+    server.run(&[
+        "set-option",
+        "-s",
+        termirust_tmux::LEGACY_SCROLLBACK_OVERRIDE_TARGET,
+        "*:smcup@:rmcup@",
+    ]);
     assert_eq!(
         server.tmux.apply_wrapped_session_appearance(true).unwrap(),
         1
     );
     assert_eq!(status("termirust-terminal-4242"), "off");
     assert_eq!(status("work"), "", "other sessions keep the global setting");
-    assert!(overrides().contains(&format!(
-        "{} {}",
-        termirust_tmux::scrollback_override_target(),
-        termirust_tmux::SCROLLBACK_OVERRIDE
-    )));
-    // Applying again leaves a single override.
-    server.tmux.apply_wrapped_session_appearance(true).unwrap();
-    assert_eq!(overrides().matches("smcup@").count(), 1);
+    assert!(
+        !overrides().contains("smcup@"),
+        "applying clears the override"
+    );
 
     assert_eq!(
         server.tmux.apply_wrapped_session_appearance(false).unwrap(),

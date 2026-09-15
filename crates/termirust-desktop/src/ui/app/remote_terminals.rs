@@ -288,8 +288,8 @@ impl TermiRustApp {
         match pending.plan.apply() {
             Ok(()) => {
                 // New tabs pick up the setup file; the running server is updated here, so
-                // turning the setup on hides open tabs' status bar and keeps native scrollback,
-                // and turning it off restores both.
+                // turning the setup on hides open tabs' status bar and turning it off restores it.
+                // Either way the scrollback override an earlier version set is cleared.
                 // Tests never reach for the developer's own tmux server.
                 #[cfg(not(test))]
                 if let Some(tmux) = self.remote_terminals.tmux.clone() {
