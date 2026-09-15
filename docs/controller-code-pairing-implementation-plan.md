@@ -82,5 +82,5 @@ Decisions taken with the product owner on 2026-09-15:
   public and wildcard addresses.
 - Security tests cover CPace vectors, wrong-code failure, attempt exhaustion, transcript binding,
   and that a recorded failed attempt gives no offline test for other codes.
-- iOS builds and installs with Xcode 27.0 on the workstation. The Android SDK volume is not
-  mounted, so Android changes are reviewed but not compiled; see the completion evidence.
+- iOS builds and installs with Xcode 27.0 on the workstation. Android builds and passes its unit
+  tests with NDK 27.1.12297006; see the completion evidence.
