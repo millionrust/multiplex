@@ -1,5 +1,3 @@
-#![cfg(unix)]
-
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{BufRead as _, BufReader, Read as _, Write as _};
@@ -168,7 +166,7 @@ impl Drop for HostProcess {
     }
 }
 
-fn main() {
+pub(crate) fn main() {
     if let Err(code) = run() {
         eprintln!("mobile Controller fixture failed: {code}");
         std::process::exit(1);

@@ -6,10 +6,18 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use serde::{Deserialize, Serialize};
-use termirust_client::{LocalEndpoint, UserOnlyUnixListener};
+use termirust_client::LocalEndpoint;
+#[cfg(unix)]
+use termirust_client::UserOnlyUnixListener;
 use termirust_domain::{HostedSessionId, OccupantGeneration, OutputSequence};
-use tokio::net::UnixStream;
 use tokio_util::sync::CancellationToken;
+
+/// The bridge is a user-only Unix socket. Elsewhere starting and connecting report the host as
+/// unavailable, so this stream type is never connected.
+#[cfg(unix)]
+type BridgeStream = tokio::net::UnixStream;
+#[cfg(not(unix))]
+type BridgeStream = tokio::io::DuplexStream;
 
 use crate::{
     ControllerCommand, ControllerResponse, ControllerSessionCapability, ControllerSessionOrigin,
@@ -499,6 +507,12 @@ impl DesktopPaneBridgeServer {
                     let _ = ready_tx.send(Err(ListenerErrorCode::HostUnavailable));
                     return;
                 };
+                #[cfg(not(unix))]
+                {
+                    let _ = (runtime, thread_endpoint, thread_cancel, registry);
+                    let _ = ready_tx.send(Err(ListenerErrorCode::HostUnavailable));
+                }
+                #[cfg(unix)]
                 runtime.block_on(async move {
                     let listener = match UserOnlyUnixListener::bind(thread_endpoint.local_endpoint()) {
                         Ok(listener) => listener,
@@ -657,8 +671,9 @@ struct ActiveDesktopAttach {
     cursor: OutputSequence,
 }
 
+#[cfg(unix)]
 async fn serve_connection(
-    mut stream: UnixStream,
+    mut stream: BridgeStream,
     connection_id: u64,
     registry: DesktopPaneRegistry,
 ) -> Result<(), ListenerError> {
@@ -1004,7 +1019,7 @@ fn error_response(command_id: termirust_domain::CommandId) -> ControllerResponse
 }
 
 pub(crate) struct DesktopPaneBridgeClient {
-    stream: UnixStream,
+    stream: BridgeStream,
 }
 
 impl DesktopPaneBridgeClient {
@@ -1012,10 +1027,15 @@ impl DesktopPaneBridgeClient {
         endpoint: &DesktopPaneBridgeEndpoint,
     ) -> Result<Self, ListenerError> {
         endpoint.validate()?;
-        let stream = UnixStream::connect(endpoint.local_endpoint().socket_path())
-            .await
-            .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
-        Ok(Self { stream })
+        #[cfg(unix)]
+        {
+            let stream = BridgeStream::connect(endpoint.local_endpoint().socket_path())
+                .await
+                .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+            Ok(Self { stream })
+        }
+        #[cfg(not(unix))]
+        Err(ListenerError::new(ListenerErrorCode::HostUnavailable))
     }
 
     async fn request(&mut self, request: BridgeRequest) -> Result<BridgeReply, ListenerError> {

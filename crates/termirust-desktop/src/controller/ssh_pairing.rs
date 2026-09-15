@@ -356,4 +356,23 @@ impl SshPairingBroker {
             "SSH Host pairing is not available on this platform",
         ))
     }
+
+    pub fn poll(&mut self) -> Option<termirust_controller_listener::SshHostPairingPrompt> {
+        None
+    }
+
+    pub fn decide(
+        &mut self,
+        _offer_id: termirust_domain::PairingOfferId,
+        _decision: termirust_controller_listener::SshHostPairingDecisionValue,
+    ) -> std::io::Result<()> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "no SSH pairing decision is pending",
+        ))
+    }
+
+    pub fn pending_offer_id(&self) -> Option<termirust_domain::PairingOfferId> {
+        None
+    }
 }

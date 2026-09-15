@@ -143,7 +143,7 @@ impl OwnedBrowserProcess {
                 thread::sleep(Duration::from_millis(20));
             }
             if self.child.try_wait().ok().flatten().is_none() {
-                terminate_owned(&mut self.child, libc::SIGKILL);
+                terminate_owned(&mut self.child, FORCE_KILL_SIGNAL);
             }
         }
         let _ = self.child.wait();
@@ -169,6 +169,12 @@ fn terminate_group(pid: u32, signal: i32) {
 
 #[cfg(not(unix))]
 fn terminate_group(_pid: u32, _signal: i32) {}
+
+#[cfg(unix)]
+const FORCE_KILL_SIGNAL: i32 = libc::SIGKILL;
+// Ignored: Windows has no SIGKILL, and terminate_owned kills the process outright.
+#[cfg(not(unix))]
+const FORCE_KILL_SIGNAL: i32 = 9;
 
 #[cfg(unix)]
 fn terminate_owned(child: &mut Child, signal: i32) {
