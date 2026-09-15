@@ -17,6 +17,16 @@ pub enum CodecError {
     PayloadSizeMismatch,
     /// An encoded payload was malformed, truncated, or inconsistent with its tile size.
     CorruptPayload,
+    /// A batch was truncated, had a bad header or operation, or had trailing bytes.
+    MalformedBatch,
+    /// A batch used a wire version this build does not speak.
+    UnsupportedVersion,
+    /// A batch exceeded [`crate::MAX_BATCH_BYTES`].
+    BatchTooLarge,
+    /// An operation named a tile outside the surface grid.
+    TileOutOfRange,
+    /// A move was empty, zero-distance, or read outside the surface.
+    InvalidMove,
 }
 
 impl CodecError {
@@ -30,6 +40,11 @@ impl CodecError {
             Self::RectOutsideSurface => "rect_outside_surface",
             Self::PayloadSizeMismatch => "payload_size_mismatch",
             Self::CorruptPayload => "corrupt_payload",
+            Self::MalformedBatch => "malformed_batch",
+            Self::UnsupportedVersion => "unsupported_version",
+            Self::BatchTooLarge => "batch_too_large",
+            Self::TileOutOfRange => "tile_out_of_range",
+            Self::InvalidMove => "invalid_move",
         }
     }
 }

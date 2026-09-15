@@ -31,7 +31,7 @@ Pure Rust, no platform code, fully testable in CI.
   Palette + run-length when few colours, raw otherwise, then deflate (`miniz_oxide`).
 - [x] 1.5 `feat(screen-codec): send pictures as a lossy first pass`
   Half-resolution, quantised pass for picture tiles; exact pixels arrive later by refinement.
-- [ ] 1.6 `feat(screen-codec): define the bounded tile-op wire format with golden vectors`
+- [x] 1.6 `feat(screen-codec): define the bounded tile-op wire format with golden vectors`
   Hand-written big-endian layout, checked lengths, closed op kinds, fixture vectors.
 - [ ] 1.7 `feat(screen-codec): reuse tiles the viewer already holds`
   Per-viewer LRU cache by content hash, host-side shadow, `Missing` recovery.
