@@ -423,7 +423,10 @@ Consequences:
 
 ### 4.6 Transport and rate control (`termirust-screen-transport`)
 
-- **QUIC via iroh** for the screen plane on every route. Streams: one control stream
+- **Stage A** carries the screen session over the existing authenticated Controller
+  channel, as screen frames (kind 3) on the LAN, SSH and relay routes, with the ordered
+  framing of `termirust-screen-protocol` inside them. See 5.3.
+- **QUIC via iroh**, from Stage B, for the screen plane on every route. Streams: one control stream
   (bidirectional, ordered: subscribe, acks, input, capabilities); one unidirectional
   stream per priority class for tile batches (viewport tiles, off-viewport tiles,
   refinement) so a slow refinement stream never head-of-line-blocks the viewport;
@@ -532,13 +535,22 @@ with video as a region-level special case. We follow them.
 Already decided by the existing product; here it becomes the mask in 4.1. It is also the
 answer to "why not just use Workbench": TermiRust knows which rectangles are terminals.
 
-### 5.3 QUIC (iroh) rather than extending Controller-v1 framing
+### 5.3 QUIC (iroh) for Stage B; Stage A rides the Controller channel
 
 Controller-v1 is a reliable ordered stream on TCP, SSH, or WebSocket. Video and
 latest-wins state on a reliable ordered stream stall on every loss (head-of-line
 blocking), which is the failure mode the user described. QUIC gives independent streams,
 unreliable datagrams, migration and 0-RTT in one connection; iroh adds NAT traversal and
 blind relays. The Controller channel stays the trust root and the signalling path.
+
+**Decided on 2026-09-16**: Stage A carries screen sessions over the Controller channel
+itself, as a new screen frame kind (amendment 1 of `decisions/controller-security-v1.md`),
+on the LAN, SSH and relay routes that already exist. The tile path is reliable and ordered
+anyway, so the cost is head-of-line blocking under loss, which the acknowledged-state
+resume already tolerates, and the gain is a working desktop-to-desktop path with no new
+dependency and no device spike first. iroh arrives with Stage B, where datagrams and
+migration earn their keep; `termirust-screen-protocol` stays transport-neutral so that
+change is additive.
 
 ### 5.4 Not WebRTC, for now
 

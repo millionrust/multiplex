@@ -229,8 +229,13 @@ Capabilities are a closed bit set:
 | 2 | `SendInput` |
 | 3 | `Resize` |
 | 4 | `RespondToApproval` |
+| 5 | `ObserveScreens` |
+| 6 | `ControlPointer` |
+| 7 | `ControlKeyboard` |
 
-Unknown bits fail. Every opened or sealed frame must match both a granted capability and the exact current revocation epoch. A stale or future epoch is denied. Later Host code must validate the same policy again at the command boundary; this crate is not sole authorization merely because decryption succeeded.
+Bits 5 to 7 were added by the Remote Screens amendment below. `ObserveScreens` allows watching a
+screen; the two control bits are separate from it and from each other, and separate from
+`SendInput`, which stays a terminal capability. Unknown bits fail. Every opened or sealed frame must match both a granted capability and the exact current revocation epoch. A stale or future epoch is denied. Later Host code must validate the same policy again at the command boundary; this crate is not sole authorization merely because decryption succeeded.
 
 ## Transport framing
 
@@ -243,7 +248,7 @@ The authenticated 32-byte frame header is:
 | 0 | 4 | ASCII `TCF1` |
 | 4 | 2 | major `1` |
 | 6 | 2 | minor `0` |
-| 8 | 1 | kind: control `1`, terminal `2` |
+| 8 | 1 | kind: control `1`, terminal `2`, screen `3` |
 | 9 | 1 | one closed capability value |
 | 10 | 2 | reserved zero |
 | 12 | 8 | revocation epoch |
@@ -252,11 +257,38 @@ The authenticated 32-byte frame header is:
 
 The complete header is ChaCha20-Poly1305 associated data. Sequence starts at zero, must equal the receiver's next sequence, and may not exceed `2^64 - 3`. A lower value is duplicate; a higher value is out of order. Directional cipher state rekeys immediately before each sequence divisible by `2^20` except zero. Rekey failure closes the channel. Frames are never retried under the same nonce.
 
-Control plaintext is at most 65,536 bytes. A complete terminal frame, including the 32-byte header and 16-byte tag, is at most 1,048,576 bytes. Length is validated with checked arithmetic before allocation or crypto. Ciphertext, plaintext payload, and transport `Debug` are redacted.
+Control plaintext is at most 65,536 bytes. A complete terminal frame, including the 32-byte header and 16-byte tag, is at most 1,048,576 bytes; a complete screen frame has the same limit, which is the tile codec's largest batch. Length is validated with checked arithmetic before allocation or crypto. Ciphertext, plaintext payload, and transport `Debug` are redacted.
 
 ## Compatibility
 
 Controller-v1 has exact-version compatibility only. Unknown major or minor versions return `incompatible_version` before interpreting mutable fields. Unknown capabilities, kinds, suites, flags, or nonzero reserved bytes fail closed. A future compatible minor requires an ADR amendment and new immutable vectors; silent downgrade and best-effort parsing are forbidden.
+
+## Amendment 1: Remote Screens capabilities and frame kind (2026-09-16)
+
+Remote Screens lets a paired device watch a computer's screen and drive its pointer and keyboard.
+That permission belongs inside this channel, not in application settings, so it is enforced on the
+LAN, SSH, and relay routes alike and is revoked by the existing epoch.
+
+The amendment adds exactly three capability bits — `ObserveScreens` (5), `ControlPointer` (6), and
+`ControlKeyboard` (7), widening the closed mask from `0x001f` to `0x00ff` — and one frame kind,
+screen `3`, whose complete frame is at most 1,048,576 bytes, the tile codec's largest batch.
+Watching and driving stay separate permissions, and both stay separate from `SendInput`, so a
+device may watch without being able to touch anything.
+
+The version stays `1.0`. No field, offset, size, or previously defined value changes; the new
+values appear only where a Host offers them. An implementation that predates this amendment meets
+a new capability or kind as an unknown value and fails closed with `unknown_capability` or
+`invalid_encoding`, which is this ADR's specified behaviour rather than an exception to it.
+Discovery is the offer's capability template, which a Host that cannot serve screens simply never
+sets, so nothing negotiates or downgrades.
+
+Every offer, handshake, SAS, key, and frame vector published before this amendment is unchanged
+byte for byte; the fixture's primary offer still requests bits 0 to 2 only. New immutable vectors
+pin an offer and prologue that request the screen bits, the first screen frame on a confirmed
+transport, and the rejection of the first unused capability bit and frame kind.
+
+Acceptance of this amendment is the release gate "Capability ADR amendment accepted"; the
+implementation ships behind it.
 
 ## Golden vectors and change control
 

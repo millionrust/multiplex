@@ -41,8 +41,23 @@ pub fn offer() -> PairingOfferCore {
     }
 }
 
+/// The same offer, also requesting the Remote Screens capabilities of amendment 1.
+pub fn screen_offer() -> PairingOfferCore {
+    PairingOfferCore {
+        capabilities: offer()
+            .capabilities
+            .with(ControllerCapability::ObserveScreens)
+            .with(ControllerCapability::ControlPointer)
+            .with(ControllerCapability::ControlKeyboard),
+        ..offer()
+    }
+}
+
 pub fn machines() -> (PairingMachine, PairingMachine) {
-    let offer = offer();
+    machines_for(offer())
+}
+
+pub fn machines_for(offer: PairingOfferCore) -> (PairingMachine, PairingMachine) {
     let device = PairingMachine::new_device_initiator(
         offer.clone(),
         device_static(),
@@ -63,7 +78,13 @@ pub fn machines() -> (PairingMachine, PairingMachine) {
 }
 
 pub fn complete_handshake() -> (PairingMachine, PairingMachine, Vec<Vec<u8>>) {
-    let (mut device, mut host) = machines();
+    complete_handshake_for(offer())
+}
+
+pub fn complete_handshake_for(
+    offer: PairingOfferCore,
+) -> (PairingMachine, PairingMachine, Vec<Vec<u8>>) {
+    let (mut device, mut host) = machines_for(offer);
     let mut messages = Vec::new();
 
     let message_1 = device

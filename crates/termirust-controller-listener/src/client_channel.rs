@@ -119,7 +119,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ControllerClientChannel<S> {
             .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
         let maximum = match opened.kind {
             ControllerFrameKind::Control => MAX_CONTROL_PAYLOAD_BYTES,
-            ControllerFrameKind::Terminal => MAX_TERMINAL_FRAME_BYTES,
+            ControllerFrameKind::Terminal | ControllerFrameKind::Screen => MAX_TERMINAL_FRAME_BYTES,
         };
         let response = decode_response(&opened.payload, maximum)?;
         let (expected_kind, expected_capability, complete) = self.expected_response(&response)?;

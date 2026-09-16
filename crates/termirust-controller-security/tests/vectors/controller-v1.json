@@ -45,6 +45,24 @@
     "future_major": "incompatible_version",
     "unknown_capability": "unknown_capability"
   },
-  "adr_sha256": "48c051cb03c5b0d7a45f2d1d60ba902699a0afb8a3dcc72c03d20f9d7fe79eb6",
+  "screen_amendment": {
+    "known_capability_mask": 255,
+    "capability_bits": {
+      "observe_screens": 5,
+      "control_pointer": 6,
+      "control_keyboard": 7
+    },
+    "offer_capability_bits": 231,
+    "offer_hex": "54434f310001000001000000000000000514808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f8f40c5adb68f25624ae5b214ea767a6ec94d829d3d7b5e1ad1ba6f3e2138285f00e7",
+    "prologue_hex": "7465726d69727573742d636f6e74726f6c6c65722d763100005454434f310001000001000000000000000514808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f8f40c5adb68f25624ae5b214ea767a6ec94d829d3d7b5e1ad1ba6f3e2138285f00e7",
+    "screen_frame_payload": "controller-v1-screen",
+    "screen_frame_hex": "5443463100010000030500000000000000000004000000000000000000000024b2cc36cb442fadd0b0300f83c0867598d7b053161aef40615c3568f3452859d86ab993cb",
+    "mutation_errors": {
+      "capability_value_8": "controller.security.unknown_capability",
+      "frame_kind_4": "controller.security.invalid_encoding",
+      "oversized_screen_frame": "controller.security.frame_too_large"
+    }
+  },
+  "adr_sha256": "cff0efdd0b6f736d8525beedbc7cac547e453e6b52d82dd1fd0002795f0e9c40",
   "cargo_lock_sha256": "1b7ea794d3988dbb24aeb7af06521452baba158336d4e8b8a012d57f98c8b91b"
 }

@@ -53,12 +53,18 @@ Pure Rust, no platform code, fully testable in CI.
   Scripted typing, scrolling, and video sessions remain to be captured by the owner.
 - [ ] 0.3 VideoToolbox example from Rust: HEVC low-latency session with LTR round trip under forced loss
 - [ ] 0.4 **(device)** iroh phone ↔ Mac over cellular with a self-hosted relay; go/no-go note
+  Now gates the Stage B transport (M5), not Stage A.
 - [ ] 0.5 `docs(remote-screens): record spike results` in `docs/engineering-evidence/`
 
 ## M2 — Desktop host and desktop viewer on a LAN (Stage A) [4.1, 4.2, 4.6, 4.7, 4.9]
 
-- [ ] 2.1 `docs(controller-security): amend the ADR for screen capability bits` + regenerated vectors
-- [ ] 2.2 `feat(controller-security): add ObserveScreens, ControlPointer and ControlKeyboard`
+- [x] 2.1 `docs(controller-security): amend the ADR for screen capability bits` + regenerated vectors
+- [x] 2.2 `feat(controller-security): add ObserveScreens, ControlPointer and ControlKeyboard`
+  2.1 and 2.2 landed in one commit: the fixture pins the ADR checksum, so the amendment and the
+  code it describes cannot be split without a broken commit between them. Amendment 1 also adds
+  the screen frame kind for the Stage A transport decision, and new vectors pin the screen offer,
+  the first screen frame, and the first values outside each closed set. Every earlier vector is
+  unchanged. The owner still has to accept the amendment (release gate).
 - [x] 2.3 `feat(screen-capture): add the capture trait and the portable differ backend`
 - [x] 2.4 `feat(screen-capture): capture displays with ScreenCaptureKit on macOS`
   2.3 and 2.4 landed in one commit: one crate, one lockfile review. The codec's tile hashing is
@@ -66,7 +72,9 @@ Pure Rust, no platform code, fully testable in CI.
 - [x] 2.5 `feat(screen-protocol): add the session messages and stream framing`
   A transport-neutral crate (`termirust-screen-protocol`) so the protocol does not wait on the
   iroh decision in 0.4.
-- [ ] 2.6 `feat(screen-transport): carry screen sessions over QUIC with iroh`
+- [ ] 2.6 `feat(screen-transport): carry screen sessions as Controller screen frames`
+  Stage A decision (2026-09-16): the existing LAN, SSH and relay routes, not iroh. The QUIC
+  transport moves to M4/M5 with the motion path; spike 0.4 gates it there, not here.
 - [ ] 2.7 `feat(controller-listener): issue screen tickets over the Controller channel`
 - [x] 2.8 `feat(screen-session): add the host and viewer session state machines`
   Covers the protocol logic of 2.8 and 2.10 in `termirust-screen-session`: ticket and grant

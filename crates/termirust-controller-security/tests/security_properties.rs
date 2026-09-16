@@ -86,8 +86,14 @@ fn all_live_secret_wrappers_are_zeroize_on_drop() {
 
 #[test]
 fn unknown_capability_bits_fail_closed() {
+    // 0x0100 is the first bit no amendment has defined; 0x00e0 are the Remote Screens bits.
     assert_eq!(
-        termirust_controller_security::CapabilitySet::from_bits(0x20).map_err(|error| error.code()),
+        termirust_controller_security::CapabilitySet::from_bits(0x0100)
+            .map_err(|error| error.code()),
         Err(ErrorCode::UnknownCapability)
+    );
+    assert_eq!(
+        termirust_controller_security::CapabilitySet::from_bits(0x00e0).map(|set| set.bits()),
+        Ok(0x00e0)
     );
 }

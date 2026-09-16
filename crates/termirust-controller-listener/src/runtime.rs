@@ -701,7 +701,9 @@ const fn control_payload_limit() -> usize {
 const fn queue_class(kind: ControllerFrameKind) -> QueueClass {
     match kind {
         ControllerFrameKind::Control => QueueClass::Control,
-        ControllerFrameKind::Terminal => QueueClass::Terminal,
+        // Screen frames share the terminal queue class: the same 1 MiB frame limit, and no
+        // screen sessions are served over this listener yet.
+        ControllerFrameKind::Terminal | ControllerFrameKind::Screen => QueueClass::Terminal,
     }
 }
 

@@ -9,6 +9,8 @@ pub const HANDSHAKE_TIMEOUT_MILLIS: u64 = 30_000;
 pub const MAX_PAIRING_OFFER_LIFETIME_SECONDS: u64 = 300;
 pub const MAX_CONTROL_PAYLOAD_BYTES: usize = 64 * 1024;
 pub const MAX_TERMINAL_FRAME_BYTES: usize = 1024 * 1024;
+/// A complete screen frame, header and tag included. The tile codec's largest batch.
+pub const MAX_SCREEN_FRAME_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct ControllerProtocolVersion {
@@ -149,6 +151,9 @@ pub enum ControllerCapability {
     SendInput = 2,
     Resize = 3,
     RespondToApproval = 4,
+    ObserveScreens = 5,
+    ControlPointer = 6,
+    ControlKeyboard = 7,
 }
 
 impl ControllerCapability {
@@ -163,6 +168,9 @@ impl ControllerCapability {
             2 => Ok(Self::SendInput),
             3 => Ok(Self::Resize),
             4 => Ok(Self::RespondToApproval),
+            5 => Ok(Self::ObserveScreens),
+            6 => Ok(Self::ControlPointer),
+            7 => Ok(Self::ControlKeyboard),
             _ => Err(ErrorCode::UnknownCapability.into()),
         }
     }
@@ -172,7 +180,8 @@ impl ControllerCapability {
 pub struct CapabilitySet(u16);
 
 impl CapabilitySet {
-    pub const KNOWN_MASK: u16 = 0x001f;
+    /// Bits 0 to 4 from Controller-v1, bits 5 to 7 from the Remote Screens amendment.
+    pub const KNOWN_MASK: u16 = 0x00ff;
 
     pub fn from_bits(bits: u16) -> Result<Self> {
         if bits & !Self::KNOWN_MASK == 0 {
@@ -262,6 +271,8 @@ pub struct RevocationEpoch(pub u64);
 pub enum ControllerFrameKind {
     Control = 1,
     Terminal = 2,
+    /// Remote Screens: one framed `termirust-screen-protocol` message.
+    Screen = 3,
 }
 
 impl ControllerFrameKind {
@@ -269,6 +280,7 @@ impl ControllerFrameKind {
         match value {
             1 => Ok(Self::Control),
             2 => Ok(Self::Terminal),
+            3 => Ok(Self::Screen),
             _ => Err(ErrorCode::InvalidEncoding.into()),
         }
     }
