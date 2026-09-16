@@ -58,6 +58,30 @@ async fn wait_for_sequence(client: &mut HostClient, minimum: u64, cancel: &Cance
     panic!("real Host output did not reach sequence {minimum}: {last}");
 }
 
+/// Waits until everything the Host has recorded carries this text. Output is split into as many
+/// records as the machine happens to produce, so how many records have arrived says nothing about
+/// whether what the test is waiting for is among them.
+async fn wait_for_output(client: &mut HostClient, expected: &str, cancel: &CancellationToken) {
+    let deadline = Instant::now() + PATIENCE;
+    let mut carried = Vec::new();
+    while Instant::now() < deadline {
+        if let Ok(records) = client.attach(OutputSequence::ZERO, 80, 24, cancel).await {
+            carried = records
+                .iter()
+                .flat_map(|output| output.bytes.iter().copied())
+                .collect::<Vec<_>>();
+            if String::from_utf8_lossy(&carried).contains(expected) {
+                return;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!(
+        "the real Host never carried {expected:?}, only {:?}",
+        String::from_utf8_lossy(&carried)
+    );
+}
+
 fn stop_sentinel(child: &mut Child) {
     let _ = child.kill();
     let _ = child.wait();
@@ -148,16 +172,7 @@ async fn real_host_survives_detach_replays_output_and_stops_only_owned_group() {
             .await
             .unwrap()
     );
-    wait_for_sequence(&mut client, 3, &cancel).await;
-    let before_detach = client
-        .attach(OutputSequence::ZERO, 80, 24, &cancel)
-        .await
-        .unwrap();
-    let before_bytes = before_detach
-        .iter()
-        .flat_map(|output| output.bytes.iter().copied())
-        .collect::<Vec<_>>();
-    assert!(String::from_utf8_lossy(&before_bytes).contains("HOST-OUT:first-input"));
+    wait_for_output(&mut client, "HOST-OUT:first-input", &cancel).await;
     client.disconnect();
     tokio::time::sleep(Duration::from_millis(30)).await;
     assert!(!host.stats().await.recording_paused);
