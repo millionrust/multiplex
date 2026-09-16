@@ -159,7 +159,16 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   byte-identical picture. Compiling the generated Swift is what caught an error case named
   `Protocol`, which Swift refuses; it is `InvalidMessage` now.
 - [ ] 3.2 `feat(ios): show live previews in Fleet and a computer detail screen`
+  Started: the phone can ask for a screen session (`ControllerScreenSession.swift`: the two
+  commands, the ticket parser, and the pump that tags each chunk with the capability its contents
+  need). Still to do: opening that session from `ControllerConnectionActor`, and the Fleet
+  surfaces that show previews and lead to a computer.
 - [ ] 3.3 `feat(ios): add the remote screen viewer with zoom, minimap, pointer modes and keyboard`
+  Started: `RemoteScreenViewModel` and `RemoteScreenView` draw damaged rectangles into one bitmap,
+  fit the picture, map a tap back through the same transform, and offer control only when the
+  computer has given it. Still to do: zoom and pan, the minimap, pointer modes, and the keyboard.
+  **(device)** Nothing here has run: this Mac has no simulator runtime, so the iOS tests compile
+  but do not execute.
 - [ ] 3.4 `feat(ios): show weak-connection details and reconnect from the last picture`
 - [ ] 3.5 `feat(android): the same four surfaces in Compose`
 - [ ] 3.6 **(device)** Stage A network matrix on a real iPhone and Android phone [7]
