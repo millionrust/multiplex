@@ -198,6 +198,9 @@ impl NetworkPolicy {
 pub(crate) struct FilteringProxy {
     address: SocketAddr,
     stop: Arc<AtomicBool>,
+    /// What the listener has taken off the backlog, which only the tests ask about.
+    #[cfg(test)]
+    accepted: Arc<AtomicUsize>,
     thread: Option<thread::JoinHandle<()>>,
 }
 
@@ -205,14 +208,17 @@ impl FilteringProxy {
     fn start(policy: NetworkPolicy) -> Result<Self, BrowserError> {
         let listener =
             TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|_| BrowserError::Unavailable)?;
-        listener
-            .set_nonblocking(true)
-            .map_err(|_| BrowserError::Unavailable)?;
         let address = listener
             .local_addr()
             .map_err(|_| BrowserError::Unavailable)?;
         let stop = Arc::new(AtomicBool::new(false));
+        let accepted = Arc::new(AtomicUsize::new(0));
         let worker_stop = stop.clone();
+        let worker_accepted = accepted.clone();
+        #[cfg(not(test))]
+        let _ = &accepted;
+        // The listener waits for a connection rather than asking over and over whether one has
+        // arrived: dropping this proxy opens one itself to wake the wait.
         let thread = thread::spawn(move || {
             let active = Arc::new(AtomicUsize::new(0));
             let transferred = Arc::new(AtomicU64::new(0));
@@ -227,30 +233,25 @@ impl FilteringProxy {
                         index += 1;
                     }
                 }
-                match listener.accept() {
-                    Ok((stream, _)) if active.load(Ordering::Acquire) < MAX_PROXY_CONNECTIONS => {
-                        if stream.set_nonblocking(false).is_err() {
-                            let _ = stream.shutdown(Shutdown::Both);
-                            continue;
-                        }
-                        active.fetch_add(1, Ordering::AcqRel);
-                        let policy = policy.clone();
-                        let stop = worker_stop.clone();
-                        let active = active.clone();
-                        let transferred = transferred.clone();
-                        workers.push(thread::spawn(move || {
-                            let _guard = ActiveConnection(active);
-                            let _ = handle_proxy_connection(stream, &policy, stop, transferred);
-                        }));
-                    }
-                    Ok((stream, _)) => {
-                        let _ = stream.shutdown(Shutdown::Both);
-                    }
-                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                        thread::sleep(Duration::from_millis(10));
-                    }
-                    Err(_) => break,
+                let Ok((stream, _)) = listener.accept() else {
+                    break;
+                };
+                worker_accepted.fetch_add(1, Ordering::AcqRel);
+                if worker_stop.load(Ordering::Acquire)
+                    || active.load(Ordering::Acquire) >= MAX_PROXY_CONNECTIONS
+                {
+                    let _ = stream.shutdown(Shutdown::Both);
+                    continue;
                 }
+                active.fetch_add(1, Ordering::AcqRel);
+                let policy = policy.clone();
+                let stop = worker_stop.clone();
+                let active = active.clone();
+                let transferred = transferred.clone();
+                workers.push(thread::spawn(move || {
+                    let _guard = ActiveConnection(active);
+                    let _ = handle_proxy_connection(stream, &policy, stop, transferred);
+                }));
             }
             for worker in workers {
                 let _ = worker.join();
@@ -259,6 +260,8 @@ impl FilteringProxy {
         Ok(Self {
             address,
             stop,
+            #[cfg(test)]
+            accepted,
             thread: Some(thread),
         })
     }
@@ -266,11 +269,18 @@ impl FilteringProxy {
     pub(crate) fn address(&self) -> SocketAddr {
         self.address
     }
+
+    #[cfg(test)]
+    pub(crate) fn accepted(&self) -> usize {
+        self.accepted.load(Ordering::Acquire)
+    }
 }
 
 impl Drop for FilteringProxy {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
+        // Wakes the listener, which is waiting for a connection and will find the flag set.
+        let _ = TcpStream::connect_timeout(&self.address, Duration::from_secs(1));
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
@@ -635,8 +645,9 @@ mod tests {
         assert!(
             text.starts_with("HTTP/1.1 200 OK"),
             "the proxy should carry the origin's answer back, got {text:?} after {:?}: {ending}, \
-             and the origin {} reached",
+             the proxy accepted {} connections, and the origin {} reached",
             started.elapsed(),
+            proxy.accepted(),
             if reached.load(Ordering::Acquire) {
                 "was"
             } else {
