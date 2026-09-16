@@ -1,5 +1,6 @@
 #![cfg(unix)]
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
@@ -536,6 +537,99 @@ fn the_setup_hides_wrapped_status_bars_and_clears_the_old_scrollback_override() 
         "removing puts tmux's default binding back"
     );
     assert!(!overrides().contains("smcup@"));
+}
+
+/// Every option of a session or its windows, with inherited ones included. `-A` marks those
+/// with a trailing `*`.
+fn effective_options(
+    server: &IsolatedServer,
+    target: &str,
+    window: bool,
+) -> BTreeMap<String, String> {
+    let mut arguments = vec!["show-options", "-A"];
+    if window {
+        arguments.push("-w");
+    }
+    arguments.extend(["-t", target]);
+    server
+        .output(&arguments)
+        .lines()
+        .filter_map(|line| {
+            let (name, value) = line.split_once(' ').unwrap_or((line, ""));
+            (!name.is_empty()).then(|| (name.trim_end_matches('*').to_owned(), value.to_owned()))
+        })
+        .collect()
+}
+
+fn differing_options(
+    plain: &BTreeMap<String, String>,
+    wrapped: &BTreeMap<String, String>,
+) -> Vec<String> {
+    let mut names = plain
+        .iter()
+        .filter(|(name, value)| wrapped.get(*name) != Some(*value))
+        .map(|(name, _)| name.clone())
+        .chain(
+            wrapped
+                .keys()
+                .filter(|name| !plain.contains_key(*name))
+                .cloned(),
+        )
+        .collect::<Vec<_>>();
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// A wrapped tab should feel like the tab it replaced, so a session the setup started may
+/// differ from a plain one only where the setup intends: no status bar, the mouse on, and a
+/// quiet selection. Anything else would change how the terminal behaves.
+#[test]
+fn a_wrapped_session_differs_from_a_plain_one_only_where_intended() {
+    let Some(server) = IsolatedServer::start() else {
+        return;
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("tmux.conf");
+    fs::write(
+        &config,
+        termirust_tmux::appearance::WrappedSessionAppearance::for_this_platform()
+            .configuration_file(),
+    )
+    .unwrap();
+    server.run(&["new-session", "-d", "-s", "plain"]);
+    server.run(&[
+        "new-session",
+        "-d",
+        "-s",
+        "termirust-parity",
+        ";",
+        "source-file",
+        &config.to_string_lossy(),
+    ]);
+
+    let plain = effective_options(&server, "plain", false);
+    let wrapped = effective_options(&server, "termirust-parity", false);
+    assert_eq!(
+        differing_options(&plain, &wrapped),
+        ["mouse", "status"],
+        "a wrapped session changes only the mouse and the status bar"
+    );
+    assert_eq!(wrapped.get("mouse").map(String::as_str), Some("on"));
+    assert_eq!(wrapped.get("status").map(String::as_str), Some("off"));
+
+    let plain_window = effective_options(&server, "plain", true);
+    let wrapped_window = effective_options(&server, "termirust-parity", true);
+    let mut expected = vec!["mode-style".to_owned()];
+    // tmux before 3.5 has no copy-mode position counter to quieten.
+    if plain_window.contains_key("copy-mode-position-format") {
+        expected.insert(0, "copy-mode-position-format".to_owned());
+    }
+    assert_eq!(
+        differing_options(&plain_window, &wrapped_window),
+        expected,
+        "a wrapped window changes only how a selection looks"
+    );
 }
 
 #[test]

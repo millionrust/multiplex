@@ -17,6 +17,24 @@ pub const SELECTION_STYLE: &str = "bg=#3b4252,fg=default";
 
 const COPY_TABLES: [&str; 2] = ["copy-mode", "copy-mode-vi"];
 
+/// Writes UTF-8 whatever the locale says, which a tab started by launchd or a bare shell has
+/// none of.
+pub const UTF8_FLAG: &str = "-u";
+/// Tells tmux this client's terminal can show 24-bit color. tmux otherwise converts every
+/// 24-bit color to the nearest of 256, and a wrapped tab looks unlike the tab it replaced.
+/// tmux learns this by itself from a newer terminal, but not on tmux 3.2 or 3.3.
+pub const TRUECOLOR_FLAGS: [&str; 2] = ["-T", "RGB"];
+
+/// The flags a tmux client starts with. `truecolor` is whether the terminal it draws on can
+/// show 24-bit color.
+pub fn client_flags(truecolor: bool) -> Vec<&'static str> {
+    let mut flags = vec![UTF8_FLAG];
+    if truecolor {
+        flags.extend(TRUECOLOR_FLAGS);
+    }
+    flags
+}
+
 /// One key binding: the command in wrapped sessions and tmux's default command elsewhere.
 struct Binding {
     key: &'static str,

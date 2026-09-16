@@ -26,7 +26,7 @@ struct WrappedPane {
 impl WrappedPane {
     /// Runs `printf` inside a tmux session on a private server, with the client attached to a
     /// pseudo-terminal, and returns everything tmux wrote to that terminal.
-    fn draw(environment: &[(&str, &str)]) -> Option<Self> {
+    fn draw(environment: &[(&str, &str)], truecolor: bool) -> Option<Self> {
         let Ok(tmux) = Tmux::discover() else {
             eprintln!("skipping tmux color test: tmux is unavailable");
             return None;
@@ -46,11 +46,16 @@ impl WrappedPane {
             })
             .expect("a pseudo-terminal stands in for the terminal app");
 
+        // The same client flags a wrapped tab and the phone's attach start tmux with.
+        let mut arguments = termirust_tmux::appearance::client_flags(truecolor)
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        arguments.extend(["-f".to_owned(), "/dev/null".to_owned()]);
+
         let mut command = CommandBuilder::new(tmux.executable());
+        command.args(arguments);
         command.args([
-            "-u",
-            "-f",
-            "/dev/null",
             "new-session",
             &format!(
                 "printf '\\033[{FOREGROUND}mRGB\\033[0m \\033[1mBOLD\\033[0m \
@@ -113,14 +118,23 @@ impl WrappedPane {
         Some(Self { output })
     }
 
-    fn assert_carries_every_color(&self, context: &str) {
-        for expected in [FOREGROUND, BACKGROUND, INDEXED] {
+    /// 24-bit color survives only when the client told tmux the terminal can show it.
+    fn assert_carries_24_bit_color(&self, context: &str) {
+        for expected in [FOREGROUND, BACKGROUND] {
             assert!(
                 self.output.contains(expected),
                 "{context}: tmux changed {expected}: {:?}",
                 self.output
             );
         }
+    }
+
+    fn assert_carries_text_and_attributes(&self, context: &str) {
+        assert!(
+            self.output.contains(INDEXED),
+            "{context}: tmux changed {INDEXED}: {:?}",
+            self.output
+        );
         assert!(
             self.output.contains("\u{1b}[1m") || self.output.contains(";1m"),
             "{context}: bold did not survive: {:?}",
@@ -139,21 +153,27 @@ impl WrappedPane {
     }
 }
 
+/// tmux converts 24-bit color to the nearest of 256 unless the client says the terminal can
+/// show it, which tmux 3.2 and 3.3 never work out for themselves.
 #[test]
 fn a_wrapped_pane_reaches_the_terminal_with_the_colors_it_wrote() {
-    let Some(pane) = WrappedPane::draw(&[("TERM", "xterm-256color"), ("COLORTERM", "truecolor")])
-    else {
+    let Some(pane) = WrappedPane::draw(
+        &[("TERM", "xterm-256color"), ("COLORTERM", "truecolor")],
+        true,
+    ) else {
         return;
     };
-    pane.assert_carries_every_color("a terminal that reports truecolor");
+    pane.assert_carries_text_and_attributes("a terminal that reports truecolor");
+    pane.assert_carries_24_bit_color("a terminal that reports truecolor");
 }
 
 /// A tab started from a LaunchAgent, a cron job, or a bare CI shell has no locale and no
-/// COLORTERM. tmux then has to be told to write UTF-8, which is why every command passes -u.
+/// COLORTERM. tmux then has to be told to write UTF-8, which is why every client passes -u.
+/// Such a terminal has not claimed 24-bit color, so only the text and attributes are pinned.
 #[test]
-fn a_wrapped_pane_keeps_its_colors_without_a_locale() {
-    let Some(pane) = WrappedPane::draw(&[("TERM", "xterm-256color")]) else {
+fn a_wrapped_pane_keeps_its_text_and_attributes_without_a_locale() {
+    let Some(pane) = WrappedPane::draw(&[("TERM", "xterm-256color")], false) else {
         return;
     };
-    pane.assert_carries_every_color("a terminal with no locale");
+    pane.assert_carries_text_and_attributes("a terminal with no locale");
 }
