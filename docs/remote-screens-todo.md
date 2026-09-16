@@ -145,8 +145,10 @@ Pure Rust, no platform code, fully testable in CI.
   copies pixels only for the rectangles an update reported. Tested against a real host session:
   pixels match what was captured, a moved box repaints a fraction of the screen, input waits for
   control, and a preview stays separate from the full view.
-  The Swift and Kotlin artifacts need a build script like `scripts/build/mobile-controller-
-  bindings.sh`; that lands with the first app that consumes them (3.2).
+  Build, sync and determinism scripts mirror the Controller ones, and the decisions are in
+  `docs/decisions/screen-bindings.md`. The iOS half was built on this Mac: an `.xcframework` for
+  device and simulator plus `TermiRustRemoteScreens.swift`. The Android half needs NDK 27.1 on the
+  machine that runs it.
 - [ ] 3.2 `feat(ios): show live previews in Fleet and a computer detail screen`
 - [ ] 3.3 `feat(ios): add the remote screen viewer with zoom, minimap, pointer modes and keyboard`
 - [ ] 3.4 `feat(ios): show weak-connection details and reconnect from the last picture`
