@@ -741,6 +741,9 @@ pub struct AppSettings {
     /// Lets paired devices list and attach tmux sessions the app did not create.
     #[serde(default)]
     pub remote_tmux_sessions: bool,
+    /// Lets paired devices that may watch screens see this computer's displays.
+    #[serde(default)]
+    pub remote_screen_sharing: bool,
 }
 
 fn default_confirm_multiline_paste() -> bool {
@@ -797,6 +800,7 @@ impl Default for AppSettings {
             mobile_devices: Vec::new(),
             mobile_device_keys: Vec::new(),
             remote_tmux_sessions: false,
+            remote_screen_sharing: false,
         }
     }
 }

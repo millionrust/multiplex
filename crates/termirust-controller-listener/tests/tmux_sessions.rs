@@ -873,6 +873,7 @@ async fn repository_bridge_route_offers_live_panes_and_tmux_sessions() {
     let sources = RepositoryBridgeSources {
         desktop_pane_bridge: DesktopPaneBridgeEndpoint::discover(&bridge_root),
         tmux_sessions: Some(fixture.source()),
+        screens: None,
     };
     assert!(sources.desktop_pane_bridge.is_some());
     let server = tokio::spawn(serve_repository_stdio_bridge(

@@ -106,7 +106,14 @@ Pure Rust, no platform code, fully testable in CI.
   Sharing one lease with the text path's writer lease happens in 2.7.
 - [ ] 2.12 `feat(desktop): show computers with live previews in Devices`
 - [ ] 2.13 `feat(desktop): open a remote screen tab with zoom, minimap and inspector`
-- [ ] 2.14 `feat(desktop): add screen sharing settings, grants and the sharing indicator`
+- [~] 2.14 `feat(desktop): share this computer's screen from Devices`
+  The opt-in and the host wiring landed: Devices has a "Share this screen" choice, off by default,
+  which the listener worker reads from its descriptor. Capture and injection run in that worker,
+  one capture thread per display and one injection thread, because Core Graphics events need a
+  thread that owns the event source. **(device)** Whether the worker inherits the app's Screen
+  Recording and Accessibility grants, or asks for its own, still has to be checked on a real Mac.
+  Still to do in 2.14: the live sharing indicator (the worker has to report watchers to the app)
+  and per-device screen grants in the device editor.
 - [x] 2.15 `feat(screen-host): serve screens over the Controller channel, end to end`
   `termirust-screen-host` is the screen session the listener carries: it reassembles the protocol
   from screen frames, spends the ticket, checks each frame's capability against what the message

@@ -58,6 +58,12 @@ termirust-controller-security = { version = "0.1.0", path = "../termirust-contro
 termirust-controller-listener = { version = "0.1.0", path = "../termirust-controller-listener" }
 termirust-host-protocol = { version = "0.1.0", path = "../termirust-host-protocol" }
 termirust-relay-client = { version = "0.1.0", path = "../termirust-relay-client" }
+termirust-screen-capture = { version = "0.1.0", path = "../termirust-screen-capture" }
+termirust-screen-codec = { version = "0.1.0", path = "../termirust-screen-codec" }
+termirust-screen-host = { version = "0.1.0", path = "../termirust-screen-host" }
+termirust-screen-input = { version = "0.1.0", path = "../termirust-screen-input" }
+termirust-screen-protocol = { version = "0.1.0", path = "../termirust-screen-protocol" }
+termirust-screen-session = { version = "0.1.0", path = "../termirust-screen-session" }
 termirust-session-host = { version = "0.1.0", path = "../termirust-session-host" }
 termirust-store = { version = "0.1.0", path = "../termirust-store", features = ["os-keyring"] }
 termirust-tmux = { version = "0.1.0", path = "../termirust-tmux" }

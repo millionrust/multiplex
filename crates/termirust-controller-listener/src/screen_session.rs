@@ -72,9 +72,23 @@ pub trait ControllerScreenSession: Send {
     fn close(&mut self);
 }
 
+/// Opens screen sessions for connections, when the host application can serve screens.
+pub trait ScreenSessionFactory: Send + Sync {
+    fn open(
+        &self,
+        peer: &termirust_domain::AuthenticatedPeer,
+        outgoing: ScreenOutgoing,
+    ) -> Option<Box<dyn ControllerScreenSession>>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn one_frame_carries_a_whole_tile_batch_less_its_header_and_tag() {
+        assert_eq!(MAX_SCREEN_PAYLOAD_BYTES, (1 << 20) - 48);
+    }
 
     #[test]
     fn only_the_three_screen_capabilities_ride_screen_frames() {

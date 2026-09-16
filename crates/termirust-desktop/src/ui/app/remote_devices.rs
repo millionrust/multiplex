@@ -74,6 +74,7 @@ pub(super) struct RemoteDevicesState {
     listener_process: Option<ControllerListenerProcess>,
     desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
     tmux_sessions: bool,
+    screen_sharing: bool,
     listener_last_polled: Instant,
     host_private: Option<StaticPrivateKey>,
     pairing_state: PairingUiState,
@@ -100,6 +101,7 @@ impl RemoteDevicesState {
         controller_coordinator: &ControllerCoordinator,
         desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
         tmux_sessions: bool,
+        screen_sharing: bool,
     ) -> Self {
         let root = match crate::storage::controller_store_dir() {
             Ok(root) => root,
@@ -147,6 +149,7 @@ impl RemoteDevicesState {
                     listener_process: None,
                     desktop_pane_bridge,
                     tmux_sessions,
+                    screen_sharing,
                     listener_last_polled: Instant::now(),
                     host_private,
                     pairing_state: PairingUiState::Idle,
@@ -190,6 +193,7 @@ impl RemoteDevicesState {
         _controller_coordinator: &ControllerCoordinator,
         _desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
         tmux_sessions: bool,
+        screen_sharing: bool,
     ) -> Self {
         Self {
             repository: None,
@@ -209,6 +213,7 @@ impl RemoteDevicesState {
             listener_process: None,
             desktop_pane_bridge: None,
             tmux_sessions,
+            screen_sharing,
             listener_last_polled: Instant::now(),
             host_private: Some(StaticPrivateKey::from_fixture_bytes([3; 32])),
             pairing_state: PairingUiState::Idle,
@@ -245,6 +250,7 @@ impl RemoteDevicesState {
             listener_process: None,
             desktop_pane_bridge: None,
             tmux_sessions: false,
+            screen_sharing: false,
             listener_last_polled: Instant::now(),
             host_private: None,
             pairing_state: PairingUiState::StorageFailure,
@@ -347,7 +353,11 @@ impl RemoteDevicesState {
         .and_then(|descriptor| {
             descriptor
                 .with_desktop_pane_bridge(self.desktop_pane_bridge.clone())
-                .map(|descriptor| descriptor.with_tmux_sessions(self.tmux_sessions))
+                .map(|descriptor| {
+                    descriptor
+                        .with_tmux_sessions(self.tmux_sessions)
+                        .with_screen_sharing(self.screen_sharing)
+                })
         })
         .map_err(|_| ())?;
         match controller_coordinator.start_listener(&descriptor) {
@@ -405,6 +415,33 @@ impl RemoteDevicesState {
             return Ok(());
         }
         self.tmux_sessions = enabled;
+        self.restart_listener(controller_coordinator)
+    }
+
+    #[cfg(test)]
+    pub(super) fn screen_sharing(&self) -> bool {
+        self.screen_sharing
+    }
+
+    /// Changes whether devices with screen access see this computer's displays. A running
+    /// listener restarts, because capture lives in that process.
+    pub(super) fn set_screen_sharing(
+        &mut self,
+        enabled: bool,
+        controller_coordinator: &ControllerCoordinator,
+    ) -> Result<(), ()> {
+        if self.screen_sharing == enabled {
+            return Ok(());
+        }
+        self.screen_sharing = enabled;
+        self.restart_listener(controller_coordinator)
+    }
+
+    /// Restarts a running listener so a sharing change applies; does nothing when it is off.
+    fn restart_listener(
+        &mut self,
+        controller_coordinator: &ControllerCoordinator,
+    ) -> Result<(), ()> {
         let Some(mut process) = self.listener_process.take() else {
             return Ok(());
         };
@@ -734,12 +771,81 @@ fn unix_seconds() -> u64 {
 }
 
 impl TermiRustApp {
+    /// Saves the screen-sharing choice and applies it to the listener.
+    pub(super) fn update_remote_screen_sharing(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.saved.settings.remote_screen_sharing = enabled;
+        self.save_settings();
+        if self
+            .remote_devices
+            .set_screen_sharing(enabled, &self.controller_coordinator)
+            .is_ok()
+        {
+            self.status_message = localization::remote_screens_sharing_saved();
+            self.error_message.clear();
+        } else {
+            self.error_message = localization::remote_devices_operation_failed();
+        }
+        cx.notify();
+    }
+
+    /// Sharing this computer's screen: who may watch, and what macOS will ask for.
+    fn render_remote_screens_section(&self, cx: &Context<Self>) -> AnyElement {
+        let sharing = self.saved.settings.remote_screen_sharing;
+        v_flex()
+            .id("remote-screens")
+            .debug_selector(|| "remote-screens".to_string())
+            .w_full()
+            .min_w_0()
+            .gap_3()
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                            .font_medium()
+                            .text_color(theme::text_main())
+                            .child(localization::remote_screens_title()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(localization::remote_screens_description()),
+                    ),
+            )
+            .child(self.settings_choice_row(
+                localization::remote_screens_sharing_label(),
+                localization::remote_screens_sharing_description(),
+                self.segmented_control(
+                    "remote-screens-sharing",
+                    [
+                        (true, localization::remote_screens_sharing_share()),
+                        (false, localization::remote_screens_sharing_hide()),
+                    ],
+                    sharing,
+                    false,
+                    cx,
+                    |this, enabled, _, cx| this.update_remote_screen_sharing(enabled, cx),
+                ),
+            ))
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                    .text_color(theme::text_muted())
+                    .child(localization::remote_screens_permission_hint()),
+            )
+            .into_any_element()
+    }
+
     fn render_remote_devices_content(&self, cx: &Context<Self>) -> AnyElement {
         v_flex()
             .gap_3()
             .child(self.render_remote_route_section(cx))
             .child(self.settings_divider())
             .child(self.render_remote_terminals_section(cx))
+            .child(self.settings_divider())
+            .child(self.render_remote_screens_section(cx))
             .child(self.settings_divider())
             .child(self.render_remote_identity_section(cx))
             .child(self.settings_divider())
@@ -1869,7 +1975,7 @@ mod network_tests {
     #[test]
     fn remote_devices_add_controller_is_disabled_without_route() {
         let state =
-            RemoteDevicesState::open_default(&ControllerCoordinator::default(), None, false);
+            RemoteDevicesState::open_default(&ControllerCoordinator::default(), None, false, false);
         assert!(!state.route_available);
         assert!(state.devices.is_empty());
         assert_eq!(
@@ -1925,7 +2031,7 @@ mod network_tests {
         assert_eq!(super::grouped_pairing_code("12345"), "12345");
 
         let mut state =
-            RemoteDevicesState::open_default(&ControllerCoordinator::default(), None, false);
+            RemoteDevicesState::open_default(&ControllerCoordinator::default(), None, false, false);
         let address = |label: &str, kind, value: &str| termirust_domain::ListeningAddress {
             interface_id: termirust_domain::NetworkInterfaceId::new(format!("1:{label}")).unwrap(),
             label: label.into(),
@@ -1989,7 +2095,7 @@ mod network_tests {
     #[test]
     fn pairing_events_require_one_matching_offer_and_fail_closed() {
         let coordinator = ControllerCoordinator::default();
-        let mut state = RemoteDevicesState::open_default(&coordinator, None, false);
+        let mut state = RemoteDevicesState::open_default(&coordinator, None, false, false);
         let offer_id = PairingOfferId::new();
         state
             .apply_listener_event(

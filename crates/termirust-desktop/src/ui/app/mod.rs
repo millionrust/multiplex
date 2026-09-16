@@ -1771,6 +1771,7 @@ impl TermiRustApp {
             &controller_coordinator,
             desktop_pane_bridge_endpoint,
             saved.settings.remote_tmux_sessions,
+            saved.settings.remote_screen_sharing,
         );
         let project_label_input = cx
             .new(|cx| InputState::new(window, cx).placeholder(localization::project_label_field()));
@@ -27775,6 +27776,44 @@ sleep 1
                 view.right()
             );
         }
+    }
+
+    #[gpui::test]
+    fn e2e_screen_sharing_is_off_until_chosen_and_then_saved(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Devices, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            assert!(!app.saved.settings.remote_screen_sharing);
+            assert!(!app.remote_devices.screen_sharing());
+        });
+
+        let click = |cx: &mut TestAppContext, selector: &'static str| {
+            scroll_selector_into_view(window, cx, "devices-scroll", selector);
+            let point = selector_click_center(window, cx, selector);
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.simulate_click(point, gpui::Modifiers::none());
+            visual.run_until_parked();
+        };
+
+        click(cx, "remote-screens-sharing-0");
+        app.read_with(cx, |app, _| {
+            assert!(app.saved.settings.remote_screen_sharing);
+            assert!(app.remote_devices.screen_sharing());
+        });
+        click(cx, "remote-screens-sharing-1");
+        app.read_with(cx, |app, _| {
+            assert!(!app.saved.settings.remote_screen_sharing);
+            assert!(!app.remote_devices.screen_sharing());
+        });
     }
 
     #[gpui::test]

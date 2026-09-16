@@ -4760,6 +4760,38 @@ description = "Background listener change error"
 id = "remote-terminals-service-unsupported"
 context = "Guidance on platforms without the background listener."
 description = "Background listener unsupported guidance"
+[[messages]]
+id = "remote-screens-title"
+context = "Heading for the section that shares this computer's displays with paired devices."
+description = "Screen sharing section title"
+[[messages]]
+id = "remote-screens-description"
+context = "Explanation below the screen sharing heading, naming watching and control."
+description = "Screen sharing section explanation"
+[[messages]]
+id = "remote-screens-sharing-label"
+context = "Label for the choice that shares this computer's screen with paired devices."
+description = "Share this screen label"
+[[messages]]
+id = "remote-screens-sharing-description"
+context = "Explains who can watch and that changing the choice restarts the listener."
+description = "Share this screen explanation"
+[[messages]]
+id = "remote-screens-sharing-share"
+context = "Segmented choice that shares this computer's screen."
+description = "Share this screen choice"
+[[messages]]
+id = "remote-screens-sharing-hide"
+context = "Segmented choice that stops sharing this computer's screen."
+description = "Do not share this screen choice"
+[[messages]]
+id = "remote-screens-sharing-saved"
+context = "Status message shown after the screen sharing choice is saved."
+description = "Screen sharing saved status"
+[[messages]]
+id = "remote-screens-permission-hint"
+context = "Explains the macOS permissions screen watching and control ask for."
+description = "Screen sharing permission hint"
 
 [[messages]]
 id = "accessibility-lab-title"

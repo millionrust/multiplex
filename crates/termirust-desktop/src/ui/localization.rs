@@ -755,6 +755,20 @@ static_message!(
     remote_terminals_service_unsupported,
     RemoteTerminalsServiceUnsupportedArgs
 );
+static_message!(remote_screens_title, RemoteScreensTitleArgs);
+static_message!(remote_screens_description, RemoteScreensDescriptionArgs);
+static_message!(remote_screens_sharing_label, RemoteScreensSharingLabelArgs);
+static_message!(
+    remote_screens_sharing_description,
+    RemoteScreensSharingDescriptionArgs
+);
+static_message!(remote_screens_sharing_share, RemoteScreensSharingShareArgs);
+static_message!(remote_screens_sharing_hide, RemoteScreensSharingHideArgs);
+static_message!(remote_screens_sharing_saved, RemoteScreensSharingSavedArgs);
+static_message!(
+    remote_screens_permission_hint,
+    RemoteScreensPermissionHintArgs
+);
 pub fn remote_terminals_diff_skipped(count: usize) -> String {
     text(&RemoteTerminalsDiffSkippedArgs::new(Count(count as u64)))
 }

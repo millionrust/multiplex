@@ -111,6 +111,13 @@ package, depends only on the screen codec and protocol crates, stays outside the
 dependency closure, and changes no Controller vector; the workspace lock and ADR checksums were
 reviewed and repinned.
 
+On 2026-09-16 the desktop app was connected to the screen crates it needs to share this
+computer's displays: `termirust-screen-capture`, `-codec`, `-host`, `-input`, `-protocol`, and
+`-session`. The lockfile change adds only those existing workspace package names to the app's
+dependency list; it adds no external package and changes no selected version or feature. None
+enters the controller-security dependency closure, and every Controller vector is unchanged; the
+workspace lock and ADR checksums were reviewed and repinned.
+
 On 2026-09-16 the new `termirust-screen-host` workspace crate was added to serve screens over the
 Controller channel. It adds no external package: it uses the already-locked `async-trait 0.1`,
 `tokio`, and `tokio-util`, plus the screen and Controller workspace crates. It depends on

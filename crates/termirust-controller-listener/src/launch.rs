@@ -123,6 +123,9 @@ pub struct ListenerLaunchDescriptor {
     /// Lists and attaches tmux sessions the app did not create. Opt-in.
     #[serde(default)]
     pub tmux_sessions: bool,
+    /// Serves this computer's screens to paired devices that may watch them. Opt-in.
+    #[serde(default)]
+    pub screen_sharing: bool,
     pub network_revision: ControllerNetworkRevision,
     pub policy: ControllerListenPolicy,
     host_private: [u8; 32],
@@ -147,6 +150,7 @@ impl ListenerLaunchDescriptor {
             runtime_parent,
             desktop_pane_bridge: None,
             tmux_sessions: false,
+            screen_sharing: false,
             network_revision,
             policy,
             host_private: host_private.copy_for_process_handoff(),
@@ -166,6 +170,11 @@ impl ListenerLaunchDescriptor {
 
     pub fn with_tmux_sessions(mut self, enabled: bool) -> Self {
         self.tmux_sessions = enabled;
+        self
+    }
+
+    pub fn with_screen_sharing(mut self, enabled: bool) -> Self {
+        self.screen_sharing = enabled;
         self
     }
 
@@ -928,13 +937,26 @@ impl<R: Unpin, W: AsyncWrite + Unpin> AsyncWrite for SplitControllerIo<R, W> {
 /// Live sessions a repository bridge offers beyond durable sessions. The SSH and relay routes
 /// run the bridge in their own process, so they receive these explicitly instead of from a
 /// launch descriptor.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct RepositoryBridgeSources {
     /// The running desktop app's live panes, usually found with
     /// [`crate::DesktopPaneBridgeEndpoint::discover`].
     pub desktop_pane_bridge: Option<crate::DesktopPaneBridgeEndpoint>,
     /// tmux sessions, when the user turned sharing on.
     pub tmux_sessions: Option<TmuxSessionSource>,
+    /// Screens, when the user turned screen sharing on and this build can capture them.
+    pub screens: Option<Arc<dyn crate::ScreenSessionFactory>>,
+}
+
+impl std::fmt::Debug for RepositoryBridgeSources {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RepositoryBridgeSources")
+            .field("desktop_pane_bridge", &self.desktop_pane_bridge)
+            .field("tmux_sessions", &self.tmux_sessions.is_some())
+            .field("screens", &self.screens.is_some())
+            .finish()
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -968,7 +990,8 @@ where
     let backends: Arc<dyn crate::ControllerBackendFactory> = Arc::new(
         HostBackendFactory::new(sessions, projects, runtime_parent)
             .with_desktop_pane_bridge(sources.desktop_pane_bridge)
-            .with_tmux_sessions(sources.tmux_sessions),
+            .with_tmux_sessions(sources.tmux_sessions)
+            .with_screens(sources.screens),
     );
     let mut stream = SplitControllerIo { reader, writer };
     let purpose = tokio::time::timeout(
@@ -1007,7 +1030,22 @@ where
 /// How long a starting listener waits for another to hand over the route.
 pub const LISTENER_OWNERSHIP_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
-pub fn run_listener_worker<R, W>(mut reader: R, readiness: W) -> Result<(), ListenerError>
+pub fn run_listener_worker<R, W>(reader: R, readiness: W) -> Result<(), ListenerError>
+where
+    R: BufRead + Send + 'static,
+    W: Write + Send + 'static,
+{
+    run_listener_worker_with_screens(reader, readiness, None)
+}
+
+/// The same worker, able to serve Remote Screens when the descriptor asks for it and the caller
+/// supplied a factory. Capture and input injection happen in this process, which therefore needs
+/// the operating system's screen-recording and accessibility permissions.
+pub fn run_listener_worker_with_screens<R, W>(
+    mut reader: R,
+    readiness: W,
+    screens: Option<Arc<dyn crate::ScreenSessionFactory>>,
+) -> Result<(), ListenerError>
 where
     R: BufRead + Send + 'static,
     W: Write + Send + 'static,
@@ -1071,7 +1109,8 @@ where
                     .tmux_sessions
                     .then(|| TmuxSessionSource::system(descriptor.runtime_parent.clone()))
                     .transpose()?,
-            ),
+            )
+            .with_screens(screens.filter(|_| descriptor.screen_sharing)),
     );
     let mut source_key = [0; 32];
     rand::rngs::OsRng

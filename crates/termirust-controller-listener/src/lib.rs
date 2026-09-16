@@ -59,7 +59,7 @@ pub use host_backend::HostBackendFactory;
 pub use interfaces::{InterfaceProvider, SystemInterfaceProvider};
 pub use launch::{
     LISTENER_OWNERSHIP_WAIT, ListenerLaunchDescriptor, RepositoryBridgeSources,
-    run_listener_worker, serve_repository_stdio_bridge,
+    run_listener_worker, run_listener_worker_with_screens, serve_repository_stdio_bridge,
 };
 pub use ownership::ListenerOwnership;
 pub use pairing::{
@@ -91,6 +91,7 @@ pub use runtime::{
 };
 pub use screen_session::{
     ControllerScreenSession, MAX_SCREEN_PAYLOAD_BYTES, ScreenFrameCapability, ScreenOutgoing,
+    ScreenSessionFactory,
 };
 pub use screen_tickets::{ScreenGrants, ScreenTicketStore};
 pub use ssh_pairing_broker::{
