@@ -134,6 +134,7 @@ Pure Rust, no platform code, fully testable in CI.
   reaches the host, and typing is refused because the keyboard was never granted. Injection stays
   with the caller, so this crate has no platform code.
   Capability denial per route and stale epochs are covered in the listener's own tests.
+  Evidence for everything Stage A: `docs/engineering-evidence/RS3-remote-screens-stage-a.md`.
 
 ## M3 — Phone clients (Stage A) [4.1]
 
