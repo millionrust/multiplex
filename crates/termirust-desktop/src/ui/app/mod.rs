@@ -15480,6 +15480,39 @@ mod tests {
         }
     }
 
+    /// Runs a probe command until its output appears. A pseudoterminal that has just been resized
+    /// can swallow what is typed right after it — Windows loses the first byte — and the shell
+    /// then runs a command that is not the one the test sent. These probes only print, so sending
+    /// one again is harmless.
+    fn run_probe_until(
+        cx: &mut TestAppContext,
+        app: &Entity<TermiRustApp>,
+        pane_id: u64,
+        command: &str,
+        status: &str,
+        marker: &str,
+    ) {
+        for _ in 0..5 {
+            app.update(cx, |app, cx| {
+                assert!(app.run_command_in_active_pane(command, status, cx));
+            });
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while Instant::now() < deadline {
+                let seen = app.update(cx, |app, cx| {
+                    app.process_events(cx);
+                    app.pane(pane_id).is_some_and(|pane| {
+                        pane.terminal.all_rows_text().join("\n").contains(marker)
+                    })
+                });
+                if seen {
+                    return;
+                }
+                std::thread::sleep(TEST_POLL_INTERVAL);
+            }
+        }
+        panic!("the probe {command:?} never printed {marker:?}");
+    }
+
     fn wait_for_window_app_state<R>(
         cx: &mut TestAppContext,
         window: WindowHandle<Root>,
@@ -16526,25 +16559,19 @@ mod tests {
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.follow_grid_bounds(window, cx);
-                    let size = app.pane(pane_id).unwrap().last_size.unwrap();
-                    assert!(app.run_command_in_active_pane(
-                        "printf 'zoom-low-size='; stty size",
-                        "Low zoom PTY probe started.",
-                        cx,
-                    ));
-                    size
+                    app.pane(pane_id).unwrap().last_size.unwrap()
                 })
             })
             .expect("low zoom update should succeed");
         let low_marker = format!("zoom-low-size={} {}", low_size.rows, low_size.cols);
-        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
-            app.pane(pane_id)?
-                .terminal
-                .all_rows_text()
-                .join("\n")
-                .contains(&low_marker)
-                .then_some(())
-        });
+        run_probe_until(
+            cx,
+            &app,
+            pane_id,
+            "printf 'zoom-low-size='; stty size",
+            "Low zoom PTY probe started.",
+            &low_marker,
+        );
 
         window
             .update(cx, |_, window, cx| {
@@ -16565,27 +16592,21 @@ mod tests {
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.follow_grid_bounds(window, cx);
-                    let size = app.pane(pane_id).unwrap().last_size.unwrap();
-                    assert!(app.run_command_in_active_pane(
-                        "printf 'zoom-high-size='; stty size",
-                        "High zoom PTY probe started.",
-                        cx,
-                    ));
-                    size
+                    app.pane(pane_id).unwrap().last_size.unwrap()
                 })
             })
             .expect("high zoom update should succeed");
         assert!(high_size.cols > low_size.cols);
         assert!(high_size.rows > low_size.rows);
         let high_marker = format!("zoom-high-size={} {}", high_size.rows, high_size.cols);
-        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
-            app.pane(pane_id)?
-                .terminal
-                .all_rows_text()
-                .join("\n")
-                .contains(&high_marker)
-                .then_some(())
-        });
+        run_probe_until(
+            cx,
+            &app,
+            pane_id,
+            "printf 'zoom-high-size='; stty size",
+            "High zoom PTY probe started.",
+            &high_marker,
+        );
     }
 
     #[gpui::test]
@@ -20701,7 +20722,7 @@ sleep 1
                 app.update(cx, |app, cx| {
                     TermiRustApp::set_input_value(
                         &app.settings_inputs.local_shell_program,
-                        "/bin/sh",
+                        crate::test_support::test_shell_program(),
                         window,
                         cx,
                     );
@@ -24137,8 +24158,11 @@ sleep 1
             .expect("canvas switch should succeed");
 
         app.update(cx, |app, cx| {
+            // Turns mouse reporting on and then waits for the six bytes a click sends, which the
+            // terminal echoes as it reads them. The shell does this itself, so the test needs no
+            // interpreter installed on the machine it runs on.
             assert!(app.run_command_in_active_pane(
-                "python3 -c \"import sys; sys.stdout.write('\\x1b[?1000h'); sys.stdout.flush(); data=sys.stdin.buffer.read(6); print(data)\"",
+                "printf '\\033[?1000h'; head -c 6 >/dev/null",
                 "Mouse probe started.",
                 cx
             ));

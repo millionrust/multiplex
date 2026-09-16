@@ -51,6 +51,8 @@ mod tests {
     use super::*;
     use termirust_controller_listener::{DesktopPaneBridgeServer, DesktopPaneRegistry};
 
+    // The desktop pane bridge listens on a Unix socket, which Windows has none of.
+    #[cfg(unix)]
     #[test]
     fn bridge_sources_follow_the_published_bridge_and_the_sharing_setting() {
         // A short parent keeps the Unix socket paths under it within the length the platform

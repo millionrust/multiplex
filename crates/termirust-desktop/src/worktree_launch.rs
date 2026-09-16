@@ -186,7 +186,7 @@ impl GitRunner {
         let parent = managed_root.as_path().join(path_slug(&repository_basename));
         fs::create_dir_all(&parent)
             .map_err(|error| filesystem_error(error, WorktreeError::InvalidPath))?;
-        let canonical_parent = fs::canonicalize(&parent)
+        let canonical_parent = crate::agents::worktree::canonical_for_git(&parent)
             .map_err(|error| filesystem_error(error, WorktreeError::InvalidPath))?;
         if !canonical_parent.starts_with(managed_root.as_path()) {
             return Err(WorktreeError::Containment);
@@ -280,7 +280,7 @@ impl GitRunner {
     ) -> Result<(), WorktreeError> {
         plan.validate()?;
         cancellation_check(cancellation)?;
-        let canonical = fs::canonicalize(plan.managed_path.as_path())
+        let canonical = crate::agents::worktree::canonical_for_git(plan.managed_path.as_path())
             .map_err(|_| WorktreeError::VerificationMismatch)?;
         if canonical != plan.managed_path.as_path()
             || !canonical.starts_with(plan.managed_root.as_path())
