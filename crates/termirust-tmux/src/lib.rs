@@ -440,19 +440,22 @@ impl TmuxSession {
     /// Arguments that attach one more client to this session. `ignore-size` keeps the
     /// client out of window sizing, so a phone never reflows the desktop layout. The client
     /// flags force UTF-8, because the Session Host starts the client without a locale, and
-    /// declare 24-bit color, which TermiRust's own terminals draw.
+    /// declare 24-bit color and synchronized updates, both of which TermiRust's own terminals
+    /// support.
     pub fn attach_arguments(&self) -> Vec<String> {
-        appearance::client_flags(true)
-            .into_iter()
-            .map(str::to_owned)
-            .chain([
-                "attach-session".to_owned(),
-                "-f".to_owned(),
-                "ignore-size".to_owned(),
-                "-t".to_owned(),
-                self.id.clone(),
-            ])
-            .collect()
+        appearance::client_flags(&[
+            appearance::TRUECOLOR_FEATURE,
+            appearance::SYNCHRONIZED_UPDATE_FEATURE,
+        ])
+        .into_iter()
+        .chain([
+            "attach-session".to_owned(),
+            "-f".to_owned(),
+            "ignore-size".to_owned(),
+            "-t".to_owned(),
+            self.id.clone(),
+        ])
+        .collect()
     }
 }
 
@@ -858,7 +861,7 @@ mod tests {
             [
                 "-u",
                 "-T",
-                "RGB",
+                "RGB,sync",
                 "attach-session",
                 "-f",
                 "ignore-size",

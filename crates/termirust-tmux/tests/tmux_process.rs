@@ -539,6 +539,65 @@ fn the_setup_hides_wrapped_status_bars_and_clears_the_old_scrollback_override() 
     assert!(!overrides().contains("smcup@"));
 }
 
+/// A wrapped tab has to tell tmux what its terminal can do: tmux only works that out for
+/// itself from a terminal that answers its questions, and Terminal.app cannot draw a frame in
+/// one piece the way the others can.
+#[test]
+fn a_wrapped_tab_tells_tmux_what_its_terminal_can_do() {
+    use termirust_tmux::shell_integration::{Shell, ShellIntegration};
+
+    for (shell_path, kind, init_name) in [
+        ("/bin/zsh", Shell::Zsh, "shell-init.zsh"),
+        ("/bin/bash", Shell::Bash, "shell-init.bash"),
+    ] {
+        if !Path::new(shell_path).is_file() {
+            eprintln!("skipping {shell_path}: not installed");
+            continue;
+        }
+        let home = tempfile::tempdir().unwrap();
+        let home_path = fs::canonicalize(home.path()).unwrap();
+        let recorded = home_path.join("arguments");
+        let tmux = fake_tmux(
+            &home_path,
+            &format!("printf '%s\\n' \"$*\" >> '{}'", recorded.display()),
+        );
+        ShellIntegration::new(&home_path, &tmux)
+            .plan_enable(&[kind])
+            .unwrap()
+            .apply()
+            .unwrap();
+        let init = home_path.join(".config/termirust").join(init_name);
+
+        for (program, colorterm, expected) in [
+            ("zed", Some("truecolor"), "-u -T RGB,sync"),
+            ("iTerm.app", Some("24bit"), "-u -T RGB,sync"),
+            ("Apple_Terminal", Some("truecolor"), "-u -T RGB"),
+            ("zed", None, "-u -T sync"),
+            ("Apple_Terminal", None, "-u"),
+        ] {
+            fs::write(&recorded, "").unwrap();
+            let mut command = std::process::Command::new(shell_path);
+            command
+                .args(["-i", "-c", &format!(". '{}'", init.display())])
+                .env("HOME", &home_path)
+                .env("TERM_PROGRAM", program)
+                .env_remove("TMUX")
+                .env_remove("TERMIRUST_NO_WRAP");
+            match colorterm {
+                Some(value) => command.env("COLORTERM", value),
+                None => command.env_remove("COLORTERM"),
+            };
+            let output = command.output().unwrap();
+            let arguments = fs::read_to_string(&recorded).unwrap();
+            assert!(
+                arguments.starts_with(&format!("{expected} new-session -s termirust-")),
+                "{shell_path}, {program}, COLORTERM={colorterm:?}: expected {expected:?}, \
+                 tmux got {arguments:?} ({output:?})"
+            );
+        }
+    }
+}
+
 /// Every option of a session or its windows, with inherited ones included. `-A` marks those
 /// with a trailing `*`.
 fn effective_options(

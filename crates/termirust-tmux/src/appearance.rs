@@ -20,17 +20,23 @@ const COPY_TABLES: [&str; 2] = ["copy-mode", "copy-mode-vi"];
 /// Writes UTF-8 whatever the locale says, which a tab started by launchd or a bare shell has
 /// none of.
 pub const UTF8_FLAG: &str = "-u";
-/// Tells tmux this client's terminal can show 24-bit color. tmux otherwise converts every
-/// 24-bit color to the nearest of 256, and a wrapped tab looks unlike the tab it replaced.
-/// tmux learns this by itself from a newer terminal, but not on tmux 3.2 or 3.3.
-pub const TRUECOLOR_FLAGS: [&str; 2] = ["-T", "RGB"];
+/// Declares terminal features to tmux for this client.
+pub const FEATURES_FLAG: &str = "-T";
+/// The terminal can show 24-bit color. tmux otherwise converts every 24-bit color to the
+/// nearest of 256, and a wrapped tab looks unlike the tab it replaced. tmux works this out by
+/// itself with a newer terminal, but not on tmux 3.2 or 3.3.
+pub const TRUECOLOR_FEATURE: &str = "RGB";
+/// The terminal understands synchronized updates (DEC mode 2026). tmux then draws each frame
+/// between a begin and an end, so the terminal never paints half of one. Without it, a program
+/// that redraws constantly, such as a coding agent's spinner, flickers in a wrapped tab.
+pub const SYNCHRONIZED_UPDATE_FEATURE: &str = "sync";
 
-/// The flags a tmux client starts with. `truecolor` is whether the terminal it draws on can
-/// show 24-bit color.
-pub fn client_flags(truecolor: bool) -> Vec<&'static str> {
-    let mut flags = vec![UTF8_FLAG];
-    if truecolor {
-        flags.extend(TRUECOLOR_FLAGS);
+/// The flags a tmux client starts with, given what its terminal can do.
+pub fn client_flags(features: &[&str]) -> Vec<String> {
+    let mut flags = vec![UTF8_FLAG.to_owned()];
+    if !features.is_empty() {
+        flags.push(FEATURES_FLAG.to_owned());
+        flags.push(features.join(","));
     }
     flags
 }

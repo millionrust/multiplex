@@ -31,6 +31,10 @@ pub const WRAPPED_TERMINAL_PROGRAMS: [&str; 6] = [
     "WezTerm",
     "vscode",
 ];
+/// `TERM_PROGRAM` values whose terminals understand synchronized updates. Terminal.app does
+/// not, so its tabs are left to draw as they always have.
+pub const SYNCHRONIZED_UPDATE_PROGRAMS: [&str; 5] =
+    ["zed", "iTerm.app", "ghostty", "WezTerm", "vscode"];
 /// Unchanged lines kept around each change in a preview.
 pub const DIFF_CONTEXT_LINES: usize = 2;
 
@@ -429,17 +433,30 @@ impl ShellIntegration {
         // `&& exit` rather than `exec`: if tmux cannot start, the terminal keeps a plain
         // shell instead of closing the moment it opens. Sourcing the app's tmux configuration
         // right after `new-session` applies its options to that session only; `-q` keeps a
-        // missing file from failing the tab. A terminal that says it can show 24-bit color is
-        // passed on to tmux, which otherwise converts those colors to the nearest of 256 and
-        // the wrapped tab looks unlike the tab it replaced.
+        // missing file from failing the tab.
+        //
+        // The tab tells tmux what its terminal can do, because tmux only works that out for
+        // itself from a terminal that answers its questions. Without 24-bit color, tmux
+        // converts every color to the nearest of 256; without synchronized updates, the
+        // terminal paints half-drawn frames while a program redraws.
         let utf8 = appearance::UTF8_FLAG;
-        let truecolor = appearance::TRUECOLOR_FLAGS.join(" ");
+        let features = appearance::FEATURES_FLAG;
+        let truecolor = appearance::TRUECOLOR_FEATURE;
+        let sync = appearance::SYNCHRONIZED_UPDATE_FEATURE;
+        let sync_programs = SYNCHRONIZED_UPDATE_PROGRAMS.join("|");
+        let session = match shell {
+            Shell::Zsh => "termirust-${PWD:t}-$$",
+            Shell::Bash => "termirust-${PWD##*/}-$$",
+        };
+        let start = format!(
+            "{tmux} {utf8} $termirust_features new-session -s \"{session}\" \\; source-file -q {config} && exit"
+        );
         match shell {
             Shell::Zsh => format!(
-                "{INIT_FILE_HEADER}\nif [[ -o interactive && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        if [[ $COLORTERM == (truecolor|24bit) ]]; then\n          {tmux} {utf8} {truecolor} new-session -s \"termirust-${{PWD:t}}-$$\" \\; source-file -q {config} && exit\n        else\n          {tmux} {utf8} new-session -s \"termirust-${{PWD:t}}-$$\" \\; source-file -q {config} && exit\n        fi\n      fi\n      ;;\n  esac\nfi\n"
+                "{INIT_FILE_HEADER}\nif [[ -o interactive && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        termirust_terminal=()\n        [[ $COLORTERM == (truecolor|24bit) ]] && termirust_terminal+={truecolor}\n        case \"$TERM_PROGRAM\" in\n          {sync_programs}) termirust_terminal+={sync} ;;\n        esac\n        termirust_features=()\n        (( ${{#termirust_terminal}} )) && termirust_features=({features} ${{(j:,:)termirust_terminal}})\n        {start}\n        unset termirust_terminal termirust_features\n      fi\n      ;;\n  esac\nfi\n"
             ),
             Shell::Bash => format!(
-                "{INIT_FILE_HEADER}\nif [[ $- == *i* && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        case \"$COLORTERM\" in\n          truecolor|24bit)\n            {tmux} {utf8} {truecolor} new-session -s \"termirust-${{PWD##*/}}-$$\" \\; source-file -q {config} && exit\n            ;;\n          *)\n            {tmux} {utf8} new-session -s \"termirust-${{PWD##*/}}-$$\" \\; source-file -q {config} && exit\n            ;;\n        esac\n      fi\n      ;;\n  esac\nfi\n"
+                "{INIT_FILE_HEADER}\nif [[ $- == *i* && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        termirust_terminal=\"\"\n        case \"$COLORTERM\" in\n          truecolor|24bit) termirust_terminal={truecolor} ;;\n        esac\n        case \"$TERM_PROGRAM\" in\n          {sync_programs}) termirust_terminal=\"${{termirust_terminal:+$termirust_terminal,}}{sync}\" ;;\n        esac\n        termirust_features=\"\"\n        [ -n \"$termirust_terminal\" ] && termirust_features=\"{features} $termirust_terminal\"\n        {start}\n        unset termirust_terminal termirust_features\n      fi\n      ;;\n  esac\nfi\n"
             ),
         }
     }
@@ -651,10 +668,11 @@ mod tests {
         assert_eq!(zshrc.matches(BLOCK_START).count(), 1);
         let init =
             fs::read_to_string(home.path().join(".config/termirust/shell-init.zsh")).unwrap();
-        assert!(init.contains(&format!("'{TMUX}' -u new-session")));
-        // A terminal that can show 24-bit color says so, and tmux is told.
-        assert!(init.contains(&format!("'{TMUX}' -u -T RGB new-session")));
+        assert!(init.contains(&format!("'{TMUX}' -u $termirust_features new-session")));
+        // What the terminal can do is worked out before tmux starts.
         assert!(init.contains("$COLORTERM == (truecolor|24bit)"));
+        assert!(init.contains("zed|iTerm.app|ghostty|WezTerm|vscode) termirust_terminal+=sync"));
+        assert!(init.contains("unset termirust_terminal termirust_features"));
         assert!(init.contains("Apple_Terminal|zed|"));
         assert!(init.contains("&& exit"));
         assert!(!init.contains("exec "));
