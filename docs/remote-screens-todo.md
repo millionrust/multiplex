@@ -114,8 +114,17 @@ Pure Rust, no platform code, fully testable in CI.
   thumbnail profile. They open when the page appears and close when it goes away: a preview is a
   connection to someone else's computer, and it should last no longer than the page showing it. A
   computer that is asleep or refusing simply never sends a picture, and the row says why.
-- [ ] 2.13 `feat(desktop): open a remote screen tab with zoom, minimap and inspector`
-  Unblocked by 2.16 on 2026-09-16; the session in 2.12 is what a tab would draw.
+- [x] 2.13 `feat(desktop): open a remote screen tab with zoom, minimap and inspector`
+  "Watch" on a computer in Devices opens a workspace tab showing it at full detail, beside an
+  inspector: what the session is doing, the zoom, the computer's size, how many pictures have
+  arrived, how many displays it shares, and who holds control, with "Fit" and taking or giving
+  back control. The tab owns the session, so closing the tab closes the connection: watching
+  somebody else's screen never outlives the window showing it.
+  The geometry — fit, magnify to six times, a pan clamped so the picture cannot be thrown off the
+  tab, and the rectangle the minimap draws — is kept apart from the session in `ScreenGeometry`,
+  so the arithmetic a person's hand depends on is checked without another computer to connect to.
+  The inspector says in words that Stage A reports no round-trip time or loss, rather than drawing
+  a graph of numbers it does not have.
 - [x] 2.16 `feat(desktop): pair this computer as a device of another computer`
   The missing half of pairing. Devices gains "Computers this Mac can watch": enter the address and
   the six-digit code another computer shows, and this Mac pairs as its device. The record is a

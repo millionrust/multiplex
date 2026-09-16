@@ -1473,6 +1473,11 @@ impl TermiRustApp {
             .is_some_and(|workspace| workspace.view_mode == WorkspaceViewMode::Files)
         {
             self.render_workspace_files_view(window, cx)
+        } else if self
+            .active_workspace()
+            .is_some_and(|workspace| workspace.view_mode == WorkspaceViewMode::Screen)
+        {
+            self.render_workspace_screen_view(window, cx)
         } else {
             self.render_workspace_body(window, cx)
         };

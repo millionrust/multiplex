@@ -792,6 +792,47 @@ static_message!(
     watched_computers_forget_action,
     WatchedComputersForgetActionArgs
 );
+static_message!(
+    watched_computers_watch_action,
+    WatchedComputersWatchActionArgs
+);
+static_message!(
+    watched_computers_watch_failed,
+    WatchedComputersWatchFailedArgs
+);
+static_message!(
+    remote_screen_inspector_state,
+    RemoteScreenInspectorStateArgs
+);
+static_message!(remote_screen_inspector_zoom, RemoteScreenInspectorZoomArgs);
+static_message!(remote_screen_inspector_size, RemoteScreenInspectorSizeArgs);
+static_message!(
+    remote_screen_inspector_pictures,
+    RemoteScreenInspectorPicturesArgs
+);
+static_message!(
+    remote_screen_inspector_displays,
+    RemoteScreenInspectorDisplaysArgs
+);
+static_message!(
+    remote_screen_inspector_control,
+    RemoteScreenInspectorControlArgs
+);
+static_message!(remote_screen_fit_action, RemoteScreenFitActionArgs);
+static_message!(remote_screen_take_control, RemoteScreenTakeControlArgs);
+static_message!(
+    remote_screen_give_back_control,
+    RemoteScreenGiveBackControlArgs
+);
+static_message!(remote_screen_control_this, RemoteScreenControlThisArgs);
+static_message!(
+    remote_screen_control_another,
+    RemoteScreenControlAnotherArgs
+);
+static_message!(remote_screen_control_nobody, RemoteScreenControlNobodyArgs);
+static_message!(remote_screen_connecting, RemoteScreenConnectingArgs);
+static_message!(remote_screen_watching, RemoteScreenWatchingArgs);
+static_message!(remote_screen_stage_a_note, RemoteScreenStageANoteArgs);
 static_message!(watched_computers_may_watch, WatchedComputersMayWatchArgs);
 static_message!(watched_computers_no_screen, WatchedComputersNoScreenArgs);
 static_message!(

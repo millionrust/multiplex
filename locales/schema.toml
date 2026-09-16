@@ -4891,6 +4891,91 @@ context = "Placeholder in the field naming the other computer."
 description = "Watched computer name placeholder"
 
 [[messages]]
+id = "watched-computers-watch-action"
+context = "Action that opens another computer's screen in a workspace tab."
+description = "Watch computer action"
+
+[[messages]]
+id = "watched-computers-watch-failed"
+context = "Shown when opening another computer's screen did not start."
+description = "Watch computer failed"
+
+[[messages]]
+id = "remote-screen-inspector-state"
+context = "Label for what a session watching another computer is doing."
+description = "Remote screen state label"
+
+[[messages]]
+id = "remote-screen-inspector-zoom"
+context = "Label for how far the watched computer's screen is magnified."
+description = "Remote screen zoom label"
+
+[[messages]]
+id = "remote-screen-inspector-size"
+context = "Label for the size of the watched computer's screen in its own pixels."
+description = "Remote screen size label"
+
+[[messages]]
+id = "remote-screen-inspector-pictures"
+context = "Label for how many pictures of the watched computer have arrived."
+description = "Remote screen pictures label"
+
+[[messages]]
+id = "remote-screen-inspector-displays"
+context = "Label for how many displays the watched computer shares."
+description = "Remote screen displays label"
+
+[[messages]]
+id = "remote-screen-inspector-control"
+context = "Label for who currently holds the writer lease on the watched computer."
+description = "Remote screen control label"
+
+[[messages]]
+id = "remote-screen-fit-action"
+context = "Action that returns the watched computer's screen to fitting the tab."
+description = "Fit remote screen action"
+
+[[messages]]
+id = "remote-screen-take-control"
+context = "Action that asks the watched computer for permission to point and type."
+description = "Take control action"
+
+[[messages]]
+id = "remote-screen-give-back-control"
+context = "Action that gives the watched computer's control back."
+description = "Give back control action"
+
+[[messages]]
+id = "remote-screen-control-this"
+context = "Shown when this computer holds control of the watched computer."
+description = "This computer holds control"
+
+[[messages]]
+id = "remote-screen-control-another"
+context = "Shown when another device holds control of the watched computer."
+description = "Another device holds control"
+
+[[messages]]
+id = "remote-screen-control-nobody"
+context = "Shown when nobody holds control of the watched computer."
+description = "Nobody holds control"
+
+[[messages]]
+id = "remote-screen-connecting"
+context = "Shown while a session to another computer is opening."
+description = "Remote screen connecting"
+
+[[messages]]
+id = "remote-screen-watching"
+context = "Shown while pictures of the watched computer are arriving."
+description = "Remote screen watching"
+
+[[messages]]
+id = "remote-screen-stage-a-note"
+context = "Explains that the Stage A transport reports no round-trip time or loss."
+description = "Stage A transport note"
+
+[[messages]]
 id = "watched-computers-forget-action"
 context = "Action that forgets a computer this Mac paired with, deleting its device identity."
 description = "Forget computer action"

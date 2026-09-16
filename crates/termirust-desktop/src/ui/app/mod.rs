@@ -24,6 +24,7 @@ mod project;
 mod project_coordinator;
 mod projects;
 mod remote_devices;
+mod remote_screen;
 mod remote_terminals;
 mod replication_settings;
 mod runtimes;
@@ -949,6 +950,8 @@ struct WorkspaceTab {
     canvas: CanvasWorkspaceState,
     view_mode: WorkspaceViewMode,
     sftp: Option<WorkspaceSftpState>,
+    /// Another computer's screen, when this tab is watching one.
+    screen: Option<remote_screen::WorkspaceScreenState>,
     search_visible: bool,
     search_query: String,
     search_results: Vec<SearchMatch>,
@@ -1447,6 +1450,8 @@ pub struct TermiRustApp {
     nav_section: NavSection,
     /// Pictures every watched-computer preview has drawn, so a repaint follows a new one.
     watched_preview_pictures: u64,
+    /// The same, for a tab watching one computer at full detail.
+    watched_screen_pictures: u64,
     show_editor_panel: bool,
     connection_coordinator: ConnectionCoordinator,
     session_coordinator: SessionCoordinator,
@@ -1894,6 +1899,7 @@ impl TermiRustApp {
             worktree_branch_input,
             nav_section: NavSection::Hosts,
             watched_preview_pictures: 0,
+            watched_screen_pictures: 0,
             show_editor_panel: false,
             connection_coordinator,
             session_coordinator,
@@ -6812,6 +6818,7 @@ impl TermiRustApp {
                 canvas,
                 view_mode: WorkspaceViewMode::Terminal,
                 sftp: None,
+                screen: None,
                 search_visible: false,
                 search_query: String::new(),
                 search_results: Vec::new(),
@@ -8000,6 +8007,7 @@ impl TermiRustApp {
             canvas: CanvasWorkspaceState::from_saved(None, &[pane_id], &self.canvas_coordinator),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
+            screen: None,
             search_visible: false,
             search_query: String::new(),
             search_results: Vec::new(),
@@ -8056,6 +8064,7 @@ impl TermiRustApp {
                     ),
                     view_mode: WorkspaceViewMode::Terminal,
                     sftp: None,
+                    screen: None,
                     search_visible: false,
                     search_query: String::new(),
                     search_results: Vec::new(),
@@ -8350,6 +8359,7 @@ impl TermiRustApp {
             canvas: CanvasWorkspaceState::from_saved(None, &[pane_id], &self.canvas_coordinator),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
+            screen: None,
             search_visible: false,
             search_query: String::new(),
             search_results: Vec::new(),
@@ -9972,6 +9982,7 @@ impl TermiRustApp {
             canvas: CanvasWorkspaceState::from_saved(None, &[pane_id], &self.canvas_coordinator),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
+            screen: None,
             search_visible: false,
             search_query: String::new(),
             search_results: Vec::new(),

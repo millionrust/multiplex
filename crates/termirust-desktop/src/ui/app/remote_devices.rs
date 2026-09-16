@@ -376,6 +376,22 @@ impl RemoteDevicesState {
         }
     }
 
+    /// One computer and the store it came from, for opening a session to it.
+    pub(super) fn watched_computer(
+        &self,
+        address: &str,
+    ) -> Option<(
+        crate::controller::watched::WatchedComputer,
+        crate::controller::watched::WatchedComputers,
+    )> {
+        let computer = self
+            .watched
+            .iter()
+            .find(|computer| computer.address == address)?
+            .clone();
+        Some((computer, self.watched_store.clone()?))
+    }
+
     pub(super) fn forget_watched_computer(&mut self, address: &str) {
         self.watched_previews.remove(address);
         if let Some(store) = &self.watched_store {
@@ -1197,16 +1213,36 @@ impl TermiRustApp {
                     ),
             )
             .child(
-                Button::new(SharedString::from(format!(
-                    "watched-computers-forget-{forget_address}"
-                )))
-                .xsmall()
-                .ghost()
-                .label(localization::watched_computers_forget_action())
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.remote_devices.forget_watched_computer(&forget_address);
-                    cx.notify();
-                })),
+                h_flex()
+                    .gap_2()
+                    .when(computer.may_watch_screen(), |this| {
+                        let watch_address = forget_address.clone();
+                        this.child(
+                            Button::new(SharedString::from(format!(
+                                "watched-computers-watch-{watch_address}"
+                            )))
+                            .xsmall()
+                            .primary()
+                            .label(localization::watched_computers_watch_action())
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.open_remote_screen(&watch_address, window, cx);
+                                },
+                            )),
+                        )
+                    })
+                    .child(
+                        Button::new(SharedString::from(format!(
+                            "watched-computers-forget-{forget_address}"
+                        )))
+                        .xsmall()
+                        .ghost()
+                        .label(localization::watched_computers_forget_action())
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.remote_devices.forget_watched_computer(&forget_address);
+                            cx.notify();
+                        })),
+                    ),
             )
             .into_any_element()
     }
@@ -2212,6 +2248,17 @@ impl TermiRustApp {
     /// Leaving the view ends them: a preview is a connection to someone else's computer, and it
     /// should last no longer than the page that shows it.
     fn refresh_watched_previews(&mut self, cx: &mut Context<Self>) {
+        // A tab watching a computer repaints as its own pictures arrive, wherever the app is.
+        if let Some(drawn) = self
+            .active_workspace()
+            .and_then(|workspace| workspace.screen.as_ref())
+            .map(|screen| screen.session.pictures())
+        {
+            if drawn != self.watched_screen_pictures {
+                self.watched_screen_pictures = drawn;
+                cx.notify();
+            }
+        }
         let showing = matches!(self.nav_section, NavSection::Devices);
         if !showing {
             if self.watched_preview_pictures != 0 {
