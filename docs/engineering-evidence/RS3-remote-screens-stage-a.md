@@ -160,7 +160,7 @@ The same shape appeared for `kTCCServiceScreenCapture`, `kTCCServiceListenEvent`
   (`termirust controller-service`), which launchd starts with no responsible parent, is its own
   subject and needs its own grant.
 
-### Two defects the fixture could not show
+### Three defects the fixture could not show
 
 - **The screen was captured before anyone asked to watch.** `displays()` runs in
   `ScreenSharing::open`, which the listener calls for *every* authenticated connection, and it
@@ -175,6 +175,12 @@ The same shape appeared for `kTCCServiceScreenCapture`, `kTCCServiceListenEvent`
   answers the request by giving the lease, from a short-lived thread, because the session calls
   its observer while holding the lock that `set_control` needs. The probe shows the difference:
   `drove=false` before, `control: You` and `drove=true` after.
+- **The sharing indicator kept naming a watcher who had left.** A device that hangs up never sends
+  `CloseScreen`; the listener simply drops the session, and nothing told the application. Devices
+  went on saying "Watching now: Probe device" after the device was gone, which is exactly the
+  wrong thing for a privacy indicator to be wrong about. `ScreenHost` now closes on drop, so the
+  application always hears it. After the fix the same run ends with "Nobody is watching this
+  screen."
 
 ## Not proven here
 

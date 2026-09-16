@@ -195,6 +195,19 @@ impl ScreenHost {
     }
 }
 
+/// A device that hangs up never sends `CloseScreen`, and the listener simply drops its session,
+/// so closing here is what tells the application the watcher is gone. Without it the sharing
+/// indicator keeps naming someone who left, and the injection thread keeps waiting for input.
+/// [`Inner::close`] is idempotent, so a session closed properly first does not close twice.
+impl Drop for ScreenHost {
+    fn drop(&mut self) {
+        self.inner
+            .lock()
+            .expect("screen host mutex")
+            .close("device_left");
+    }
+}
+
 /// The paired device's id, as the session's resume store keys it.
 fn device_id(grants: ScreenGrants) -> u64 {
     let bytes = grants.device_id.as_uuid().as_u128().to_be_bytes();

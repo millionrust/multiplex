@@ -386,3 +386,29 @@ fn now_ms() -> u64 {
     )
     .unwrap_or(u64::MAX)
 }
+
+/// A device that hangs up never sends `CloseScreen`; the listener just drops the session. The
+/// application still has to hear that the watcher left, or the sharing indicator keeps naming
+/// someone who is gone.
+#[test]
+fn dropping_a_session_tells_the_application_the_device_left() {
+    let events: Arc<Mutex<Vec<ScreenHostEvent>>> = Arc::new(Mutex::new(Vec::new()));
+    let recorded = Arc::clone(&events);
+    let (outgoing, _incoming) = tokio::sync::mpsc::unbounded_channel();
+    let (host, handle) = ScreenHost::new(
+        surfaces(),
+        HostConfig::default(),
+        outgoing,
+        Arc::new(move |event| recorded.lock().unwrap().push(event)),
+    );
+    assert!(handle.is_open());
+
+    drop(host);
+
+    assert!(!handle.is_open(), "the session is over once it is dropped");
+    let events = events.lock().unwrap();
+    assert!(
+        matches!(events.last(), Some(ScreenHostEvent::Closed { .. })),
+        "the application was told, got {events:?}"
+    );
+}
