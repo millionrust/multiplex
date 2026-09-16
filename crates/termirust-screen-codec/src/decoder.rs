@@ -49,6 +49,16 @@ impl Decoder {
         self.framebuffer.as_ref()
     }
 
+    /// The framebuffer, to draw into.
+    ///
+    /// Only the motion region should ever be written this way. The host marks the region's tiles
+    /// as unheld while it is streaming and re-sends them all when it demotes, so it never assumes
+    /// those pixels are what it last sent — which is what makes overwriting them safe. Writing
+    /// anywhere else would leave the two sides disagreeing about the screen.
+    pub fn framebuffer_mut(&mut self) -> Option<&mut FrameBuffer> {
+        self.framebuffer.as_mut()
+    }
+
     pub const fn last_sequence(&self) -> u64 {
         self.last_sequence
     }

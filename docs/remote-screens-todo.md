@@ -278,7 +278,21 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   latency for it. The ratio follows reported loss between five and forty percent.
   Still on the ordered Controller stream, where nothing is ever actually lost: the tests drop
   frames on the wire to prove the repair works. Real datagrams arrive with iroh in 5.3.
-- [ ] 4.4 `feat(screen-client): decode motion regions natively on desktop, iOS and Android`
+- [x] 4.4 `feat(screen-client): decode motion regions natively on desktop, iOS and Android`
+  The decoded region is drawn into the same framebuffer the tiles go into, so `framebuffer()`
+  returns one complete screen and nothing above the session had to change: the desktop viewer and
+  the iPhone both got video without a line of UI work. That is safe because the host stops
+  claiming to know the region's tiles the moment it promotes it.
+  `termirust-screen-video` now builds for iOS as well as macOS, which is what gives the phone
+  hardware decode. Android has no decoder here, so its frames are handed up for MediaCodec, which
+  is the one piece of 4.4 still to write in Kotlin.
+  The acknowledgement loop closes here: a reference is only acknowledged once it has actually
+  decoded, so the host never predicts from a picture the viewer does not have.
+
+- [ ] 4.5 `feat(android): decode the motion region with MediaCodec`
+  The Rust bindings hand `ScreenEvent` video configuration and frames up on Android, because
+  `termirust-screen-video` has no decoder there. Kotlin decodes them and draws the region over the
+  tile picture. Everything above the session already works; this is the one platform left.
 
 ## M5 — Rate control, roaming, bad networks (Stage B, part 2) [4.6, 7]
 

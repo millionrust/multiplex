@@ -10,6 +10,7 @@
 mod error;
 mod host;
 mod input;
+mod motion;
 mod video;
 mod viewer;
 

@@ -18,6 +18,12 @@ pub enum VideoError {
     InvalidSize { width: u32, height: u32 },
     /// The pixels handed in are not the size their stride and height claim.
     ShortFrame,
+    /// The parameter sets a host sent do not describe a stream this machine can decode.
+    InvalidParameterSets,
+    /// This machine has no HEVC decoder.
+    NoDecoder(i32),
+    /// A payload that is not the Annex B this path carries.
+    Malformed,
 }
 
 impl fmt::Display for VideoError {
@@ -38,6 +44,14 @@ impl fmt::Display for VideoError {
                 write!(f, "{width}x{height} is not a region this encoder can take")
             }
             Self::ShortFrame => write!(f, "the frame is smaller than its stride and height claim"),
+            Self::InvalidParameterSets => {
+                write!(
+                    f,
+                    "the decoder configuration does not describe a stream this machine decodes"
+                )
+            }
+            Self::NoDecoder(status) => write!(f, "no HEVC decoder here (OSStatus {status})"),
+            Self::Malformed => write!(f, "the payload is not Annex B"),
         }
     }
 }

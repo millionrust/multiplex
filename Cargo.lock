@@ -10651,6 +10651,7 @@ version = "0.1.0"
 dependencies = [
  "termirust-screen-codec",
  "termirust-screen-protocol",
+ "termirust-screen-video",
 ]
 
 [[package]]

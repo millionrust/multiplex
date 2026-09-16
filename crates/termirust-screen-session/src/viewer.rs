@@ -9,6 +9,7 @@ use termirust_screen_protocol::{
     VideoFrame, Viewport,
 };
 
+use crate::motion::MotionView;
 use crate::video::{Repaired, VideoRepair};
 use crate::{InputEvent, SessionError, THUMBNAIL_CACHE_BYTES, THUMBNAIL_SURFACE_BIT};
 
@@ -69,6 +70,8 @@ pub struct ViewerSession {
     outbox: VecDeque<Message>,
     /// Rebuilds video frames the link dropped, from the parity the host sends with each group.
     repair: VideoRepair,
+    /// Decodes the motion region and draws it into the surface it belongs to.
+    motion: MotionView,
 }
 
 impl ViewerSession {
@@ -90,6 +93,7 @@ impl ViewerSession {
             attached: Vec::new(),
             outbox: VecDeque::new(),
             repair: VideoRepair::default(),
+            motion: MotionView::default(),
         }
     }
 
@@ -235,6 +239,57 @@ impl ViewerSession {
         Ok(())
     }
 
+    /// Decodes one video frame and draws it into its surface.
+    ///
+    /// The picture goes into the same framebuffer the tiles do, so everything above this reads
+    /// one complete screen and never has to know the motion path exists. A viewer that cannot
+    /// decode hands the frame up instead.
+    fn draw(&mut self, frame: VideoFrame) -> Vec<ViewerEvent> {
+        let surface = frame.surface;
+        let decoded = self.motion.decode(&frame);
+        if decoded.undecoded {
+            return vec![ViewerEvent::VideoFrame(frame)];
+        }
+        // Acknowledging is what lets the host recover from the next loss without a keyframe, so
+        // it goes out as soon as the decoder actually holds the reference.
+        if let Some(holding) = decoded.holding
+            && self.agreed.has(FeatureSet::LONG_TERM_REFERENCES)
+        {
+            self.outbox.push_back(Message::VideoAcknowledge {
+                surface,
+                tokens: holding,
+            });
+        }
+        let Some((rect, picture)) = decoded.picture else {
+            // Nothing to draw: the frame predicted from one that never arrived. What is on the
+            // screen is still the last good picture, which is better than a torn one.
+            return Vec::new();
+        };
+        let Some(framebuffer) = self
+            .decoders
+            .get_mut(&surface)
+            .and_then(Decoder::framebuffer_mut)
+        else {
+            return Vec::new();
+        };
+        // The region can outlive the size the decoder agreed to, so it is clipped rather than
+        // trusted; a picture that does not fit is not drawn at all.
+        let rect = Rect::new(rect.x, rect.y, picture.width, picture.height)
+            .intersect(framebuffer.size().bounds());
+        if rect.width != picture.width
+            || rect.height != picture.height
+            || framebuffer.write_rect(rect, &picture.bgra).is_err()
+        {
+            return Vec::new();
+        }
+        vec![ViewerEvent::Updated {
+            surface,
+            preview: false,
+            damaged: vec![rect],
+            reset: false,
+        }]
+    }
+
     /// Turns a repair into events, and tells the host about anything parity could not rebuild.
     ///
     /// The report goes out on its own: the viewer knows a group failed before the application
@@ -266,6 +321,7 @@ impl ViewerSession {
         match (&self.state, message) {
             (State::Closed | State::Disconnected, _) => Err(SessionError::Closed),
             (_, Message::Goodbye { reason }) => {
+                self.motion.clear_all();
                 self.state = State::Closed;
                 Ok(vec![ViewerEvent::Closed { reason }])
             }
@@ -323,6 +379,11 @@ impl ViewerSession {
                 Ok(vec![ViewerEvent::Control(holder)])
             }
             (State::Open, Message::MotionRegion { surface, rect }) => {
+                if rect.is_none() {
+                    // Demoted: the tile path has the rectangle back, and this decoder describes a
+                    // stream that has ended. Holding it would leave stale references acknowledged.
+                    self.motion.clear(surface);
+                }
                 Ok(vec![ViewerEvent::MotionRegion { surface, rect }])
             }
             (State::Open, Message::PanePlacements { surface, panes }) => {
@@ -341,14 +402,21 @@ impl ViewerSession {
                 // A new configuration is a new encoder, whose sequences and groups start again,
                 // so nothing kept for repair still describes this stream.
                 self.repair.restart(config.surface);
-                Ok(vec![ViewerEvent::VideoConfig(config)])
+                self.motion.configure(&config);
+                // Handed up only when this build cannot decode it, so an application on a
+                // platform without a hardware decoder can do it itself.
+                if self.motion.decoding(config.surface) {
+                    Ok(Vec::new())
+                } else {
+                    Ok(vec![ViewerEvent::VideoConfig(config)])
+                }
             }
             (State::Open, Message::VideoFrame(frame))
                 if self.agreed.has(FeatureSet::MOTION_VIDEO) =>
             {
-                // Delivered first and repaired second: the code is systematic, so a frame that
+                // Decoded first and repaired second: the code is systematic, so a frame that
                 // arrived is usable now and waiting for its group would be pure latency.
-                let mut events = vec![ViewerEvent::VideoFrame(frame.clone())];
+                let mut events = self.draw(frame.clone());
                 if self.agreed.has(FeatureSet::VIDEO_PARITY) {
                     let repaired = self.repair.frame(&frame);
                     events.extend(self.deliver(repaired));

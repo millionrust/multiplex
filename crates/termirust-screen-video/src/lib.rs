@@ -19,25 +19,30 @@
 //! frames **by token**, never by counting: the encoder drops frames under load, so its output is
 //! not one-to-one with what was submitted.
 //!
-//! Off macOS, and on a Mac whose encoder refuses long-term references, [`HevcEncoder::open`]
+//! On Apple platforms this is VideoToolbox, which both the Mac and the iPhone carry. Elsewhere,
+//! and on a Mac whose encoder refuses long-term references, [`HevcEncoder::open`]
 //! fails and the caller keeps the tile path. Nothing here is required for a working session.
 
 #![deny(missing_debug_implementations)]
 
 mod error;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+mod decode;
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 mod ffi;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 mod hevc;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
 mod unsupported;
 
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub use decode::HevcDecoder;
 pub use error::VideoError;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub use hevc::HevcEncoder;
-#[cfg(not(target_os = "macos"))]
-pub use unsupported::HevcEncoder;
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+pub use unsupported::{HevcDecoder, HevcEncoder};
 
 /// What the encoder should be set up to produce.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -77,6 +82,15 @@ pub struct Encoded {
     /// The acknowledgement token the encoder attached. Send it with the frame; when the viewer
     /// reports holding it, pass it back in [`Request::acknowledged`].
     pub token: Option<u32>,
+}
+
+/// One decoded frame of a motion region: tightly packed BGRA, top row first, no padding — the
+/// same layout the tile framebuffer uses, so it can be drawn straight in.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Picture {
+    pub width: u32,
+    pub height: u32,
+    pub bgra: Vec<u8>,
 }
 
 /// What to tell the encoder about the frame being submitted.

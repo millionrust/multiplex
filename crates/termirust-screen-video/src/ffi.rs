@@ -178,6 +178,102 @@ unsafe extern "C" {
     ) -> OSStatus;
 }
 
+/// The decompression side. `CMTime` is passed by value here, which is why the callback's shape
+/// has to match Apple's exactly rather than being simplified.
+pub type VTDecompressionSessionRef = *mut c_void;
+pub type CVImageBufferRef = *mut c_void;
+pub type VTDecodeInfoFlags = u32;
+pub type VTDecodeFrameFlags = u32;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct CMSampleTimingInfo {
+    pub duration: CMTime,
+    pub presentation_time_stamp: CMTime,
+    pub decode_time_stamp: CMTime,
+}
+
+pub type VTDecompressionOutputCallback = unsafe extern "C" fn(
+    decompression_output_ref_con: *mut c_void,
+    source_frame_ref_con: *mut c_void,
+    status: OSStatus,
+    info_flags: VTDecodeInfoFlags,
+    image_buffer: CVImageBufferRef,
+    presentation_time_stamp: CMTime,
+    presentation_duration: CMTime,
+);
+
+#[repr(C)]
+pub struct VTDecompressionOutputCallbackRecord {
+    pub callback: Option<VTDecompressionOutputCallback>,
+    pub ref_con: *mut c_void,
+}
+
+unsafe extern "C" {
+    pub static kCVPixelBufferPixelFormatTypeKey: CFStringRef;
+
+    pub fn CMVideoFormatDescriptionCreateFromHEVCParameterSets(
+        allocator: CFAllocatorRef,
+        parameter_set_count: usize,
+        parameter_set_pointers: *const *const u8,
+        parameter_set_sizes: *const usize,
+        nal_unit_header_length: i32,
+        extensions: CFDictionaryRef,
+        out: *mut CMFormatDescriptionRef,
+    ) -> OSStatus;
+    pub fn CMBlockBufferCreateWithMemoryBlock(
+        allocator: CFAllocatorRef,
+        memory_block: *mut c_void,
+        block_length: usize,
+        block_allocator: CFAllocatorRef,
+        custom_block_source: *const c_void,
+        offset_to_data: usize,
+        data_length: usize,
+        flags: u32,
+        out: *mut CMBlockBufferRef,
+    ) -> OSStatus;
+    pub fn CMBlockBufferReplaceDataBytes(
+        source_bytes: *const c_void,
+        destination: CMBlockBufferRef,
+        offset: usize,
+        length: usize,
+    ) -> OSStatus;
+    pub fn CMSampleBufferCreateReady(
+        allocator: CFAllocatorRef,
+        data_buffer: CMBlockBufferRef,
+        format_description: CMFormatDescriptionRef,
+        sample_count: isize,
+        sample_timing_entry_count: isize,
+        sample_timing_array: *const CMSampleTimingInfo,
+        sample_size_entry_count: isize,
+        sample_size_array: *const usize,
+        out: *mut CMSampleBufferRef,
+    ) -> OSStatus;
+
+    pub fn VTDecompressionSessionCreate(
+        allocator: CFAllocatorRef,
+        video_format_description: CMFormatDescriptionRef,
+        video_decoder_specification: CFDictionaryRef,
+        destination_image_buffer_attributes: CFDictionaryRef,
+        output_callback: *const VTDecompressionOutputCallbackRecord,
+        out: *mut VTDecompressionSessionRef,
+    ) -> OSStatus;
+    pub fn VTDecompressionSessionDecodeFrame(
+        session: VTDecompressionSessionRef,
+        sample_buffer: CMSampleBufferRef,
+        decode_flags: VTDecodeFrameFlags,
+        source_frame_ref_con: *mut c_void,
+        info_flags_out: *mut VTDecodeInfoFlags,
+    ) -> OSStatus;
+    pub fn VTDecompressionSessionWaitForAsynchronousFrames(
+        session: VTDecompressionSessionRef,
+    ) -> OSStatus;
+    pub fn VTDecompressionSessionInvalidate(session: VTDecompressionSessionRef);
+
+    pub fn CVPixelBufferGetWidth(buffer: CVPixelBufferRef) -> usize;
+    pub fn CVPixelBufferGetHeight(buffer: CVPixelBufferRef) -> usize;
+}
+
 pub fn cfnumber(value: i32) -> CFNumberRef {
     unsafe {
         CFNumberCreate(
