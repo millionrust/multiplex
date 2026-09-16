@@ -111,6 +111,12 @@ package, depends only on the screen codec and protocol crates, stays outside the
 dependency closure, and changes no Controller vector; the workspace lock and ADR checksums were
 reviewed and repinned.
 
+On 2026-09-16 `termirust-screen-bindings` took the already-locked `hex 0.4.3`, `serde_json 1.0.149`
+and `sha2 0.10.9` as dev-dependencies, for the recorded session its tests and the Swift
+conformance runner replay. They are test-only, add no package, and stay outside the
+controller-security dependency closure; every Controller vector is unchanged, and the workspace
+lock and ADR checksums were reviewed and repinned.
+
 On 2026-09-16 the new `termirust-screen-bindings` workspace crate was added so phones can watch
 and drive a screen. It mirrors `termirust-controller-bindings`: the same pinned `uniffi 0.32.0`,
 no other external package, and the screen workspace crates. It never touches Controller-v1 keys or

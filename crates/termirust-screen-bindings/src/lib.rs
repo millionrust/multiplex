@@ -130,8 +130,9 @@ pub enum ScreenEvent {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, uniffi::Error)]
 pub enum ScreenBindingError {
-    /// The computer sent something this session cannot accept; the session is over.
-    Protocol,
+    /// The computer sent something this session cannot accept; the session is over. Named for
+    /// what it is rather than "protocol", which Swift will not accept as a case name.
+    InvalidMessage,
     /// A ticket must be exactly 32 bytes.
     InvalidTicket,
     /// A rectangle was empty or outside the surface.
@@ -146,7 +147,7 @@ pub enum ScreenBindingError {
 impl std::fmt::Display for ScreenBindingError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(match self {
-            Self::Protocol => "protocol",
+            Self::InvalidMessage => "invalid_message",
             Self::InvalidTicket => "invalid_ticket",
             Self::InvalidRect => "invalid_rect",
             Self::InvalidModifiers => "invalid_modifiers",
@@ -248,7 +249,11 @@ impl ScreenViewer {
     pub fn attach_panes(&self, sessions: Vec<Vec<u8>>) -> Result<(), ScreenBindingError> {
         let sessions = sessions
             .into_iter()
-            .map(|session| session.try_into().map_err(|_| ScreenBindingError::Protocol))
+            .map(|session| {
+                session
+                    .try_into()
+                    .map_err(|_| ScreenBindingError::InvalidMessage)
+            })
             .collect::<Result<Vec<[u8; 16]>, _>>()?;
         self.with(|inner| {
             inner.session.attach_panes(sessions);
@@ -343,14 +348,14 @@ impl ScreenViewer {
                 let message = inner
                     .reader
                     .next_message()
-                    .map_err(|_| ScreenBindingError::Protocol)?;
+                    .map_err(|_| ScreenBindingError::InvalidMessage)?;
                 let Some(message) = message else {
                     return Ok(events);
                 };
                 let applied = inner
                     .session
                     .receive(message)
-                    .map_err(|_| ScreenBindingError::Protocol)?;
+                    .map_err(|_| ScreenBindingError::InvalidMessage)?;
                 events.extend(applied.into_iter().map(event));
             }
         })
@@ -594,7 +599,7 @@ mod tests {
         );
         assert_eq!(
             viewer.attach_panes(vec![vec![1; 15]]),
-            Err(ScreenBindingError::Protocol)
+            Err(ScreenBindingError::InvalidMessage)
         );
 
         viewer.send_text(1, String::new());
@@ -609,7 +614,7 @@ mod tests {
         viewer.connect(vec![7; 32]).unwrap();
         assert_eq!(
             viewer.receive(vec![0xFF; 64]),
-            Err(ScreenBindingError::Protocol)
+            Err(ScreenBindingError::InvalidMessage)
         );
     }
 }

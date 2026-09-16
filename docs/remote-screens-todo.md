@@ -149,6 +149,10 @@ Pure Rust, no platform code, fully testable in CI.
   `docs/decisions/screen-bindings.md`. The iOS half was built on this Mac: an `.xcframework` for
   device and simulator plus `TermiRustRemoteScreens.swift`. The Android half needs NDK 27.1 on the
   machine that runs it.
+  Swift replays the same recorded session Rust does (`scripts/test/swift-screen-bindings.sh`,
+  fixture `crates/termirust-screen-bindings/tests/vectors/screen-session-v1.json`) and rebuilds a
+  byte-identical picture. Compiling the generated Swift is what caught an error case named
+  `Protocol`, which Swift refuses; it is `InvalidMessage` now.
 - [ ] 3.2 `feat(ios): show live previews in Fleet and a computer detail screen`
 - [ ] 3.3 `feat(ios): add the remote screen viewer with zoom, minimap, pointer modes and keyboard`
 - [ ] 3.4 `feat(ios): show weak-connection details and reconnect from the last picture`
