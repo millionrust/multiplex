@@ -67,8 +67,10 @@ targets:
       - TermiRustMobile/ViewModels/ControllerTerminalViewModel.swift
       - TermiRustMobile/ViewModels/ControllerViewModel.swift
       - TermiRustMobile/ViewModels/HostListViewModel.swift
+      - TermiRustMobile/ViewModels/RemoteScreenViewModel.swift
       - TermiRustMobile/Vault
       - TermiRustMobile/Views/ContentView.swift
+      - TermiRustMobile/Views/RemoteScreenView.swift
       - TermiRustMobile/Views/ControllerPresentation.swift
       - TermiRustMobile/Views/ControllerQRCodeScanner.swift
       - TermiRustMobile/Views/ControllerReadOnlyTerminalView.swift
@@ -121,6 +123,7 @@ targets:
       - TermiRustMobileTests/AppleRelayControllerTransportLiveTests.swift
       - TermiRustMobileTests/ControllerBindingConformanceTests.swift
       - TermiRustMobileTests/ControllerScreenSessionTests.swift
+      - TermiRustMobileTests/RemoteScreenViewModelTests.swift
       - TermiRustMobileTests/ReplicationCustodyTests.swift
       - TermiRustMobileTests/EnrollmentWorkflowTests.swift
       - TermiRustMobileTests/ReplicationDocumentReaderTests.swift

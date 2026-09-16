@@ -59,9 +59,11 @@
 		7A740E922F044472CD76815E /* controller-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 26B5CDEA33B10C29FDE1E103 /* controller-v1.json */; };
 		7F3B1423EA45161ABAA62A33 /* TerminalInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E45128AD706AEC225C1F294 /* TerminalInteraction.swift */; };
 		842AE4985FCB208E1989689D /* ControllerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E63E0CD0058EC2B95291EA /* ControllerModels.swift */; };
+		84E47946BCBB1409D8437229 /* RemoteScreenViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07AE6F873072C7082558C3F0 /* RemoteScreenViewModel.swift */; };
 		86C24C98934FA85F83D98AAB /* TmuxBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA16ACD0D263656AC038DB1F /* TmuxBootstrap.swift */; };
 		8999D7D40482A28A2DC06AEE /* ControllerBindingConformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5EED30009CAECFDB014CB0F /* ControllerBindingConformanceTests.swift */; };
 		8AF002781B0FC922621AE40B /* ControllerRemoteRouteConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BB413BC50EEE5867C533DE8 /* ControllerRemoteRouteConfiguration.swift */; };
+		8C7740DB5D7DC133C92ADFD9 /* RemoteScreenViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D9402B2C27708A4B6ACF339 /* RemoteScreenViewModelTests.swift */; };
 		90B03BA0136A9B4E35151F23 /* BoundedTerminalBufferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E63D1988FD59BCF8486812 /* BoundedTerminalBufferTests.swift */; };
 		90D2386ADD12230937FDB5FB /* TermiRustReplicationSecurity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F8A73060A2F2CB2C2B9A13A /* TermiRustReplicationSecurity.swift */; };
 		92CB25F806424FBFA481AA9F /* ControllerScreenSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9F2B6A7B352267D6C7B5AAE /* ControllerScreenSession.swift */; };
@@ -97,6 +99,7 @@
 		CF19CCC1721C06ACDE6305A0 /* BoundedTerminalBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 211167AA57A499461175EBFA /* BoundedTerminalBuffer.swift */; };
 		D056CFA9C2DD3AAA806615A8 /* ControllerPairingFleetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B61FB3E50D5A511492D5C02 /* ControllerPairingFleetTests.swift */; };
 		D1DA172736D59EED427F817E /* TerminalConformanceV2Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB1F176CEE7530958483AE9D /* TerminalConformanceV2Tests.swift */; };
+		D28BA9C1B4AD83BCCDFD862B /* RemoteScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47676B0112479679478962D6 /* RemoteScreenView.swift */; };
 		D6786F14C3494923A91388A9 /* terminal-interaction-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 9602C2DB16DA29C6C9736CE0 /* terminal-interaction-v1.json */; };
 		D78B4C80A123FDE47965A709 /* ControllerScreenSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A28F3A530292FF1F2E6317D /* ControllerScreenSessionTests.swift */; };
 		D97C57648D1861080ACD9C46 /* NativeControllerTerminal.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC7FD37EACD22090E5FB871 /* NativeControllerTerminal.swift */; };
@@ -136,6 +139,7 @@
 		000FB7B80D5C444D65B8A924 /* EnrollmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnrollmentView.swift; sourceTree = "<group>"; };
 		00196E38312C036FCD3CD034 /* ControllerRouteCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerRouteCredentialStore.swift; sourceTree = "<group>"; };
 		02192D208584BF947DEC5276 /* ControllerTerminalViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerTerminalViewModelTests.swift; sourceTree = "<group>"; };
+		07AE6F873072C7082558C3F0 /* RemoteScreenViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteScreenViewModel.swift; sourceTree = "<group>"; };
 		08E27FF0C2A5E569ED541A98 /* SSHControllerTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHControllerTransport.swift; sourceTree = "<group>"; };
 		0A28F3A530292FF1F2E6317D /* ControllerScreenSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerScreenSessionTests.swift; sourceTree = "<group>"; };
 		0BB16F651E78CEA014BAC41F /* universal-session-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "universal-session-v1.json"; sourceTree = "<group>"; };
@@ -163,9 +167,11 @@
 		3BB413BC50EEE5867C533DE8 /* ControllerRemoteRouteConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerRemoteRouteConfiguration.swift; sourceTree = "<group>"; };
 		3D3E11BE5BC0BF55360124E4 /* ControllerTerminalInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerTerminalInputView.swift; sourceTree = "<group>"; };
 		45ADAEE8F8C761105B93C634 /* ControllerTerminalViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerTerminalViewModel.swift; sourceTree = "<group>"; };
+		47676B0112479679478962D6 /* RemoteScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteScreenView.swift; sourceTree = "<group>"; };
 		4A401F88097A4050D1187C33 /* UnifiedRouteLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedRouteLifecycleTests.swift; sourceTree = "<group>"; };
 		4AD7FB361793CCA61A329A6E /* AppleSSHControllerTransportLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSSHControllerTransportLiveTests.swift; sourceTree = "<group>"; };
 		4B61FB3E50D5A511492D5C02 /* ControllerPairingFleetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerPairingFleetTests.swift; sourceTree = "<group>"; };
+		4D9402B2C27708A4B6ACF339 /* RemoteScreenViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteScreenViewModelTests.swift; sourceTree = "<group>"; };
 		503149A3DD61E9EB4C573024 /* TermiRustMobileUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TermiRustMobileUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		50FB13028C2D8BE39B1B6BEF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		53249E4EEEE0C924FB483867 /* TermiRustRemoteScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermiRustRemoteScreens.swift; sourceTree = "<group>"; };
@@ -350,6 +356,7 @@
 				45ADAEE8F8C761105B93C634 /* ControllerTerminalViewModel.swift */,
 				EA020905FCA3B0895422D575 /* ControllerViewModel.swift */,
 				BBB97A039F68CD753DB6852F /* HostListViewModel.swift */,
+				07AE6F873072C7082558C3F0 /* RemoteScreenViewModel.swift */,
 			);
 			name = ViewModels;
 			path = TermiRustMobile/ViewModels;
@@ -429,6 +436,7 @@
 				A4808B8FAD8D18B154844FEB /* ControllerRootView.swift */,
 				3D3E11BE5BC0BF55360124E4 /* ControllerTerminalInputView.swift */,
 				92D39B67AFDC7D7C61741A03 /* HostListView.swift */,
+				47676B0112479679478962D6 /* RemoteScreenView.swift */,
 				AE5C2C71C1D39ECA5CDD08FE /* SlateColors.swift */,
 				88E38D4F5550D42D8E7BD818 /* SlateTokens.swift */,
 				0D52C3569C68C273CCD11319 /* TerminalSessionView.swift */,
@@ -457,6 +465,7 @@
 				88ED49DA30BE70BA0E0093B3 /* MobileCrossRouteAcceptanceTests.swift */,
 				EE77A14B5817F4A38B3F57F0 /* MobileRouteContractTests.swift */,
 				7EE76EC7D67CB1EAE446215D /* MobileVaultImporterTests.swift */,
+				4D9402B2C27708A4B6ACF339 /* RemoteScreenViewModelTests.swift */,
 				F9FE8A3B280B02C30AF0B071 /* ReplicationCustodyTests.swift */,
 				55B9F9D4A45EB9BC8D19AACC /* ReplicationDocumentReaderTests.swift */,
 				296A8C3A317C5ECF8CB3439A /* TerminalAcceptanceTests.swift */,
@@ -716,6 +725,7 @@
 				2ECB54360A02B93EE52B2E24 /* MobileCrossRouteAcceptanceTests.swift in Sources */,
 				38C73FA0B03B285F469013E7 /* MobileRouteContractTests.swift in Sources */,
 				11B42406FC878DBE6DBDCD09 /* MobileVaultImporterTests.swift in Sources */,
+				8C7740DB5D7DC133C92ADFD9 /* RemoteScreenViewModelTests.swift in Sources */,
 				56ED0C248BE291FB0945CBA9 /* ReplicationCustodyTests.swift in Sources */,
 				5C3D5C9E44DD7CB4F15A203D /* ReplicationDocumentReaderTests.swift in Sources */,
 				0187101A4F70C33D4E063D20 /* TerminalAcceptanceTests.swift in Sources */,
@@ -773,6 +783,8 @@
 				00DC68D847EAA6431EC2AF40 /* OpenSSHPrivateKeyParser.swift in Sources */,
 				AE436BA7DDF91FD54C091DD6 /* PairedHostStore.swift in Sources */,
 				35ED5FDC6E85CC897AB16B62 /* RelayControllerTransport.swift in Sources */,
+				D28BA9C1B4AD83BCCDFD862B /* RemoteScreenView.swift in Sources */,
+				84E47946BCBB1409D8437229 /* RemoteScreenViewModel.swift in Sources */,
 				EC6A9535CFA6010A4109D33D /* ReplicationDocumentReader.swift in Sources */,
 				034AD326A8BB2267989C9CFB /* ReplicationKeychainStore.swift in Sources */,
 				1942F8158A5733E3E4B2FD71 /* SSHControllerTransport.swift in Sources */,
