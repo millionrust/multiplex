@@ -112,8 +112,10 @@ Pure Rust, no platform code, fully testable in CI.
   one capture thread per display and one injection thread, because Core Graphics events need a
   thread that owns the event source. **(device)** Whether the worker inherits the app's Screen
   Recording and Accessibility grants, or asks for its own, still has to be checked on a real Mac.
-  Still to do in 2.14: the live sharing indicator (the worker has to report watchers to the app)
-  and per-device screen grants in the device editor.
+  The sharing indicator landed next: the listener reports who is watching, and who holds control,
+  every half second while it changes, and Devices names them and offers "Stop sharing". Reports
+  carry device ids only, never screen content, and the last watcher leaving is itself a report.
+  Still to do in 2.14: per-device screen grants in the device editor.
 - [x] 2.15 `feat(screen-host): serve screens over the Controller channel, end to end`
   `termirust-screen-host` is the screen session the listener carries: it reassembles the protocol
   from screen frames, spends the ticket, checks each frame's capability against what the message

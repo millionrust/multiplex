@@ -72,6 +72,15 @@ pub trait ControllerScreenSession: Send {
     fn close(&mut self);
 }
 
+/// A device watching this computer's screens right now, as the app's indicator shows it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScreenWatcherReport {
+    pub device_id: termirust_domain::ControllerDeviceId,
+    /// Whether this device holds the writer lease and can point and type.
+    pub controlling: bool,
+}
+
 /// Opens screen sessions for connections, when the host application can serve screens.
 pub trait ScreenSessionFactory: Send + Sync {
     fn open(
@@ -79,6 +88,12 @@ pub trait ScreenSessionFactory: Send + Sync {
         peer: &termirust_domain::AuthenticatedPeer,
         outgoing: ScreenOutgoing,
     ) -> Option<Box<dyn ControllerScreenSession>>;
+
+    /// Who is watching. The listener polls this and tells the application, so the computer being
+    /// watched can say so.
+    fn watchers(&self) -> Vec<ScreenWatcherReport> {
+        Vec::new()
+    }
 }
 
 #[cfg(test)]

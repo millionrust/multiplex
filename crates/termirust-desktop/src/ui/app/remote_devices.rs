@@ -75,6 +75,8 @@ pub(super) struct RemoteDevicesState {
     desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
     tmux_sessions: bool,
     screen_sharing: bool,
+    /// Who is watching this computer's screens, as the listener last reported.
+    screen_watchers: Vec<termirust_controller_listener::ScreenWatcherReport>,
     listener_last_polled: Instant,
     host_private: Option<StaticPrivateKey>,
     pairing_state: PairingUiState,
@@ -150,6 +152,7 @@ impl RemoteDevicesState {
                     desktop_pane_bridge,
                     tmux_sessions,
                     screen_sharing,
+                    screen_watchers: Vec::new(),
                     listener_last_polled: Instant::now(),
                     host_private,
                     pairing_state: PairingUiState::Idle,
@@ -214,6 +217,7 @@ impl RemoteDevicesState {
             desktop_pane_bridge: None,
             tmux_sessions,
             screen_sharing,
+            screen_watchers: Vec::new(),
             listener_last_polled: Instant::now(),
             host_private: Some(StaticPrivateKey::from_fixture_bytes([3; 32])),
             pairing_state: PairingUiState::Idle,
@@ -251,6 +255,7 @@ impl RemoteDevicesState {
             desktop_pane_bridge: None,
             tmux_sessions: false,
             screen_sharing: false,
+            screen_watchers: Vec::new(),
             listener_last_polled: Instant::now(),
             host_private: None,
             pairing_state: PairingUiState::StorageFailure,
@@ -421,6 +426,23 @@ impl RemoteDevicesState {
     #[cfg(test)]
     pub(super) fn screen_sharing(&self) -> bool {
         self.screen_sharing
+    }
+
+    /// Who is watching this computer's screens, as the listener last reported.
+    pub(super) fn screen_watchers(&self) -> &[termirust_controller_listener::ScreenWatcherReport] {
+        &self.screen_watchers
+    }
+
+    /// The saved name of a paired device, or a short form of its id when it is not saved yet.
+    pub(super) fn device_name(&self, device_id: ControllerDeviceId) -> String {
+        self.devices
+            .iter()
+            .find(|device| device.device_id == device_id)
+            .map(|device| device.display_name.clone())
+            .unwrap_or_else(|| {
+                let id = device_id.to_string();
+                id.split('-').next().unwrap_or(&id).to_owned()
+            })
     }
 
     /// Changes whether devices with screen access see this computer's displays. A running
@@ -695,6 +717,9 @@ impl RemoteDevicesState {
                     .filter(|address| address.validate().is_ok())
                     .collect();
             }
+            ControllerListenerEventProjection::ScreenWatchers { watchers } => {
+                self.screen_watchers = watchers;
+            }
         }
         Ok(())
     }
@@ -829,12 +854,68 @@ impl TermiRustApp {
                     |this, enabled, _, cx| this.update_remote_screen_sharing(enabled, cx),
                 ),
             ))
+            .when(sharing, |this| this.child(self.render_screen_watchers(cx)))
             .child(
                 div()
                     .text_size(px(theme::TYPE_CAPTION_SIZE))
                     .text_color(theme::text_muted())
                     .child(localization::remote_screens_permission_hint()),
             )
+            .into_any_element()
+    }
+
+    /// Who is watching right now, and the way to stop it.
+    fn render_screen_watchers(&self, cx: &Context<Self>) -> AnyElement {
+        let watchers = self.remote_devices.screen_watchers();
+        let names: Vec<String> = watchers
+            .iter()
+            .map(|watcher| self.remote_devices.device_name(watcher.device_id))
+            .collect();
+        let controlling = watchers
+            .iter()
+            .position(|watcher| watcher.controlling)
+            .map(|index| names[index].clone());
+        v_flex()
+            .id("remote-screens-watchers")
+            .debug_selector(|| "remote-screens-watchers".to_string())
+            .gap_1()
+            .child(
+                h_flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                            .text_color(if names.is_empty() {
+                                theme::text_muted()
+                            } else {
+                                theme::text_main()
+                            })
+                            .child(if names.is_empty() {
+                                localization::remote_screens_watching_none()
+                            } else {
+                                localization::remote_screens_watching_now(&names.join(", "))
+                            }),
+                    )
+                    .child(
+                        Button::new("remote-screens-stop")
+                            .debug_selector(|| "remote-screens-stop".to_string())
+                            .small()
+                            .label(localization::remote_screens_stop_action())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.update_remote_screen_sharing(false, cx);
+                            })),
+                    ),
+            )
+            .when_some(controlling, |this, device| {
+                this.child(
+                    div()
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                        .text_color(theme::warning())
+                        .child(localization::remote_screens_controlling_now(&device)),
+                )
+            })
             .into_any_element()
     }
 
@@ -1961,7 +2042,8 @@ fn pairing_ui_status(state: PairingUiState) -> String {
 mod network_tests {
     use termirust_controller_listener::ListenerProcessEvent;
     use termirust_domain::{
-        HostIdentityState, ListenerFailureCode, ListenerState, PairedDeviceStatus, PairingOfferId,
+        ControllerDeviceId, HostIdentityState, ListenerFailureCode, ListenerState,
+        PairedDeviceRecord, PairedDeviceStatus, PairingOfferId,
     };
 
     use crate::ui::localization;
@@ -1982,6 +2064,66 @@ mod network_tests {
             localization::remote_devices_route_required(),
             "Turn on remote access to pair a phone."
         );
+    }
+
+    #[test]
+    fn reported_watchers_reach_the_indicator_with_the_names_the_user_gave_them() {
+        let coordinator = ControllerCoordinator::default();
+        let mut state = RemoteDevicesState::open_default(&coordinator, None, false, true);
+        assert!(state.screen_watchers().is_empty());
+
+        let phone = ControllerDeviceId::new();
+        let unsaved = ControllerDeviceId::new();
+        state
+            .apply_listener_event(
+                ListenerProcessEvent::screen_watchers(vec![
+                    termirust_controller_listener::ScreenWatcherReport {
+                        device_id: phone,
+                        controlling: false,
+                    },
+                    termirust_controller_listener::ScreenWatcherReport {
+                        device_id: unsaved,
+                        controlling: true,
+                    },
+                ]),
+                &coordinator,
+            )
+            .expect("watcher reports are applied");
+        assert_eq!(state.screen_watchers().len(), 2);
+        assert!(state.screen_watchers()[1].controlling);
+
+        state.devices = vec![paired_device(phone, "Jacob's phone")];
+        assert_eq!(state.device_name(phone), "Jacob's phone");
+        assert_eq!(
+            state.device_name(unsaved),
+            unsaved.to_string().split('-').next().unwrap(),
+            "a device that is not saved yet still has something to show"
+        );
+
+        // A device that left stops being shown.
+        state
+            .apply_listener_event(
+                ListenerProcessEvent::screen_watchers(Vec::new()),
+                &coordinator,
+            )
+            .expect("an empty listing is applied");
+        assert!(state.screen_watchers().is_empty());
+    }
+
+    fn paired_device(device_id: ControllerDeviceId, name: &str) -> PairedDeviceRecord {
+        PairedDeviceRecord {
+            device_id,
+            public_key: termirust_domain::DevicePublicKey([9; 32]),
+            display_name: name.to_owned(),
+            capabilities: termirust_domain::ControllerCapabilities::default(),
+            protocol_range: termirust_domain::ControllerProtocolRange::V1,
+            created_at: 1,
+            last_seen_at: None,
+            revocation_epoch: 1,
+            identity_generation: termirust_domain::HostIdentityGeneration::INITIAL,
+            status: termirust_domain::PairedDeviceStatus::Online,
+            source_offer_id: PairingOfferId::new(),
+        }
     }
 
     #[test]

@@ -78,6 +78,10 @@ pub(super) enum ControllerListenerEventProjection {
     CodeAttemptFailed {
         attempts_left: u8,
     },
+    /// Who is watching this computer's screens right now.
+    ScreenWatchers {
+        watchers: Vec<termirust_controller_listener::ScreenWatcherReport>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -289,6 +293,9 @@ impl ControllerCoordinator {
             }
             ListenerProcessEvent::ListeningAddresses { addresses, .. } => {
                 Ok(ControllerListenerEventProjection::Addresses { addresses })
+            }
+            ListenerProcessEvent::ScreenWatchers { watchers, .. } => {
+                Ok(ControllerListenerEventProjection::ScreenWatchers { watchers })
             }
             ListenerProcessEvent::PairingCode {
                 offer_id,

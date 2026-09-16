@@ -39,6 +39,8 @@ use crate::{
 const LAUNCH_FORMAT_VERSION: u16 = 1;
 const MAX_LAUNCH_DESCRIPTOR_BYTES: u64 = 32 * 1024;
 const PAIRING_OFFER_LIFETIME_SECONDS: u64 = 5 * 60;
+/// How often the listener checks who is watching its screens, to tell the app.
+const SCREEN_WATCHER_POLL: std::time::Duration = std::time::Duration::from_millis(500);
 
 #[derive(Clone)]
 struct ListenerEventSink {
@@ -1110,7 +1112,7 @@ where
                     .then(|| TmuxSessionSource::system(descriptor.runtime_parent.clone()))
                     .transpose()?,
             )
-            .with_screens(screens.filter(|_| descriptor.screen_sharing)),
+            .with_screens(screens.clone().filter(|_| descriptor.screen_sharing)),
     );
     let mut source_key = [0; 32];
     rand::rngs::OsRng
@@ -1142,6 +1144,27 @@ where
     let listening = Arc::new(Mutex::new(initial_addresses));
 
     let cancel = CancellationToken::new();
+    // The computer being watched has to be able to say so, so the app hears about every change.
+    if let Some(screens) = screens.filter(|_| descriptor.screen_sharing) {
+        let watcher_events = events.clone();
+        let watcher_cancel = cancel.clone();
+        std::thread::spawn(move || {
+            let mut reported = Vec::new();
+            while !watcher_cancel.is_cancelled() {
+                let watching = screens.watchers();
+                if watching != reported {
+                    if watcher_events
+                        .send(&ListenerProcessEvent::screen_watchers(watching.clone()))
+                        .is_err()
+                    {
+                        return;
+                    }
+                    reported = watching;
+                }
+                std::thread::sleep(SCREEN_WATCHER_POLL);
+            }
+        });
+    }
     let control_cancel = cancel.clone();
     let control_events = events.clone();
     let control_authority = repository_authority;

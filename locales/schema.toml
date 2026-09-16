@@ -4792,6 +4792,32 @@ description = "Screen sharing saved status"
 id = "remote-screens-permission-hint"
 context = "Explains the macOS permissions screen watching and control ask for."
 description = "Screen sharing permission hint"
+[[messages]]
+id = "remote-screens-watching-none"
+context = "Shown while screen sharing is on and no device is watching."
+description = "Nobody watching status"
+[[messages]]
+id = "remote-screens-watching-now"
+context = "Names the devices watching this computer's screen right now."
+description = "Watching devices status"
+[[messages.args]]
+name = "devices"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "remote-screens-controlling-now"
+context = "Names the one device that currently holds pointer and keyboard control."
+description = "Controlling device status"
+[[messages.args]]
+name = "device"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "remote-screens-stop-action"
+context = "Action that stops sharing this computer's screen with every device."
+description = "Stop sharing action"
 
 [[messages]]
 id = "accessibility-lab-title"

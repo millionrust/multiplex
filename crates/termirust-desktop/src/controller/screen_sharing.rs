@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use termirust_controller_listener::{
-    ControllerScreenSession, ScreenOutgoing, ScreenSessionFactory,
+    ControllerScreenSession, ScreenOutgoing, ScreenSessionFactory, ScreenWatcherReport,
 };
 use termirust_domain::AuthenticatedPeer;
 use termirust_screen_capture::{CaptureConfig, Damage, FrameSource, ScreenCaptureKitSource};
@@ -153,6 +153,16 @@ impl ScreenSessionFactory for ScreenSharing {
         }
         spawn_injection(layout, input_receiver, handle.clone());
         Some(Box::new(session))
+    }
+
+    fn watchers(&self) -> Vec<ScreenWatcherReport> {
+        self.watchers()
+            .into_iter()
+            .map(|watcher| ScreenWatcherReport {
+                device_id: watcher.device_id,
+                controlling: watcher.controlling,
+            })
+            .collect()
     }
 }
 

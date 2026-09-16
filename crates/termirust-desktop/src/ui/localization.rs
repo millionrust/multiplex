@@ -769,6 +769,16 @@ static_message!(
     remote_screens_permission_hint,
     RemoteScreensPermissionHintArgs
 );
+static_message!(remote_screens_watching_none, RemoteScreensWatchingNoneArgs);
+static_message!(remote_screens_stop_action, RemoteScreensStopActionArgs);
+
+pub fn remote_screens_watching_now(devices: &str) -> String {
+    text(&RemoteScreensWatchingNowArgs::new(UserData::new(devices)))
+}
+
+pub fn remote_screens_controlling_now(device: &str) -> String {
+    text(&RemoteScreensControllingNowArgs::new(UserData::new(device)))
+}
 pub fn remote_terminals_diff_skipped(count: usize) -> String {
     text(&RemoteTerminalsDiffSkippedArgs::new(Count(count as u64)))
 }
