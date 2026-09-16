@@ -586,7 +586,9 @@ mod tests {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind the test origin");
         let address = listener.local_addr().expect("the test origin's address");
         let reached = Arc::new(AtomicBool::new(false));
+        let answered = Arc::new(AtomicUsize::new(0));
         let reached_by_server = reached.clone();
+        let answered_by_server = answered.clone();
         let server = thread::spawn(move || -> io::Result<()> {
             let (mut stream, _) = listener.accept()?;
             reached_by_server.store(true, Ordering::Release);
@@ -600,6 +602,9 @@ mod tests {
                 }
                 request.extend_from_slice(&chunk[..read]);
             }
+            // Counts what the origin was asked for, so a request that never arrives whole is told
+            // apart from an answer that never makes it back.
+            answered_by_server.store(request.len().max(1), Ordering::Release);
             stream.write_all(
                 b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nproxy",
             )?;
@@ -645,14 +650,16 @@ mod tests {
         assert!(
             text.starts_with("HTTP/1.1 200 OK"),
             "the proxy should carry the origin's answer back, got {text:?} after {:?}: {ending}, \
-             the proxy accepted {} connections, and the origin {} reached",
+             the proxy accepted {} connections, the origin {} reached, and it was asked for {} \
+             bytes before it answered",
             started.elapsed(),
             proxy.accepted(),
             if reached.load(Ordering::Acquire) {
                 "was"
             } else {
                 "was never"
-            }
+            },
+            answered.load(Ordering::Acquire)
         );
         assert!(
             text.ends_with("proxy"),

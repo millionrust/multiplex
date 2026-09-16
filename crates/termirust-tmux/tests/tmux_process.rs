@@ -59,6 +59,26 @@ fn fake_tmux(directory: &Path, body: &str) -> PathBuf {
     path
 }
 
+/// Reads the version of a tmux that was just written, waiting out "text file busy". These tests
+/// run in parallel, and Linux refuses to run a program another process still holds open for
+/// writing: a test that forks while this one is being written holds that handle until it runs its
+/// own program. Only the version probe is retried, because these fakes record what they are asked
+/// to do and running one again would be recorded too.
+fn tmux_at(path: &Path) -> Result<Tmux, TmuxError> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let result = Tmux::at(path);
+        let still_busy = result
+            .as_ref()
+            .err()
+            .is_some_and(|error| error.to_string().contains("file busy"));
+        if !still_busy || std::time::Instant::now() >= deadline {
+            return result;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
 #[test]
 fn no_server_is_an_empty_listing() {
     let Some(server) = IsolatedServer::start() else {
@@ -146,7 +166,7 @@ fn canonical_executable_resolves_symlinks() {
     let real = fake_tmux(fixture.path(), "echo 'tmux 3.7c'");
     let link = fixture.path().join("linked-tmux");
     std::os::unix::fs::symlink(&real, &link).unwrap();
-    let tmux = Tmux::at(&link).unwrap();
+    let tmux = tmux_at(&link).unwrap();
     assert_eq!(tmux.executable(), link);
     assert_eq!(tmux.version(), "tmux 3.7c");
     assert_eq!(
@@ -163,11 +183,7 @@ fn fake_tmux_listing_and_failures_are_typed() {
         r#"if [ "$1" = "-V" ]; then echo 'tmux 3.4'; exit 0; fi
 printf '$0\t100\t1\t1\tfrom fake\tzsh\n$1\t101\t0\t2\tsecond\tvim\n'"#,
     );
-    let sessions = Tmux::at(&listing)
-        .unwrap()
-        .list_sessions()
-        .unwrap()
-        .sessions;
+    let sessions = tmux_at(&listing).unwrap().list_sessions().unwrap().sessions;
     assert_eq!(sessions.len(), 2);
     assert_eq!(sessions[0].name, "from fake");
     assert_eq!(sessions[1].windows, 2);
@@ -179,7 +195,7 @@ printf '$0\t100\t1\t1\tfrom fake\tzsh\n$1\t101\t0\t2\tsecond\tvim\n'"#,
 echo 'no server running on /tmp/tmux-0/default' >&2; exit 1"#,
     );
     assert!(
-        Tmux::at(&no_server)
+        tmux_at(&no_server)
             .unwrap()
             .list_sessions()
             .unwrap()
@@ -194,7 +210,7 @@ echo 'no server running on /tmp/tmux-0/default' >&2; exit 1"#,
 echo 'server exploded' >&2; exit 2"#,
     );
     assert_eq!(
-        Tmux::at(&broken).unwrap().list_sessions().unwrap_err(),
+        tmux_at(&broken).unwrap().list_sessions().unwrap_err(),
         TmuxError::CommandFailed {
             status: Some(2),
             diagnostic: "server exploded".to_owned(),
@@ -204,7 +220,7 @@ echo 'server exploded' >&2; exit 2"#,
     let fourth = tempfile::tempdir().unwrap();
     let no_version = fake_tmux(fourth.path(), "exit 3");
     assert!(matches!(
-        Tmux::at(&no_version).unwrap_err(),
+        tmux_at(&no_version).unwrap_err(),
         TmuxError::VersionProbe(message) if message.contains("status 3")
     ));
 }
@@ -219,7 +235,7 @@ exec sleep 30"#,
     );
     let started = std::time::Instant::now();
     assert_eq!(
-        Tmux::at(&hung).unwrap().list_sessions().unwrap_err(),
+        tmux_at(&hung).unwrap().list_sessions().unwrap_err(),
         TmuxError::TimedOut
     );
     assert!(started.elapsed() < std::time::Duration::from_secs(10));
@@ -234,7 +250,7 @@ fn oversized_output_is_rejected_without_blocking() {
 head -c 2000000 /dev/zero | tr '\0' 'x'"#,
     );
     assert_eq!(
-        Tmux::at(&chatty).unwrap().list_sessions().unwrap_err(),
+        tmux_at(&chatty).unwrap().list_sessions().unwrap_err(),
         TmuxError::OutputTooLarge
     );
 }
@@ -270,7 +286,7 @@ fn verification_reports_old_and_broken_tmux() {
     let fixture = tempfile::tempdir().unwrap();
     let old = fake_tmux(fixture.path(), "echo 'tmux 3.1c'");
     assert_eq!(
-        Tmux::at(&old).unwrap().verify_listing(),
+        tmux_at(&old).unwrap().verify_listing(),
         Err(termirust_tmux::VerificationError::TooOld)
     );
     let other = tempfile::tempdir().unwrap();
@@ -281,7 +297,7 @@ if [ "$1" = "new-session" ]; then echo '$9'; exit 0; fi
 exit 0"#,
     );
     assert_eq!(
-        Tmux::at(&silent).unwrap().verify_listing(),
+        tmux_at(&silent).unwrap().verify_listing(),
         Err(termirust_tmux::VerificationError::NotListed)
     );
 }
