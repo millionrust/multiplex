@@ -203,7 +203,21 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   channel, which reports no round-trip time or loss, so none is invented — bandwidth, loss and the
   ladder that reduces detail arrive with the motion path. A banner appears when no picture has
   arrived for four seconds, and says plainly that nothing has been lost.
-- [ ] 3.5 `feat(android): the same four surfaces in Compose`
+- [x] 3.5 `feat(android): the same four surfaces in Compose`
+  Android had none of Remote Screens: the generated Kotlin bindings and the `.so` were staged but
+  nothing used them. It now has the same shape as the phone. `ControllerScreenSession.kt` owns the
+  two commands, the ticket, and the pump that tags each chunk with the capability its contents
+  need; `ControllerConnection.watchScreen` opens a session and pumps it, taking the surface from
+  the welcome rather than a fixed id; `ControllerScreenCoordinator` owns the one session a phone
+  has, as a preview or the viewer, and opens it again when it drops.
+  `RemoteScreenModel` is the Kotlin counterpart of the phone's view model: damaged rectangles into
+  one bitmap, fit, zoom to six times, clamped pan, the minimap rectangle, touch and trackpad
+  pointer modes, and the key row a text field cannot type. The Compose surfaces are the preview
+  card with "Open Screen" on a computer's page and the viewer with its dock.
+  Android carried the same forward-compatibility bug the phone had: it refused any granted
+  capability set containing a bit it did not know, so granting a tablet screen access would have
+  broken its terminal connection. It knows all eight bits now.
+  16 unit tests cover the geometry, the capability gate, and the ticket rules.
 - [ ] 3.6 **(device)** Stage A network matrix on a real iPhone and Android phone [7]
 
 ## M4 — Motion path (Stage B, part 1) [4.4]
