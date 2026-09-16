@@ -17,7 +17,9 @@ const MAX_ORIGINS: usize = 32;
 const MAX_PROXY_CONNECTIONS: usize = 32;
 const MAX_PROXY_HEADER_BYTES: usize = 16 * 1024;
 const MAX_NETWORK_BYTES: u64 = 32 * 1024 * 1024;
-const IO_TIMEOUT: Duration = Duration::from_millis(100);
+/// How long to wait before looking again at a socket that had nothing to say. The proxy's sockets
+/// do not block, so that a transfer nobody is waiting for any more can be abandoned promptly.
+const POLL_PAUSE: Duration = Duration::from_millis(5);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
@@ -301,8 +303,10 @@ fn handle_proxy_connection(
     stop: Arc<AtomicBool>,
     transferred: Arc<AtomicU64>,
 ) -> Result<(), BrowserError> {
-    client.set_read_timeout(Some(IO_TIMEOUT)).map_err(map_io)?;
-    client.set_write_timeout(Some(IO_TIMEOUT)).map_err(map_io)?;
+    // The relay looks at each socket in turn rather than waiting on one with a timeout: a
+    // timeout that expires leaves a Windows socket in a state where it stops delivering what
+    // arrives afterwards, and the answer to a request never reaches whoever asked.
+    client.set_nonblocking(true).map_err(map_io)?;
     let header = read_header(&mut client)?;
     let first_line = header
         .split(|byte| *byte == b'\n')
@@ -339,12 +343,7 @@ fn handle_proxy_connection(
         let mut upstream =
             TcpStream::connect_timeout(&policy.endpoint(host, port)?, CONNECT_TIMEOUT)
                 .map_err(map_io)?;
-        upstream
-            .set_read_timeout(Some(IO_TIMEOUT))
-            .map_err(map_io)?;
-        upstream
-            .set_write_timeout(Some(IO_TIMEOUT))
-            .map_err(map_io)?;
+        upstream.set_nonblocking(true).map_err(map_io)?;
         let version = parts.next().ok_or(BrowserError::NetworkDenied)?;
         let path = match url.query() {
             Some(query) => format!("{}?{query}", url.path()),
@@ -383,6 +382,7 @@ fn write_all_patiently(stream: &mut TcpStream, bytes: &[u8]) -> Result<(), Brows
                 if Instant::now() >= deadline {
                     return Err(BrowserError::Timeout);
                 }
+                thread::sleep(POLL_PAUSE);
             }
             Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
             Err(error) => return Err(map_io(error)),
@@ -404,6 +404,7 @@ fn read_header(stream: &mut TcpStream) -> Result<Vec<u8>, BrowserError> {
                     io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
                 ) && started.elapsed() < CONNECT_TIMEOUT =>
             {
+                thread::sleep(POLL_PAUSE);
                 continue;
             }
             Err(error)
@@ -486,7 +487,10 @@ fn copy_bounded(
                 if matches!(
                     error.kind(),
                     io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
-                ) => {}
+                ) =>
+            {
+                thread::sleep(POLL_PAUSE);
+            }
             Err(error) => return Err(map_io(error)),
         }
     }

@@ -45,17 +45,17 @@ const PATIENCE: Duration = Duration::from_secs(10);
 
 async fn wait_for_sequence(client: &mut HostClient, minimum: u64, cancel: &CancellationToken) {
     let deadline = Instant::now() + PATIENCE;
+    let mut last = String::from("never asked");
     while Instant::now() < deadline {
-        if client
-            .get_state(cancel)
-            .await
-            .is_ok_and(|state| state.latest_sequence >= minimum)
-        {
-            return;
+        match client.get_state(cancel).await {
+            Ok(state) if state.latest_sequence >= minimum => return,
+            Ok(state) => last = format!("reached sequence {}", state.latest_sequence),
+            Err(error) => last = format!("the Host answered with {error:?}"),
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    panic!("real Host output did not reach sequence {minimum}");
+    // Says whether the Host was quiet or unreachable, which a bare timeout does not.
+    panic!("real Host output did not reach sequence {minimum}: {last}");
 }
 
 fn stop_sentinel(child: &mut Child) {
