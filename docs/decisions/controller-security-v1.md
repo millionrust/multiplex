@@ -111,6 +111,12 @@ package, depends only on the screen codec and protocol crates, stays outside the
 dependency closure, and changes no Controller vector; the workspace lock and ADR checksums were
 reviewed and repinned.
 
+On 2026-09-16 the new `termirust-screen-bindings` workspace crate was added so phones can watch
+and drive a screen. It mirrors `termirust-controller-bindings`: the same pinned `uniffi 0.32.0`,
+no other external package, and the screen workspace crates. It never touches Controller-v1 keys or
+frames, so the controller-security dependency closure is unchanged and every Controller vector
+still matches; the workspace lock and ADR checksums were reviewed and repinned.
+
 On 2026-09-16 the desktop app was connected to the screen crates it needs to share this
 computer's displays: `termirust-screen-capture`, `-codec`, `-host`, `-input`, `-protocol`, and
 `-session`. The lockfile change adds only those existing workspace package names to the app's

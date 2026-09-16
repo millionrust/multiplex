@@ -10578,6 +10578,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "termirust-screen-bindings"
+version = "0.1.0"
+dependencies = [
+ "termirust-screen-codec",
+ "termirust-screen-protocol",
+ "termirust-screen-session",
+ "uniffi",
+]
+
+[[package]]
 name = "termirust-screen-capture"
 version = "0.1.0"
 dependencies = [

@@ -25,6 +25,7 @@ members = [
     "crates/termirust-relay-server",
     "crates/termirust-replication-bindings",
     "crates/termirust-replication-security",
+    "crates/termirust-screen-bindings",
     "crates/termirust-screen-capture",
     "crates/termirust-screen-codec",
     "crates/termirust-screen-host",

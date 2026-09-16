@@ -106,6 +106,14 @@ Pure Rust, no platform code, fully testable in CI.
   Sharing one lease with the text path's writer lease happens in 2.7.
 - [ ] 2.12 `feat(desktop): show computers with live previews in Devices`
 - [ ] 2.13 `feat(desktop): open a remote screen tab with zoom, minimap and inspector`
+  **Blocked, found on 2026-09-16.** Both need this Mac to be *a device of* another Mac, and the app
+  has no flow for that: it pairs phones to itself, and the desktop-as-client path
+  (`controller/relay_desktop.rs`) has no way to obtain credentials for another computer. Phones
+  already pair, so M3 comes first and the desktop viewer follows 2.16.
+- [ ] 2.16 `feat(desktop): pair this computer as a device of another computer`
+  The missing half of pairing: enter the six-digit code another Mac shows, store the resulting
+  device identity and host key, and list the computers this Mac may watch. Prerequisite for 2.12
+  and 2.13.
 - [x] 2.14 `feat(desktop): share this computer's screen from Devices`
   The opt-in and the host wiring landed: Devices has a "Share this screen" choice, off by default,
   which the listener worker reads from its descriptor. Capture and injection run in that worker,
@@ -129,7 +137,15 @@ Pure Rust, no platform code, fully testable in CI.
 
 ## M3 — Phone clients (Stage A) [4.1]
 
-- [ ] 3.1 `feat(mobile-ffi): expose screen subscribe, tile apply, viewport and input`
+- [x] 3.1 `feat(screen-bindings): expose watching and driving a screen to Swift and Kotlin`
+  A uniffi boundary of its own (`termirust-screen-bindings`), beside the Controller one rather
+  than inside it, so the audited crypto boundary stays narrow. The phone feeds it screen frame
+  bytes and takes back bytes to send, each tagged with the capability its frame must claim, and
+  copies pixels only for the rectangles an update reported. Tested against a real host session:
+  pixels match what was captured, a moved box repaints a fraction of the screen, input waits for
+  control, and a preview stays separate from the full view.
+  The Swift and Kotlin artifacts need a build script like `scripts/build/mobile-controller-
+  bindings.sh`; that lands with the first app that consumes them (3.2).
 - [ ] 3.2 `feat(ios): show live previews in Fleet and a computer detail screen`
 - [ ] 3.3 `feat(ios): add the remote screen viewer with zoom, minimap, pointer modes and keyboard`
 - [ ] 3.4 `feat(ios): show weak-connection details and reconnect from the last picture`
