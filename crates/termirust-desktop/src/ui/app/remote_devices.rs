@@ -104,6 +104,9 @@ pub(super) struct RemoteDevicesState {
     watched_name: String,
     watched_pairing: bool,
     watched_failure: Option<String>,
+    /// A one-picture-a-second preview per computer, while Devices is on screen.
+    watched_previews:
+        std::collections::HashMap<String, crate::controller::watch_session::WatchSession>,
 }
 
 impl RemoteDevicesState {
@@ -186,6 +189,7 @@ impl RemoteDevicesState {
                     watched_name: String::new(),
                     watched_pairing: false,
                     watched_failure: None,
+                    watched_previews: std::collections::HashMap::new(),
                 };
                 if state.network_policy.enabled {
                     let _ = state.start_listener_process(controller_coordinator);
@@ -258,6 +262,7 @@ impl RemoteDevicesState {
             watched_name: String::new(),
             watched_pairing: false,
             watched_failure: None,
+            watched_previews: std::collections::HashMap::new(),
         }
     }
 
@@ -303,6 +308,7 @@ impl RemoteDevicesState {
             watched_name: String::new(),
             watched_pairing: false,
             watched_failure: None,
+            watched_previews: std::collections::HashMap::new(),
         }
     }
 
@@ -371,10 +377,68 @@ impl RemoteDevicesState {
     }
 
     pub(super) fn forget_watched_computer(&mut self, address: &str) {
+        self.watched_previews.remove(address);
         if let Some(store) = &self.watched_store {
             store.forget(address);
             self.watched = store.load();
         }
+    }
+
+    /// Opens a one-picture-a-second preview for every computer that granted screen access.
+    ///
+    /// Each is its own connection, which the computer serves as any other device. A computer that
+    /// is asleep or refusing simply never produces a picture, and the row says so.
+    pub(super) fn start_watched_previews(&mut self) {
+        let Some(store) = self.watched_store.clone() else {
+            return;
+        };
+        for computer in &self.watched {
+            if !computer.may_watch_screen() {
+                continue;
+            }
+            let ended = self
+                .watched_previews
+                .get(&computer.address)
+                .is_some_and(|session| {
+                    matches!(
+                        session.state(),
+                        crate::controller::watch_session::WatchState::Ended(_)
+                    )
+                });
+            if ended {
+                self.watched_previews.remove(&computer.address);
+            }
+            if self.watched_previews.contains_key(&computer.address) {
+                continue;
+            }
+            if let Some(session) =
+                crate::controller::watch_session::WatchSession::start(computer, &store, true)
+            {
+                self.watched_previews
+                    .insert(computer.address.clone(), session);
+            }
+        }
+    }
+
+    /// Ends every preview. Leaving Devices should not keep connections to other computers open.
+    pub(super) fn stop_watched_previews(&mut self) {
+        self.watched_previews.clear();
+    }
+
+    pub(super) fn watched_preview(
+        &self,
+        address: &str,
+    ) -> Option<&crate::controller::watch_session::WatchSession> {
+        self.watched_previews.get(address)
+    }
+
+    /// How many pictures every preview has drawn between them, so the interface repaints only
+    /// when something actually arrived.
+    pub(super) fn watched_preview_pictures(&self) -> u64 {
+        self.watched_previews
+            .values()
+            .map(|session| session.pictures())
+            .sum()
     }
 
     fn refresh(&mut self) -> Result<(), ()> {
@@ -1081,6 +1145,9 @@ impl TermiRustApp {
     ) -> AnyElement {
         let address = computer.address.clone();
         let forget_address = address.clone();
+        let preview = self.remote_devices.watched_preview(&address);
+        let picture = preview.and_then(|session| session.picture());
+        let watching_state = preview.map(|session| session.state());
         h_flex()
             .items_center()
             .justify_between()
@@ -1090,6 +1157,14 @@ impl TermiRustApp {
             .border_1()
             .border_color(theme::soft_border())
             .bg(theme::library_card())
+            .when_some(picture, |this, picture| {
+                this.child(
+                    img(picture)
+                        .object_fit(ObjectFit::Contain)
+                        .w(px(96.0))
+                        .h(px(60.0)),
+                )
+            })
             .child(
                 v_flex()
                     .min_w_0()
@@ -1110,10 +1185,14 @@ impl TermiRustApp {
                         div()
                             .text_size(px(theme::TYPE_MICRO_SIZE))
                             .text_color(theme::text_muted())
-                            .child(if computer.may_watch_screen() {
-                                localization::watched_computers_may_watch()
-                            } else {
-                                localization::watched_computers_no_screen()
+                            .child(match watching_state {
+                                Some(crate::controller::watch_session::WatchState::Ended(
+                                    reason,
+                                )) => reason,
+                                _ if !computer.may_watch_screen() => {
+                                    localization::watched_computers_no_screen()
+                                }
+                                _ => localization::watched_computers_may_watch(),
                             }),
                     ),
             )
@@ -2113,6 +2192,7 @@ impl TermiRustApp {
     }
 
     pub(super) fn refresh_remote_listener_process(&mut self, cx: &mut Context<Self>) {
+        self.refresh_watched_previews(cx);
         match self
             .remote_devices
             .refresh_listener_process(&self.controller_coordinator)
@@ -2123,6 +2203,29 @@ impl TermiRustApp {
                 self.error_message = localization::remote_devices_listener_start_failed();
                 cx.notify();
             }
+        }
+    }
+
+    /// Keeps a preview open for each watched computer while Devices is on screen, and repaints
+    /// when a new picture has arrived.
+    ///
+    /// Leaving the view ends them: a preview is a connection to someone else's computer, and it
+    /// should last no longer than the page that shows it.
+    fn refresh_watched_previews(&mut self, cx: &mut Context<Self>) {
+        let showing = matches!(self.nav_section, NavSection::Devices);
+        if !showing {
+            if self.watched_preview_pictures != 0 {
+                self.watched_preview_pictures = 0;
+                self.remote_devices.stop_watched_previews();
+                cx.notify();
+            }
+            return;
+        }
+        self.remote_devices.start_watched_previews();
+        let drawn = self.remote_devices.watched_preview_pictures();
+        if drawn != self.watched_preview_pictures {
+            self.watched_preview_pictures = drawn;
+            cx.notify();
         }
     }
 

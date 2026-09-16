@@ -104,11 +104,18 @@ Pure Rust, no platform code, fully testable in CI.
   events tagged `TRSI` and checks Accessibility first. Tested against a recording sink and a real
   host session; the Core Graphics sink was checked for permission only, not driven on the desktop.
   Sharing one lease with the text path's writer lease happens in 2.7.
-- [ ] 2.12 `feat(desktop): show computers with live previews in Devices`
+- [x] 2.12 `feat(desktop): show computers with live previews in Devices`
+  `controller/watch_session.rs` is the mirror of `screen_sharing.rs`: that serves this Mac's
+  displays to a device, this makes this Mac the device. A session runs on its own thread with its
+  own runtime, because the Controller channel is async and the interface is not, and publishes the
+  latest picture and what it is doing for the interface to read as it draws. Input goes the other
+  way on a channel, so a pointer move never waits on the network.
+  Devices shows a preview beside every computer that granted screen access, at the computer's
+  thumbnail profile. They open when the page appears and close when it goes away: a preview is a
+  connection to someone else's computer, and it should last no longer than the page showing it. A
+  computer that is asleep or refusing simply never sends a picture, and the row says why.
 - [ ] 2.13 `feat(desktop): open a remote screen tab with zoom, minimap and inspector`
-  Unblocked by 2.16 on 2026-09-16. Both needed this Mac to be *a device of* another Mac, which the
-  app had no flow for; it now pairs as a device and keeps the credentials, so the viewer has
-  something to connect to.
+  Unblocked by 2.16 on 2026-09-16; the session in 2.12 is what a tab would draw.
 - [x] 2.16 `feat(desktop): pair this computer as a device of another computer`
   The missing half of pairing. Devices gains "Computers this Mac can watch": enter the address and
   the six-digit code another computer shows, and this Mac pairs as its device. The record is a

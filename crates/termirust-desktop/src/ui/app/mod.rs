@@ -1445,6 +1445,8 @@ pub struct TermiRustApp {
     worktree_base_input: Entity<InputState>,
     worktree_branch_input: Entity<InputState>,
     nav_section: NavSection,
+    /// Pictures every watched-computer preview has drawn, so a repaint follows a new one.
+    watched_preview_pictures: u64,
     show_editor_panel: bool,
     connection_coordinator: ConnectionCoordinator,
     session_coordinator: SessionCoordinator,
@@ -1891,6 +1893,7 @@ impl TermiRustApp {
             worktree_base_input,
             worktree_branch_input,
             nav_section: NavSection::Hosts,
+            watched_preview_pictures: 0,
             show_editor_panel: false,
             connection_coordinator,
             session_coordinator,
