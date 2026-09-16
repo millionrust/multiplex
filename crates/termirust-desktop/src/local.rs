@@ -758,6 +758,35 @@ mod tests {
         panic!("{} was not written before timeout", path.display());
     }
 
+    /// Types `input` until the shell writes `path`. Keys can arrive while a tmux client is
+    /// still attaching and be dropped, so the command, which only rewrites the file, is resent.
+    fn type_until_file(
+        command_tx: &tokio::sync::mpsc::UnboundedSender<SessionCommand>,
+        input: String,
+        path: &std::path::Path,
+    ) -> String {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            command_tx
+                .send(SessionCommand::Input(input.clone().into_bytes()))
+                .unwrap();
+            let attempt_deadline = (Instant::now() + Duration::from_secs(1)).min(deadline);
+            while Instant::now() < attempt_deadline {
+                if let Ok(contents) = std::fs::read_to_string(path)
+                    && !contents.trim().is_empty()
+                {
+                    return contents.trim().to_string();
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            assert!(
+                Instant::now() < deadline,
+                "{} was not written before timeout",
+                path.display()
+            );
+        }
+    }
+
     #[test]
     fn local_tmux_session_survives_disconnect_and_reattaches() {
         let Ok((tmux, _)) = local_tmux_probe() else {
@@ -812,13 +841,11 @@ mod tests {
                 )
             },
         );
-        first
-            .command_tx
-            .send(SessionCommand::Input(
-                format!("printf '%s\\n' \"$$\" > {}\n", first_pid.display()).into_bytes(),
-            ))
-            .unwrap();
-        let original_pid = wait_for_file(&first_pid, Instant::now() + Duration::from_secs(5));
+        let original_pid = type_until_file(
+            &first.command_tx,
+            format!("printf '%s\\n' \"$$\" > {}\n", first_pid.display()),
+            &first_pid,
+        );
         first.command_tx.send(SessionCommand::Disconnect).unwrap();
         wait_for_event(
             &first_rx,
@@ -864,13 +891,11 @@ mod tests {
                 )
             },
         );
-        second
-            .command_tx
-            .send(SessionCommand::Input(
-                format!("printf '%s\\n' \"$$\" > {}\n", second_pid.display()).into_bytes(),
-            ))
-            .unwrap();
-        let reattached_pid = wait_for_file(&second_pid, Instant::now() + Duration::from_secs(5));
+        let reattached_pid = type_until_file(
+            &second.command_tx,
+            format!("printf '%s\\n' \"$$\" > {}\n", second_pid.display()),
+            &second_pid,
+        );
         assert_eq!(reattached_pid, original_pid);
 
         second

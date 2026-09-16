@@ -76,7 +76,7 @@ async fn management_stop_targets_only_the_owned_host_and_preserves_sentinel() {
         expected_occupant_generation: None,
         runtime_root: endpoint.runtime_root().to_path_buf(),
         session_dir: session_data_root.join(session_id.to_string()),
-        executable: "/bin/sh".into(),
+        executable: std::fs::canonicalize("/bin/sh").unwrap(),
         runtime_detection: None,
         arguments: vec![
             "-c".into(),

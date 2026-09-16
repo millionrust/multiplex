@@ -380,7 +380,7 @@ fn descriptor(seed: &SeededStore) -> LaunchDescriptor {
             .config_root
             .join("durable-sessions")
             .join(SESSION_ID.to_string()),
-        executable: "/bin/sh".into(),
+        executable: std::fs::canonicalize("/bin/sh").unwrap(),
         runtime_detection: None,
         arguments: vec![
             "-c".into(),

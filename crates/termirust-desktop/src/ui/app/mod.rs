@@ -151,7 +151,10 @@ use crate::storage::{
 use crate::terminal::{TerminalSize, TerminalState};
 use crate::ui::accessibility::shell::ShellAccessibilityAdapter;
 use crate::ui::autocomplete::{AutocompleteCandidate, AutocompleteSource};
-use crate::ui::keys::{MouseEventKind, encode_mouse_report, encode_terminal_input};
+use crate::ui::keys::{
+    AppShortcut, MouseEventKind, TerminalShortcut, app_shortcut, dropped_paths_text,
+    encode_mouse_report, encode_terminal_input, terminal_shortcut,
+};
 use crate::ui::localization;
 use crate::ui::path::remote_parent_path;
 use crate::ui::render_terminal::{
@@ -352,15 +355,15 @@ impl NavSection {
     }
 }
 
-fn primary_nav_shortcut(key: &str) -> Option<NavSection> {
-    match key {
-        "1" => Some(NavSection::Activity),
-        "2" => Some(NavSection::Projects),
-        "3" => Some(NavSection::Hosts),
-        "4" => Some(NavSection::Sessions),
-        "5" => Some(NavSection::Sftp),
-        "6" => Some(NavSection::Devices),
-        "7" => Some(NavSection::Settings),
+fn primary_nav_shortcut(number: u8) -> Option<NavSection> {
+    match number {
+        1 => Some(NavSection::Activity),
+        2 => Some(NavSection::Projects),
+        3 => Some(NavSection::Hosts),
+        4 => Some(NavSection::Sessions),
+        5 => Some(NavSection::Sftp),
+        6 => Some(NavSection::Devices),
+        7 => Some(NavSection::Settings),
         _ => None,
     }
 }
@@ -10765,6 +10768,23 @@ impl TermiRustApp {
         self.send_input_bytes_broadcast(pane_id, bytes, cx)
     }
 
+    /// Files dropped from Finder or another app are typed into the pane as shell-quoted paths,
+    /// as Terminal.app and Zed do, and the pane takes focus.
+    fn drop_paths_on_pane(
+        &mut self,
+        pane_id: u64,
+        paths: &[PathBuf],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let text = dropped_paths_text(paths);
+        if text.is_empty() {
+            return false;
+        }
+        self.activate_pane(pane_id, window, cx);
+        self.send_paste_bytes(pane_id, text, cx)
+    }
+
     fn confirm_pending_paste(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(pending) = self.pending_paste.take() else {
             return false;
@@ -10794,42 +10814,36 @@ impl TermiRustApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        if event.keystroke.modifiers.secondary()
-            && event.keystroke.modifiers.shift
-            && event.keystroke.key == "escape"
-        {
-            self.focus_terminal_chrome(pane_id, window, cx);
-            return true;
-        }
-
-        if event.keystroke.modifiers.secondary() {
-            match event.keystroke.key.as_str() {
-                "c" => {
-                    if self.copy_active_selection(cx) {
-                        return true;
-                    }
-                }
-                "v" => {
-                    if self.paste_to_active_pane(cx) {
-                        return true;
-                    }
-                }
-                "f" => {
-                    self.toggle_workspace_search(window, cx);
-                    return true;
-                }
-                "k" => {
-                    self.toggle_command_palette(window, cx);
-                    return true;
-                }
-                "w" => {
-                    if let Some(workspace_id) = self.active_workspace_id {
-                        self.close_workspace(workspace_id, cx);
-                        return true;
-                    }
-                }
-                _ => {}
+        match terminal_shortcut(&event.keystroke) {
+            Some(TerminalShortcut::FocusChrome) => {
+                self.focus_terminal_chrome(pane_id, window, cx);
+                return true;
             }
+            Some(TerminalShortcut::Copy) => {
+                if self.copy_active_selection(cx) {
+                    return true;
+                }
+            }
+            Some(TerminalShortcut::Paste) => {
+                if self.paste_to_active_pane(cx) {
+                    return true;
+                }
+            }
+            Some(TerminalShortcut::Search) => {
+                self.toggle_workspace_search(window, cx);
+                return true;
+            }
+            Some(TerminalShortcut::CommandPalette) => {
+                self.toggle_command_palette(window, cx);
+                return true;
+            }
+            Some(TerminalShortcut::CloseWorkspace) => {
+                if let Some(workspace_id) = self.active_workspace_id {
+                    self.close_workspace(workspace_id, cx);
+                    return true;
+                }
+            }
+            None => {}
         }
 
         let Some(pane) = self.pane(pane_id) else {
@@ -13940,94 +13954,77 @@ impl TermiRustApp {
             }
         }
 
-        if !event.keystroke.modifiers.secondary() {
+        let Some(shortcut) = app_shortcut(&event.keystroke) else {
             return false;
-        }
+        };
 
-        if !event.keystroke.modifiers.shift && event.keystroke.key.as_str() == "k" {
-            self.toggle_command_palette(window, cx);
-            return true;
-        }
-
-        if event.keystroke.modifiers.alt && self.workspaces.len() > 1 {
-            match event.keystroke.key.as_str() {
-                "right" | "tab" => {
-                    if self.cycle_active_workspace(true, window, cx) {
-                        return true;
-                    }
-                }
-                "left" => {
-                    if self.cycle_active_workspace(false, window, cx) {
-                        return true;
-                    }
-                }
-                _ => {}
+        match shortcut {
+            AppShortcut::CommandPalette => {
+                self.toggle_command_palette(window, cx);
+                return true;
             }
-        }
-
-        if event.keystroke.modifiers.shift {
-            match event.keystroke.key.as_str() {
-                "f" => {
-                    if self.active_workspace_id.is_some() {
-                        self.open_active_workspace_files(cx);
-                        return true;
-                    }
-                }
-                "t" => {
-                    // Cmd+Shift+T: toggle Files/Terminal view
-                    if self.active_workspace_id.is_some() {
-                        if self.active_workspace().is_some_and(|workspace| {
-                            workspace.view_mode == WorkspaceViewMode::Files
-                        }) {
-                            self.show_active_workspace_terminal(cx);
-                        } else {
-                            self.open_active_workspace_files(cx);
-                        }
-                    }
+            AppShortcut::CycleWorkspace { forward } => {
+                if self.workspaces.len() > 1 && self.cycle_active_workspace(forward, window, cx) {
                     return true;
                 }
-                "b" => {
-                    if let Some(workspace_id) = self.active_workspace_id {
-                        self.toggle_workspace_broadcast(workspace_id, cx);
-                        return true;
+            }
+            AppShortcut::OpenFiles => {
+                if self.active_workspace_id.is_some() {
+                    self.open_active_workspace_files(cx);
+                    return true;
+                }
+            }
+            AppShortcut::ToggleFilesAndTerminal => {
+                if self.active_workspace_id.is_some() {
+                    if self
+                        .active_workspace()
+                        .is_some_and(|workspace| workspace.view_mode == WorkspaceViewMode::Files)
+                    {
+                        self.show_active_workspace_terminal(cx);
+                    } else {
+                        self.open_active_workspace_files(cx);
                     }
                 }
-                "l" => {
-                    if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
-                        self.clear_pane_screen(pane_id, cx);
-                        return true;
-                    }
+                return true;
+            }
+            AppShortcut::BroadcastInput => {
+                if let Some(workspace_id) = self.active_workspace_id {
+                    self.toggle_workspace_broadcast(workspace_id, cx);
+                    return true;
                 }
-                _ => {}
             }
-        }
-
-        if !event.keystroke.modifiers.shift && event.keystroke.key.as_str() == "t" {
-            self.open_local_terminal(window, cx);
-            return true;
-        }
-
-        if !event.keystroke.modifiers.shift
-            && !event.keystroke.modifiers.alt
-            && let Some(section) = primary_nav_shortcut(event.keystroke.key.as_str())
-        {
-            if section == NavSection::Sftp {
-                self.open_files_library(artifact_gallery::FilesLibraryTab::Artifacts, window, cx);
-            } else {
-                self.activate_library_section(section, window, cx);
+            AppShortcut::ClearScreen => {
+                if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
+                    self.clear_pane_screen(pane_id, cx);
+                    return true;
+                }
             }
-            self.project_list_focus.focus(window);
-            return true;
-        }
-
-        match event.keystroke.key.as_str() {
-            "," => {
+            AppShortcut::LocalTerminal => {
+                self.open_local_terminal(window, cx);
+                return true;
+            }
+            AppShortcut::NavigateSection(number) => {
+                if let Some(section) = primary_nav_shortcut(number) {
+                    if section == NavSection::Sftp {
+                        self.open_files_library(
+                            artifact_gallery::FilesLibraryTab::Artifacts,
+                            window,
+                            cx,
+                        );
+                    } else {
+                        self.activate_library_section(section, window, cx);
+                    }
+                    self.project_list_focus.focus(window);
+                    return true;
+                }
+            }
+            AppShortcut::Settings => {
                 self.activate_library_section(NavSection::Settings, window, cx);
                 self.project_list_focus.focus(window);
-                true
+                return true;
             }
-            "l" => {
-                // Cmd+L: from library → focus host search; from workspace → go to logs
+            AppShortcut::LogsOrHostSearch => {
+                // From a workspace this opens the logs; from the library it focuses host search.
                 if self.active_workspace_id.is_some() {
                     self.activate_library_section(NavSection::Logs, window, cx);
                     self.status_message =
@@ -14040,9 +14037,9 @@ impl TermiRustApp {
                 }
                 self.error_message.clear();
                 cx.notify();
-                true
+                return true;
             }
-            "n" => {
+            AppShortcut::NewHostOrSession => {
                 if self.active_workspace_id.is_none() {
                     if self.nav_section == NavSection::Projects
                         && let Some(project_id) = self.project_library.selected_id
@@ -14052,21 +14049,18 @@ impl TermiRustApp {
                     }
                     self.activate_library(window, cx);
                     self.open_editor_for_new_host(window, cx);
-                    true
-                } else {
-                    false
+                    return true;
                 }
             }
-            "d" => {
+            AppShortcut::DuplicatePane => {
                 if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
                     self.duplicate_pane_into_split(pane_id, SplitAxis::Horizontal, window, cx);
-                    true
-                } else {
-                    false
+                    return true;
                 }
             }
-            _ => false,
         }
+
+        false
     }
 
     fn render_editor_dialog(&self, _window: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -14318,7 +14312,7 @@ mod tests {
         PathSuggestionContext, SessionLibraryView, SplitNode, TermiRustApp, WorkspaceIndicators,
         WorkspaceRuntimeTone, WorkspaceViewMode, apply_group_defaults_to_draft,
         collect_autocomplete_candidates, collect_command_palette_candidates,
-        drain_coalesced_ssh_events, extract_snippet_prompt_names,
+        drain_coalesced_ssh_events, dropped_paths_text, extract_snippet_prompt_names,
         shell_command_requires_continuation, startup_bytes_for_request,
         substitute_snippet_placeholders, substitute_snippet_prompts, workspace_runtime_summary,
     };
@@ -14355,7 +14349,7 @@ mod tests {
     };
     use gpui_component::Root;
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::sync::mpsc;
     use std::time::{Duration, Instant};
     use termirust_domain::HostedSessionId;
@@ -14487,6 +14481,82 @@ mod tests {
             &events[1],
             SshEvent::Output { data, .. } if data == b"bb"
         ));
+    }
+
+    #[test]
+    fn dropped_paths_are_shell_words_followed_by_a_space() {
+        assert_eq!(dropped_paths_text(&[]), "");
+        assert_eq!(
+            dropped_paths_text(&[
+                PathBuf::from("/Users/me/notes.md"),
+                PathBuf::from("/Users/me/My Files/it's here.png"),
+            ]),
+            "/Users/me/notes.md '/Users/me/My Files/it'\\''s here.png' "
+        );
+    }
+
+    #[gpui::test]
+    fn dropping_files_on_a_pane_types_their_paths_as_a_paste(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let (pane_id, mut command_rx) = window
+            .update(cx, |_, _window, cx| {
+                app.update(cx, |app, cx| {
+                    let pane_id = app.next_session_id();
+                    let request = ConnectRequest::local_shell_with_config(
+                        pane_id,
+                        LocalShellConfig::default(),
+                    );
+                    let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
+                    app.register_pane(
+                        request.clone(),
+                        SessionRuntimeHandle { command_tx },
+                        cx.focus_handle().tab_stop(true),
+                        cx.focus_handle().tab_stop(true),
+                        cx,
+                    );
+                    app.open_spawned_pane_workspace(&request, pane_id);
+                    if let Some(pane) = app.pane_mut(pane_id) {
+                        pane.connected = true;
+                    }
+                    (pane_id, command_rx)
+                })
+            })
+            .expect("test window should remain open");
+
+        let paths = [PathBuf::from("/tmp/a b.txt")];
+        let sent = |command_rx: &mut tokio::sync::mpsc::UnboundedReceiver<SessionCommand>| {
+            match command_rx.try_recv() {
+                Ok(SessionCommand::Input(bytes)) => bytes,
+                other => panic!("expected typed input, got {other:?}"),
+            }
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.drop_paths_on_pane(pane_id, &paths, window, cx));
+                })
+            })
+            .unwrap();
+        assert_eq!(sent(&mut command_rx), b"'/tmp/a b.txt' ");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.pane_mut(pane_id)
+                        .unwrap()
+                        .terminal
+                        .process_bytes(b"\x1b[?2004h");
+                    assert!(app.drop_paths_on_pane(pane_id, &paths, window, cx));
+                    assert_eq!(
+                        app.active_workspace()
+                            .map(|workspace| workspace.active_pane_id),
+                        Some(pane_id)
+                    );
+                })
+            })
+            .unwrap();
+        assert_eq!(sent(&mut command_rx), b"\x1b[200~'/tmp/a b.txt' \x1b[201~");
     }
 
     #[gpui::test]
@@ -14861,8 +14931,9 @@ mod tests {
             }
             _ => (0.0, 0, 0),
         };
+        // Typed, so the byte ceilings below are compared as u64 rather than overflowing i32.
         #[cfg(not(unix))]
-        let (cpu_percent, max_rss_bytes, rss_growth_bytes) = (0.0, 0, 0);
+        let (cpu_percent, max_rss_bytes, rss_growth_bytes): (f64, u64, u64) = (0.0, 0, 0);
 
         println!(
             "terminal entity profile: startup={}ms; input-to-settled p50={}us p95={}us p99={}us; output-frame p50={}us p95={}us p99={}us; sustained={throughput_mib:.2}MiB/s cpu={cpu_percent:.1}% peak-rss={:.1}MiB rss-growth={:.1}MiB renders={}",
@@ -18597,7 +18668,7 @@ sleep 1
             .expect("transcript focus should be readable");
         assert!(transcript_has_focus);
         cx.write_to_clipboard(gpui::ClipboardItem::new_string("sentinel".to_string()));
-        cx.simulate_keystrokes(*window, "cmd-c");
+        cx.simulate_keystrokes(*window, "secondary-c");
         let copied = cx
             .read_from_clipboard()
             .and_then(|item| item.text())
@@ -24260,7 +24331,7 @@ sleep 1
         });
 
         let duplicate = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-d").expect("cmd-d should parse"),
+            keystroke: Keystroke::parse("secondary-d").expect("cmd-d should parse"),
             is_held: false,
         };
 
@@ -24302,13 +24373,13 @@ sleep 1
         let (app, window) = open_test_app(cx);
 
         for (shortcut, expected) in [
-            ("cmd-1", NavSection::Activity),
-            ("cmd-2", NavSection::Projects),
-            ("cmd-3", NavSection::Hosts),
-            ("cmd-4", NavSection::Sessions),
-            ("cmd-5", NavSection::Sftp),
-            ("cmd-6", NavSection::Devices),
-            ("cmd-7", NavSection::Settings),
+            ("secondary-1", NavSection::Activity),
+            ("secondary-2", NavSection::Projects),
+            ("secondary-3", NavSection::Hosts),
+            ("secondary-4", NavSection::Sessions),
+            ("secondary-5", NavSection::Sftp),
+            ("secondary-6", NavSection::Devices),
+            ("secondary-7", NavSection::Settings),
         ] {
             let event = KeyDownEvent {
                 keystroke: Keystroke::parse(shortcut).expect("shortcut should parse"),
@@ -24350,7 +24421,7 @@ sleep 1
         }
 
         let settings_event = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-,").expect("settings shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-,").expect("settings shortcut should parse"),
             is_held: false,
         };
         window
@@ -24366,7 +24437,7 @@ sleep 1
         });
 
         let logs_shortcut = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-l").expect("logs shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-l").expect("logs shortcut should parse"),
             is_held: false,
         };
         window
@@ -24382,7 +24453,7 @@ sleep 1
         });
 
         let new_host = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-n").expect("new-host shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-n").expect("new-host shortcut should parse"),
             is_held: false,
         };
         window
@@ -24437,7 +24508,7 @@ sleep 1
         let (app, window) = open_test_app(cx);
         cx.run_until_parked();
         let open_palette = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-k").expect("palette shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-k").expect("palette shortcut should parse"),
             is_held: false,
         };
         let enter = KeyDownEvent {
@@ -26289,7 +26360,7 @@ sleep 1
         });
 
         let open_files = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-shift-f").expect("files shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-shift-f").expect("files shortcut should parse"),
             is_held: false,
         };
         window
@@ -26310,7 +26381,8 @@ sleep 1
         });
 
         let toggle_files = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-shift-t").expect("toggle-files shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-shift-t")
+                .expect("toggle-files shortcut should parse"),
             is_held: false,
         };
         window
@@ -26329,7 +26401,8 @@ sleep 1
         });
 
         let broadcast = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-shift-b").expect("broadcast shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-shift-b")
+                .expect("broadcast shortcut should parse"),
             is_held: false,
         };
         window
@@ -26347,7 +26420,8 @@ sleep 1
         });
 
         let local_shortcut = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-t").expect("local terminal shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-t")
+                .expect("local terminal shortcut should parse"),
             is_held: false,
         };
         window
@@ -26370,7 +26444,8 @@ sleep 1
         });
 
         let cycle_left = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-alt-left").expect("cycle-left shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-alt-left")
+                .expect("cycle-left shortcut should parse"),
             is_held: false,
         };
         window
@@ -26385,7 +26460,7 @@ sleep 1
         });
 
         let cycle_right = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-alt-right")
+            keystroke: Keystroke::parse("secondary-alt-right")
                 .expect("cycle-right shortcut should parse"),
             is_held: false,
         };
@@ -26401,7 +26476,7 @@ sleep 1
         });
 
         let logs = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-l").expect("logs shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-l").expect("logs shortcut should parse"),
             is_held: false,
         };
         window
@@ -26427,7 +26502,7 @@ sleep 1
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let open_palette = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-k").expect("palette shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-k").expect("palette shortcut should parse"),
             is_held: false,
         };
 
@@ -26531,7 +26606,7 @@ sleep 1
         });
 
         let open_search = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-f").expect("search shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-f").expect("search shortcut should parse"),
             is_held: false,
         };
         window
@@ -26557,7 +26632,7 @@ sleep 1
             .expect("terminal search should close");
 
         let open_palette = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-k").expect("palette shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-k").expect("palette shortcut should parse"),
             is_held: false,
         };
         window
@@ -26598,7 +26673,7 @@ sleep 1
         });
 
         let close_workspace = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-w").expect("close shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-w").expect("close shortcut should parse"),
             is_held: false,
         };
         window
@@ -26798,7 +26873,7 @@ sleep 1
             .expect("window update should succeed");
 
         let copy_event = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-c").expect("copy shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-c").expect("copy shortcut should parse"),
             is_held: false,
         };
         window
@@ -26820,7 +26895,7 @@ sleep 1
         ));
 
         let paste_event = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-v").expect("paste shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-v").expect("paste shortcut should parse"),
             is_held: false,
         };
         window
@@ -26954,7 +27029,7 @@ sleep 1
             .expect("window update should succeed");
 
         let clear = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-shift-l").expect("clear shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-shift-l").expect("clear shortcut should parse"),
             is_held: false,
         };
         window
@@ -26972,7 +27047,7 @@ sleep 1
         });
 
         let open_files = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-shift-f").expect("files shortcut should parse"),
+            keystroke: Keystroke::parse("secondary-shift-f").expect("files shortcut should parse"),
             is_held: false,
         };
         window
@@ -27510,6 +27585,12 @@ sleep 1
         let use_click = selector_click_center(window, cx, "keychain-use-0");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(use_click, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            eprintln!(
+                "DEBUG nav={:?} draft={:?} status={:?}",
+                app.nav_section, app.draft_identity_id, app.status_message
+            );
+        });
 
         app.read_with(cx, |app, cx| {
             assert_eq!(app.nav_section, NavSection::Hosts);

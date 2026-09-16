@@ -17,6 +17,24 @@ pub const SELECTION_STYLE: &str = "bg=#3b4252,fg=default";
 
 const COPY_TABLES: [&str; 2] = ["copy-mode", "copy-mode-vi"];
 
+/// Writes UTF-8 whatever the locale says, which a tab started by launchd or a bare shell has
+/// none of.
+pub const UTF8_FLAG: &str = "-u";
+/// Tells tmux this client's terminal can show 24-bit color. tmux otherwise converts every
+/// 24-bit color to the nearest of 256, and a wrapped tab looks unlike the tab it replaced.
+/// tmux learns this by itself from a newer terminal, but not on tmux 3.2 or 3.3.
+pub const TRUECOLOR_FLAGS: [&str; 2] = ["-T", "RGB"];
+
+/// The flags a tmux client starts with. `truecolor` is whether the terminal it draws on can
+/// show 24-bit color.
+pub fn client_flags(truecolor: bool) -> Vec<&'static str> {
+    let mut flags = vec![UTF8_FLAG];
+    if truecolor {
+        flags.extend(TRUECOLOR_FLAGS);
+    }
+    flags
+}
+
 /// One key binding: the command in wrapped sessions and tmux's default command elsewhere.
 struct Binding {
     key: &'static str,
@@ -50,11 +68,12 @@ impl WrappedSessionAppearance {
         ]
     }
 
-    /// Window options, each without a target.
-    pub fn window_options() -> [[&'static str; 4]; 2] {
+    /// Window options, each without a target. `-q` lets tmux older than 3.5, which has no
+    /// `copy-mode-position-format`, skip that option and keep applying the rest.
+    pub fn window_options() -> [[&'static str; 5]; 2] {
         [
-            ["set-option", "-w", "copy-mode-position-format", ""],
-            ["set-option", "-w", "mode-style", SELECTION_STYLE],
+            ["set-option", "-q", "-w", "copy-mode-position-format", ""],
+            ["set-option", "-q", "-w", "mode-style", SELECTION_STYLE],
         ]
     }
 
@@ -231,9 +250,9 @@ mod tests {
         let file = WrappedSessionAppearance::new(Some("pbcopy".to_owned())).configuration_file();
         assert!(file.contains("\nset-option status off\n"));
         assert!(file.contains("\nset-option mouse on\n"));
-        assert!(file.contains("\nset-option -w copy-mode-position-format ''\n"));
+        assert!(file.contains("\nset-option -q -w copy-mode-position-format ''\n"));
         assert!(file.contains(
-            "\nset-hook after-new-window 'set-option -w copy-mode-position-format \"\" ; set-option -w mode-style \"bg=#3b4252,fg=default\"'\n"
+            "\nset-hook after-new-window 'set-option -q -w copy-mode-position-format \"\" ; set-option -q -w mode-style \"bg=#3b4252,fg=default\"'\n"
         ));
         let bindings = file
             .lines()

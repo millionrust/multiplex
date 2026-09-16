@@ -15,7 +15,7 @@ pub fn descriptor(fixture: &tempfile::TempDir, session_id: HostedSessionId) -> L
         expected_occupant_generation: None,
         runtime_root: fixture.path().join("runtime"),
         session_dir: fixture.path().join("session"),
-        executable: "/bin/sh".into(),
+        executable: std::fs::canonicalize("/bin/sh").unwrap(),
         runtime_detection: None,
         arguments: vec![
             "-c".into(),

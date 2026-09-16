@@ -217,10 +217,15 @@ impl TermiRustApp {
                                 }))
                                 .child(
                                     h_flex()
+                                        // A long key path truncates instead of pushing the
+                                        // row's buttons past the edge of the window.
+                                        .flex_1()
+                                        .min_w_0()
                                         .gap_3()
                                         .items_center()
                                         .child(
                                             div()
+                                                .flex_none()
                                                 .size(px(theme::SENSITIVE_ICON_TILE_SIZE))
                                                 .rounded(px(theme::CARD_RADIUS))
                                                 .bg(theme::with_alpha(theme::accent(), 0.1))
@@ -235,13 +240,17 @@ impl TermiRustApp {
                                         )
                                         .child(
                                             v_flex()
+                                                .flex_1()
+                                                .min_w_0()
                                                 .gap(px(theme::SPACE_FINE))
                                                 .child(
                                                     h_flex()
+                                                        .min_w_0()
                                                         .gap_2()
                                                         .items_center()
                                                         .child(
                                                             div()
+                                                                .truncate()
                                                                 .text_size(px(theme::TYPE_BODY_SIZE))
                                                                 .font_semibold()
                                                                 .text_color(theme::text_main())
@@ -298,6 +307,8 @@ impl TermiRustApp {
                                                 )
                                                 .child(
                                                     div()
+                                                        .min_w_0()
+                                                        .truncate()
                                                         .text_size(px(theme::TYPE_CAPTION_SIZE))
                                                         .text_color(theme::text_muted())
                                                         .child(button_identity.key_path.clone()),
@@ -306,6 +317,7 @@ impl TermiRustApp {
                                 )
                                 .child(
                                     h_flex()
+                                        .flex_none()
                                         .gap_2()
                                         .when(has_pub, |this| {
                                             let deploy_identity_id = button_identity.id.clone();

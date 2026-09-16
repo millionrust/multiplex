@@ -27,9 +27,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # The MCP, browser and diagnostics gates search with ripgrep, which the runners lack.
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-deny@0.19.8
+          tool: cargo-deny@0.19.8,ripgrep
 
       - name: Linux build dependencies
         if: runner.os == 'Linux'
@@ -57,6 +58,29 @@ jobs:
         env:
           TERMIRUST_CLIPPY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: ./scripts/verify/rust.sh workspace
+
+      # Ubuntu 22.04 ships tmux 3.2a, which has no copy-mode position counter and rewrites `:`
+      # and `.` in session names, so the wrapped-tab setup is checked against both it and a
+      # current tmux.
+      - name: Build a second tmux to test against
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y libevent-dev libncurses-dev bison
+          curl -fsSL -o /tmp/tmux.tar.gz \
+            https://github.com/tmux/tmux/releases/download/3.5a/tmux-3.5a.tar.gz
+          tar -xzf /tmp/tmux.tar.gz -C /tmp
+          cd /tmp/tmux-3.5a
+          ./configure --prefix=/opt/tmux-3.5a >/dev/null
+          make -j"$(nproc)" >/dev/null
+          sudo make install >/dev/null
+
+      - name: Behaviour across tmux versions
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            ./scripts/test/tmux-matrix.sh /usr/bin/tmux /opt/tmux-3.5a/bin/tmux
+          else
+            ./scripts/test/tmux-matrix.sh
+          fi
 
       - name: Repeat local tmux regression
         run: ./scripts/test/repeat.sh 25 local::tests::local_tmux_session_survives_disconnect_and_reattaches

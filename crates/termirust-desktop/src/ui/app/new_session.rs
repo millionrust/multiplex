@@ -1136,7 +1136,7 @@ mod tests {
                         durability: Durability::Full,
                     });
                     let event = KeyDownEvent {
-                        keystroke: Keystroke::parse("cmd-n").unwrap(),
+                        keystroke: Keystroke::parse("secondary-n").unwrap(),
                         is_held: false,
                     };
                     assert!(app.handle_global_key(&event, window, cx));

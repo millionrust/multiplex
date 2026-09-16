@@ -36,7 +36,7 @@ async fn activity_lifecycle_stop_archive_restore_requires_confirmed_host_exit() 
         expected_occupant_generation: None,
         runtime_root: fixture.path().join("runtime"),
         session_dir: session_dir.clone(),
-        executable: "/bin/sh".into(),
+        executable: std::fs::canonicalize("/bin/sh").unwrap(),
         runtime_detection: None,
         arguments: vec![
             "-c".to_string(),

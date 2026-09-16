@@ -14,7 +14,7 @@ use std::fs;
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 
-use crate::appearance::WrappedSessionAppearance;
+use crate::appearance::{self, WrappedSessionAppearance};
 
 /// First line of the block added to a shell startup file.
 pub const BLOCK_START: &str = "# >>> termirust remote terminals >>>";
@@ -429,13 +429,17 @@ impl ShellIntegration {
         // `&& exit` rather than `exec`: if tmux cannot start, the terminal keeps a plain
         // shell instead of closing the moment it opens. Sourcing the app's tmux configuration
         // right after `new-session` applies its options to that session only; `-q` keeps a
-        // missing file from failing the tab.
+        // missing file from failing the tab. A terminal that says it can show 24-bit color is
+        // passed on to tmux, which otherwise converts those colors to the nearest of 256 and
+        // the wrapped tab looks unlike the tab it replaced.
+        let utf8 = appearance::UTF8_FLAG;
+        let truecolor = appearance::TRUECOLOR_FLAGS.join(" ");
         match shell {
             Shell::Zsh => format!(
-                "{INIT_FILE_HEADER}\nif [[ -o interactive && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        {tmux} new-session -s \"termirust-${{PWD:t}}-$$\" \\; source-file -q {config} && exit\n      fi\n      ;;\n  esac\nfi\n"
+                "{INIT_FILE_HEADER}\nif [[ -o interactive && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        if [[ $COLORTERM == (truecolor|24bit) ]]; then\n          {tmux} {utf8} {truecolor} new-session -s \"termirust-${{PWD:t}}-$$\" \\; source-file -q {config} && exit\n        else\n          {tmux} {utf8} new-session -s \"termirust-${{PWD:t}}-$$\" \\; source-file -q {config} && exit\n        fi\n      fi\n      ;;\n  esac\nfi\n"
             ),
             Shell::Bash => format!(
-                "{INIT_FILE_HEADER}\nif [[ $- == *i* && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        {tmux} new-session -s \"termirust-${{PWD##*/}}-$$\" \\; source-file -q {config} && exit\n      fi\n      ;;\n  esac\nfi\n"
+                "{INIT_FILE_HEADER}\nif [[ $- == *i* && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        case \"$COLORTERM\" in\n          truecolor|24bit)\n            {tmux} {utf8} {truecolor} new-session -s \"termirust-${{PWD##*/}}-$$\" \\; source-file -q {config} && exit\n            ;;\n          *)\n            {tmux} {utf8} new-session -s \"termirust-${{PWD##*/}}-$$\" \\; source-file -q {config} && exit\n            ;;\n        esac\n      fi\n      ;;\n  esac\nfi\n"
             ),
         }
     }
@@ -647,7 +651,10 @@ mod tests {
         assert_eq!(zshrc.matches(BLOCK_START).count(), 1);
         let init =
             fs::read_to_string(home.path().join(".config/termirust/shell-init.zsh")).unwrap();
-        assert!(init.contains(&format!("'{TMUX}' new-session")));
+        assert!(init.contains(&format!("'{TMUX}' -u new-session")));
+        // A terminal that can show 24-bit color says so, and tmux is told.
+        assert!(init.contains(&format!("'{TMUX}' -u -T RGB new-session")));
+        assert!(init.contains("$COLORTERM == (truecolor|24bit)"));
         assert!(init.contains("Apple_Terminal|zed|"));
         assert!(init.contains("&& exit"));
         assert!(!init.contains("exec "));

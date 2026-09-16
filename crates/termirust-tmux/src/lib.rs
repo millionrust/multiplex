@@ -198,6 +198,9 @@ impl Tmux {
     pub fn command(&self) -> Command {
         let mut command = Command::new(&self.executable);
         command.env_remove("TMUX").env_remove("TMUX_PANE");
+        // Without a UTF-8 locale, as under launchd, tmux replaces the listing's tab separators
+        // and every non-ASCII byte with `_`, and no session parses.
+        command.arg("-u");
         if let Some(directory) = &self.socket_directory {
             command.env(TMUX_TMPDIR_ENV, directory);
             command.args(["-f", "/dev/null"]);
@@ -304,11 +307,12 @@ impl Tmux {
             applied &= output.status.success();
             let windows = self.run_arguments(["list-windows", "-t", id, "-F", "#{window_id}"])?;
             for window in String::from_utf8_lossy(&windows.stdout).lines() {
-                for [_, _, name, value] in appearance::WrappedSessionAppearance::window_options() {
+                for [_, _, _, name, value] in appearance::WrappedSessionAppearance::window_options()
+                {
                     let output = if setup_on {
-                        self.run_arguments(["set-option", "-w", "-t", window, name, value])?
+                        self.run_arguments(["set-option", "-q", "-w", "-t", window, name, value])?
                     } else {
-                        self.run_arguments(["set-option", "-w", "-u", "-t", window, name])?
+                        self.run_arguments(["set-option", "-q", "-w", "-u", "-t", window, name])?
                     };
                     applied &= output.status.success();
                 }
@@ -434,17 +438,21 @@ impl TmuxSession {
     }
 
     /// Arguments that attach one more client to this session. `ignore-size` keeps the
-    /// client out of window sizing, so a phone never reflows the desktop layout. `-u`
-    /// forces UTF-8 output because the Session Host starts the client without a locale.
+    /// client out of window sizing, so a phone never reflows the desktop layout. The client
+    /// flags force UTF-8, because the Session Host starts the client without a locale, and
+    /// declare 24-bit color, which TermiRust's own terminals draw.
     pub fn attach_arguments(&self) -> Vec<String> {
-        vec![
-            "-u".to_owned(),
-            "attach-session".to_owned(),
-            "-f".to_owned(),
-            "ignore-size".to_owned(),
-            "-t".to_owned(),
-            self.id.clone(),
-        ]
+        appearance::client_flags(true)
+            .into_iter()
+            .map(str::to_owned)
+            .chain([
+                "attach-session".to_owned(),
+                "-f".to_owned(),
+                "ignore-size".to_owned(),
+                "-t".to_owned(),
+                self.id.clone(),
+            ])
+            .collect()
     }
 }
 
@@ -847,7 +855,16 @@ mod tests {
         let session = parse_list_sessions(b"$7\t1\t0\t1\tname:with.dots\tsh").sessions[0].clone();
         assert_eq!(
             session.attach_arguments(),
-            ["-u", "attach-session", "-f", "ignore-size", "-t", "$7"]
+            [
+                "-u",
+                "-T",
+                "RGB",
+                "attach-session",
+                "-f",
+                "ignore-size",
+                "-t",
+                "$7"
+            ]
         );
     }
 
@@ -896,8 +913,8 @@ mod tests {
         let envs = command.get_envs().collect::<Vec<_>>();
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
-            ["-f", "/dev/null"],
-            "a private server ignores the developer's tmux configuration"
+            ["-u", "-f", "/dev/null"],
+            "UTF-8 output, and a private server ignores the developer's tmux configuration"
         );
         assert!(envs.contains(&(std::ffi::OsStr::new("TMUX"), None)));
         assert!(envs.contains(&(

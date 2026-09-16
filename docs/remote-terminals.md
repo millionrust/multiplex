@@ -107,6 +107,13 @@ wrapped tab sources right after `new-session`, so its options apply to that sess
   program;
 - two lines per wheel step instead of five.
 
+A wrapped tab also starts its tmux client with `-u`, so tmux writes UTF-8 whatever the locale
+says, and with `-T RGB` when the terminal sets `COLORTERM` to `truecolor` or `24bit`. Without
+that, tmux converts every 24-bit color to the nearest of 256 and the tab looks unlike the one it
+replaced. tmux 3.4 and newer usually work this out for themselves; tmux 3.2 and 3.3, which
+Ubuntu 22.04 and Debian 12 ship, never do. The phone attaches the same way, since TermiRust's own
+terminals show 24-bit color.
+
 tmux key bindings belong to the whole server, so each binding checks the session name and keeps
 tmux's default behavior in every other session. Applying the setup also updates sessions already
 running; removing it deletes the file, unsets those options, and restores tmux's default
@@ -120,9 +127,9 @@ clears it.
 # Managed by TermiRust for the tmux sessions it starts (named termirust-*). Turn off "Open new terminals in tmux" in TermiRust to remove it.
 set-option status off
 set-option mouse on
-set-option -w copy-mode-position-format ''
-set-option -w mode-style 'bg=#3b4252,fg=default'
-set-hook after-new-window 'set-option -w copy-mode-position-format "" ; set-option -w mode-style "bg=#3b4252,fg=default"'
+set-option -q -w copy-mode-position-format ''
+set-option -q -w mode-style 'bg=#3b4252,fg=default'
+set-hook after-new-window 'set-option -q -w copy-mode-position-format "" ; set-option -q -w mode-style "bg=#3b4252,fg=default"'
 bind-key -T copy-mode MouseDragEnd1Pane 'if-shell -F "#{m:termirust-*,#{session_name}}" "send-keys -X copy-pipe-no-clear pbcopy ; send-keys -X stop-selection" "send-keys -X copy-pipe-and-cancel"'
 # ...and the same guard for MouseDown1Pane, WheelUpPane, and WheelDownPane in copy-mode and copy-mode-vi
 ```
@@ -136,7 +143,11 @@ if [[ -o interactive && -z "$TMUX" && -z "$TERMIRUST_NO_WRAP" ]]; then
   case "$TERM_PROGRAM" in
     Apple_Terminal|zed|iTerm.app|ghostty|WezTerm|vscode)
       if [[ -x '/opt/homebrew/bin/tmux' ]]; then
-        '/opt/homebrew/bin/tmux' new-session -s "termirust-${PWD:t}-$$" \; source-file -q '/Users/you/.config/termirust/tmux.conf' && exit
+        if [[ $COLORTERM == (truecolor|24bit) ]]; then
+          '/opt/homebrew/bin/tmux' -u -T RGB new-session -s "termirust-${PWD:t}-$$" \; source-file -q '/Users/you/.config/termirust/tmux.conf' && exit
+        else
+          '/opt/homebrew/bin/tmux' -u new-session -s "termirust-${PWD:t}-$$" \; source-file -q '/Users/you/.config/termirust/tmux.conf' && exit
+        fi
       fi
       ;;
   esac
