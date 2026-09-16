@@ -533,8 +533,13 @@ actor ControllerConnectionActor: ControllerConnecting {
     private static let inputCapability: UInt16 = 1 << 2
     private static let resizeCapability: UInt16 = 1 << 3
     private static let approvalCapability: UInt16 = 1 << 4
+    /// Remote Screens, from amendment 1 of the Controller-v1 ADR.
+    private static let observeScreensCapability: UInt16 = 1 << 5
+    private static let controlPointerCapability: UInt16 = 1 << 6
+    private static let controlKeyboardCapability: UInt16 = 1 << 7
     private static let supportedCapabilityBits = observeCapability
         | attachCapability | inputCapability | resizeCapability | approvalCapability
+        | observeScreensCapability | controlPointerCapability | controlKeyboardCapability
     private static let maxOfferBytes = 4 * 1_024
     private static let maxHandshakeFrameBytes = 1_024
     private static let maxSecureFrameBytes = 64 * 1_024
@@ -895,7 +900,9 @@ actor ControllerConnectionActor: ControllerConnecting {
             hostStaticPublicKey: host.hostStaticPublicKey,
             identityGeneration: host.identityGeneration,
             revocationEpoch: host.revocationEpoch,
-            requestedCapabilityBits: Self.supportedCapabilityBits,
+            // Ask for what this device was granted, and no more: a computer refuses a
+            // connection that requests a capability it never gave.
+            requestedCapabilityBits: host.capabilityBits & Self.supportedCapabilityBits,
             clientNonce: try Self.randomBytes(count: 32),
             nowMillis: started
         )
