@@ -14,7 +14,7 @@ use std::sync::Mutex;
 
 use termirust_screen_codec::Rect;
 use termirust_screen_protocol::{
-    ControlHolder, FrameReader, InputKind, KeyEvent, Modifiers, PointerButton, Profile,
+    ControlHolder, FeatureSet, FrameReader, InputKind, KeyEvent, Modifiers, PointerButton, Profile,
     ResumeOutcome, Viewport, encode_frame,
 };
 use termirust_screen_session::{InputEvent, ViewerEvent, ViewerSession};
@@ -123,6 +123,29 @@ pub enum ScreenEvent {
         surface: u32,
         panes: Vec<ScreenPane>,
     },
+    /// The decoder configuration for a surface's motion region, which has to reach the decoder
+    /// before the first frame does.
+    ///
+    /// Only sent on platforms this library cannot decode for itself. On Apple platforms the
+    /// region is decoded here and arrives as [`ScreenEvent::Updated`] like everything else, so a
+    /// client that never handles this case still shows video there.
+    VideoConfig {
+        surface: u32,
+        /// Where on the surface to draw the decoded picture.
+        rect: ScreenRect,
+        /// Parameter sets in Annex B, which is what `MediaCodec` wants as `csd-0`.
+        parameter_sets: Vec<u8>,
+    },
+    /// One encoded frame of the motion region, in Annex B. See [`ScreenEvent::VideoConfig`].
+    VideoFrame {
+        surface: u32,
+        sequence: u64,
+        keyframe: bool,
+        /// The long-term reference this frame carries, if any. Once it has decoded, name it in
+        /// [`ScreenViewer::report_video`] so the computer may predict from it.
+        token: Option<u32>,
+        payload: Vec<u8>,
+    },
     Closed {
         reason: String,
     },
@@ -173,14 +196,52 @@ struct Inner {
 #[uniffi::export]
 impl ScreenViewer {
     /// `cache_bytes` is the tile cache this phone can spare; the computer models the same budget.
+    ///
+    /// A viewer built this way watches the tile path only. Use [`Self::with_motion`] to ask for
+    /// the motion region as video as well.
     #[uniffi::constructor]
     pub fn new(cache_bytes: u64) -> std::sync::Arc<Self> {
+        Self::with_motion(cache_bytes, false)
+    }
+
+    /// A viewer that also asks for the motion region as encoded video.
+    ///
+    /// `decodes_video` is the caller's promise that it will draw what arrives. On a platform this
+    /// library decodes for itself — every Apple one — it is ignored and video is always asked
+    /// for, because there is nothing for the caller to do. Everywhere else, saying yes without
+    /// handling [`ScreenEvent::VideoConfig`] and [`ScreenEvent::VideoFrame`] leaves the moving
+    /// part of the screen frozen, so the default is no.
+    #[uniffi::constructor]
+    pub fn with_motion(cache_bytes: u64, decodes_video: bool) -> std::sync::Arc<Self> {
+        let decodes_here = cfg!(any(target_os = "macos", target_os = "ios"));
+        let features = if decodes_here || decodes_video {
+            FeatureSet::from_bits(FeatureSet::KNOWN)
+        } else {
+            // Parity and reference acknowledgement are only about video, so a viewer that will
+            // not show video asks for none of them.
+            FeatureSet::none()
+        };
         std::sync::Arc::new(Self {
             inner: Mutex::new(Inner {
-                session: ViewerSession::new(cache_bytes as usize),
+                session: ViewerSession::with_features(cache_bytes as usize, features),
                 reader: FrameReader::new(),
             }),
         })
+    }
+
+    /// Tells the computer which long-term references this client's decoder holds, and which frame
+    /// it could not rebuild.
+    ///
+    /// Only for clients decoding video themselves. A reference must be named **only once the
+    /// frame carrying it has actually decoded**: the computer predicts from what this says it
+    /// holds, so naming one it does not have produces a stream it cannot decode.
+    ///
+    /// Does nothing where this library decodes for itself, because it reports on its own.
+    pub fn report_video(&self, surface: u32, held: Vec<u32>, lost: Option<u64>) {
+        let _ = self.with(|inner| {
+            let _ = inner.session.report_video(surface, &held, lost);
+            Ok(())
+        });
     }
 
     /// Starts a session with the ticket the computer issued over the Controller channel. When a
@@ -356,7 +417,7 @@ impl ScreenViewer {
                     .session
                     .receive(message)
                     .map_err(|_| ScreenBindingError::InvalidMessage)?;
-                events.extend(applied.into_iter().filter_map(event));
+                events.extend(applied.into_iter().map(event));
             }
         })
     }
@@ -476,10 +537,9 @@ const fn wire_rect(rect: Rect) -> ScreenRect {
     }
 }
 
-/// Turns a session event into one the phone can act on. A `None` is an event this binding has
-/// no phone-side use for yet, not an error.
-fn event(value: ViewerEvent) -> Option<ScreenEvent> {
-    Some(match value {
+/// Turns a session event into one the phone can act on.
+fn event(value: ViewerEvent) -> ScreenEvent {
+    match value {
         ViewerEvent::Welcomed { surfaces, resume } => ScreenEvent::Welcomed {
             surfaces: surfaces
                 .into_iter()
@@ -528,10 +588,21 @@ fn event(value: ViewerEvent) -> Option<ScreenEvent> {
                 .collect(),
         },
         ViewerEvent::Closed { reason } => ScreenEvent::Closed { reason },
-        // The motion path. This binding builds a viewer that never advertises it, so a computer
-        // never sends these; 4.4 adds the decoder and the phone-side events that carry it.
-        ViewerEvent::VideoConfig(_) | ViewerEvent::VideoFrame(_) => return None,
-    })
+        // The motion path, on a platform this library has no decoder for. Where it does have one
+        // the session decodes and draws the region itself, and these never reach here.
+        ViewerEvent::VideoConfig(config) => ScreenEvent::VideoConfig {
+            surface: config.surface,
+            rect: wire_rect(config.rect),
+            parameter_sets: config.payload,
+        },
+        ViewerEvent::VideoFrame(frame) => ScreenEvent::VideoFrame {
+            surface: frame.surface,
+            sequence: frame.sequence,
+            keyframe: frame.keyframe,
+            token: frame.token,
+            payload: frame.payload,
+        },
+    }
 }
 
 /// The messages this boundary refuses to build, so a caller cannot make the computer close the

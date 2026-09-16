@@ -242,6 +242,7 @@ private object NoViewer : com.termirust.screens.ScreenViewerInterface {
     override fun pollOutgoing(): com.termirust.screens.ScreenOutgoing? = null
     override fun receive(bytes: ByteArray): List<com.termirust.screens.ScreenEvent> = emptyList()
     override fun releaseControl() = Unit
+    override fun reportVideo(surface: UInt, held: List<UInt>, lost: ULong?) = Unit
     override fun requestControl() = Unit
     override fun sendKey(usage: UShort, modifiers: UByte, pressed: Boolean) = Unit
     override fun sendPointerButton(

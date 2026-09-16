@@ -139,6 +139,10 @@ final class RemoteScreenViewModel: ObservableObject {
                 state = .closed(reason: reason)
             case .motionRegion, .panes:
                 continue
+            case .videoConfig, .videoFrame:
+                // The motion region, on a platform the library has no decoder for. Apple has
+                // one, so it decodes and draws the region itself and these never arrive here.
+                continue
             }
         }
     }

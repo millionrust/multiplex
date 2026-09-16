@@ -71,6 +71,11 @@ class RemoteScreenModel(
     ticket: ControllerScreenTicket,
     /** A preview is the computer's thumbnail profile: about one small picture a second. */
     private val preview: Boolean = false,
+    /**
+     * Decodes the motion region. Android has no decoder in the Rust library, so a part of the
+     * screen that is moving fast enough to be streamed arrives here as HEVC instead of tiles.
+     */
+    private val motion: MotionView = MotionView(),
 ) {
     var state: RemoteScreenState by mutableStateOf(RemoteScreenState.Opening)
         private set
@@ -136,8 +141,26 @@ class RemoteScreenModel(
                     redraw(event.damaged, event.reset, nowMillis)
                 }
                 is ScreenEvent.Control -> control = event.holder
-                is ScreenEvent.Closed -> state = RemoteScreenState.Closed(event.reason)
-                is ScreenEvent.MotionRegion, is ScreenEvent.Panes -> Unit
+                is ScreenEvent.Closed -> {
+                    motion.clearAll()
+                    state = RemoteScreenState.Closed(event.reason)
+                }
+                is ScreenEvent.MotionRegion -> {
+                    // A demoted region goes back to the tile path, and this decoder is about a
+                    // stream that has ended.
+                    if (event.rect == null) motion.clear(event.surface)
+                }
+                is ScreenEvent.VideoConfig -> {
+                    if (event.surface == watching && !preview) {
+                        motion.configure(event.surface, event.rect, event.parameterSets)
+                    }
+                }
+                is ScreenEvent.VideoFrame -> {
+                    if (event.surface == watching && !preview) {
+                        showVideo(event, nowMillis)
+                    }
+                }
+                is ScreenEvent.Panes -> Unit
             }
         }
     }
@@ -351,6 +374,48 @@ class RemoteScreenModel(
         picturesDrawn += 1
         lastPictureAtMillis = nowMillis
         if (state is RemoteScreenState.Opening) state = RemoteScreenState.Watching
+    }
+
+    /**
+     * Decodes one frame of the motion region and draws it over the tile picture.
+     *
+     * The region goes into the same bitmap the tiles do, so everything that reads [picture] gets
+     * one complete screen. That is safe because the computer stops claiming to know the region's
+     * tiles the moment it starts streaming it, and re-sends every one of them when it stops.
+     */
+    private fun showVideo(event: ScreenEvent.VideoFrame, nowMillis: Long) {
+        val decoded = motion.decode(event.surface, event.token, event.payload)
+        // Acknowledging is what lets the computer recover from the next loss with a reference
+        // instead of a keyframe, so it goes out as soon as the decoder really holds one.
+        decoded.holding?.let { held ->
+            runCatching { viewer.reportVideo(event.surface, held, null) }
+        }
+        val picture = decoded.picture ?: return
+        val rect = decoded.rect ?: return
+        val canvas = this.picture ?: return
+        drawArgb(picture, rect, canvas)
+        this.picture = canvas
+        picturesDrawn += 1
+        lastPictureAtMillis = nowMillis
+        if (state is RemoteScreenState.Opening) state = RemoteScreenState.Watching
+    }
+
+    /** A decoded picture into the bitmap, clipped to what the surface actually has room for. */
+    private fun drawArgb(picture: MotionPicture, rect: ScreenRect, canvas: Bitmap) {
+        val x = rect.x.toInt()
+        val y = rect.y.toInt()
+        val width = minOf(picture.width, canvas.width - x)
+        val height = minOf(picture.height, canvas.height - y)
+        if (x < 0 || y < 0 || width <= 0 || height <= 0) return
+        if (width == picture.width) {
+            canvas.setPixels(picture.argb, 0, picture.width, x, y, width, height)
+            return
+        }
+        // A region wider than the room left for it is drawn row by row, so a stale rectangle
+        // never runs off the edge into the next line.
+        for (row in 0 until height) {
+            canvas.setPixels(picture.argb, row * picture.width, picture.width, x, y + row, width, 1)
+        }
     }
 
     /** BGRA from the computer into the ARGB_8888 bitmap Android draws. */

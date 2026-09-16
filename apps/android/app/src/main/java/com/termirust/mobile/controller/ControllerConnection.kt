@@ -786,7 +786,13 @@ class ControllerConnection internal constructor(
                     require(granted and ALL_SUPPORTED_CAPABILITIES.inv() == 0)
 
                     val ticket = openScreenSession(host, session, input, output)
-                    val viewer = com.termirust.screens.ScreenViewer(SCREEN_CACHE_BYTES)
+                    // This app decodes the motion region itself, with MediaCodec, so it asks the
+                    // computer for it. A preview is one small picture a second and never worth a
+                    // video stream.
+                    val viewer = com.termirust.screens.ScreenViewer.withMotion(
+                        SCREEN_CACHE_BYTES,
+                        !preview,
+                    )
                     try {
                         viewer.connect(ticket.ticket)
                         var watching = surface

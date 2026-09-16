@@ -289,10 +289,14 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   The acknowledgement loop closes here: a reference is only acknowledged once it has actually
   decoded, so the host never predicts from a picture the viewer does not have.
 
-- [ ] 4.5 `feat(android): decode the motion region with MediaCodec`
-  The Rust bindings hand `ScreenEvent` video configuration and frames up on Android, because
-  `termirust-screen-video` has no decoder there. Kotlin decodes them and draws the region over the
-  tile picture. Everything above the session already works; this is the one platform left.
+- [x] 4.5 `feat(android): decode the motion region with MediaCodec`
+  `MediaCodec` behind a `MotionDecoders` interface, so the half that can be got wrong silently —
+  which references this phone may claim to hold — is unit tested on the JVM without a device.
+  The viewer asks for video only when the client says it will draw it. On Apple that promise is
+  implicit, because the library decodes for itself; on Android an app that ignored the video
+  events would leave the moving part of the screen frozen, so the default is no.
+  **(device)** Not yet run on a phone: `MediaCodec` configuration, the YUV to ARGB conversion and
+  its colour matrix are the parts a device would settle.
 
 ## M5 — Rate control, roaming, bad networks (Stage B, part 2) [4.6, 7]
 
