@@ -27583,6 +27583,12 @@ sleep 1
         let use_click = selector_click_center(window, cx, "keychain-use-0");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(use_click, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            eprintln!(
+                "DEBUG nav={:?} draft={:?} status={:?}",
+                app.nav_section, app.draft_identity_id, app.status_message
+            );
+        });
 
         app.read_with(cx, |app, cx| {
             assert_eq!(app.nav_section, NavSection::Hosts);
