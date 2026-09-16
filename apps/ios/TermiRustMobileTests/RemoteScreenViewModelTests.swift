@@ -263,3 +263,124 @@ private actor ScreenRefusingConnection: ControllerConnecting {
 
     func cancel() async {}
 }
+
+/// Zoom, pan, the minimap and the two pointer modes: the arithmetic a finger depends on.
+@MainActor
+final class RemoteScreenZoomTests: XCTestCase {
+    /// A 1000x500 computer shown in a 500x500 view fits at half size, leaving bars top and bottom.
+    private func model() -> RemoteScreenViewModel {
+        let model = RemoteScreenViewModel(
+            viewer: ScreenViewer(cacheBytes: 1 << 20),
+            surface: 1,
+            ticket: ControllerScreenTicket(
+                commandId: UUID(),
+                ticket: Data(repeating: 3, count: 32),
+                canControlPointer: true,
+                canControlKeyboard: true
+            )
+        )
+        model.setSurfaceSizeForTesting(CGSize(width: 1000, height: 500))
+        return model
+    }
+
+    private let view = CGSize(width: 500, height: 500)
+
+    func testFitIsTheStartingPointAndReadsAsFit() {
+        let model = model()
+        XCTAssertEqual(model.zoom, 1)
+        XCTAssertEqual(model.zoomLabel, "Fit")
+        XCTAssertEqual(model.scale(in: view), 0.5, accuracy: 0.0001)
+        XCTAssertEqual(model.pictureOrigin(in: view).y, 125, accuracy: 0.0001)
+    }
+
+    func testZoomingMagnifiesAboutTheMiddleAndSaysSo() {
+        let model = model()
+        model.setZoom(2, in: view)
+        XCTAssertEqual(model.zoom, 2)
+        XCTAssertEqual(model.zoomLabel, "200%")
+        XCTAssertEqual(model.scale(in: view), 1, accuracy: 0.0001)
+        // Still centred: nothing was dragged.
+        XCTAssertEqual(model.pictureOrigin(in: view).x, -250, accuracy: 0.0001)
+    }
+
+    func testZoomStopsAtTheLimitsRatherThanRunningAway() {
+        let model = model()
+        model.setZoom(0.1, in: view)
+        XCTAssertEqual(model.zoom, 1, "a phone never shows less than the whole picture")
+        model.setZoom(1000, in: view)
+        XCTAssertEqual(model.zoom, RemoteScreenViewModel.maximumZoom)
+    }
+
+    func testThePictureCannotBeDraggedOffTheView() {
+        let model = model()
+        model.setZoom(2, in: view)
+        model.panBy(CGSize(width: 10_000, height: 10_000), in: view)
+        // At 2x the picture is 1000x500 in a 500x500 view: 250 of slack sideways, none vertically
+        // beyond what fitting already gave.
+        XCTAssertEqual(model.pan.width, 250, accuracy: 0.0001)
+        XCTAssertEqual(model.pan.height, 0, accuracy: 0.0001)
+    }
+
+    func testPanningDoesNothingWhileTheWholePictureIsShown() {
+        let model = model()
+        model.panBy(CGSize(width: 100, height: 100), in: view)
+        XCTAssertEqual(model.pan, .zero)
+    }
+
+    /// A tap has to land where the picture shows it, zoomed and dragged as it is.
+    func testATapLandsWhereThePictureShowsItAfterZoomingAndPanning() {
+        let model = model()
+        model.setZoom(2, in: view)
+        model.panBy(CGSize(width: 250, height: 0), in: view)
+        // Dragged fully right, so the left edge of the computer is at the left of the view.
+        let target = model.surfacePoint(from: CGPoint(x: 0, y: 250), in: view)
+        XCTAssertEqual(target?.x, 0)
+        XCTAssertEqual(target?.y, 250)
+    }
+
+    func testTheMinimapShowsWhichPartOfTheComputerIsOnScreen() {
+        let model = model()
+        model.setZoom(2, in: view)
+        let visible = model.visibleRect(in: view)
+        // At 2x, a 500-point view shows 500 of the computer's 1000 pixels, from the middle.
+        XCTAssertEqual(visible.minX, 250, accuracy: 0.5)
+        XCTAssertEqual(visible.width, 500, accuracy: 0.5)
+        XCTAssertEqual(visible.height, 500, accuracy: 0.5)
+    }
+
+    func testTheWholePictureIsVisibleAtFit() {
+        let model = model()
+        let visible = model.visibleRect(in: view)
+        XCTAssertEqual(visible.width, 1000, accuracy: 0.5)
+        XCTAssertEqual(visible.height, 500, accuracy: 0.5)
+    }
+
+    /// In trackpad mode the pointer moves by how far the finger went, not to where it is, and it
+    /// stays on the computer's screen.
+    func testTheTrackpadPointerMovesByTheFingerAndStaysOnTheScreen() {
+        let model = model()
+        model.pointerMode = .trackpad
+        XCTAssertEqual(model.pointer, CGPoint(x: 500, y: 250))
+        model.apply(events: [.control(holder: .you)])
+        model.movePointer(by: CGSize(width: 50, height: 0), in: view)
+        // The finger moved 50 points at half scale, so the pointer moved 100 pixels.
+        XCTAssertEqual(model.pointer.x, 600, accuracy: 0.5)
+        model.movePointer(by: CGSize(width: 10_000, height: 10_000), in: view)
+        XCTAssertEqual(model.pointer.x, 999, accuracy: 0.5)
+        XCTAssertEqual(model.pointer.y, 499, accuracy: 0.5)
+    }
+
+    func testTheTrackpadPointerStaysPutWithoutControl() {
+        let model = model()
+        model.pointerMode = .trackpad
+        model.movePointer(by: CGSize(width: 50, height: 0), in: view)
+        XCTAssertEqual(model.pointer, CGPoint(x: 500, y: 250), "no control, no movement")
+    }
+
+    func testAccessoryKeysCoverWhatATextFieldCannotType() {
+        let labels = RemoteScreenKey.accessory.map(\.label)
+        XCTAssertEqual(labels, ["esc", "tab", "ctrl", "←", "↑", "↓", "→", "|", "-"])
+        XCTAssertEqual(RemoteScreenKey.escape.usage, 0x29)
+        XCTAssertEqual(RemoteScreenKey.pipe.modifiers, 1, "a pipe is a shifted backslash")
+    }
+}

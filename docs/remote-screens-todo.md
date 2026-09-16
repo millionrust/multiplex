@@ -180,11 +180,18 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   Watching a real Mac also needed the surface to come from the welcome rather than a fixed id:
   the fixture shares surface 1, but a Mac names its displays by their own `CGDirectDisplayID`s,
   so `watchScreen(surface: nil)` now subscribes to the first display the computer offers.
-- [ ] 3.3 `feat(ios): add the remote screen viewer with zoom, minimap, pointer modes and keyboard`
-  Started: `RemoteScreenViewModel` and `RemoteScreenView` draw damaged rectangles into one bitmap,
-  fit the picture, map a tap back through the same transform, and offer control only when the
-  computer has given it. Still to do: zoom and pan, the minimap, pointer modes, and the keyboard.
-  The 11 phone tests run on a simulator (iOS 27.0, 24A434) and pass.
+- [x] 3.3 `feat(ios): add the remote screen viewer with zoom, minimap, pointer modes and keyboard`
+  `RemoteScreenViewModel` and `RemoteScreenView` draw damaged rectangles into one bitmap, fit the
+  picture, and offer control only when the computer has given it. On top of that: pinch to zoom up
+  to six times, drag to pan with the picture clamped so it cannot be thrown off the view, a
+  double tap back to fit, and a zoom chip that reads "Fit" or a percentage. A minimap appears
+  once the picture is bigger than the view and shows which part is on screen.
+  Two pointer modes: touch, where the pointer goes where the finger lands, and trackpad, where
+  the finger drags the pointer from where it was so a fingertip stops hiding small targets. The
+  keyboard is a text field for characters plus the row a text field cannot type — esc, tab, ctrl,
+  the arrows, pipe and minus — sent as USB HID usages so layouts stay the computer's business.
+  A computer sharing more than one display offers the choice.
+  The 21 phone tests run on a simulator (iOS 27.0, 24A434) and pass.
 - [ ] 3.4 `feat(ios): show weak-connection details and reconnect from the last picture`
 - [ ] 3.5 `feat(android): the same four surfaces in Compose`
 - [ ] 3.6 **(device)** Stage A network matrix on a real iPhone and Android phone [7]

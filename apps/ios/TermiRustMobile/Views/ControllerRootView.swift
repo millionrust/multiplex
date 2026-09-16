@@ -217,8 +217,8 @@ private struct ControllerScreenViewerSheet: View {
         NavigationStack {
             RemoteScreenView(
                 model: model,
-                onRequestControl: {},
-                onReleaseControl: {}
+                onRequestControl: model.requestControl,
+                onReleaseControl: model.releaseControl
             )
             .navigationTitle(ControllerPresentation.isolated(title))
             .navigationBarTitleDisplayMode(.inline)
