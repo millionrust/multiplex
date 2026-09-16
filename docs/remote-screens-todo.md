@@ -118,8 +118,13 @@ Pure Rust, no platform code, fully testable in CI.
   The opt-in and the host wiring landed: Devices has a "Share this screen" choice, off by default,
   which the listener worker reads from its descriptor. Capture and injection run in that worker,
   one capture thread per display and one injection thread, because Core Graphics events need a
-  thread that owns the event source. **(device)** Whether the worker inherits the app's Screen
-  Recording and Accessibility grants, or asks for its own, still has to be checked on a real Mac.
+  thread that owns the event source. Checked on this Mac: the worker is the same signed binary
+  under the same identifier as the app, so macOS treats them as one client and does not prompt
+  twice. It records the grant against the process it holds *responsible* — the app that started
+  TermiRust — so a shipped `.app` is prompted for by its own name, while the LaunchAgent, which
+  launchd starts with no responsible parent, needs its own grant. Evidence, and the two defects
+  that only the real app showed, are in
+  [RS3-remote-screens-stage-a.md](engineering-evidence/RS3-remote-screens-stage-a.md).
   The sharing indicator landed next: the listener reports who is watching, and who holds control,
   every half second while it changes, and Devices names them and offers "Stop sharing". Reports
   carry device ids only, never screen content, and the last watcher leaving is itself a report.

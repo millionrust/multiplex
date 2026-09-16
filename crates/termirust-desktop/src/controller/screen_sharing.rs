@@ -20,7 +20,7 @@ use termirust_screen_capture::{CaptureConfig, Damage, FrameSource, ScreenCapture
 use termirust_screen_codec::{Frame, Size};
 use termirust_screen_host::{ScreenHost, ScreenHostEvent, ScreenHostHandle};
 use termirust_screen_input::{DisplayLayout, DisplayPlacement, Injector};
-use termirust_screen_protocol::SurfaceInfo;
+use termirust_screen_protocol::{ControlHolder, SurfaceInfo};
 use termirust_screen_session::{HostConfig, InputEvent};
 
 /// How long a capture thread waits for a changed frame before checking whether to stop.
@@ -157,8 +157,17 @@ impl ScreenSessionFactory for ScreenSharing {
                 ScreenHostEvent::Input(input) => {
                     let _ = input_sender.send(Some(input));
                 }
-                ScreenHostEvent::ControlRequested => sharing.set_controlling(device_id, true),
-                ScreenHostEvent::ControlReleased => sharing.set_controlling(device_id, false),
+                ScreenHostEvent::ControlRequested => {
+                    sharing.set_controlling(device_id, true);
+                    // The person already gave this device pointer or keyboard access in Devices,
+                    // and the session only asks when it holds one of those; the lease is what
+                    // keeps two devices from driving at once, not a second permission.
+                    hand_over_control(&observer_handle, ControlHolder::You);
+                }
+                ScreenHostEvent::ControlReleased => {
+                    sharing.set_controlling(device_id, false);
+                    hand_over_control(&observer_handle, ControlHolder::Nobody);
+                }
                 ScreenHostEvent::Closed { .. } => {
                     sharing.remove_watcher(device_id);
                     let _ = input_sender.send(None);
@@ -178,6 +187,19 @@ impl ScreenSessionFactory for ScreenSharing {
             })
             .collect()
     }
+}
+
+/// Answers a device's request for the writer lease, off the session's own thread.
+///
+/// The session calls its observer while it holds its lock, and telling it who holds control takes
+/// that same lock, so this hands the answer to a short-lived thread instead of deadlocking.
+fn hand_over_control(handle: &Arc<Mutex<Option<ScreenHostHandle>>>, holder: ControlHolder) {
+    let Some(handle) = handle.lock().expect("screen handle").clone() else {
+        return;
+    };
+    let _ = std::thread::Builder::new()
+        .name("screen-control".to_owned())
+        .spawn(move || handle.set_control(holder));
 }
 
 /// One display this computer can share.

@@ -112,13 +112,74 @@ Two defects surfaced only because a real phone drove a real host:
   fixture makes this test skip itself. The script now asks the fixture what it saw and fails
   unless the phone really opened, watched and drove the screen.
 
+## The real desktop, on this Mac
+
+Run against the running app rather than a fixture, with
+`crates/termirust-controller-listener/examples/controller_device_probe.rs` — a paired device on
+the command line. It pairs with the six-digit code Devices shows, opens a screen session, and
+points and types.
+
+```text
+controller_device_probe watch --address 192.168.88.4:63322
+connected: granted=0x00e3
+screen session opened
+welcomed: 2 display(s); first is Main Display at 3024x1964
+asked for control
+control: You
+sent a pointer move and a keystroke
+watched: 230 batch(es); picture Some((3024, 1964)); drove=true
+```
+
+### Which process macOS holds responsible
+
+The listener is a **child process of the app**: the same executable, re-run as
+`termirust --controller-listener`. Capture and injection happen there. `tccd` was read with
+`log show --predicate 'subsystem == "com.apple.TCC"'` while the probe watched:
+
+```text
+AUTHREQ_CTX:         msgID=13959.1, service=kTCCServiceAccessibility, preflight=yes
+AUTHREQ_ATTRIBUTION: accessing={identifier=com.termirust.desktop.dev, pid=13959,
+                                binary_path=.../target/debug/termirust},
+                     responsible={identifier=dev.zed.Zed, pid=1894}
+AUTHREQ_SUBJECT:     subject=dev.zed.Zed
+AUTHREQ_RESULT:      authValue=2, authReason=4
+```
+
+The same shape appeared for `kTCCServiceScreenCapture`, `kTCCServiceListenEvent` and
+`kTCCServicePostEvent`. Two things follow:
+
+- **The worker is not a separate client.** It is the same signed binary under the same identifier
+  as the app, so a grant to TermiRust covers the worker. macOS does not prompt twice, and this
+  question is settled.
+- **The grant is recorded against the *responsible* process, not the accessor.** TermiRust runs
+  here as a bare binary started by `cargo run`, so macOS held the editor that owns that shell
+  responsible and the access rode on *its* Screen Recording and Accessibility grants
+  (`authReason=4`, an existing grant). A shipped `.app` opened from the Dock is its own
+  responsible process and is prompted for, and listed, under its own name. Two consequences:
+  in development nobody sees a TermiRust entry in System Settings, and the macOS LaunchAgent
+  (`termirust controller-service`), which launchd starts with no responsible parent, is its own
+  subject and needs its own grant.
+
+### Two defects the fixture could not show
+
+- **The screen was captured before anyone asked to watch.** `displays()` runs in
+  `ScreenSharing::open`, which the listener calls for *every* authenticated connection, and it
+  calls `SCShareableContent::get()`. So with sharing on, a phone that only opens a terminal makes
+  this Mac ask for Screen Recording. The capture threads no longer start until a device opens a
+  screen session, but `displays()` still runs at connection time, so the prompt is still earlier
+  than the UI's "the first time a device watches" promises. Left as it is for now and recorded
+  here: the surfaces have to be known before the session can welcome anyone.
+- **Control was never handed over.** `ControlRequested` only updated the sharing indicator, so
+  `HostSession` kept the lease at `Nobody` and refused every pointer and keystroke. A device the
+  person had granted "Allow pointer and keyboard" could watch but never drive. The app now
+  answers the request by giving the lease, from a short-lived thread, because the session calls
+  its observer while holding the lock that `set_control` needs. The probe shows the difference:
+  `drove=false` before, `control: You` and `drove=true` after.
+
 ## Not proven here
 
-- **(device)** Whether the listener worker inherits the app's Screen Recording and Accessibility
-  grants or asks for its own. Capture and injection run in that worker, so this decides whether
-  the first watch prompts twice.
-- **(device)** Core Graphics injection was checked for permission only; no test drives a real
-  pointer or keyboard, because doing so would take over the machine running the tests.
+- **(device)** What a shipped `.app` and the LaunchAgent are prompted for by name. The rule is
+  established above; only the development shape was observed.
 - The desktop viewer, which needs this Mac to be a device *of* another Mac (todo 2.16).
 - The phone interface; only the boundary it will call exists (todo 3.2 onwards).
 - Everything Stage B: the motion path, bandwidth estimation, and iroh.
