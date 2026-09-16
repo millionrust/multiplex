@@ -64,6 +64,7 @@ targets:
       - TermiRustMobile/Terminal/TerminalBuffer.swift
       - TermiRustMobile/Terminal/TerminalGrid.swift
       - TermiRustMobile/Terminal/TerminalInputEncoding.swift
+      - TermiRustMobile/ViewModels/ControllerScreenCoordinator.swift
       - TermiRustMobile/ViewModels/ControllerTerminalViewModel.swift
       - TermiRustMobile/ViewModels/ControllerViewModel.swift
       - TermiRustMobile/ViewModels/HostListViewModel.swift

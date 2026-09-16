@@ -163,14 +163,23 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   fixture `crates/termirust-screen-bindings/tests/vectors/screen-session-v1.json`) and rebuilds a
   byte-identical picture. Compiling the generated Swift is what caught an error case named
   `Protocol`, which Swift refuses; it is `InvalidMessage` now.
-- [ ] 3.2 `feat(ios): show live previews in Fleet and a computer detail screen`
-  Started: the phone can ask for a screen session (`ControllerScreenSession.swift`: the two
-  commands, the ticket parser, and the pump that tags each chunk with the capability its contents
-  need), and `ControllerConnectionActor.watchScreen` now opens one and pumps it. A real iPhone
-  simulator watches and drives a real Rust host end to end: the live fixture
+- [x] 3.2 `feat(ios): show live previews in Fleet and a computer detail screen`
+  The phone asks for a screen session (`ControllerScreenSession.swift`: the two commands, the
+  ticket parser, and the pump that tags each chunk with the capability its contents need), and
+  `ControllerConnectionActor.watchScreen` opens one and pumps it. A real iPhone simulator watches
+  and drives a real Rust host end to end: the live fixture
   (`scripts/test/mobile-ios-controller-host.sh`) serves a synthetic 320×200 screen, and the test
   asserts the welcome, three distinct pictures, the control handover, and the pointer and typing
-  the host recorded. Still to do: the Fleet surfaces that show previews and lead to a computer.
+  the host recorded.
+  The surfaces landed on top of that. A computer's page gains "This Computer's Screen": a preview
+  at the computer's thumbnail profile, about one picture a second, and "Open Screen", which opens
+  the full view. Fleet rows show the last picture of each computer, so the list says something
+  without holding a connection open for every computer at once —
+  `ControllerScreenCoordinator` owns the one session the phone has, and a preview and the viewer
+  are that session in two shapes. Only a computer that granted `ObserveScreens` shows any of it.
+  Watching a real Mac also needed the surface to come from the welcome rather than a fixed id:
+  the fixture shares surface 1, but a Mac names its displays by their own `CGDirectDisplayID`s,
+  so `watchScreen(surface: nil)` now subscribes to the first display the computer offers.
 - [ ] 3.3 `feat(ios): add the remote screen viewer with zoom, minimap, pointer modes and keyboard`
   Started: `RemoteScreenViewModel` and `RemoteScreenView` draw damaged rectangles into one bitmap,
   fit the picture, map a tap back through the same transform, and offer control only when the

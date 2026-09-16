@@ -25,14 +25,27 @@ final class RemoteScreenViewModel: ObservableObject {
     @Published private(set) var canControlPointer = false
     @Published private(set) var canControlKeyboard = false
 
+    /// The display being drawn, once the computer's welcome has named one.
+    @Published private(set) var displayName: String?
+
     private let viewer: ScreenViewer
-    private let surface: UInt32
+    /// A preview is the computer's thumbnail profile: about one small picture a second.
+    private let preview: Bool
+    private var surface: UInt32?
     private var canvas: CGContext?
     private var surfaceSize: CGSize = .zero
 
-    init(viewer: ScreenViewer, surface: UInt32, ticket: ControllerScreenTicket) {
+    /// A `nil` surface means the first display the computer offers, which is all a phone can ask
+    /// for before the welcome: a Mac names its displays by their own ids.
+    init(
+        viewer: ScreenViewer,
+        surface: UInt32?,
+        ticket: ControllerScreenTicket,
+        preview: Bool = false
+    ) {
         self.viewer = viewer
         self.surface = surface
+        self.preview = preview
         canControlPointer = ticket.canControlPointer
         canControlKeyboard = ticket.canControlKeyboard
     }
@@ -49,14 +62,21 @@ final class RemoteScreenViewModel: ObservableObject {
     func apply(events: [ScreenEvent]) {
         for event in events {
             switch event {
+            case let .welcomed(surfaces, _):
+                // Take the first display when nobody named one; the computer knows its own ids.
+                let display = surface.flatMap { id in surfaces.first { $0.id == id } }
+                    ?? surfaces.first
+                guard let display else { continue }
+                surface = display.id
+                displayName = display.name
             case let .updated(surface, preview, damaged, reset):
-                guard surface == self.surface, !preview else { continue }
+                guard surface == self.surface, preview == self.preview else { continue }
                 redraw(damaged: damaged, reset: reset)
             case let .control(holder):
                 control = holder
             case let .closed(reason):
                 state = .closed(reason: reason)
-            case .welcomed, .motionRegion, .panes:
+            case .motionRegion, .panes:
                 continue
             }
         }
@@ -88,7 +108,8 @@ final class RemoteScreenViewModel: ObservableObject {
 
     /// Sends a tap as a press and release, when this device may point at all.
     func tap(at point: CGPoint, in viewSize: CGSize) {
-        guard canControlPointer, control == .you,
+        guard !preview, canControlPointer, control == .you,
+              let surface,
               let target = surfacePoint(from: point, in: viewSize) else {
             return
         }
@@ -103,7 +124,8 @@ final class RemoteScreenViewModel: ObservableObject {
 
     /// Redraws the damaged rectangles, or the whole picture when the computer reset it.
     private func redraw(damaged: [ScreenRect], reset: Bool) {
-        guard let whole = viewer.surfaceSize(surface: surface, preview: false) else { return }
+        guard let surface,
+              let whole = viewer.surfaceSize(surface: surface, preview: preview) else { return }
         if canvas == nil || surfaceSize != CGSize(width: Int(whole.width), height: Int(whole.height)) {
             surfaceSize = CGSize(width: Int(whole.width), height: Int(whole.height))
             canvas = Self.makeCanvas(width: Int(whole.width), height: Int(whole.height))
@@ -112,7 +134,7 @@ final class RemoteScreenViewModel: ObservableObject {
         let rects = reset ? [whole] : damaged
         for rect in rects {
             guard let pixels = try? viewer.copyPixels(
-                surface: surface, preview: false, rect: rect
+                surface: surface, preview: preview, rect: rect
             ) else {
                 continue
             }

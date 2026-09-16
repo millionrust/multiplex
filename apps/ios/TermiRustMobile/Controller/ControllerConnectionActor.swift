@@ -183,6 +183,15 @@ protocol ControllerConnecting: Sendable {
         commandID: UUID,
         viewport: TerminalViewportState
     ) async throws
+    /// Watches a computer's screen until `onEvent` throws or the task is cancelled. A `nil`
+    /// surface means the first display the computer offers.
+    func watchScreen(
+        host: PairedHostRecord,
+        surface: UInt32?,
+        preview: Bool,
+        onOpened: @escaping @Sendable (ControllerScreenTicket, ScreenViewer) async -> Void,
+        onEvent: @escaping @Sendable ([ScreenEvent]) async throws -> Void
+    ) async throws
     func forgetDeviceSecret(host: PairedHostRecord) async throws
     func cancel() async
 }
@@ -254,6 +263,18 @@ final class AppleControllerRouteConnections: @unchecked Sendable {
 }
 
 extension ControllerConnecting {
+    /// A transport that cannot carry screens says so, rather than every one of them having to.
+    func watchScreen(
+        host: PairedHostRecord,
+        surface: UInt32?,
+        preview: Bool,
+        onOpened: @escaping @Sendable (ControllerScreenTicket, ScreenViewer) async -> Void,
+        onEvent: @escaping @Sendable ([ScreenEvent]) async throws -> Void
+    ) async throws {
+        _ = (host, surface, preview, onOpened, onEvent)
+        throw ControllerConnectionError.capabilityDenied
+    }
+
     func pairWithCode(
         target: ControllerPairingTarget,
         code: String,
@@ -1305,9 +1326,12 @@ actor ControllerConnectionActor: ControllerConnecting {
     /// The session starts with an `open_screen` command, whose one-time ticket the screen
     /// protocol's hello proves. After that every frame is a screen frame claiming the capability
     /// its contents need, which the computer checks again before acting on it.
+    ///
+    /// A `nil` surface means the first display the computer offers, which is the only thing a
+    /// phone can know before the welcome: a Mac names its displays by their own ids, not by 1.
     func watchScreen(
         host: PairedHostRecord,
-        surface: UInt32,
+        surface: UInt32?,
         preview: Bool,
         onOpened: @escaping @Sendable (ControllerScreenTicket, ScreenViewer) async -> Void,
         onEvent: @escaping @Sendable ([ScreenEvent]) async throws -> Void
@@ -1376,7 +1400,10 @@ actor ControllerConnectionActor: ControllerConnecting {
         )
         let viewer = ScreenViewer(cacheBytes: Self.screenCacheBytes)
         try viewer.connect(ticket: ticket.ticket)
-        viewer.subscribe(surface: surface, preview: preview)
+        var watching = surface
+        if let watching {
+            viewer.subscribe(surface: watching, preview: preview)
+        }
         await onOpened(ticket, viewer)
 
         let pump = ControllerScreenPump(ticket: ticket)
@@ -1404,7 +1431,18 @@ actor ControllerConnectionActor: ControllerConnecting {
                   opened.capability == .observeScreens else {
                 throw ControllerConnectionError.malformedResponse
             }
-            try await onEvent(try viewer.receive(bytes: opened.payload))
+            let events = try viewer.receive(bytes: opened.payload)
+            // The welcome is the first thing that names what this computer shares, so a phone
+            // that asked for "whatever you have" subscribes here rather than guessing an id.
+            if watching == nil {
+                for case let .welcomed(surfaces, _) in events {
+                    guard let first = surfaces.first else { continue }
+                    watching = first.id
+                    viewer.subscribe(surface: first.id, preview: preview)
+                    break
+                }
+            }
+            try await onEvent(events)
         }
     }
 
