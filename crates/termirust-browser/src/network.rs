@@ -314,9 +314,7 @@ fn handle_proxy_connection(
         }
         let upstream = TcpStream::connect_timeout(&policy.endpoint(host, port)?, CONNECT_TIMEOUT)
             .map_err(map_io)?;
-        client
-            .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-            .map_err(map_io)?;
+        write_all_patiently(&mut client, b"HTTP/1.1 200 Connection Established\r\n\r\n")?;
         tunnel(client, upstream, stop, transferred)
     } else {
         let url = Url::parse(target).map_err(|_| BrowserError::NetworkDenied)?;
@@ -346,12 +344,41 @@ fn handle_proxy_connection(
             .iter()
             .position(|byte| *byte == b'\n')
             .ok_or(BrowserError::NetworkDenied)?;
-        write!(upstream, "{method} {path} {version}\r\n").map_err(map_io)?;
-        upstream
-            .write_all(&header[first_line_end.saturating_add(1)..])
-            .map_err(map_io)?;
+        write_all_patiently(
+            &mut upstream,
+            format!("{method} {path} {version}\r\n").as_bytes(),
+        )?;
+        write_all_patiently(&mut upstream, &header[first_line_end.saturating_add(1)..])?;
         tunnel(client, upstream, stop, transferred)
     }
+}
+
+/// Writes every byte, waiting out the short timeout these sockets carry. Reads already treat that
+/// timeout as "nothing yet, look again", and a write has to do the same: a peer that is slow to
+/// read for a tenth of a second is slow, not gone, and failing there tears down a connection that
+/// was working.
+fn write_all_patiently(stream: &mut TcpStream, bytes: &[u8]) -> Result<(), BrowserError> {
+    let deadline = Instant::now() + CONNECT_TIMEOUT;
+    let mut remaining = bytes;
+    while !remaining.is_empty() {
+        match stream.write(remaining) {
+            Ok(0) => return Err(BrowserError::Unavailable),
+            Ok(written) => remaining = &remaining[written..],
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                ) =>
+            {
+                if Instant::now() >= deadline {
+                    return Err(BrowserError::Timeout);
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(map_io(error)),
+        }
+    }
+    Ok(())
 }
 
 fn read_header(stream: &mut TcpStream) -> Result<Vec<u8>, BrowserError> {
@@ -443,7 +470,7 @@ fn copy_bounded(
                 if total > MAX_NETWORK_BYTES {
                     return Err(BrowserError::ResourceLimit);
                 }
-                writer.write_all(&buffer[..count]).map_err(map_io)?;
+                write_all_patiently(writer, &buffer[..count])?;
             }
             Err(error)
                 if matches!(
@@ -548,8 +575,11 @@ mod tests {
     fn the_proxy_carries_a_request_to_an_approved_origin() {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind the test origin");
         let address = listener.local_addr().expect("the test origin's address");
+        let reached = Arc::new(AtomicBool::new(false));
+        let reached_by_server = reached.clone();
         let server = thread::spawn(move || -> io::Result<()> {
             let (mut stream, _) = listener.accept()?;
+            reached_by_server.store(true, Ordering::Release);
             stream.set_read_timeout(Some(Duration::from_secs(10)))?;
             let mut request = Vec::new();
             let mut chunk = [0_u8; 512];
@@ -582,10 +612,15 @@ mod tests {
 
         let mut response = Vec::new();
         let mut chunk = [0_u8; 512];
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let started = Instant::now();
+        let deadline = started + Duration::from_secs(10);
+        let mut ending = "read to the deadline";
         while !response.ends_with(b"proxy") && Instant::now() < deadline {
             match client.read(&mut chunk) {
-                Ok(0) => break,
+                Ok(0) => {
+                    ending = "the proxy closed the connection";
+                    break;
+                }
                 Ok(read) => response.extend_from_slice(&chunk[..read]),
                 Err(error)
                     if matches!(
@@ -599,7 +634,14 @@ mod tests {
         let text = String::from_utf8_lossy(&response).into_owned();
         assert!(
             text.starts_with("HTTP/1.1 200 OK"),
-            "the proxy should carry the origin's answer back, got {text:?}"
+            "the proxy should carry the origin's answer back, got {text:?} after {:?}: {ending}, \
+             and the origin {} reached",
+            started.elapsed(),
+            if reached.load(Ordering::Acquire) {
+                "was"
+            } else {
+                "was never"
+            }
         );
         assert!(
             text.ends_with("proxy"),
