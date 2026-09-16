@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::process::{Child, Command};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use termirust_client::{ClientErrorCode, ConnectOptions, HostClient, LocalEndpoint};
 use termirust_domain::{CommandId, HostInstanceId, HostedSessionId, OutputSequence};
@@ -38,8 +38,14 @@ fn descriptor(fixture: &tempfile::TempDir, session_id: HostedSessionId) -> Launc
     }
 }
 
+/// How long a test waits for a real Host to get somewhere. Generous, because a busy machine
+/// running the whole suite takes far longer to start a shell and carry its output than an idle
+/// one, and these tests assert what happens, not how quickly.
+const PATIENCE: Duration = Duration::from_secs(10);
+
 async fn wait_for_sequence(client: &mut HostClient, minimum: u64, cancel: &CancellationToken) {
-    for _ in 0..100 {
+    let deadline = Instant::now() + PATIENCE;
+    while Instant::now() < deadline {
         if client
             .get_state(cancel)
             .await
@@ -266,7 +272,8 @@ async fn real_host_compacts_to_snapshot_and_quota_pause_keeps_pty_alive() {
     )
     .await
     .unwrap();
-    for _ in 0..300 {
+    let deadline = Instant::now() + PATIENCE;
+    while Instant::now() < deadline {
         if snapshot_path.exists() && compact_output_done.exists() {
             break;
         }
@@ -308,7 +315,8 @@ async fn real_host_compacts_to_snapshot_and_quota_pause_keeps_pty_alive() {
         retained_segments: 1,
     };
     let quota_host = start(quota).await.unwrap();
-    for _ in 0..200 {
+    let deadline = Instant::now() + PATIENCE;
+    while Instant::now() < deadline {
         let stats = quota_host.stats().await;
         if stats.recording_paused {
             assert_eq!(stats.lifecycle, termirust_domain::HostLifecycle::Ready);
