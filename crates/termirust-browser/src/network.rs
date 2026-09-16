@@ -542,6 +542,75 @@ fn map_io(error: io::Error) -> BrowserError {
 mod tests {
     use super::*;
 
+    /// Drives the proxy by hand, one stage at a time, so a machine where a download through it
+    /// times out says which stage stopped rather than only that nothing arrived.
+    #[test]
+    fn the_proxy_carries_a_request_to_an_approved_origin() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind the test origin");
+        let address = listener.local_addr().expect("the test origin's address");
+        let server = thread::spawn(move || -> io::Result<()> {
+            let (mut stream, _) = listener.accept()?;
+            stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 512];
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let read = stream.read(&mut chunk)?;
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..read]);
+            }
+            stream.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nproxy",
+            )?;
+            stream.shutdown(Shutdown::Write)?;
+            Ok(())
+        });
+
+        let origin = format!("http://{address}");
+        let policy =
+            NetworkPolicy::resolve_loopback(std::slice::from_ref(&origin)).expect("policy");
+        let proxy = policy.start_proxy().expect("start the proxy");
+
+        let mut client = TcpStream::connect_timeout(&proxy.address(), Duration::from_secs(10))
+            .expect("connect to the proxy");
+        client
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("set a read deadline");
+        write!(client, "GET {origin}/ HTTP/1.1\r\nHost: {address}\r\n\r\n")
+            .expect("send the request to the proxy");
+
+        let mut response = Vec::new();
+        let mut chunk = [0_u8; 512];
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !response.ends_with(b"proxy") && Instant::now() < deadline {
+            match client.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(read) => response.extend_from_slice(&chunk[..read]),
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                    ) => {}
+                Err(error) => panic!("read the proxy's answer: {error}"),
+            }
+        }
+
+        let text = String::from_utf8_lossy(&response).into_owned();
+        assert!(
+            text.starts_with("HTTP/1.1 200 OK"),
+            "the proxy should carry the origin's answer back, got {text:?}"
+        );
+        assert!(
+            text.ends_with("proxy"),
+            "the body should arrive, got {text:?}"
+        );
+        server
+            .join()
+            .expect("the test origin thread")
+            .expect("the test origin should have served one request");
+    }
+
     #[test]
     fn origin_is_exact_and_credentials_are_rejected() {
         let origin = ApprovedOrigin::parse("https://example.com").expect("valid origin");
