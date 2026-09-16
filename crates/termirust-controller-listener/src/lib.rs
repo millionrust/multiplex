@@ -25,6 +25,7 @@ mod protocol;
 mod queue;
 mod rate_limit;
 mod runtime;
+mod screen_session;
 mod screen_tickets;
 mod ssh_pairing_broker;
 mod tmux_sessions;
@@ -34,7 +35,7 @@ pub use bind::{
     BoundAddress, BoundControllerListeners, ControllerBinder, GeneratedPortSource, SystemBinder,
     SystemGeneratedPortSource, bind_address, bind_private_addresses,
 };
-pub use client_channel::ControllerClientChannel;
+pub use client_channel::{ControllerClientChannel, ControllerIncoming};
 pub use desktop_pane_bridge::{
     DesktopPaneBridgeEndpoint, DesktopPaneBridgeServer, DesktopPaneRegistration,
     DesktopPaneRegistry, DesktopPaneTransport,
@@ -87,6 +88,10 @@ pub use runtime::{
     AuthoritySnapshot, ControllerAuthorityProvider, ControllerBackendFactory,
     ControllerConnectionBackend, HostCommandContext, ListenerRuntime, ListenerRuntimeReport,
     ListenerServices, ListeningAddressObserver, serve_authenticated_stdio_stream,
+};
+pub use screen_session::{
+    ControllerScreenSession, MAX_SCREEN_PAYLOAD_BYTES, SCREEN_OUTGOING_DEPTH,
+    ScreenFrameCapability, ScreenOutgoing,
 };
 pub use screen_tickets::{ScreenGrants, ScreenTicketStore};
 pub use ssh_pairing_broker::{

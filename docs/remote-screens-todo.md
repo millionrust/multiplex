@@ -72,9 +72,14 @@ Pure Rust, no platform code, fully testable in CI.
 - [x] 2.5 `feat(screen-protocol): add the session messages and stream framing`
   A transport-neutral crate (`termirust-screen-protocol`) so the protocol does not wait on the
   iroh decision in 0.4.
-- [ ] 2.6 `feat(screen-transport): carry screen sessions as Controller screen frames`
+- [x] 2.6 `feat(controller-listener): carry screen sessions as Controller screen frames`
   Stage A decision (2026-09-16): the existing LAN, SSH and relay routes, not iroh. The QUIC
   transport moves to M4/M5 with the motion path; spike 0.4 gates it there, not here.
+  A screen frame carries a chunk of the screen protocol's byte stream, so a batch larger than one
+  frame spans two and the codec needs no new size rule. Every frame is authorized against the
+  device's current record, so withdrawing a capability stops that traffic at once. The host pushes
+  bytes on a channel; the application implements `ControllerScreenSession`, which the desktop app
+  does in 2.12.
 - [x] 2.7 `feat(controller-listener): issue screen tickets over the Controller channel`
   `OpenScreen` and `CloseScreen` commands, answered by the listener itself, mint and withdraw a
   one-time 32-byte ticket bound to the connection and to what the device's capabilities allow.

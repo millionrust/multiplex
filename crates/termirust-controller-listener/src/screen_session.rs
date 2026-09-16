@@ -1,0 +1,110 @@
+//! Remote Screens sessions carried by Controller screen frames.
+//!
+//! The listener moves opaque bytes: a screen frame's payload is a chunk of the screen protocol's
+//! byte stream, so a message larger than one frame simply spans two. What the bytes mean is the
+//! host application's business; what the listener enforces is the capability each frame claims,
+//! against the device's current record, and the one-time ticket that started the session.
+
+use async_trait::async_trait;
+use termirust_controller_security::{
+    ControllerCapability as SecurityCapability, MAX_SCREEN_FRAME_BYTES,
+};
+
+use crate::{ListenerError, ListenerErrorCode, ScreenTicketStore};
+
+/// The screen bytes one frame can carry: the frame limit less its header and tag.
+pub const MAX_SCREEN_PAYLOAD_BYTES: usize = MAX_SCREEN_FRAME_BYTES - 48;
+
+/// What a screen frame claims to exercise. Anything else on a screen frame is refused.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ScreenFrameCapability {
+    /// Watching: subscriptions, acknowledgements, everything that is not input.
+    Observe,
+    /// Pointer input: moves, buttons, scroll.
+    Pointer,
+    /// Keyboard input: keys and typed text.
+    Keyboard,
+}
+
+impl ScreenFrameCapability {
+    pub const fn from_security(capability: SecurityCapability) -> Result<Self, ListenerError> {
+        match capability {
+            SecurityCapability::ObserveScreens => Ok(Self::Observe),
+            SecurityCapability::ControlPointer => Ok(Self::Pointer),
+            SecurityCapability::ControlKeyboard => Ok(Self::Keyboard),
+            _ => Err(ListenerError::new(ListenerErrorCode::Unauthorized)),
+        }
+    }
+
+    pub const fn security(self) -> SecurityCapability {
+        match self {
+            Self::Observe => SecurityCapability::ObserveScreens,
+            Self::Pointer => SecurityCapability::ControlPointer,
+            Self::Keyboard => SecurityCapability::ControlKeyboard,
+        }
+    }
+}
+
+/// Where a screen session pushes bytes for the device. Each send is sealed into screen frames,
+/// split across frames when it is larger than [`MAX_SCREEN_PAYLOAD_BYTES`]. Dropping every sender
+/// ends the screen session and leaves the Controller connection open.
+pub type ScreenOutgoing = tokio::sync::mpsc::Sender<Vec<u8>>;
+
+/// How many sends may wait for the connection before the host has to slow down.
+pub const SCREEN_OUTGOING_DEPTH: usize = 8;
+
+/// One device's screen session on the host. Implemented by the application that owns the screens.
+#[async_trait]
+pub trait ControllerScreenSession: Send {
+    /// Feeds screen bytes the device sent under `capability`. The implementation spends the
+    /// ticket with `tickets` when the session's first message presents it, and refuses messages
+    /// the frame's capability does not cover.
+    async fn receive(
+        &mut self,
+        capability: ScreenFrameCapability,
+        bytes: &[u8],
+        tickets: &mut ScreenTicketStore,
+    ) -> Result<(), ListenerError>;
+
+    /// The device closed the session, or the connection is ending.
+    fn close(&mut self);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_three_screen_capabilities_ride_screen_frames() {
+        for (capability, expected) in [
+            (
+                SecurityCapability::ObserveScreens,
+                ScreenFrameCapability::Observe,
+            ),
+            (
+                SecurityCapability::ControlPointer,
+                ScreenFrameCapability::Pointer,
+            ),
+            (
+                SecurityCapability::ControlKeyboard,
+                ScreenFrameCapability::Keyboard,
+            ),
+        ] {
+            let frame = ScreenFrameCapability::from_security(capability).unwrap();
+            assert_eq!(frame, expected);
+            assert_eq!(frame.security(), capability);
+        }
+        for capability in [
+            SecurityCapability::ObserveSessions,
+            SecurityCapability::AttachOutput,
+            SecurityCapability::SendInput,
+            SecurityCapability::Resize,
+            SecurityCapability::RespondToApproval,
+        ] {
+            assert_eq!(
+                ScreenFrameCapability::from_security(capability).map_err(|error| error.code),
+                Err(ListenerErrorCode::Unauthorized)
+            );
+        }
+    }
+}

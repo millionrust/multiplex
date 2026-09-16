@@ -3,8 +3,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use termirust_controller_security::{
-    ControllerCapability as SecurityCapability, ControllerFrameKind, MAX_TERMINAL_FRAME_BYTES,
-    RevocationEpoch, StaticPrivateKey,
+    ControllerCapability as SecurityCapability, ControllerFrameKind, MAX_SCREEN_FRAME_BYTES,
+    MAX_TERMINAL_FRAME_BYTES, RevocationEpoch, StaticPrivateKey,
 };
 use termirust_domain::{
     AuthenticatedPeer, ConnectionBudget, ControllerAuthorizationRequest,
@@ -20,11 +20,12 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     AuthRateLimiter, BoundAddress, BoundControllerListeners, BoundedFrameQueue,
     BridgeAuthorization, ControllerBinder, ControllerCommandEnvelope, ControllerConnectionPurpose,
-    ControllerPairingAuthority, ControllerResponse, InterfaceProvider, ListenerError,
-    ListenerErrorCode, QueueClass, ScreenGrants, ScreenTicketStore, SourceBucket, SourceBucketKey,
-    SystemBinder, SystemHandshakeEntropy, authenticate_controller, bind_address, decode_command,
-    encode_response, pair_controller, pair_controller_with_code, read_bounded_frame,
-    write_bounded_frame,
+    ControllerPairingAuthority, ControllerResponse, ControllerScreenSession, InterfaceProvider,
+    ListenerError, ListenerErrorCode, MAX_SCREEN_PAYLOAD_BYTES, QueueClass, SCREEN_OUTGOING_DEPTH,
+    ScreenFrameCapability, ScreenGrants, ScreenOutgoing, ScreenTicketStore, SourceBucket,
+    SourceBucketKey, SystemBinder, SystemHandshakeEntropy, authenticate_controller, bind_address,
+    decode_command, encode_response, pair_controller, pair_controller_with_code,
+    read_bounded_frame, write_bounded_frame,
 };
 
 const AUTHORITY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
@@ -92,6 +93,17 @@ pub trait ControllerBackendFactory: Send + Sync {
         &self,
         peer: &AuthenticatedPeer,
     ) -> Result<Box<dyn ControllerConnectionBackend>, ListenerError>;
+
+    /// A Remote Screens session for this device, when this host can serve screens. Whatever the
+    /// session sends on `outgoing` reaches the device as screen frames. Hosts that cannot serve
+    /// screens keep the default and answer no screen frame.
+    fn open_screens(
+        &self,
+        _peer: &AuthenticatedPeer,
+        _outgoing: ScreenOutgoing,
+    ) -> Option<Box<dyn ControllerScreenSession>> {
+        None
+    }
 }
 
 /// Called with every address the listener accepts on, whenever that set changes.
@@ -541,6 +553,8 @@ async fn serve_authenticated_stream<S: AsyncRead + AsyncWrite + Unpin>(
     let peer = authenticated.peer;
     let mut transport = authenticated.connection.transport;
     let mut backend = backend_factory.open(&peer)?;
+    let (screen_sender, mut screen_receiver) = mpsc::channel(SCREEN_OUTGOING_DEPTH);
+    let mut screens = backend_factory.open_screens(&peer, screen_sender);
     let mut screen_tickets = ScreenTicketStore::default();
     let mut screen_entropy = SystemHandshakeEntropy;
     let mut refresh = tokio::time::interval(AUTHORITY_REFRESH_INTERVAL);
@@ -561,6 +575,21 @@ async fn serve_authenticated_stream<S: AsyncRead + AsyncWrite + Unpin>(
                 let opened = transport
                     .open(&sealed)
                     .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+                if opened.kind == ControllerFrameKind::Screen {
+                    let capability = ScreenFrameCapability::from_security(opened.capability)?;
+                    let current = authority_provider.snapshot()?;
+                    require_current_peer(&current.authority, &peer)?;
+                    require_screen_capability(&current.authority, &peer, capability)?;
+                    let session = screens
+                        .as_mut()
+                        .ok_or_else(|| ListenerError::new(ListenerErrorCode::Unauthorized))?;
+                    session
+                        .receive(capability, &opened.payload, &mut screen_tickets)
+                        .await?;
+                    drop(incoming);
+                    incoming = Box::pin(read_bounded_frame(&mut reader, MAX_TERMINAL_FRAME_BYTES));
+                    continue;
+                }
                 if opened.kind != ControllerFrameKind::Control {
                     return Err(ListenerError::new(ListenerErrorCode::MalformedFrame));
                 }
@@ -601,6 +630,9 @@ async fn serve_authenticated_stream<S: AsyncRead + AsyncWrite + Unpin>(
                     }
                     crate::ControllerCommand::CloseScreen => {
                         screen_tickets.close();
+                        if let Some(session) = screens.as_mut() {
+                            session.close();
+                        }
                         vec![ControllerResponse::Completed {
                             command_id: command.command_id,
                             applied: true,
@@ -622,6 +654,24 @@ async fn serve_authenticated_stream<S: AsyncRead + AsyncWrite + Unpin>(
                 }
                 drop(incoming);
                 incoming = Box::pin(read_bounded_frame(&mut reader, MAX_TERMINAL_FRAME_BYTES));
+            }
+            // When every sender is dropped the host ended the screen session; this branch stops
+            // matching and the Controller connection carries on.
+            Some(bytes) = screen_receiver.recv() => {
+                for chunk in bytes.chunks(MAX_SCREEN_PAYLOAD_BYTES) {
+                    let sealed = transport
+                        .seal(
+                            ControllerFrameKind::Screen,
+                            SecurityCapability::ObserveScreens,
+                            RevocationEpoch(peer.revocation_epoch),
+                            chunk,
+                        )
+                        .map_err(|_| {
+                            ListenerError::new(ListenerErrorCode::AuthenticationFailed)
+                        })?;
+                    write_bounded_frame(&mut writer, sealed.as_bytes(), MAX_SCREEN_FRAME_BYTES)
+                        .await?;
+                }
             }
             _ = host_output_poll.tick() => {
                 if let Some(response) = backend.next_response(&cancel).await? {
@@ -666,6 +716,36 @@ fn require_current_peer(
         return Err(ListenerError::new(ListenerErrorCode::AuthenticationFailed));
     }
     Ok(())
+}
+
+/// Screen frames are authorized per frame against the device's current record, so withdrawing a
+/// capability stops that traffic without waiting for the session to end.
+fn require_screen_capability(
+    authority: &ControllerDeviceAuthority,
+    peer: &AuthenticatedPeer,
+    capability: ScreenFrameCapability,
+) -> Result<(), ListenerError> {
+    let domain = match capability {
+        ScreenFrameCapability::Observe => DomainCapability::ObserveScreens,
+        ScreenFrameCapability::Pointer => DomainCapability::ControlPointer,
+        ScreenFrameCapability::Keyboard => DomainCapability::ControlKeyboard,
+    };
+    let request = ControllerAuthorizationRequest {
+        device_id: peer.device_id,
+        public_key: peer.public_key,
+        identity_generation: peer.identity_generation,
+        capability: domain,
+        revocation_epoch: peer.revocation_epoch,
+        session_generation: authority.session_generation,
+        now_millis: unix_millis(),
+        deadline_millis: unix_millis().saturating_add(1_000),
+    };
+    match authority.authorize(request) {
+        termirust_domain::ControllerAuthorizationDecision::Allow => Ok(()),
+        termirust_domain::ControllerAuthorizationDecision::Deny(denial) => {
+            Err(ListenerError::authorization(denial))
+        }
+    }
 }
 
 fn require_frame_capability(
@@ -883,6 +963,8 @@ mod tests {
     #[derive(Default)]
     struct Backends {
         pending: Arc<Mutex<std::collections::VecDeque<ControllerResponse>>>,
+        screens: bool,
+        screen_frames: Arc<Mutex<Vec<(ScreenFrameCapability, usize)>>>,
     }
 
     struct Backend {
@@ -897,6 +979,19 @@ mod tests {
             Ok(Box::new(Backend {
                 pending: self.pending.clone(),
             }))
+        }
+
+        fn open_screens(
+            &self,
+            _: &AuthenticatedPeer,
+            outgoing: ScreenOutgoing,
+        ) -> Option<Box<dyn ControllerScreenSession>> {
+            self.screens.then(|| {
+                Box::new(EchoScreens {
+                    outgoing,
+                    seen: self.screen_frames.clone(),
+                }) as Box<dyn ControllerScreenSession>
+            })
         }
     }
 
@@ -1120,6 +1215,162 @@ mod tests {
             ListenerErrorCode::AuthenticationFailed
         );
         cancel.cancel();
+    }
+
+    /// A screen session that answers the first message, which presents the ticket, with more
+    /// bytes than one screen frame can carry.
+    struct EchoScreens {
+        outgoing: ScreenOutgoing,
+        seen: Arc<Mutex<Vec<(ScreenFrameCapability, usize)>>>,
+    }
+
+    const ECHO_SCREEN_BYTES: usize = 1_500_000;
+
+    #[async_trait]
+    impl ControllerScreenSession for EchoScreens {
+        async fn receive(
+            &mut self,
+            capability: ScreenFrameCapability,
+            bytes: &[u8],
+            tickets: &mut ScreenTicketStore,
+        ) -> Result<(), ListenerError> {
+            if tickets.active().is_none() {
+                let proof: [u8; 32] = bytes
+                    .try_into()
+                    .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))?;
+                tickets
+                    .spend(&proof)
+                    .ok_or_else(|| ListenerError::new(ListenerErrorCode::Unauthorized))?;
+                self.outgoing
+                    .send(vec![7; ECHO_SCREEN_BYTES])
+                    .await
+                    .map_err(|_| ListenerError::new(ListenerErrorCode::Io))?;
+            }
+            self.seen.lock().unwrap().push((capability, bytes.len()));
+            Ok(())
+        }
+
+        fn close(&mut self) {}
+    }
+
+    #[tokio::test]
+    async fn screen_frames_carry_the_session_and_stop_when_a_capability_is_withdrawn() {
+        let host_private = StaticPrivateKey::from_fixture_bytes([41; 32]);
+        let device_private = StaticPrivateKey::from_fixture_bytes([42; 32]);
+        let authority = Arc::new(Authority {
+            value: Mutex::new(authority_with_screens(&host_private, &device_private)),
+            host_private: host_private.clone(),
+        });
+        let provider: Arc<dyn ControllerAuthorityProvider> = authority.clone();
+        let backends = Arc::new(Backends {
+            screens: true,
+            ..Backends::default()
+        });
+        let seen = backends.screen_frames.clone();
+        let (client, mut server) = tokio::io::duplex(8 * 1024);
+        let server_task = tokio::spawn(async move {
+            serve_authenticated_stdio_stream(
+                &mut server,
+                provider,
+                backends,
+                CancellationToken::new(),
+            )
+            .await
+        });
+        let mut channel = crate::ControllerClientChannel::connect(
+            client,
+            1,
+            2,
+            9,
+            HostStaticPublicKey(host_public_key_from_private(&host_private).0),
+            device_private,
+            CapabilitySet::default()
+                .with(SecurityCapability::ObserveScreens)
+                .with(SecurityCapability::ControlPointer),
+            &mut crate::SystemHandshakeEntropy,
+        )
+        .await
+        .unwrap();
+
+        let deadline = unix_millis().saturating_add(10_000);
+        channel
+            .send(crate::ControllerCommand::OpenScreen, deadline)
+            .await
+            .unwrap();
+        let ControllerResponse::ScreenOpened { ticket, .. } =
+            channel.read_response().await.unwrap()
+        else {
+            panic!("a screen session was not opened");
+        };
+
+        channel
+            .send_screen(ScreenFrameCapability::Observe, &ticket)
+            .await
+            .unwrap();
+        let mut received = Vec::new();
+        while received.len() < ECHO_SCREEN_BYTES {
+            match tokio::time::timeout(Duration::from_secs(2), channel.read_incoming())
+                .await
+                .unwrap()
+                .unwrap()
+            {
+                crate::ControllerIncoming::Screen(bytes) => {
+                    assert!(bytes.len() <= MAX_SCREEN_PAYLOAD_BYTES);
+                    received.extend(bytes);
+                }
+                other => panic!("unexpected {other:?}"),
+            }
+        }
+        assert_eq!(received, vec![7; ECHO_SCREEN_BYTES], "sent in two frames");
+
+        // Pointer input rides its own capability, and a wrong ticket never starts a session.
+        channel
+            .send_screen(ScreenFrameCapability::Pointer, b"pointer-move")
+            .await
+            .unwrap();
+        assert_eq!(
+            channel
+                .send_screen(ScreenFrameCapability::Keyboard, b"typing")
+                .await
+                .map_err(|error| error.code),
+            Err(ListenerErrorCode::Unauthorized),
+            "the device was never granted the keyboard"
+        );
+
+        // Wait for that pointer frame to land, so withdrawing the capability cannot race it.
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while seen.lock().unwrap().len() < 2 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("the pointer frame reached the screen session");
+
+        {
+            let mut current = authority.value.lock().unwrap();
+            current.devices[0].capabilities =
+                ControllerCapabilities::default().with(DomainCapability::ObserveScreens);
+        }
+        channel
+            .send_screen(ScreenFrameCapability::Pointer, b"pointer-move")
+            .await
+            .unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), server_task)
+                .await
+                .unwrap()
+                .unwrap()
+                .is_err(),
+            "a withdrawn pointer capability ends the connection"
+        );
+        let seen = seen.lock().unwrap();
+        assert_eq!(
+            seen.as_slice(),
+            [
+                (ScreenFrameCapability::Observe, 32),
+                (ScreenFrameCapability::Pointer, 12),
+            ]
+        );
     }
 
     #[tokio::test]

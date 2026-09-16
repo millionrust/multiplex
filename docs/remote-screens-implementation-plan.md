@@ -424,8 +424,12 @@ Consequences:
 ### 4.6 Transport and rate control (`termirust-screen-transport`)
 
 - **Stage A** carries the screen session over the existing authenticated Controller
-  channel, as screen frames (kind 3) on the LAN, SSH and relay routes, with the ordered
-  framing of `termirust-screen-protocol` inside them. See 5.3.
+  channel, as screen frames (kind 3) on the LAN, SSH and relay routes. A frame carries a
+  chunk of `termirust-screen-protocol`'s byte stream, so a batch larger than one frame
+  spans two, and each frame claims the capability its contents exercise: `ObserveScreens`
+  for everything that is not input, `ControlPointer` or `ControlKeyboard` for input. The
+  listener checks that claim against the device's current record on every frame, and the
+  host checks it again against the message it decodes. See 5.3.
 - **QUIC via iroh**, from Stage B, for the screen plane on every route. Streams: one control stream
   (bidirectional, ordered: subscribe, acks, input, capabilities); one unidirectional
   stream per priority class for tile batches (viewport tiles, off-viewport tiles,
