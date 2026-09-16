@@ -6,6 +6,16 @@
 # into apps/ by scripts/sync/*)
 /dist/
 
+# Remote Screens bindings, generated the same way. Unlike the Controller and vault
+# artifacts beside them, these are not vendored: build and sync them before opening
+# the applications.
+#   scripts/build/mobile-screen-bindings.sh --all
+#   scripts/sync/mobile-screen-bindings.sh --write
+/apps/ios/Frameworks/TermiRustRemoteScreens.xcframework/
+/apps/ios/TermiRustMobile/Generated/TermiRustRemoteScreens.swift
+/apps/android/app/src/main/java/com/termirust/screens/
+/apps/android/app/src/main/jniLibs/*/libtermirust_screen_bindings.so
+
 # Generated Xcode project for the iOS provider-access fixture
 /apps/ios/ProviderAccessFixture/*.xcodeproj/
 

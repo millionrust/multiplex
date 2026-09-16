@@ -37,6 +37,7 @@ targets:
       - TermiRustMobile/Enrollment
       - TermiRustMobile/ReplicationTransport
       - TermiRustMobile/Generated/TermiRustControllerSecurity.swift
+      - TermiRustMobile/Generated/TermiRustRemoteScreens.swift
       - Replication/Sources/TermiRustReplicationSecurity.swift
       - TermiRustMobile/Security/ReplicationKeychainStore.swift
       - TermiRustMobile/Models/ControllerModels.swift
@@ -91,6 +92,8 @@ targets:
         embed: false
       - framework: Frameworks/TermiRustControllerSecurity.xcframework
         embed: false
+      - framework: Frameworks/TermiRustRemoteScreens.xcframework
+        embed: false
       - framework: Replication/TermiRustReplicationSecurity.xcframework
         embed: false
     settings:
@@ -117,6 +120,7 @@ targets:
       - TermiRustMobileTests/AppleSSHControllerTransportLiveTests.swift
       - TermiRustMobileTests/AppleRelayControllerTransportLiveTests.swift
       - TermiRustMobileTests/ControllerBindingConformanceTests.swift
+      - TermiRustMobileTests/ControllerScreenSessionTests.swift
       - TermiRustMobileTests/ReplicationCustodyTests.swift
       - TermiRustMobileTests/EnrollmentWorkflowTests.swift
       - TermiRustMobileTests/ReplicationDocumentReaderTests.swift

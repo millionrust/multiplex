@@ -41,6 +41,17 @@ Not finished yet:
 
 ## Build
 
+The Remote Screens bindings are generated, not vendored, so build and sync them once
+before opening the project. Without them the framework and the generated Swift the
+project references are missing:
+
+```bash
+scripts/build/mobile-screen-bindings.sh --ios
+scripts/sync/mobile-screen-bindings.sh --write --ios
+```
+
+`--all` builds Android too, which needs NDK 27.1.12297006.
+
 ```bash
 cd /Users/jacob/Projects/terminal
 scripts/sync/mobile-ffi-artifacts.sh ios

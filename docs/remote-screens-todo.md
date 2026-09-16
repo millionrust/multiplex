@@ -138,6 +138,11 @@ Pure Rust, no platform code, fully testable in CI.
 
 ## M3 — Phone clients (Stage A) [4.1]
 
+Amendment 1 also obliged the mobile bindings to be regenerated, which happened on 2026-09-16 for
+both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `ControlPointer` and
+`ControlKeyboard`. The Android halves were built against NDK 27.1.12297006 on the external volume.
+
+
 - [x] 3.1 `feat(screen-bindings): expose watching and driving a screen to Swift and Kotlin`
   A uniffi boundary of its own (`termirust-screen-bindings`), beside the Controller one rather
   than inside it, so the audited crypto boundary stays narrow. The phone feeds it screen frame

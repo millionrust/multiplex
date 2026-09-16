@@ -4235,7 +4235,10 @@ enum class ControllerCapability {
     ATTACH_OUTPUT,
     SEND_INPUT,
     RESIZE,
-    RESPOND_TO_APPROVAL;
+    RESPOND_TO_APPROVAL,
+    OBSERVE_SCREENS,
+    CONTROL_POINTER,
+    CONTROL_KEYBOARD;
 
 
 
@@ -4271,7 +4274,8 @@ public object FfiConverterTypeControllerCapability: FfiConverterRustBuffer<Contr
 enum class ControllerFrameKind {
 
     CONTROL,
-    TERMINAL;
+    TERMINAL,
+    SCREEN;
 
 
 
