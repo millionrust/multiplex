@@ -103,8 +103,10 @@ wrapped tab sources right after `new-session`, so its options apply to that sess
 - a quiet grey selection and no `[n/n]` copy-mode position counter, also for new windows;
 - dragging selects and copies to the clipboard (`pbcopy` on macOS), and the selection stays put
   while you scroll;
-- a click, or scrolling back to the bottom, leaves copy mode, so typing always reaches the
-  program;
+- a click clears the selection, and at the bottom of the history it also leaves copy mode, so
+  typing reaches the program again. Scrolled back it stays in copy mode, because leaving it
+  there would return the view to the live screen and the text would move under the click;
+- scrolling back to the bottom leaves copy mode too, however it was entered;
 - two lines per wheel step instead of five.
 
 A wrapped tab also tells tmux what its terminal can do, because tmux only works that out for

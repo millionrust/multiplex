@@ -539,6 +539,118 @@ fn the_setup_hides_wrapped_status_bars_and_clears_the_old_scrollback_override() 
     assert!(!overrides().contains("smcup@"));
 }
 
+/// Attaches a client to `session` on a pseudo-terminal, because copy-mode scrolling belongs to
+/// a client and a detached session never scrolls.
+fn attach_client(server: &IsolatedServer, session: &str) -> Box<dyn portable_pty::Child + Send> {
+    let pty = portable_pty::native_pty_system()
+        .openpty(portable_pty::PtySize {
+            rows: 10,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .expect("a pseudo-terminal stands in for the terminal app");
+    let mut command = portable_pty::CommandBuilder::new(server.tmux.executable());
+    command.args(["-u", "-f", "/dev/null", "attach-session", "-t", session]);
+    for (name, value) in server.tmux.client_environment() {
+        command.env(name, value);
+    }
+    command.env("TERM", "xterm-256color");
+    let child = pty
+        .slave
+        .spawn_command(command)
+        .expect("a tmux client should attach");
+    drop(pty.slave);
+    // The reader has to keep draining, or tmux blocks once the pipe fills.
+    let mut reader = pty.master.try_clone_reader().expect("reader");
+    std::thread::spawn(move || {
+        use std::io::Read as _;
+        let mut buffer = [0_u8; 4096];
+        while let Ok(read) = reader.read(&mut buffer) {
+            if read == 0 {
+                return;
+            }
+        }
+    });
+    std::mem::forget(pty.master);
+    child
+}
+
+/// A click starts a selection under the mouse. At the bottom of the history it also leaves copy
+/// mode, so typing reaches the program again. Further back it must not: leaving copy mode there
+/// returns the view to the live screen, and the text moves out from under the click.
+#[test]
+fn a_click_leaves_copy_mode_only_at_the_bottom_of_the_history() {
+    let Some(server) = IsolatedServer::start() else {
+        return;
+    };
+    let session = "termirust-click";
+    server.run(&["new-session", "-d", "-s", session, "-x", "80", "-y", "10"]);
+    server.run(&["send-keys", "-t", session, "seq 1 200", "Enter"]);
+    let mut client = attach_client(&server, session);
+
+    let ask = |format: &str| server.output(&["display-message", "-p", "-t", session, format]);
+    let wait_until = |format: &str, done: &dyn Fn(&str) -> bool, what: &str| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let value = server.output(&["display-message", "-p", "-t", session, format]);
+            if done(&value) {
+                return;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "{format} never {what}, last {value:?}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    };
+    let wait_for = |format: &str, value: &'static str| {
+        wait_until(format, &move |seen: &str| seen == value, value);
+    };
+    // The client has to be attached before copy mode can scroll.
+    wait_for("#{session_attached}", "1");
+
+    // What the MouseDown1Pane binding runs.
+    let click = || {
+        server.run(&[
+            "if-shell",
+            "-t",
+            session,
+            "-F",
+            "#{==:#{scroll_position},0}",
+            "send-keys -X cancel",
+            "send-keys -X clear-selection",
+        ]);
+    };
+
+    // The shell has to have printed enough to scroll back through.
+    wait_until(
+        "#{history_size}",
+        &|seen: &str| seen.parse::<u32>().unwrap_or(0) >= 20,
+        "filled the history",
+    );
+
+    server.run(&["copy-mode", "-t", session]);
+    server.run(&["send-keys", "-t", session, "-X", "-N", "5", "scroll-up"]);
+    wait_for("#{scroll_position}", "5");
+    click();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert_eq!(
+        ask("#{scroll_position}"),
+        "5",
+        "a click scrolled the view while the history was scrolled back"
+    );
+    assert_eq!(ask("#{pane_in_mode}"), "1", "a click left copy mode early");
+
+    server.run(&["send-keys", "-t", session, "-X", "-N", "5", "scroll-down"]);
+    wait_for("#{scroll_position}", "0");
+    click();
+    wait_for("#{pane_in_mode}", "0");
+
+    let _ = client.kill();
+    let _ = client.wait();
+}
+
 /// A wrapped tab has to tell tmux what its terminal can do: tmux only works that out for
 /// itself from a terminal that answers its questions, and Terminal.app cannot draw a frame in
 /// one piece the way the others can.

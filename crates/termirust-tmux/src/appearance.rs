@@ -104,10 +104,21 @@ impl WrappedSessionAppearance {
                 default: "send-keys -X copy-pipe-and-cancel",
             },
             Binding {
-                // Leaving copy mode, not only clearing the selection: keys typed in copy mode
-                // drive copy mode, so a tab left in it looks like it stopped taking input.
+                // At the bottom of the history a click leaves copy mode, because keys typed in
+                // copy mode drive copy mode and a tab left in it looks like it stopped taking
+                // input. Further back it only clears the selection: leaving copy mode there
+                // would jump the view to the bottom, and the text would move under the click.
                 key: "MouseDown1Pane",
-                wrapped: "select-pane ; send-keys -X cancel".to_owned(),
+                wrapped: format!(
+                    "select-pane ; {}",
+                    command_string(&[
+                        "if-shell",
+                        "-F",
+                        "#{==:#{scroll_position},0}",
+                        "send-keys -X cancel",
+                        "send-keys -X clear-selection",
+                    ])
+                ),
                 default: "select-pane",
             },
             Binding {
