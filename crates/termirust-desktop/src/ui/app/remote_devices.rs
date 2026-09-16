@@ -96,6 +96,14 @@ pub(super) struct RemoteDevicesState {
     ssh_pairing_expires_at: Option<u64>,
     ssh_pairing_device_count: usize,
     editing_device_id: Option<ControllerDeviceId>,
+    /// Computers this Mac paired with as their device, and the form that adds one.
+    watched: Vec<crate::controller::watched::WatchedComputer>,
+    watched_store: Option<crate::controller::watched::WatchedComputers>,
+    watched_address: String,
+    watched_code: String,
+    watched_name: String,
+    watched_pairing: bool,
+    watched_failure: Option<String>,
 }
 
 impl RemoteDevicesState {
@@ -133,6 +141,7 @@ impl RemoteDevicesState {
         let ssh_pairing_broker =
             SshPairingBroker::bind(durable_runtime_parent(&root).join("controller-pairing.sock"))
                 .ok();
+        let watched_store = crate::controller::watched::WatchedComputers::new(&root);
         match repository.load() {
             Ok(snapshot) => {
                 let devices = deduplicated_devices(snapshot.authority.devices);
@@ -170,6 +179,13 @@ impl RemoteDevicesState {
                     ssh_pairing_expires_at: None,
                     ssh_pairing_device_count: device_count,
                     editing_device_id: None,
+                    watched: watched_store.load(),
+                    watched_store: Some(watched_store),
+                    watched_address: String::new(),
+                    watched_code: String::new(),
+                    watched_name: String::new(),
+                    watched_pairing: false,
+                    watched_failure: None,
                 };
                 if state.network_policy.enabled {
                     let _ = state.start_listener_process(controller_coordinator);
@@ -235,6 +251,13 @@ impl RemoteDevicesState {
             ssh_pairing_expires_at: None,
             ssh_pairing_device_count: 0,
             editing_device_id: None,
+            watched: Vec::new(),
+            watched_store: None,
+            watched_address: String::new(),
+            watched_code: String::new(),
+            watched_name: String::new(),
+            watched_pairing: false,
+            watched_failure: None,
         }
     }
 
@@ -273,6 +296,84 @@ impl RemoteDevicesState {
             ssh_pairing_expires_at: None,
             ssh_pairing_device_count: 0,
             editing_device_id: None,
+            watched: Vec::new(),
+            watched_store: None,
+            watched_address: String::new(),
+            watched_code: String::new(),
+            watched_name: String::new(),
+            watched_pairing: false,
+            watched_failure: None,
+        }
+    }
+
+    /// Computers this Mac paired with as their device.
+    pub(super) fn watched(&self) -> &[crate::controller::watched::WatchedComputer] {
+        &self.watched
+    }
+
+    pub(super) fn watched_form(&self) -> (&str, &str, &str, bool, Option<&str>) {
+        (
+            &self.watched_address,
+            &self.watched_code,
+            &self.watched_name,
+            self.watched_pairing,
+            self.watched_failure.as_deref(),
+        )
+    }
+
+    pub(super) fn set_watched_address(&mut self, value: String) {
+        self.watched_address = value;
+    }
+
+    pub(super) fn set_watched_code(&mut self, value: String) {
+        self.watched_code = value;
+    }
+
+    pub(super) fn set_watched_name(&mut self, value: String) {
+        self.watched_name = value;
+    }
+
+    /// Pairs with the computer the form names. Blocking, so the caller runs it off the
+    /// interface thread and hands the result back.
+    pub(super) fn pair_with_computer(
+        &mut self,
+    ) -> Option<(
+        crate::controller::watched::WatchedComputers,
+        String,
+        String,
+        String,
+    )> {
+        let store = self.watched_store.clone()?;
+        if self.watched_pairing {
+            return None;
+        }
+        self.watched_pairing = true;
+        self.watched_failure = None;
+        Some((
+            store,
+            self.watched_address.clone(),
+            self.watched_code.clone(),
+            self.watched_name.clone(),
+        ))
+    }
+
+    pub(super) fn finish_pairing_with_computer(&mut self, failure: Option<String>) {
+        self.watched_pairing = false;
+        self.watched_failure = failure;
+        if self.watched_failure.is_none() {
+            self.watched_address.clear();
+            self.watched_code.clear();
+            self.watched_name.clear();
+        }
+        if let Some(store) = &self.watched_store {
+            self.watched = store.load();
+        }
+    }
+
+    pub(super) fn forget_watched_computer(&mut self, address: &str) {
+        if let Some(store) = &self.watched_store {
+            store.forget(address);
+            self.watched = store.load();
         }
     }
 
@@ -865,6 +966,172 @@ impl TermiRustApp {
             .into_any_element()
     }
 
+    /// The other half of pairing: computers this Mac may connect to, as their device.
+    ///
+    /// Everything above this is TermiRust as a host. Without this section the desktop can only be
+    /// watched, never watch.
+    fn render_watched_computers_section(&self, cx: &Context<Self>) -> AnyElement {
+        let (_, _, _, pairing, failure) = self.remote_devices.watched_form();
+        let computers = self.remote_devices.watched();
+        v_flex()
+            .id("watched-computers")
+            .debug_selector(|| "watched-computers".to_string())
+            .w_full()
+            .min_w_0()
+            .gap_3()
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                            .font_medium()
+                            .text_color(theme::text_main())
+                            .child(localization::watched_computers_title()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(localization::watched_computers_description()),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .items_end()
+                    .flex_wrap()
+                    .gap_2()
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(localization::watched_computers_address_label()),
+                            )
+                            .child(Input::new(&self.settings_inputs.watched_computer_address)),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(localization::watched_computers_code_label()),
+                            )
+                            .child(Input::new(&self.settings_inputs.watched_computer_code)),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(localization::watched_computers_name_label()),
+                            )
+                            .child(Input::new(&self.settings_inputs.watched_computer_name)),
+                    )
+                    .child(
+                        Button::new("watched-computers-pair")
+                            .debug_selector(|| "watched-computers-pair".to_string())
+                            .xsmall()
+                            .primary()
+                            .label(if pairing {
+                                localization::watched_computers_pairing()
+                            } else {
+                                localization::watched_computers_pair_action()
+                            })
+                            .disabled(pairing)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.pair_with_watched_computer(window, cx);
+                            })),
+                    ),
+            )
+            .when_some(failure.map(str::to_owned), |this, message| {
+                this.child(
+                    div()
+                        .text_size(px(theme::TYPE_MICRO_SIZE))
+                        .text_color(theme::danger())
+                        .child(message),
+                )
+            })
+            .when(computers.is_empty(), |this| {
+                this.child(
+                    div()
+                        .text_size(px(theme::TYPE_MICRO_SIZE))
+                        .text_color(theme::text_muted())
+                        .child(localization::watched_computers_none()),
+                )
+            })
+            .children(
+                computers
+                    .iter()
+                    .map(|computer| self.render_watched_computer_row(computer, cx)),
+            )
+            .into_any_element()
+    }
+
+    fn render_watched_computer_row(
+        &self,
+        computer: &crate::controller::watched::WatchedComputer,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let address = computer.address.clone();
+        let forget_address = address.clone();
+        h_flex()
+            .items_center()
+            .justify_between()
+            .gap_2()
+            .p_2()
+            .rounded(px(theme::CONTROL_RADIUS))
+            .border_1()
+            .border_color(theme::soft_border())
+            .bg(theme::library_card())
+            .child(
+                v_flex()
+                    .min_w_0()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                            .text_color(theme::text_main())
+                            .child(computer.display_name.clone()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(address),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(if computer.may_watch_screen() {
+                                localization::watched_computers_may_watch()
+                            } else {
+                                localization::watched_computers_no_screen()
+                            }),
+                    ),
+            )
+            .child(
+                Button::new(SharedString::from(format!(
+                    "watched-computers-forget-{forget_address}"
+                )))
+                .xsmall()
+                .ghost()
+                .label(localization::watched_computers_forget_action())
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.remote_devices.forget_watched_computer(&forget_address);
+                    cx.notify();
+                })),
+            )
+            .into_any_element()
+    }
+
     /// Who is watching right now, and the way to stop it.
     fn render_screen_watchers(&self, cx: &Context<Self>) -> AnyElement {
         let watchers = self.remote_devices.screen_watchers();
@@ -928,6 +1195,8 @@ impl TermiRustApp {
             .child(self.render_remote_terminals_section(cx))
             .child(self.settings_divider())
             .child(self.render_remote_screens_section(cx))
+            .child(self.settings_divider())
+            .child(self.render_watched_computers_section(cx))
             .child(self.settings_divider())
             .child(self.render_remote_identity_section(cx))
             .child(self.settings_divider())
@@ -1747,6 +2016,70 @@ impl TermiRustApp {
         self.remote_devices
             .stop_code_pairing(&self.controller_coordinator);
         cx.notify();
+    }
+
+    /// Pairs this Mac with another computer, as its device.
+    ///
+    /// Pairing talks to the other computer, so it runs on its own thread and the answer comes
+    /// back to the interface; the form stays disabled meanwhile so a second attempt cannot race
+    /// the first.
+    fn pair_with_watched_computer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let address = self
+            .settings_inputs
+            .watched_computer_address
+            .read(cx)
+            .value()
+            .to_string();
+        let code = self
+            .settings_inputs
+            .watched_computer_code
+            .read(cx)
+            .value()
+            .to_string();
+        let name = self
+            .settings_inputs
+            .watched_computer_name
+            .read(cx)
+            .value()
+            .to_string();
+        self.remote_devices.set_watched_address(address);
+        self.remote_devices.set_watched_code(code);
+        self.remote_devices.set_watched_name(name);
+        let Some((store, address, code, name)) = self.remote_devices.pair_with_computer() else {
+            return;
+        };
+        let device_name = self.this_computer_name();
+        cx.notify();
+        let task = cx.background_executor().spawn(async move {
+            store
+                .pair(&address, &code, &name, &device_name)
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let outcome = task.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                let failure = outcome.err();
+                if failure.is_none() {
+                    this.settings_inputs
+                        .watched_computer_code
+                        .update(cx, |state, cx| state.set_value("", window, cx));
+                }
+                this.remote_devices.finish_pairing_with_computer(failure);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// What another computer calls this one in its own device list.
+    fn this_computer_name(&self) -> String {
+        // The other computer shows this in its own device list, so it names the machine, not
+        // the person: a hostname is the closest thing this app already knows.
+        std::env::var("HOSTNAME")
+            .ok()
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| "TermiRust desktop".to_owned())
     }
 
     fn begin_controller_pairing(&mut self, cx: &mut Context<Self>) {

@@ -4836,6 +4836,76 @@ context = "Action that stops sharing this computer's screen with every device."
 description = "Stop sharing action"
 
 [[messages]]
+id = "watched-computers-title"
+context = "Title of the section listing other computers this Mac has paired with as their device."
+description = "Watched computers title"
+
+[[messages]]
+id = "watched-computers-description"
+context = "Explains that pairing with another computer running TermiRust lets this Mac watch its screen."
+description = "Watched computers description"
+
+[[messages]]
+id = "watched-computers-address-label"
+context = "Label for the field taking the other computer's address, as host and port."
+description = "Watched computer address label"
+
+[[messages]]
+id = "watched-computers-code-label"
+context = "Label for the field taking the six-digit code the other computer is showing."
+description = "Watched computer code label"
+
+[[messages]]
+id = "watched-computers-name-label"
+context = "Label for the field naming the other computer in this Mac's own interface."
+description = "Watched computer name label"
+
+[[messages]]
+id = "watched-computers-pair-action"
+context = "Action that pairs this Mac with another computer using the code it shows."
+description = "Pair with computer action"
+
+[[messages]]
+id = "watched-computers-pairing"
+context = "Shown while pairing with another computer is in progress."
+description = "Pairing in progress"
+
+[[messages]]
+id = "watched-computers-none"
+context = "Shown when this Mac has not paired with any other computer yet."
+description = "No watched computers"
+
+[[messages]]
+id = "watched-computers-address-placeholder"
+context = "Placeholder in the field taking the other computer's address and port."
+description = "Watched computer address placeholder"
+
+[[messages]]
+id = "watched-computers-code-placeholder"
+context = "Placeholder in the field taking the six-digit pairing code."
+description = "Watched computer code placeholder"
+
+[[messages]]
+id = "watched-computers-name-placeholder"
+context = "Placeholder in the field naming the other computer."
+description = "Watched computer name placeholder"
+
+[[messages]]
+id = "watched-computers-forget-action"
+context = "Action that forgets a computer this Mac paired with, deleting its device identity."
+description = "Forget computer action"
+
+[[messages]]
+id = "watched-computers-may-watch"
+context = "Shown on a computer that granted this Mac permission to watch its screen."
+description = "Screen access granted"
+
+[[messages]]
+id = "watched-computers-no-screen"
+context = "Shown on a computer that paired but never granted screen access."
+description = "No screen access"
+
+[[messages]]
 id = "accessibility-lab-title"
 context = "Development-only title for the accessibility reference laboratory."
 description = "Accessibility laboratory title"

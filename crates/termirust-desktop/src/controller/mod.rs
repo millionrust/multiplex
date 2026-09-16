@@ -12,6 +12,7 @@ pub mod route_coordinator;
 pub mod screen_sharing;
 pub mod ssh_pairing;
 pub mod tailscale;
+pub mod watched;
 
 use std::path::Path;
 

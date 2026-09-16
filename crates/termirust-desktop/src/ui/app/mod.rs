@@ -555,6 +555,10 @@ struct SettingsInputs {
     remote_identity_reset: Entity<InputState>,
     remote_device_name: Entity<InputState>,
     remote_listener_port: Entity<InputState>,
+    /// The form that pairs this Mac with another computer, as its device.
+    watched_computer_address: Entity<InputState>,
+    watched_computer_code: Entity<InputState>,
+    watched_computer_name: Entity<InputState>,
 }
 
 struct VaultInputs {
@@ -660,6 +664,18 @@ impl SettingsInputs {
             remote_listener_port: cx.new(|cx| {
                 InputState::new(window, cx)
                     .placeholder(localization::remote_devices_listener_port_placeholder())
+            }),
+            watched_computer_address: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(localization::watched_computers_address_placeholder())
+            }),
+            watched_computer_code: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(localization::watched_computers_code_placeholder())
+            }),
+            watched_computer_name: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(localization::watched_computers_name_placeholder())
             }),
         }
     }

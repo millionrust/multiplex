@@ -106,14 +106,19 @@ Pure Rust, no platform code, fully testable in CI.
   Sharing one lease with the text path's writer lease happens in 2.7.
 - [ ] 2.12 `feat(desktop): show computers with live previews in Devices`
 - [ ] 2.13 `feat(desktop): open a remote screen tab with zoom, minimap and inspector`
-  **Blocked, found on 2026-09-16.** Both need this Mac to be *a device of* another Mac, and the app
-  has no flow for that: it pairs phones to itself, and the desktop-as-client path
-  (`controller/relay_desktop.rs`) has no way to obtain credentials for another computer. Phones
-  already pair, so M3 comes first and the desktop viewer follows 2.16.
-- [ ] 2.16 `feat(desktop): pair this computer as a device of another computer`
-  The missing half of pairing: enter the six-digit code another Mac shows, store the resulting
-  device identity and host key, and list the computers this Mac may watch. Prerequisite for 2.12
-  and 2.13.
+  Unblocked by 2.16 on 2026-09-16. Both needed this Mac to be *a device of* another Mac, which the
+  app had no flow for; it now pairs as a device and keeps the credentials, so the viewer has
+  something to connect to.
+- [x] 2.16 `feat(desktop): pair this computer as a device of another computer`
+  The missing half of pairing. Devices gains "Computers this Mac can watch": enter the address and
+  the six-digit code another computer shows, and this Mac pairs as its device. The record is a
+  small file per computer in the app's data directory; the device private key goes to the system
+  credential store, never on disk beside it, the way the CLI's SSH controller profiles do it.
+  The record is written before the pairing is acknowledged, so a pairing this Mac cannot keep is
+  refused rather than leaving the other computer trusting a device this one has forgotten. A
+  record that names another computer's key, carries no generation, or carries a capability this
+  build does not know fails closed and is skipped rather than failing the whole list.
+  Prerequisite for 2.12 and 2.13, which can now be built.
 - [x] 2.14 `feat(desktop): share this computer's screen from Devices`
   The opt-in and the host wiring landed: Devices has a "Share this screen" choice, off by default,
   which the listener worker reads from its descriptor. Capture and injection run in that worker,

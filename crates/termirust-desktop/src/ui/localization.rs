@@ -771,6 +771,41 @@ static_message!(
 );
 static_message!(remote_screens_watching_none, RemoteScreensWatchingNoneArgs);
 static_message!(remote_screens_stop_action, RemoteScreensStopActionArgs);
+static_message!(watched_computers_title, WatchedComputersTitleArgs);
+static_message!(
+    watched_computers_description,
+    WatchedComputersDescriptionArgs
+);
+static_message!(
+    watched_computers_address_label,
+    WatchedComputersAddressLabelArgs
+);
+static_message!(watched_computers_code_label, WatchedComputersCodeLabelArgs);
+static_message!(watched_computers_name_label, WatchedComputersNameLabelArgs);
+static_message!(
+    watched_computers_pair_action,
+    WatchedComputersPairActionArgs
+);
+static_message!(watched_computers_pairing, WatchedComputersPairingArgs);
+static_message!(watched_computers_none, WatchedComputersNoneArgs);
+static_message!(
+    watched_computers_forget_action,
+    WatchedComputersForgetActionArgs
+);
+static_message!(watched_computers_may_watch, WatchedComputersMayWatchArgs);
+static_message!(watched_computers_no_screen, WatchedComputersNoScreenArgs);
+static_message!(
+    watched_computers_address_placeholder,
+    WatchedComputersAddressPlaceholderArgs
+);
+static_message!(
+    watched_computers_code_placeholder,
+    WatchedComputersCodePlaceholderArgs
+);
+static_message!(
+    watched_computers_name_placeholder,
+    WatchedComputersNamePlaceholderArgs
+);
 
 pub fn remote_screens_watching_now(devices: &str) -> String {
     text(&RemoteScreensWatchingNowArgs::new(UserData::new(devices)))
