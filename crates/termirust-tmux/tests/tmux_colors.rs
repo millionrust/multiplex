@@ -1,0 +1,159 @@
+//! What a wrapped tab looks like: a program inside tmux should reach the terminal with the
+//! colors it wrote. tmux re-renders every cell, so it can quietly drop 24-bit color, replace
+//! non-ASCII text, or lose attributes, and the tab then looks different from an unwrapped one.
+//!
+//! These tests attach a real tmux client to a pseudo-terminal and read what tmux writes to it.
+#![cfg(unix)]
+
+use std::io::Read as _;
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
+
+use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use termirust_tmux::Tmux;
+
+/// The blue Claude Code and other programs write as 24-bit color.
+const FOREGROUND: &str = "38;2;88;166;255";
+const BACKGROUND: &str = "48;2;30;30;30";
+const INDEXED: &str = "38;5;75";
+/// Printed last, so a reader knows the pane has drawn everything.
+const DONE: &str = "COLORS-DONE";
+
+struct WrappedPane {
+    output: String,
+}
+
+impl WrappedPane {
+    /// Runs `printf` inside a tmux session on a private server, with the client attached to a
+    /// pseudo-terminal, and returns everything tmux wrote to that terminal.
+    fn draw(environment: &[(&str, &str)]) -> Option<Self> {
+        let Ok(tmux) = Tmux::discover() else {
+            eprintln!("skipping tmux color test: tmux is unavailable");
+            return None;
+        };
+        // tmux socket paths are limited to about 100 bytes, so stay out of long temp dirs.
+        let sockets = tempfile::Builder::new()
+            .prefix("tr-color-")
+            .tempdir_in("/tmp")
+            .unwrap();
+
+        let pty = native_pty_system()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .expect("a pseudo-terminal stands in for the terminal app");
+
+        let mut command = CommandBuilder::new(tmux.executable());
+        command.args([
+            "-u",
+            "-f",
+            "/dev/null",
+            "new-session",
+            &format!(
+                "printf '\\033[{FOREGROUND}mRGB\\033[0m \\033[1mBOLD\\033[0m \
+                 \\033[2mDIM\\033[0m \\033[{INDEXED}mIDX\\033[0m \
+                 \\033[{BACKGROUND}mBG\\033[0m \\303\\251 {DONE}'; sleep 2"
+            ),
+        ]);
+        command.env("TMUX_TMPDIR", sockets.path());
+        command.env_remove("TMUX");
+        command.env_remove("LC_ALL");
+        command.env_remove("LANG");
+        for (name, value) in environment {
+            command.env(name, value);
+        }
+
+        let mut child = pty
+            .slave
+            .spawn_command(command)
+            .expect("tmux should start on the pseudo-terminal");
+        let mut reader = pty.master.try_clone_reader().expect("reader");
+        drop(pty.slave);
+
+        // Read on a thread: the master stays open while tmux runs, so a plain read blocks.
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut buffer = [0_u8; 4096];
+            while let Ok(read) = reader.read(&mut buffer) {
+                if read == 0 || sender.send(buffer[..read].to_vec()).is_err() {
+                    return;
+                }
+            }
+        });
+
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let mut output = Vec::new();
+        while Instant::now() < deadline {
+            match receiver.recv_timeout(Duration::from_millis(200)) {
+                Ok(chunk) => output.extend_from_slice(&chunk),
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+            if String::from_utf8_lossy(&output).contains(DONE) {
+                break;
+            }
+        }
+
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::process::Command::new(tmux.executable())
+            .args(["-f", "/dev/null", "kill-server"])
+            .env("TMUX_TMPDIR", sockets.path())
+            .env_remove("TMUX")
+            .output();
+
+        let output = String::from_utf8_lossy(&output).into_owned();
+        assert!(
+            output.contains(DONE),
+            "the pane never finished drawing: {output:?}"
+        );
+        Some(Self { output })
+    }
+
+    fn assert_carries_every_color(&self, context: &str) {
+        for expected in [FOREGROUND, BACKGROUND, INDEXED] {
+            assert!(
+                self.output.contains(expected),
+                "{context}: tmux changed {expected}: {:?}",
+                self.output
+            );
+        }
+        assert!(
+            self.output.contains("\u{1b}[1m") || self.output.contains(";1m"),
+            "{context}: bold did not survive: {:?}",
+            self.output
+        );
+        assert!(
+            self.output.contains("\u{1b}[2m") || self.output.contains(";2m"),
+            "{context}: dim did not survive: {:?}",
+            self.output
+        );
+        assert!(
+            self.output.contains('é'),
+            "{context}: non-ASCII text did not survive: {:?}",
+            self.output
+        );
+    }
+}
+
+#[test]
+fn a_wrapped_pane_reaches_the_terminal_with_the_colors_it_wrote() {
+    let Some(pane) = WrappedPane::draw(&[("TERM", "xterm-256color"), ("COLORTERM", "truecolor")])
+    else {
+        return;
+    };
+    pane.assert_carries_every_color("a terminal that reports truecolor");
+}
+
+/// A tab started from a LaunchAgent, a cron job, or a bare CI shell has no locale and no
+/// COLORTERM. tmux then has to be told to write UTF-8, which is why every command passes -u.
+#[test]
+fn a_wrapped_pane_keeps_its_colors_without_a_locale() {
+    let Some(pane) = WrappedPane::draw(&[("TERM", "xterm-256color")]) else {
+        return;
+    };
+    pane.assert_carries_every_color("a terminal with no locale");
+}

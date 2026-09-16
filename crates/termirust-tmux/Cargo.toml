@@ -10,4 +10,5 @@ license = "MIT OR Apache-2.0"
 libc = "0.2"
 
 [dev-dependencies]
+portable-pty = "0.9"
 tempfile = "3.27"
