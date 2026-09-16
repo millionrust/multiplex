@@ -15448,6 +15448,38 @@ mod tests {
         }
     }
 
+    /// Waits until a pane has stopped receiving its shell's startup output. Output clears the
+    /// pane's selection, so a test that selects text while the prompt is still arriving loses the
+    /// selection before it can copy it.
+    fn wait_for_quiet_pane(cx: &mut TestAppContext, app: &Entity<TermiRustApp>, pane_id: u64) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut last: Option<String> = None;
+        let mut settled = 0;
+        while Instant::now() < deadline {
+            let text = app.update(cx, |app, cx| {
+                app.process_events(cx);
+                app.pane(pane_id)
+                    .map(|pane| pane.terminal.all_rows_text().join("\n"))
+            });
+            match text {
+                // A shell that has printed nothing yet may still be about to.
+                Some(text) if !text.trim().is_empty() => {
+                    if last.as_ref() == Some(&text) {
+                        settled += 1;
+                        if settled >= 4 {
+                            return;
+                        }
+                    } else {
+                        settled = 0;
+                        last = Some(text);
+                    }
+                }
+                _ => settled = 0,
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+
     fn wait_for_window_app_state<R>(
         cx: &mut TestAppContext,
         window: WindowHandle<Root>,
@@ -22358,6 +22390,8 @@ sleep 1
                 .then_some(())
         });
 
+        wait_for_quiet_pane(cx, &app, pane_id);
+
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
@@ -23033,6 +23067,8 @@ sleep 1
                 .is_some_and(|pane| pane.connected)
                 .then_some(())
         });
+
+        wait_for_quiet_pane(cx, &app, pane_id);
 
         window
             .update(cx, |_, window, cx| {
@@ -26866,6 +26902,8 @@ sleep 1
                 })
             })
             .expect("canvas switch should succeed");
+
+        wait_for_quiet_pane(cx, &app, pane_id);
 
         window
             .update(cx, |_, window, cx| {
