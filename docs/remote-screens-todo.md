@@ -269,7 +269,15 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   tile encoder stalls on back-pressure, and a motion region then never demotes. Real desktops always
   have something ticking, so this is not yet a bug worth its own change, but 5.2 should not assume
   demotion is timely.
-- [ ] 4.3 `feat(screen-transport): send video as datagrams with forward error correction`
+- [x] 4.3 `feat(screen-transport): send video as datagrams with forward error correction`
+  Systematic Reed-Solomon over GF(256) on a Cauchy matrix, written by hand in
+  `termirust-screen-protocol::fec` so the motion path adds no package to a security-reviewed
+  lockfile. The shards are whole encoded messages, so a repaired frame carries its own sequence,
+  keyframe flag and reference token rather than having them guessed.
+  Parity is sent after the group it repairs, never before, so a viewer that lost nothing pays no
+  latency for it. The ratio follows reported loss between five and forty percent.
+  Still on the ordered Controller stream, where nothing is ever actually lost: the tests drop
+  frames on the wire to prove the repair works. Real datagrams arrive with iroh in 5.3.
 - [ ] 4.4 `feat(screen-client): decode motion regions natively on desktop, iOS and Android`
 
 ## M5 — Rate control, roaming, bad networks (Stage B, part 2) [4.6, 7]

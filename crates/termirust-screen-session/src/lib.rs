@@ -10,6 +10,7 @@
 mod error;
 mod host;
 mod input;
+mod video;
 mod viewer;
 
 pub use error::SessionError;

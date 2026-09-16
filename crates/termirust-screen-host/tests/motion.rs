@@ -102,6 +102,15 @@ impl MotionEncoders for Fakes {
     }
 }
 
+/// The sequence of a video frame message, or zero for anything else. Zero is never a real
+/// sequence, so it can stand for "not a video frame".
+fn video_sequence(message: &termirust_screen_protocol::Message) -> u64 {
+    match message {
+        termirust_screen_protocol::Message::VideoFrame(frame) => frame.sequence,
+        _ => 0,
+    }
+}
+
 /// A screen with a rectangle of noise that changes every frame, and a still background.
 fn screen(step: u32, moving: bool) -> FrameBuffer {
     let mut buffer = FrameBuffer::new(size());
@@ -143,6 +152,11 @@ struct Link {
     sender: MotionSender,
     events: Vec<ViewerEvent>,
     now_ms: u64,
+    /// Video frame sequences the link swallows, so a repair has something to repair.
+    drop_video_frames: Vec<u64>,
+    dropped: usize,
+    /// Parity shards the host put on the wire.
+    parity_sent: usize,
 }
 
 impl Link {
@@ -167,6 +181,9 @@ impl Link {
             sender: MotionSender::new(encoders),
             events: Vec::new(),
             now_ms: 0,
+            drop_video_frames: Vec::new(),
+            dropped: 0,
+            parity_sent: 0,
         };
         link.viewer.connect(TICKET);
         link.viewer.subscribe(SURFACE, Profile::Interactive);
@@ -195,6 +212,15 @@ impl Link {
             }
             while let Some(message) = self.host.poll_outgoing() {
                 moved = true;
+                if matches!(message, termirust_screen_protocol::Message::Parity(_)) {
+                    self.parity_sent += 1;
+                }
+                if self.drop_video_frames.contains(&video_sequence(&message)) {
+                    // The link ate it. Nothing tells the viewer directly; it finds out from the
+                    // gap, and repairs it from the group's parity.
+                    self.dropped += 1;
+                    continue;
+                }
                 self.events
                     .extend(self.viewer.receive(message).expect("the viewer accepts"));
             }
@@ -364,6 +390,98 @@ fn loss_is_answered_with_a_reference_refresh_and_not_a_keyframe() {
     assert!(
         !asked.last().unwrap().refresh,
         "the refresh already happened"
+    );
+}
+
+#[test]
+fn a_frame_the_link_swallowed_is_rebuilt_from_parity() {
+    let log = Arc::new(Mutex::new(Recorder::default()));
+    let mut link = Link::open(Box::new(Fakes(Arc::clone(&log))), everything());
+    link.until_promoted();
+    // The second and third frames of the stream never arrive. Their groups carry parity, so the
+    // viewer gets them anyway, without asking for anything.
+    link.drop_video_frames = vec![2, 7];
+    for step in 100..140 {
+        link.show(step, true);
+    }
+    assert_eq!(link.dropped, 2, "the link really did eat two frames");
+
+    let arrived: Vec<u64> = link.video().iter().map(|frame| frame.sequence).collect();
+    assert!(
+        arrived.contains(&2) && arrived.contains(&7),
+        "the repaired frames are missing from {arrived:?}"
+    );
+    assert!(
+        log.lock().unwrap().asked.iter().all(|asked| !asked.refresh),
+        "parity repaired the loss, so no reference refresh was ever needed"
+    );
+}
+
+#[test]
+fn a_repaired_frame_is_the_frame_that_was_sent() {
+    let log = Arc::new(Mutex::new(Recorder::default()));
+    let mut link = Link::open(Box::new(Fakes(Arc::clone(&log))), everything());
+    link.until_promoted();
+    link.drop_video_frames = vec![3];
+    for step in 200..220 {
+        link.show(step, true);
+    }
+    let repaired = link
+        .video()
+        .into_iter()
+        .find(|frame| frame.sequence == 3)
+        .expect("the dropped frame came back")
+        .clone();
+    // The fake encoder tags every frame with a token equal to its own count, so the third frame
+    // it produced has to come back carrying exactly that.
+    assert_eq!(repaired.token, Some(3));
+    assert!(!repaired.keyframe);
+    assert_eq!(repaired.payload, vec![0, 0, 0, 1, 0x26, 3]);
+}
+
+#[test]
+fn loss_beyond_what_parity_covers_is_reported_and_answered_with_a_refresh() {
+    let log = Arc::new(Mutex::new(Recorder::default()));
+    let mut link = Link::open(Box::new(Fakes(Arc::clone(&log))), everything());
+    link.until_promoted();
+    // A whole group, which no amount of parity for that group can rebuild.
+    link.drop_video_frames = vec![5, 6, 7, 8];
+    for step in 300..340 {
+        link.show(step, true);
+    }
+    assert_eq!(link.dropped, 4);
+
+    let arrived: Vec<u64> = link.video().iter().map(|frame| frame.sequence).collect();
+    assert!(
+        !arrived.contains(&5),
+        "a group that cannot be repaired must not be invented"
+    );
+    let asked = log.lock().unwrap().asked.clone();
+    assert!(
+        asked.iter().any(|asked| asked.refresh),
+        "the viewer reported the loss and the host answered with a reference refresh"
+    );
+    assert!(
+        asked.iter().skip(1).all(|asked| !asked.keyframe),
+        "and never with a keyframe"
+    );
+}
+
+#[test]
+fn a_viewer_without_the_parity_bit_is_sent_none() {
+    let log = Arc::new(Mutex::new(Recorder::default()));
+    let video_only = FeatureSet::none()
+        .with(FeatureSet::MOTION_VIDEO)
+        .with(FeatureSet::LONG_TERM_REFERENCES);
+    let mut link = Link::open(Box::new(Fakes(Arc::clone(&log))), video_only);
+    link.until_promoted();
+    for step in 400..430 {
+        link.show(step, true);
+    }
+    assert!(!link.video().is_empty(), "video is still streamed");
+    assert_eq!(
+        link.parity_sent, 0,
+        "parity costs bandwidth, so a viewer that cannot use it is sent none"
     );
 }
 

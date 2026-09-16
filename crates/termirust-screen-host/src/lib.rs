@@ -29,6 +29,7 @@ use termirust_screen_session::{
 };
 
 pub mod motion;
+pub mod parity;
 #[cfg(target_os = "macos")]
 mod video;
 

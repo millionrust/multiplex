@@ -12,10 +12,12 @@
 #![forbid(unsafe_code)]
 
 mod error;
+pub mod fec;
 mod framing;
 mod message;
 
 pub use error::ProtocolError;
+pub use fec::{Fec, MAX_SHARDS, pack_shard, shard_length, unpack_shard};
 pub use framing::{FrameReader, MAX_CONTROL_FRAME_BYTES, MAX_FRAME_BYTES, encode_frame};
 pub use message::{
     ControlHolder, FEATURES_PROTOCOL_VERSION, FeatureSet, Hello, InputKind, KeyEvent, MAX_PANES,

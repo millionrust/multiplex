@@ -530,9 +530,7 @@ fn event(value: ViewerEvent) -> Option<ScreenEvent> {
         ViewerEvent::Closed { reason } => ScreenEvent::Closed { reason },
         // The motion path. This binding builds a viewer that never advertises it, so a computer
         // never sends these; 4.4 adds the decoder and the phone-side events that carry it.
-        ViewerEvent::VideoConfig(_) | ViewerEvent::VideoFrame(_) | ViewerEvent::Parity(_) => {
-            return None;
-        }
+        ViewerEvent::VideoConfig(_) | ViewerEvent::VideoFrame(_) => return None,
     })
 }
 

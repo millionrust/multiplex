@@ -5,10 +5,11 @@ use std::collections::{HashMap, VecDeque};
 use termirust_screen_codec::{Decoder, FrameBuffer, Rect};
 use termirust_screen_protocol::{
     ControlHolder, FeatureSet, Hello, MAX_PANES, MAX_VIDEO_TOKENS, Message, PROTOCOL_VERSION,
-    PanePlacement, PaneSession, Parity, Profile, ResumeOutcome, ResumeRequest, SurfaceInfo,
-    VideoConfig, VideoFrame, Viewport,
+    PanePlacement, PaneSession, Profile, ResumeOutcome, ResumeRequest, SurfaceInfo, VideoConfig,
+    VideoFrame, Viewport,
 };
 
+use crate::video::{Repaired, VideoRepair};
 use crate::{InputEvent, SessionError, THUMBNAIL_CACHE_BYTES, THUMBNAIL_SURFACE_BIT};
 
 /// Something the viewer's interface should show.
@@ -40,8 +41,6 @@ pub enum ViewerEvent {
     VideoConfig(VideoConfig),
     /// One encoded frame of the motion region, to decode and draw into its rectangle.
     VideoFrame(VideoFrame),
-    /// One forward error correction shard for a group of video packets.
-    Parity(Parity),
     Closed {
         reason: String,
     },
@@ -68,6 +67,8 @@ pub struct ViewerSession {
     panes: HashMap<u32, Vec<PanePlacement>>,
     attached: Vec<PaneSession>,
     outbox: VecDeque<Message>,
+    /// Rebuilds video frames the link dropped, from the parity the host sends with each group.
+    repair: VideoRepair,
 }
 
 impl ViewerSession {
@@ -88,6 +89,7 @@ impl ViewerSession {
             panes: HashMap::new(),
             attached: Vec::new(),
             outbox: VecDeque::new(),
+            repair: VideoRepair::default(),
         }
     }
 
@@ -233,6 +235,27 @@ impl ViewerSession {
         Ok(())
     }
 
+    /// Turns a repair into events, and tells the host about anything parity could not rebuild.
+    ///
+    /// The report goes out on its own: the viewer knows a group failed before the application
+    /// does, and the sooner the host hears, the sooner it predicts from a reference this viewer
+    /// still holds instead of the one that never arrived.
+    fn deliver(&mut self, repaired: Repaired) -> Vec<ViewerEvent> {
+        for sequence in repaired.lost {
+            if self.agreed.has(FeatureSet::LONG_TERM_REFERENCES) {
+                self.outbox.push_back(Message::VideoLost {
+                    surface: repaired.surface,
+                    sequence,
+                });
+            }
+        }
+        repaired
+            .frames
+            .into_iter()
+            .map(ViewerEvent::VideoFrame)
+            .collect()
+    }
+
     /// Sends input. The host injects it only while this viewer holds control.
     pub fn send_input(&mut self, input: InputEvent) {
         self.outbox.push_back(input.into_message());
@@ -315,15 +338,26 @@ impl ViewerSession {
             (State::Open, Message::VideoConfig(config))
                 if self.agreed.has(FeatureSet::MOTION_VIDEO) =>
             {
+                // A new configuration is a new encoder, whose sequences and groups start again,
+                // so nothing kept for repair still describes this stream.
+                self.repair.restart(config.surface);
                 Ok(vec![ViewerEvent::VideoConfig(config)])
             }
             (State::Open, Message::VideoFrame(frame))
                 if self.agreed.has(FeatureSet::MOTION_VIDEO) =>
             {
-                Ok(vec![ViewerEvent::VideoFrame(frame)])
+                // Delivered first and repaired second: the code is systematic, so a frame that
+                // arrived is usable now and waiting for its group would be pure latency.
+                let mut events = vec![ViewerEvent::VideoFrame(frame.clone())];
+                if self.agreed.has(FeatureSet::VIDEO_PARITY) {
+                    let repaired = self.repair.frame(&frame);
+                    events.extend(self.deliver(repaired));
+                }
+                Ok(events)
             }
             (State::Open, Message::Parity(parity)) if self.agreed.has(FeatureSet::VIDEO_PARITY) => {
-                Ok(vec![ViewerEvent::Parity(parity)])
+                let repaired = self.repair.parity(&parity);
+                Ok(self.deliver(repaired))
             }
             (State::Open, _) => {
                 self.state = State::Closed;

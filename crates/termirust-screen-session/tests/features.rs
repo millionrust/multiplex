@@ -10,8 +10,8 @@ use termirust_screen_protocol::{
     VideoConfig, VideoFrame,
 };
 use termirust_screen_session::{
-    Grants, HostConfig, HostSession, ResumeStore, SessionError, TicketVerifier, ViewerEvent,
-    ViewerSession,
+    Grants, HostConfig, HostEvent, HostSession, ResumeStore, SessionError, TicketVerifier,
+    ViewerEvent, ViewerSession,
 };
 
 const TICKET: [u8; 32] = [7; 32];
@@ -155,6 +155,8 @@ fn a_negotiated_viewer_receives_video() {
         viewer.receive(Message::VideoFrame(frame.clone())),
         Ok(vec![ViewerEvent::VideoFrame(frame)])
     );
+    // Parity is the viewer's own business: it repairs what was lost and produces no event of its
+    // own. This group lost nothing, so there is nothing to produce.
     let parity = Parity {
         surface: 1,
         group: 0,
@@ -162,10 +164,7 @@ fn a_negotiated_viewer_receives_video() {
         data_shards: 4,
         payload: vec![0x5A],
     };
-    assert_eq!(
-        viewer.receive(Message::Parity(parity.clone())),
-        Ok(vec![ViewerEvent::Parity(parity)])
-    );
+    assert_eq!(viewer.receive(Message::Parity(parity)), Ok(Vec::new()));
 }
 
 #[test]
@@ -235,8 +234,11 @@ fn acknowledgements_from_a_viewer_that_never_agreed_end_the_session() {
             },
             &mut store,
         ),
-        Ok(Vec::new()),
-        "a viewer that did agree is not disconnected for acknowledging"
+        Ok(vec![HostEvent::VideoAcknowledged {
+            surface: 1,
+            tokens: vec![3],
+        }]),
+        "a viewer that did agree is not disconnected, and what it holds reaches the encoder"
     );
     assert_eq!(
         host.receive(
@@ -246,7 +248,10 @@ fn acknowledgements_from_a_viewer_that_never_agreed_end_the_session() {
             },
             &mut store,
         ),
-        Ok(Vec::new())
+        Ok(vec![HostEvent::VideoLost {
+            surface: 1,
+            sequence: 9,
+        }])
     );
     assert!(host.is_open());
 }

@@ -17,6 +17,8 @@ use termirust_screen_codec::{Frame, Rect};
 use termirust_screen_protocol::{FeatureSet, MotionCodec, VideoConfig, VideoFrame};
 use termirust_screen_session::{HostSession, TicketVerifier};
 
+use crate::parity::{ParityPolicy, parity_for};
+
 /// What the encoder should do with the frame being submitted.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct MotionRequest<'a> {
@@ -65,6 +67,8 @@ pub struct MotionSender {
     refresh: bool,
     /// References the viewer says it holds. Only ever what it told us.
     acknowledged: Vec<u32>,
+    /// How much parity the link currently deserves.
+    policy: ParityPolicy,
 }
 
 impl std::fmt::Debug for MotionSender {
@@ -89,6 +93,10 @@ struct Active {
     sent_config: bool,
     /// The first frame of a new encoder has nothing to predict from.
     first: bool,
+    /// Frames encoded since the last group closed, kept so their parity can be built.
+    group: Vec<VideoFrame>,
+    /// Groups closed on this encoder, which is what names a parity shard's group.
+    groups: u64,
     /// The pixels last handed to the encoder. A region can stop changing long before the tile
     /// encoder demotes it — and while the rest of the screen is silent, demotion can wait a long
     /// time — so an identical region is not encoded again. A viewer holding the last frame of a
@@ -103,6 +111,7 @@ impl MotionSender {
             state: None,
             refresh: false,
             acknowledged: Vec::new(),
+            policy: ParityPolicy::default(),
         }
     }
 
@@ -122,6 +131,7 @@ impl MotionSender {
     /// the viewer still holds — not a keyframe.
     pub fn lost(&mut self) {
         self.refresh = true;
+        self.policy.lost();
     }
 
     /// Stops streaming, so the next frame starts a fresh encoder. Called when the viewer leaves.
@@ -170,6 +180,8 @@ impl MotionSender {
                 sequence: 0,
                 sent_config: false,
                 first: true,
+                group: Vec::new(),
+                groups: 0,
                 last: Vec::new(),
             });
         }
@@ -218,13 +230,43 @@ impl MotionSender {
                 }
             }
             active.sequence += 1;
-            session.send_video_frame(VideoFrame {
+            let sent = VideoFrame {
                 surface,
                 sequence: active.sequence,
                 keyframe: encoded.keyframe,
                 token: encoded.token,
                 payload: encoded.payload,
-            });
+            };
+            active.group.push(sent.clone());
+            session.send_video_frame(sent);
+        }
+        // Parity closes the group after the frames, not before: the shards repair what has
+        // already gone out, and a viewer that lost nothing simply ignores them.
+        while self
+            .state
+            .as_ref()
+            .is_some_and(|active| active.group.len() >= self.policy.group())
+        {
+            self.close_group(session, surface);
+        }
+    }
+
+    /// Sends the parity for a full group, and moves the ratio to whatever the link is doing.
+    fn close_group<V: TicketVerifier>(&mut self, session: &mut HostSession<V>, surface: u32) {
+        let Some(active) = self.state.as_mut() else {
+            return;
+        };
+        let taken = self.policy.group().min(active.group.len());
+        let frames: Vec<VideoFrame> = active.group.drain(..taken).collect();
+        let group = active.groups;
+        active.groups += 1;
+        let shards = self.policy.close_group();
+        if !session.agreed_features().has(FeatureSet::VIDEO_PARITY) {
+            return;
+        }
+        // A group that cannot be covered sends nothing; the reference path still covers it.
+        for parity in parity_for(surface, group, &frames, shards).unwrap_or_default() {
+            session.send_parity(parity);
         }
     }
 }
