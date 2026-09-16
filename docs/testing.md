@@ -35,6 +35,25 @@ The isolated browser policy, artifact, hostile-page, and opt-in live Chrome gate
 If Chrome/Chromium is unavailable, its live portion prints `SKIPPED(browser)` while the unit,
 MCP-contract, strict Clippy, and static containment checks still run.
 
+## Docker-backed SSH and SFTP tests
+
+These tests start a container with an SSH server. They skip themselves when no Docker daemon
+answers, so a machine without Docker still runs the rest of the suite.
+
+The fixture image carries its own key and sshd policy, so the tests also run against a daemon on
+another machine:
+
+```bash
+export DOCKER_HOST=ssh://build-box
+# Only when the daemon's own name does not resolve to an address its published ports are
+# reachable at, such as a host on several private networks:
+export TERMIRUST_DOCKER_FIXTURE_HOST=100.81.49.235
+cargo test -p termirust --locked
+```
+
+With a remote daemon the container publishes its SSH port on that machine's interfaces rather
+than its loopback, so reach it over a private network rather than the public internet.
+
 ## Launch Qualification
 
 Run the bounded automated qualification matrix with:

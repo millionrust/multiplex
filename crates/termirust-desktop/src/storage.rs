@@ -47,6 +47,17 @@ const PORTABLE_BUNDLE_ARGON2_PARALLELISM: u32 = 1;
 #[cfg(test)]
 thread_local! {
     static TEST_APP_DIR_OVERRIDE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+    static TEST_SSH_DIR_OVERRIDE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+}
+
+/// The user's SSH directory, whose keys and hosts the app imports at startup. Tests point it
+/// somewhere of their own, so a developer's own keys never take part in a test.
+fn ssh_dir() -> Option<PathBuf> {
+    #[cfg(test)]
+    if let Some(path) = TEST_SSH_DIR_OVERRIDE.with(|override_path| override_path.borrow().clone()) {
+        return Some(path);
+    }
+    dirs::home_dir().map(|home| home.join(".ssh"))
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -127,6 +138,11 @@ pub(crate) fn controller_store_dir() -> Result<PathBuf> {
 #[cfg(test)]
 pub(crate) fn set_test_app_dir_override(path: Option<PathBuf>) -> Option<PathBuf> {
     TEST_APP_DIR_OVERRIDE.with(|override_path| override_path.replace(path))
+}
+
+#[cfg(test)]
+pub(crate) fn set_test_ssh_dir_override(path: Option<PathBuf>) -> Option<PathBuf> {
+    TEST_SSH_DIR_OVERRIDE.with(|override_path| override_path.replace(path))
 }
 
 fn state_file() -> Result<PathBuf> {
@@ -658,11 +674,9 @@ pub fn save_saved_state(state: &SavedState) -> Result<()> {
 }
 
 pub fn load_local_ssh_identities() -> Result<Vec<ImportedIdentity>> {
-    let Some(home_dir) = dirs::home_dir() else {
+    let Some(ssh_dir) = ssh_dir() else {
         return Ok(Vec::new());
     };
-
-    let ssh_dir = home_dir.join(".ssh");
     if !ssh_dir.exists() {
         return Ok(Vec::new());
     }
@@ -773,11 +787,11 @@ fn identity_priority(label: &str) -> u8 {
 }
 
 pub fn load_local_ssh_hosts() -> Result<Vec<HostProfile>> {
-    let Some(home_dir) = dirs::home_dir() else {
+    let Some(ssh_dir) = ssh_dir() else {
         return Ok(Vec::new());
     };
 
-    let config_path = home_dir.join(".ssh").join("config");
+    let config_path = ssh_dir.join("config");
     if !config_path.exists() {
         return Ok(Vec::new());
     }

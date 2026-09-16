@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::fs;
 use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs as _};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 #[cfg(unix)]
@@ -10,9 +10,51 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::storage::set_test_app_dir_override;
+use crate::storage::{set_test_app_dir_override, set_test_ssh_dir_override};
 
 const TEST_SSH_IMAGE: &str = "termirust-e2e-sshd:local";
+/// Where the Docker daemon runs. `DOCKER_HOST` names another machine (`tcp://host:2375`,
+/// `ssh://user@host`), and a container's published ports are then on that machine, not here.
+fn docker_daemon_host() -> Option<String> {
+    let value = std::env::var("DOCKER_HOST").ok()?;
+    let rest = value.split_once("://").map(|(_, rest)| rest)?;
+    if value.starts_with("unix://") || value.starts_with("npipe://") {
+        return None;
+    }
+    let authority = rest.split(['/', '?']).next()?;
+    let host = authority
+        .rsplit_once('@')
+        .map(|(_, host)| host)
+        .unwrap_or(authority);
+    let host = match host.rsplit_once(':') {
+        Some((head, tail)) if tail.chars().all(|c| c.is_ascii_digit()) && !head.is_empty() => head,
+        _ => host,
+    };
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    (!host.is_empty() && host != "localhost" && host != "127.0.0.1").then(|| host.to_owned())
+}
+
+/// The address a test reaches the fixture on, and the interface the container publishes to.
+/// A daemon on another machine has to publish beyond its own loopback for this machine to
+/// connect, so this is only widened when the daemon is not local.
+///
+/// `TERMIRUST_DOCKER_FIXTURE_HOST` names the address to reach that machine on, for a daemon
+/// whose own name does not resolve to an address these ports are reachable at, such as a host
+/// on several private networks.
+fn fixture_host() -> String {
+    match std::env::var("TERMIRUST_DOCKER_FIXTURE_HOST") {
+        Ok(host) if !host.trim().is_empty() => host.trim().to_owned(),
+        _ => docker_daemon_host().unwrap_or_else(|| "127.0.0.1".to_owned()),
+    }
+}
+
+fn published_interface() -> &'static str {
+    if docker_daemon_host().is_some() {
+        "0.0.0.0"
+    } else {
+        "127.0.0.1"
+    }
+}
 const TEST_SSH_USER: &str = "termirust";
 const TEST_SSH_PASSWORD: &str = "termirust-pass";
 pub const TEST_POLL_INTERVAL: Duration = Duration::from_millis(20);
@@ -248,6 +290,7 @@ fn ensure_test_ssh_image() -> Result<(), String> {
 pub struct TestIsolation {
     _lock: MutexGuard<'static, ()>,
     temp_dir: PathBuf,
+    previous_ssh_dir: Option<PathBuf>,
     previous_config_dir: Option<PathBuf>,
 }
 
@@ -263,11 +306,15 @@ impl TestIsolation {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clear();
         let previous_config_dir = set_test_app_dir_override(Some(temp_dir.clone()));
+        // The app imports the keys and hosts in the user's SSH directory at startup. Tests get
+        // an empty one of their own, so a developer's own keys never take part in a test.
+        let previous_ssh_dir = set_test_ssh_dir_override(Some(temp_dir.join("ssh")));
 
         Self {
             _lock: lock,
             temp_dir,
             previous_config_dir,
+            previous_ssh_dir,
         }
     }
 }
@@ -279,12 +326,14 @@ impl Drop for TestIsolation {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clear();
         set_test_app_dir_override(self.previous_config_dir.clone());
+        set_test_ssh_dir_override(self.previous_ssh_dir.clone());
         let _ = fs::remove_dir_all(&self.temp_dir);
     }
 }
 
 pub struct DockerSshServer {
     container_name: String,
+    host: String,
     pub port: u16,
 }
 
@@ -397,27 +446,19 @@ impl DockerSshServer {
     }
 
     pub fn start() -> Result<Self, String> {
-        Self::start_with_port_mapping("127.0.0.1::22")
+        Self::start_with_port_mapping(&format!("{}::22", published_interface()))
     }
 
     pub fn start_on_port(port: u16) -> Result<Self, String> {
-        Self::start_with_port_mapping(&format!("127.0.0.1:{port}:22"))
+        Self::start_with_port_mapping(&format!("{}:{port}:22", published_interface()))
     }
 
     fn start_with_port_mapping(port_mapping: &str) -> Result<Self, String> {
         ensure_test_ssh_image()?;
 
         let container_name = format!("termirust-e2e-sshd-{}", unique_suffix());
-        let fixture_dir =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/ssh-server");
-        let ca_mount = format!(
-            "{}:/etc/ssh/termirust_test_ca.pub:ro",
-            fixture_dir.join("id_ed25519.pub").display()
-        );
-        let policy_mount = format!(
-            "{}:/etc/ssh/sshd_config.d/termirust-test-ca.conf:ro",
-            fixture_dir.join("certificate-auth.conf").display()
-        );
+        // The image carries the CA key and its sshd policy, rather than mounting them, so the
+        // fixture also runs against a Docker daemon on another machine.
         run_command(
             "docker",
             &[
@@ -426,10 +467,6 @@ impl DockerSshServer {
                 "--rm",
                 "--name",
                 &container_name,
-                "--volume",
-                &ca_mount,
-                "--volume",
-                &policy_mount,
                 "-p",
                 port_mapping,
                 TEST_SSH_IMAGE,
@@ -452,6 +489,7 @@ impl DockerSshServer {
 
         let server = Self {
             container_name,
+            host: fixture_host(),
             port,
         };
         if let Err(error) = server.wait_until_ready() {
@@ -462,7 +500,7 @@ impl DockerSshServer {
     }
 
     pub fn host(&self) -> &str {
-        "127.0.0.1"
+        &self.host
     }
 
     pub fn username(&self) -> &str {
@@ -487,7 +525,11 @@ impl DockerSshServer {
 
     fn wait_until_ready(&self) -> Result<(), String> {
         let deadline = Instant::now() + Duration::from_secs(20);
-        let address = SocketAddr::from(([127, 0, 0, 1], self.port));
+        let address = (self.host.as_str(), self.port)
+            .to_socket_addrs()
+            .map_err(|error| format!("unable to resolve {}: {error}", self.host))?
+            .next()
+            .ok_or_else(|| format!("{} resolved to nothing", self.host))?;
 
         while Instant::now() < deadline {
             if let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(250))

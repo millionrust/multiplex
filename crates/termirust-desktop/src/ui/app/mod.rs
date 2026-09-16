@@ -22112,7 +22112,7 @@ sleep 1
                 .and_then(|pane| pane.connected.then_some(()))
         });
 
-        let endpoint = format!("127.0.0.1:{}", server.port);
+        let endpoint = format!("{}:{}", server.host(), server.port);
         app.read_with(cx, |app, _| {
             assert!(
                 app.known_hosts
@@ -29660,10 +29660,9 @@ sleep 1
         )
         .expect("unable to write temp ssh config");
 
-        let previous_home = std::env::var_os("HOME");
-        unsafe {
-            std::env::set_var("HOME", &temp_home);
-        }
+        // Import reads the user's SSH directory, which the test isolation points at an empty
+        // one; aim it at this fixture instead of changing HOME for the whole process.
+        let previous_ssh_dir = crate::storage::set_test_ssh_dir_override(Some(ssh_dir.clone()));
 
         let chevron_click = selector_click_center(window, cx, "library-new-host-chevron");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
@@ -29673,10 +29672,7 @@ sleep 1
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(import_click, gpui::Modifiers::none());
 
-        match previous_home {
-            Some(home) => unsafe { std::env::set_var("HOME", home) },
-            None => unsafe { std::env::remove_var("HOME") },
-        }
+        crate::storage::set_test_ssh_dir_override(previous_ssh_dir);
 
         app.read_with(cx, |app, _| {
             let profile = app

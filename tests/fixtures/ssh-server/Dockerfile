@@ -18,6 +18,9 @@ RUN useradd -m -s /bin/sh termirust \
 EXPOSE 22
 
 COPY entrypoint.sh /entrypoint.sh
+# Baked in rather than mounted, so the fixture also runs against a Docker daemon on
+# another machine, which cannot see this machine's files.
+COPY certificate-auth.conf /etc/ssh/sshd_config.d/termirust-test-ca.conf
 COPY termirust-controller-test-shim.sh /usr/local/bin/termirust
 COPY id_ed25519.pub /tmp/id_ed25519.pub
 RUN cat /tmp/id_ed25519.pub >> /home/termirust/.ssh/authorized_keys \
