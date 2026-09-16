@@ -4,9 +4,9 @@ use std::collections::{HashMap, VecDeque};
 
 use termirust_screen_codec::{Decoder, FrameBuffer, Rect};
 use termirust_screen_protocol::{
-    ControlHolder, FeatureSet, Hello, MAX_PANES, Message, PROTOCOL_VERSION, PanePlacement,
-    PaneSession, Parity, Profile, ResumeOutcome, ResumeRequest, SurfaceInfo, VideoConfig,
-    VideoFrame, Viewport,
+    ControlHolder, FeatureSet, Hello, MAX_PANES, MAX_VIDEO_TOKENS, Message, PROTOCOL_VERSION,
+    PanePlacement, PaneSession, Parity, Profile, ResumeOutcome, ResumeRequest, SurfaceInfo,
+    VideoConfig, VideoFrame, Viewport,
 };
 
 use crate::{InputEvent, SessionError, THUMBNAIL_CACHE_BYTES, THUMBNAIL_SURFACE_BIT};
@@ -203,6 +203,34 @@ impl ViewerSession {
     /// Terminal panes on `surface`, as the host last published them.
     pub fn panes(&self, surface: u32) -> &[PanePlacement] {
         self.panes.get(&surface).map_or(&[], Vec::as_slice)
+    }
+
+    /// Tells the host what this viewer's decoder holds and what it could not rebuild.
+    ///
+    /// `held` names every long-term reference still in the decoder — the host may predict from
+    /// those and nothing else. `lost` names a frame that did not arrive whole, which the host
+    /// answers by predicting from an older held reference rather than by sending a keyframe.
+    ///
+    /// Refused when this viewer never negotiated long-term references, because a host that did
+    /// not agree to them would close the session on receiving one.
+    pub fn report_video(
+        &mut self,
+        surface: u32,
+        held: &[u32],
+        lost: Option<u64>,
+    ) -> Result<(), SessionError> {
+        if !self.agreed.has(FeatureSet::LONG_TERM_REFERENCES) {
+            return Err(SessionError::ProtocolViolation);
+        }
+        let mut tokens = held.to_vec();
+        tokens.truncate(MAX_VIDEO_TOKENS);
+        self.outbox
+            .push_back(Message::VideoAcknowledge { surface, tokens });
+        if let Some(sequence) = lost {
+            self.outbox
+                .push_back(Message::VideoLost { surface, sequence });
+        }
+        Ok(())
     }
 
     /// Sends input. The host injects it only while this viewer holds control.

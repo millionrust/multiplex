@@ -14,6 +14,9 @@ termirust-screen-protocol = { version = "0.1.0", path = "../termirust-screen-pro
 termirust-screen-session = { version = "0.1.0", path = "../termirust-screen-session" }
 tokio = { version = "1", features = ["sync"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+termirust-screen-video = { version = "0.1.0", path = "../termirust-screen-video" }
+
 [dev-dependencies]
 termirust-controller-security = { version = "0.1.0", path = "../termirust-controller-security" }
 termirust-domain = { version = "0.1.0", path = "../termirust-domain" }

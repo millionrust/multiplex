@@ -199,7 +199,10 @@ fn a_version_1_host_still_paints_the_same_picture() {
         .collect();
 
     let (updates, pixels_sha256) = replay(&frames);
-    assert_eq!(updates, recorded["expected_updates"].as_u64().unwrap() as u32);
+    assert_eq!(
+        updates,
+        recorded["expected_updates"].as_u64().unwrap() as u32
+    );
     assert_eq!(
         pixels_sha256,
         recorded["pixels_sha256"].as_str().unwrap(),

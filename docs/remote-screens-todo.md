@@ -259,7 +259,16 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   fail closed on anything neither side negotiated.
   The recorded Stage A session in `screen-session-v1.json` is kept byte for byte and replayed by
   the current viewer; `screen-session-v2.json` pins what this build records.
-- [ ] 4.2 `feat(screen-host): encode motion regions with VideoToolbox and LTR recovery`
+- [x] 4.2 `feat(screen-host): encode motion regions with VideoToolbox and LTR recovery`
+  A new `termirust-screen-video` crate holds the VideoToolbox session and the one `unsafe` block in
+  this path, with no dependencies at all; `termirust-screen-host` drives it behind `MotionEncoder`
+  and keeps `#![forbid(unsafe_code)]`. Payloads are Annex B, because Android needs it and Apple does
+  not mind. Two things the tests pin: a frozen region stops producing frames rather than re-encoding
+  a still picture, and a report of loss asks for a reference refresh, never a keyframe.
+  Found along the way: while the rest of the screen is silent the viewer stops acknowledging, the
+  tile encoder stalls on back-pressure, and a motion region then never demotes. Real desktops always
+  have something ticking, so this is not yet a bug worth its own change, but 5.2 should not assume
+  demotion is timely.
 - [ ] 4.3 `feat(screen-transport): send video as datagrams with forward error correction`
 - [ ] 4.4 `feat(screen-client): decode motion regions natively on desktop, iOS and Android`
 

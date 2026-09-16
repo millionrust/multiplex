@@ -1,0 +1,395 @@
+//! The motion path, from a rectangle that starts moving to the video a viewer receives.
+//!
+//! The encoder here is a fake, because what is being tested is the protocol around it: that a
+//! region is only streamed once both sides agreed to it, that the decoder configuration goes out
+//! before the first frame, that loss is answered with a reference refresh rather than a keyframe,
+//! and that demotion stops the stream. The real encoder is tested against real hardware in
+//! `termirust-screen-video`.
+
+use std::sync::{Arc, Mutex};
+
+use termirust_screen_codec::{FrameBuffer, Rect, Size};
+use termirust_screen_host::{
+    MotionEncoder, MotionEncoders, MotionFrame, MotionRequest, MotionSender, NoEncoders,
+};
+use termirust_screen_protocol::{FeatureSet, MotionCodec, Profile};
+use termirust_screen_session::{
+    Grants, HostConfig, HostEvent, HostSession, ResumeStore, TicketVerifier, ViewerEvent,
+    ViewerSession,
+};
+
+const TICKET: [u8; 32] = [7; 32];
+const SURFACE: u32 = 1;
+/// Four tiles across and three down, which clears the tracker's twelve-tile floor.
+const REGION: Rect = Rect {
+    x: 128,
+    y: 64,
+    width: 256,
+    height: 192,
+};
+
+struct Tickets;
+
+impl TicketVerifier for Tickets {
+    fn verify(&mut self, proof: &[u8; 32]) -> Option<Grants> {
+        (*proof == TICKET).then_some(Grants {
+            device: 1,
+            can_view: true,
+            can_control: false,
+        })
+    }
+}
+
+fn size() -> Size {
+    Size::new(640, 400).unwrap()
+}
+
+/// What the fake encoder was asked to do, so the test can read the loop back.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct Asked {
+    acknowledged: Vec<u32>,
+    refresh: bool,
+    keyframe: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+struct Recorder {
+    opened: Vec<(u32, u32)>,
+    asked: Vec<Asked>,
+}
+
+/// An encoder that answers every frame, so the test is about the protocol rather than about
+/// VideoToolbox's buffering.
+struct Fake {
+    log: Arc<Mutex<Recorder>>,
+    token: u32,
+}
+
+impl MotionEncoder for Fake {
+    fn parameter_sets(&self) -> Vec<u8> {
+        vec![0, 0, 0, 1, 0x40, 0x01]
+    }
+
+    fn encode(&mut self, bgra: &[u8], request: MotionRequest<'_>) -> Vec<MotionFrame> {
+        assert_eq!(
+            bgra.len(),
+            REGION.width as usize * REGION.height as usize * 4,
+            "the encoder is handed exactly the region, tightly packed"
+        );
+        self.log.lock().unwrap().asked.push(Asked {
+            acknowledged: request.acknowledged.to_vec(),
+            refresh: request.refresh,
+            keyframe: request.keyframe,
+        });
+        self.token += 1;
+        vec![MotionFrame {
+            payload: vec![0, 0, 0, 1, 0x26, self.token as u8],
+            keyframe: request.keyframe,
+            token: Some(self.token),
+        }]
+    }
+}
+
+struct Fakes(Arc<Mutex<Recorder>>);
+
+impl MotionEncoders for Fakes {
+    fn open(&self, width: u32, height: u32) -> Option<Box<dyn MotionEncoder>> {
+        self.0.lock().unwrap().opened.push((width, height));
+        Some(Box::new(Fake {
+            log: Arc::clone(&self.0),
+            token: 0,
+        }))
+    }
+}
+
+/// A screen with a rectangle of noise that changes every frame, and a still background.
+fn screen(step: u32, moving: bool) -> FrameBuffer {
+    let mut buffer = FrameBuffer::new(size());
+    buffer
+        .fill_rect(size().bounds(), [236, 232, 228, 255])
+        .unwrap();
+    let shade = if moving { (step * 37 % 200) as u8 } else { 40 };
+    for row in 0..REGION.height / 8 {
+        let y = REGION.y + row * 8;
+        let width = if moving {
+            (row * 29 + step * 17) % REGION.width + 8
+        } else {
+            REGION.width
+        };
+        buffer
+            .fill_rect(
+                Rect::new(REGION.x, y, width.min(REGION.width), 8),
+                [shade, shade.wrapping_add(40), shade.wrapping_add(80), 255],
+            )
+            .unwrap();
+    }
+    // A clock in the corner, well away from the region and far too small to be promoted itself.
+    // Something on a real desktop always ticks, and without it the tile path would go completely
+    // silent and stop acknowledging, which is not what demotion should be tested against.
+    let tick = (step % 18) * 2;
+    buffer
+        .fill_rect(Rect::new(560, 340, 40, 20), [250, 250, 250, 255])
+        .unwrap();
+    buffer
+        .fill_rect(Rect::new(560 + tick, 340, 4, 20), [20, 20, 20, 255])
+        .unwrap();
+    buffer
+}
+
+struct Link {
+    host: HostSession<Tickets>,
+    viewer: ViewerSession,
+    store: ResumeStore,
+    sender: MotionSender,
+    events: Vec<ViewerEvent>,
+    now_ms: u64,
+}
+
+impl Link {
+    /// A host and viewer that both advertise everything, already open and subscribed.
+    fn open(encoders: Box<dyn MotionEncoders>, viewer_features: FeatureSet) -> Self {
+        let mut link = Self {
+            host: HostSession::new(
+                vec![termirust_screen_protocol::SurfaceInfo {
+                    id: SURFACE,
+                    size: size(),
+                    scale_milli: 2000,
+                    name: "Built-in Display".to_owned(),
+                }],
+                Tickets,
+                HostConfig {
+                    features: FeatureSet::from_bits(FeatureSet::KNOWN),
+                    ..HostConfig::default()
+                },
+            ),
+            viewer: ViewerSession::with_features(64 << 20, viewer_features),
+            store: ResumeStore::default(),
+            sender: MotionSender::new(encoders),
+            events: Vec::new(),
+            now_ms: 0,
+        };
+        link.viewer.connect(TICKET);
+        link.viewer.subscribe(SURFACE, Profile::Interactive);
+        link.pump();
+        link
+    }
+
+    fn pump(&mut self) {
+        loop {
+            let mut moved = false;
+            while let Some(message) = self.viewer.poll_outgoing() {
+                moved = true;
+                for event in self
+                    .host
+                    .receive(message, &mut self.store)
+                    .expect("the host accepts the viewer")
+                {
+                    match event {
+                        HostEvent::VideoAcknowledged { tokens, .. } => {
+                            self.sender.acknowledged(&tokens)
+                        }
+                        HostEvent::VideoLost { .. } => self.sender.lost(),
+                        _ => {}
+                    }
+                }
+            }
+            while let Some(message) = self.host.poll_outgoing() {
+                moved = true;
+                self.events
+                    .extend(self.viewer.receive(message).expect("the viewer accepts"));
+            }
+            if !moved {
+                return;
+            }
+        }
+    }
+
+    /// Shows one frame, exactly as `ScreenHostHandle::frame` does: tiles first, then video.
+    fn show(&mut self, step: u32, moving: bool) {
+        let buffer = screen(step, moving);
+        let frame = buffer.as_frame();
+        self.host
+            .frame(SURFACE, &frame, None, self.now_ms)
+            .expect("the tile encoder takes the frame");
+        self.sender.frame(&mut self.host, SURFACE, &frame);
+        self.now_ms += 40;
+        self.pump();
+    }
+
+    /// Frames until the tile encoder promotes the region, or a bound is reached.
+    fn until_promoted(&mut self) {
+        for step in 0..40 {
+            self.show(step, true);
+            if self.sender.region().is_some() {
+                return;
+            }
+        }
+        panic!("the region was never promoted");
+    }
+
+    fn video(&self) -> Vec<&termirust_screen_protocol::VideoFrame> {
+        self.events
+            .iter()
+            .filter_map(|event| match event {
+                ViewerEvent::VideoFrame(frame) => Some(frame),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+fn everything() -> FeatureSet {
+    FeatureSet::from_bits(FeatureSet::KNOWN)
+}
+
+#[test]
+fn a_promoted_region_is_streamed_with_its_decoder_configuration_first() {
+    let log = Arc::new(Mutex::new(Recorder::default()));
+    let mut link = Link::open(Box::new(Fakes(Arc::clone(&log))), everything());
+    link.until_promoted();
+
+    assert_eq!(
+        log.lock().unwrap().opened,
+        vec![(REGION.width, REGION.height)],
+        "one encoder, opened for the region the tile encoder chose"
+    );
+    let configs: Vec<_> = link
+        .events
+        .iter()
+        .filter_map(|event| match event {
+            ViewerEvent::VideoConfig(config) => Some(config),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(configs.len(), 1, "the configuration is sent once");
+    assert_eq!(configs[0].codec, MotionCodec::Hevc);
+    assert_eq!(configs[0].rect, REGION);
+    assert!(!configs[0].payload.is_empty());
+
+    // The configuration reaches the viewer before anything that needs it.
+    let config_at = link
+        .events
+        .iter()
+        .position(|event| matches!(event, ViewerEvent::VideoConfig(_)));
+    let frame_at = link
+        .events
+        .iter()
+        .position(|event| matches!(event, ViewerEvent::VideoFrame(_)));
+    assert!(config_at < frame_at, "a decoder cannot start without it");
+
+    let video = link.video();
+    assert!(video[0].keyframe, "a new stream opens with a keyframe");
+    assert_eq!(video[0].sequence, 1);
+    assert!(
+        video
+            .windows(2)
+            .all(|pair| pair[1].sequence > pair[0].sequence),
+        "sequences only go up"
+    );
+    assert!(
+        video[1..].iter().all(|frame| !frame.keyframe),
+        "nothing after the first frame needs to be a keyframe"
+    );
+}
+
+#[test]
+fn a_viewer_that_never_negotiated_video_gets_tiles_only() {
+    let log = Arc::new(Mutex::new(Recorder::default()));
+    let mut link = Link::open(Box::new(Fakes(Arc::clone(&log))), FeatureSet::none());
+    for step in 0..40 {
+        link.show(step, true);
+    }
+    assert!(link.sender.region().is_none());
+    assert!(
+        log.lock().unwrap().opened.is_empty(),
+        "no encoder was opened"
+    );
+    assert!(link.video().is_empty());
+    assert!(
+        link.events
+            .iter()
+            .any(|event| matches!(event, ViewerEvent::MotionRegion { rect: Some(_), .. })),
+        "the region was still promoted; only the video is missing"
+    );
+}
+
+#[test]
+fn a_machine_without_an_encoder_keeps_the_tile_path() {
+    let mut link = Link::open(Box::new(NoEncoders), everything());
+    for step in 0..40 {
+        link.show(step, true);
+    }
+    assert!(link.sender.region().is_none());
+    assert!(link.video().is_empty());
+}
+
+#[test]
+fn loss_is_answered_with_a_reference_refresh_and_not_a_keyframe() {
+    let log = Arc::new(Mutex::new(Recorder::default()));
+    let mut link = Link::open(Box::new(Fakes(Arc::clone(&log))), everything());
+    link.until_promoted();
+
+    // The viewer confirms what it holds, then reports one frame it could not rebuild.
+    let held: Vec<u32> = link
+        .video()
+        .iter()
+        .filter_map(|frame| frame.token)
+        .collect();
+    let lost = link.video().last().expect("a frame to lose").sequence;
+    link.viewer
+        .report_video(SURFACE, &held, Some(lost))
+        .expect("a negotiated viewer may report");
+    link.pump();
+    let before = link.video().len();
+    link.show(100, true);
+
+    let asked = log.lock().unwrap().asked.clone();
+    let recovery = asked.last().expect("a frame was submitted");
+    assert!(recovery.refresh, "loss recovers from an older reference");
+    assert!(
+        !recovery.keyframe,
+        "a keyframe is the cost the motion path exists to avoid"
+    );
+    assert_eq!(
+        recovery.acknowledged, held,
+        "the encoder may only predict from what the viewer said it holds"
+    );
+    let after = link.video();
+    assert!(after.len() > before, "a recovery frame was sent");
+    assert!(!after[before].keyframe);
+
+    // The refresh is asked for once, not on every frame after the report.
+    link.show(101, true);
+    let asked = log.lock().unwrap().asked.clone();
+    assert!(
+        !asked.last().unwrap().refresh,
+        "the refresh already happened"
+    );
+}
+
+#[test]
+fn demotion_stops_the_stream_and_the_region_returns_to_tiles() {
+    let log = Arc::new(Mutex::new(Recorder::default()));
+    let mut link = Link::open(Box::new(Fakes(Arc::clone(&log))), everything());
+    link.until_promoted();
+
+    // The rectangle goes still. The picture it froze on is sent once, because that frame did
+    // change; after that there is nothing to encode, and the tracker demotes the region.
+    link.show(1_000, false);
+    let streamed = link.video().len();
+    for step in 1..40 {
+        link.show(1_000 + step, false);
+    }
+    assert!(link.sender.region().is_none(), "the encoder was released");
+    assert_eq!(
+        link.video().len(),
+        streamed,
+        "nothing more was streamed once the region went still"
+    );
+    assert!(
+        link.events
+            .iter()
+            .any(|event| matches!(event, ViewerEvent::MotionRegion { rect: None, .. })),
+        "the viewer was told the region is back on the tile path"
+    );
+}

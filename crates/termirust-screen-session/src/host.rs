@@ -8,7 +8,8 @@ use termirust_screen_codec::{
 };
 use termirust_screen_protocol::{
     ControlHolder, FeatureSet, Hello, MAX_PANES, Message, PROTOCOL_VERSION, PanePlacement,
-    PaneSession, Profile, ResumeOutcome, SurfaceInfo, Viewport, Welcome,
+    PaneSession, Parity, Profile, ResumeOutcome, SurfaceInfo, VideoConfig, VideoFrame, Viewport,
+    Welcome,
 };
 
 use crate::{InputEvent, SessionError};
@@ -84,6 +85,18 @@ pub enum HostEvent {
     /// The viewer asked for control and is allowed to have it; call [`HostSession::set_control`].
     ControlRequested,
     ControlReleased,
+    /// Long-term references the viewer has decoded and still holds. The encoder may predict from
+    /// any of them; anything not named here may have been lost.
+    VideoAcknowledged {
+        surface: u32,
+        tokens: Vec<u32>,
+    },
+    /// A frame the viewer could not rebuild. The encoder answers with a reference refresh, not a
+    /// keyframe: that is the whole point of the motion path.
+    VideoLost {
+        surface: u32,
+        sequence: u64,
+    },
 }
 
 /// Encoders kept after a viewer leaves, so it can resume on its next connection.
@@ -386,10 +399,11 @@ impl<V: TicketVerifier> HostSession<V> {
             {
                 self.fail(SessionError::ProtocolViolation, "video_not_agreed", store)
             }
-            Message::VideoAcknowledge { .. } | Message::VideoLost { .. } => {
-                // M4 wires these to the encoder; until then they are accepted and ignored, so a
-                // viewer that advertises the feature is not disconnected for using it.
-                Ok(Vec::new())
+            Message::VideoAcknowledge { surface, tokens } => {
+                Ok(vec![HostEvent::VideoAcknowledged { surface, tokens }])
+            }
+            Message::VideoLost { surface, sequence } => {
+                Ok(vec![HostEvent::VideoLost { surface, sequence }])
             }
             Message::Hello(_)
             | Message::Welcome(_)
@@ -467,6 +481,41 @@ impl<V: TicketVerifier> HostSession<V> {
                 subscription.pending.add(None);
             }
         }
+    }
+
+    /// The motion region of `surface`, once the tile encoder promoted one. Whoever owns the
+    /// video encoder reads this to know what to encode, and gets `None` back the moment the
+    /// region is demoted and the tile path takes the rectangle again.
+    pub fn motion_region(&self, surface: u32) -> Option<Rect> {
+        self.subscriptions
+            .get(&key_for(surface, Profile::Interactive))
+            .and_then(|subscription| subscription.encoder.motion_region())
+    }
+
+    /// Sends the decoder configuration for a surface's motion region.
+    ///
+    /// Dropped unless the viewer negotiated the motion path, so a caller that keeps an encoder
+    /// running does not have to ask before every send.
+    pub fn send_video_config(&mut self, config: VideoConfig) -> bool {
+        self.send_video(Message::VideoConfig(config), FeatureSet::MOTION_VIDEO)
+    }
+
+    /// Sends one encoded frame of a motion region. See [`Self::send_video_config`].
+    pub fn send_video_frame(&mut self, frame: VideoFrame) -> bool {
+        self.send_video(Message::VideoFrame(frame), FeatureSet::MOTION_VIDEO)
+    }
+
+    /// Sends one forward error correction shard. See [`Self::send_video_config`].
+    pub fn send_parity(&mut self, parity: Parity) -> bool {
+        self.send_video(Message::Parity(parity), FeatureSet::VIDEO_PARITY)
+    }
+
+    fn send_video(&mut self, message: Message, feature: u32) -> bool {
+        if !self.agreed_features().has(feature) {
+            return false;
+        }
+        self.outbox.push_back(message);
+        true
     }
 
     /// The part of `surface` the viewer last reported showing.

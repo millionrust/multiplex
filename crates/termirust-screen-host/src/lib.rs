@@ -9,6 +9,8 @@
 //! Injection lives with the caller, on whatever thread its platform needs, so this crate stays
 //! free of platform code. See `docs/remote-screens-implementation-plan.md`, sections 4.5 to 4.7.
 
+// The VideoToolbox encoder lives in termirust-screen-video, which owns the one unsafe block in
+// this path; nothing here touches a raw pointer.
 #![forbid(unsafe_code)]
 
 use std::sync::{Arc, Mutex};
@@ -24,6 +26,15 @@ use termirust_screen_protocol::{
 };
 use termirust_screen_session::{
     Grants, HostConfig, HostEvent, HostSession, InputEvent, ResumeStore, TicketVerifier,
+};
+
+pub mod motion;
+#[cfg(target_os = "macos")]
+mod video;
+
+pub use motion::{
+    MotionEncoder, MotionEncoders, MotionFrame, MotionRequest, MotionSender, NoEncoders,
+    platform_encoders,
 };
 
 /// Something the application must act on while a device watches its screens.
@@ -64,6 +75,8 @@ struct Inner {
     /// What the spent ticket allows, once the session is open.
     grants: Option<ScreenGrants>,
     open: bool,
+    /// Sends the motion region as video, for viewers that negotiated it. Idle otherwise.
+    motion: MotionSender,
 }
 
 impl Inner {
@@ -94,6 +107,10 @@ impl Inner {
                 HostEvent::Input(input) => self.emit(ScreenHostEvent::Input(input)),
                 HostEvent::ControlRequested => self.emit(ScreenHostEvent::ControlRequested),
                 HostEvent::ControlReleased => self.emit(ScreenHostEvent::ControlReleased),
+                // Long-term reference feedback goes to the encoder, never to the application: it
+                // is about the stream, not about what the device is allowed to do.
+                HostEvent::VideoAcknowledged { tokens, .. } => self.motion.acknowledged(&tokens),
+                HostEvent::VideoLost { .. } => self.motion.lost(),
                 HostEvent::InputRefused
                 | HostEvent::Subscribed { .. }
                 | HostEvent::Unsubscribed { .. } => {}
@@ -104,6 +121,7 @@ impl Inner {
     fn close(&mut self, reason: &str) {
         if self.open {
             self.open = false;
+            self.motion.stop();
             self.session.close(reason, &mut self.resume);
             let _ = self.flush();
             self.emit(ScreenHostEvent::Closed {
@@ -127,6 +145,18 @@ impl ScreenHost {
         outgoing: ScreenOutgoing,
         observer: ScreenHostObserver,
     ) -> (Self, ScreenHostHandle) {
+        Self::with_encoders(surfaces, config, outgoing, observer, platform_encoders())
+    }
+
+    /// As [`Self::new`], with the video encoders named. Tests use it to drive the motion path
+    /// with a fake encoder, or to turn it off with [`NoEncoders`].
+    pub fn with_encoders(
+        surfaces: Vec<SurfaceInfo>,
+        config: HostConfig,
+        outgoing: ScreenOutgoing,
+        observer: ScreenHostObserver,
+        encoders: Box<dyn MotionEncoders>,
+    ) -> (Self, ScreenHostHandle) {
         let inner = Arc::new(Mutex::new(Inner {
             session: HostSession::new(surfaces, SpentTicket::default(), config),
             reader: FrameReader::new(),
@@ -135,6 +165,7 @@ impl ScreenHost {
             observer,
             grants: None,
             open: true,
+            motion: MotionSender::new(encoders),
         }));
         (
             Self {
@@ -271,6 +302,12 @@ impl ScreenHostHandle {
             inner.close("encode_failed");
             return Err(ListenerError::new(ListenerErrorCode::MalformedFrame));
         }
+        // After the tile encoder, which is what decides whether this surface has a motion region
+        // at all. On a viewer that did not negotiate video this does nothing.
+        let Inner {
+            session, motion, ..
+        } = &mut *inner;
+        motion.frame(session, surface, frame);
         inner.flush()
     }
 

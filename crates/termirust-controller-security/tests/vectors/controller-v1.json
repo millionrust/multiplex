@@ -63,6 +63,6 @@
       "oversized_screen_frame": "controller.security.frame_too_large"
     }
   },
-  "adr_sha256": "1e53dce94b660785b2d7a9ad348efe77544658a3755485fb8c5b980c6dd5c3d6",
-  "cargo_lock_sha256": "32ec06b64a0c2128e040b65f2101e5e0acd57d1ff3ebdcc82a645c4819f54b45"
+  "adr_sha256": "166eb19b09856d1fd6add6d01026d84fdc51e6a542fe811ac12df09137b69439",
+  "cargo_lock_sha256": "dd57654d2eaf509cf28fa5a6f8401b3603e0506ac61c64cdca081ce5e67932dc"
 }

@@ -10622,6 +10622,7 @@ dependencies = [
  "termirust-screen-codec",
  "termirust-screen-protocol",
  "termirust-screen-session",
+ "termirust-screen-video",
  "tokio",
  "tokio-util",
 ]
@@ -10651,6 +10652,10 @@ dependencies = [
  "termirust-screen-codec",
  "termirust-screen-protocol",
 ]
+
+[[package]]
+name = "termirust-screen-video"
+version = "0.1.0"
 
 [[package]]
 name = "termirust-session-host"
