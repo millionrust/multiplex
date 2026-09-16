@@ -7,6 +7,24 @@ use anyhow::{Context, Result, bail};
 
 use crate::models::{SavedManagedWorktree, SavedManagedWorktreeDisposition};
 
+/// The path in its one true form, written the way Git can use it. On Windows a canonical path
+/// starts with the `\\?\` verbatim prefix, and Git cannot create the directories of a worktree
+/// under such a path: it reads it back as `//?/C:/...` and gives up.
+fn canonical_for_git(path: &Path) -> std::io::Result<PathBuf> {
+    let canonical = path.canonicalize()?;
+    #[cfg(windows)]
+    {
+        let text = canonical.as_os_str().to_string_lossy();
+        if let Some(share) = text.strip_prefix(r"\\?\UNC\") {
+            return Ok(PathBuf::from(format!(r"\\{share}")));
+        }
+        if let Some(drive) = text.strip_prefix(r"\\?\") {
+            return Ok(PathBuf::from(drive));
+        }
+    }
+    Ok(canonical)
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ManagedWorktreeStatus {
     pub dirty: bool,
@@ -26,8 +44,7 @@ pub fn create_managed_worktree(
         [OsStr::new("rev-parse"), OsStr::new("--show-toplevel")],
     )?;
     let repository_root = PathBuf::from(repository_root);
-    let repository_root = repository_root
-        .canonicalize()
+    let repository_root = canonical_for_git(&repository_root)
         .context("Unable to canonicalize the Git repository root")?;
     if repository_root.join(".gitmodules").exists() {
         bail!(
@@ -44,8 +61,7 @@ pub fn create_managed_worktree(
             managed_root.display()
         )
     })?;
-    let managed_root = managed_root
-        .canonicalize()
+    let managed_root = canonical_for_git(managed_root)
         .context("Unable to canonicalize the managed worktree directory")?;
     if managed_root.starts_with(&repository_root) {
         bail!("Managed worktrees must be stored outside the repository");
@@ -82,8 +98,7 @@ pub fn create_managed_worktree(
             OsString::from(&base_revision),
         ];
         run_git(&repository_root, arguments.iter().map(OsString::as_os_str))?;
-        let canonical_path = worktree_path
-            .canonicalize()
+        let canonical_path = canonical_for_git(&worktree_path)
             .context("Git created a worktree that could not be canonicalized")?;
         if !canonical_path.starts_with(&managed_root) {
             bail!("Git created a worktree outside the managed directory");
@@ -134,17 +149,14 @@ pub fn managed_worktree_status(worktree: &SavedManagedWorktree) -> Result<Manage
 }
 
 pub fn remove_managed_worktree(worktree: &SavedManagedWorktree, managed_root: &Path) -> Result<()> {
-    let managed_root = managed_root
-        .canonicalize()
-        .context("Managed worktree directory does not exist")?;
-    let worktree_path = Path::new(&worktree.path)
-        .canonicalize()
+    let managed_root =
+        canonical_for_git(managed_root).context("Managed worktree directory does not exist")?;
+    let worktree_path = canonical_for_git(Path::new(&worktree.path))
         .context("Managed worktree path does not exist")?;
     if worktree_path == managed_root || !worktree_path.starts_with(&managed_root) {
         bail!("Refusing to remove a path outside the managed worktree directory");
     }
-    let repository_root = Path::new(&worktree.repository_root)
-        .canonicalize()
+    let repository_root = canonical_for_git(Path::new(&worktree.repository_root))
         .context("Repository root does not exist")?;
     if !registered_worktree_paths(&repository_root)?
         .iter()

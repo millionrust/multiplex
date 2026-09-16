@@ -12,6 +12,36 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::storage::{set_test_app_dir_override, set_test_ssh_dir_override};
 
+/// The shell these tests open a local terminal with. They drive it with POSIX commands, so
+/// Windows, which has no `/bin/sh`, uses the one that comes with Git — the same installation the
+/// checkout already relies on. A machine without it gets `sh`, and the pane fails saying so.
+pub fn test_shell_program() -> String {
+    #[cfg(not(target_os = "windows"))]
+    {
+        "/bin/sh".to_string()
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        const CANDIDATES: [&str; 4] = [
+            r"C:\Program Files\Git\usr\bin\sh.exe",
+            r"C:\Program Files\Git\bin\sh.exe",
+            r"C:\Program Files (x86)\Git\usr\bin\sh.exe",
+            r"C:\Program Files\Git\bin\bash.exe",
+        ];
+        if let Some(found) = CANDIDATES.iter().find(|path| Path::new(path).is_file()) {
+            return (*found).to_string();
+        }
+        std::env::var_os("PATH")
+            .map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|directory| directory.join("sh.exe"))
+            .find(|candidate| candidate.is_file())
+            .map_or_else(|| "sh".to_string(), |path| path.display().to_string())
+    }
+}
+
 const TEST_SSH_IMAGE: &str = "termirust-e2e-sshd:local";
 /// Where the Docker daemon runs. `DOCKER_HOST` names another machine (`tcp://host:2375`,
 /// `ssh://user@host`), and a container's published ports are then on that machine, not here.

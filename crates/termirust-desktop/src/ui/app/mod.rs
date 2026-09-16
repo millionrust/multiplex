@@ -15476,7 +15476,7 @@ mod tests {
                 }
                 _ => settled = 0,
             }
-            std::thread::sleep(Duration::from_millis(25));
+            std::thread::sleep(TEST_POLL_INTERVAL);
         }
     }
 
@@ -16391,7 +16391,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -16486,7 +16486,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -16595,7 +16595,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -16678,7 +16678,7 @@ mod tests {
             ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -16782,7 +16782,7 @@ mod tests {
             ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -16910,7 +16910,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -16974,7 +16974,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -17058,7 +17058,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -17363,7 +17363,7 @@ mod tests {
                         ConnectRequest::local_shell_with_config(
                             0,
                             LocalShellConfig {
-                                program: "/bin/sh".to_string(),
+                                program: crate::test_support::test_shell_program(),
                                 args: Vec::new(),
                                 cwd: Some(std::env::temp_dir().display().to_string()),
                             },
@@ -17673,7 +17673,7 @@ mod tests {
                         ConnectRequest::local_shell_with_config(
                             0,
                             LocalShellConfig {
-                                program: "/bin/sh".to_string(),
+                                program: crate::test_support::test_shell_program(),
                                 args: Vec::new(),
                                 cwd: Some(std::env::temp_dir().display().to_string()),
                             },
@@ -17716,7 +17716,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -17798,7 +17798,7 @@ mod tests {
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -17899,7 +17899,7 @@ mod tests {
         let local_request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -18073,7 +18073,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(initial_directory.display().to_string()),
             },
@@ -18277,7 +18277,7 @@ mod tests {
         let local_request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(fixture_directory.display().to_string()),
             },
@@ -18461,7 +18461,7 @@ sleep 30
                 local_forwards: Vec::new(),
                 local_forward: None,
                 local_shell: Some(LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(fixture_directory.display().to_string()),
                 }),
@@ -18536,7 +18536,7 @@ sleep 1
         let local_request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(fixture_directory.display().to_string()),
             },
@@ -18803,7 +18803,7 @@ sleep 1
         let local_request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -20826,7 +20826,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -20955,7 +20955,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -21053,7 +21053,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -21542,7 +21542,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -21662,7 +21662,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -21697,7 +21697,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -22369,7 +22369,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -22434,7 +22434,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -22445,7 +22445,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -22509,7 +22509,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -22520,7 +22520,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -22606,7 +22606,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -22617,7 +22617,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -22628,7 +22628,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -22711,7 +22711,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -22810,7 +22810,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -22881,7 +22881,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -22972,7 +22972,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -23047,7 +23047,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -23199,7 +23199,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -23210,7 +23210,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -23324,7 +23324,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -23335,7 +23335,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -23451,7 +23451,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -23545,7 +23545,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -23649,7 +23649,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -23755,7 +23755,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -24066,7 +24066,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -24103,7 +24103,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -24182,7 +24182,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -24358,7 +24358,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -26633,7 +26633,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -26746,7 +26746,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -26870,7 +26870,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -28662,7 +28662,7 @@ sleep 1
                 local_forwards: Vec::new(),
                 local_forward: None,
                 local_shell: Some(LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 }),
@@ -28691,7 +28691,7 @@ sleep 1
         let mut pane = ConnectRequest::local_shell_with_config(
             1,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: vec!["-c".to_string(), "touch should-not-exist".to_string()],
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },

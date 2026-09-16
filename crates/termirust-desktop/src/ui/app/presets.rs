@@ -2281,7 +2281,13 @@ mod tests {
 
     #[test]
     fn absolute_executable_display_redacts_parent_path() {
-        let executable = ExecutableSpec::parse("/Users/private/customer/codex").unwrap();
+        // Windows calls a path absolute only with a drive behind it.
+        let absolute = if cfg!(windows) {
+            r"C:\Users\private\customer\codex"
+        } else {
+            "/Users/private/customer/codex"
+        };
+        let executable = ExecutableSpec::parse(absolute).unwrap();
         assert_eq!(executable_display(&executable), "codex");
         assert!(!executable_display(&executable).contains("private"));
     }

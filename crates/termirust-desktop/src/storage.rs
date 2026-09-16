@@ -1194,6 +1194,12 @@ impl KnownHostStore {
 
 #[cfg(test)]
 mod tests {
+    /// True when a path ends with this `/`-separated tail, whatever separator the platform the
+    /// test runs on writes. `~` expands to a Windows path with backslashes there.
+    fn ends_with_path(path: &str, tail: &str) -> bool {
+        path.replace('\\', "/").ends_with(tail)
+    }
+
     use super::{
         KnownHostStore, KnownHostsFile, detect_identity_kind, export_encrypted_mobile_vault,
         export_encrypted_portable_data_bundle, export_portable_data_bundle, identity_priority,
@@ -1273,7 +1279,7 @@ Host tunnel-box
         assert_eq!(hosts[0].port, 2222);
         assert_eq!(hosts[0].auth_mode, AuthMode::PrivateKey);
         assert_eq!(hosts[0].source, ProfileSource::SshConfig);
-        assert!(hosts[0].key_path.ends_with("/.ssh/id_ed25519"));
+        assert!(ends_with_path(&hosts[0].key_path, "/.ssh/id_ed25519"));
         assert_eq!(hosts[0].certificate_path, None);
     }
 
@@ -1291,12 +1297,12 @@ Host cert-prod
 
         assert_eq!(hosts.len(), 1);
         assert_eq!(hosts[0].auth_mode, AuthMode::PrivateKey);
-        assert!(hosts[0].key_path.ends_with("/.ssh/id_ed25519"));
+        assert!(ends_with_path(&hosts[0].key_path, "/.ssh/id_ed25519"));
         assert!(
             hosts[0]
                 .certificate_path
                 .as_deref()
-                .is_some_and(|path| path.ends_with("/.ssh/id_ed25519-cert.pub"))
+                .is_some_and(|path| ends_with_path(path, "/.ssh/id_ed25519-cert.pub"))
         );
         assert!(matches!(
             hosts[0].saved_auth_config().unwrap(),
@@ -1409,7 +1415,7 @@ Host key-wins
             explicit
                 .identity_agent
                 .as_deref()
-                .is_some_and(|path| path.ends_with("/.ssh/custom-agent.sock"))
+                .is_some_and(|path| ends_with_path(path, "/.ssh/custom-agent.sock"))
         );
         assert_eq!(
             hosts
