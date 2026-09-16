@@ -7,8 +7,8 @@ use termirust_screen_codec::{
     downscale, preview_factor,
 };
 use termirust_screen_protocol::{
-    ControlHolder, Hello, MAX_PANES, Message, PROTOCOL_VERSION, PanePlacement, PaneSession,
-    Profile, ResumeOutcome, SurfaceInfo, Viewport, Welcome,
+    ControlHolder, FeatureSet, Hello, MAX_PANES, Message, PROTOCOL_VERSION, PanePlacement,
+    PaneSession, Profile, ResumeOutcome, SurfaceInfo, Viewport, Welcome,
 };
 
 use crate::{InputEvent, SessionError};
@@ -46,6 +46,8 @@ pub struct HostConfig {
     pub thumbnail_interval_ms: u64,
     /// Exact-pixel refinement sent per idle frame, in bytes.
     pub refine_budget_bytes: usize,
+    /// What this host can do beyond Stage A. Only what the viewer also advertises is used.
+    pub features: FeatureSet,
 }
 
 impl Default for HostConfig {
@@ -55,6 +57,7 @@ impl Default for HostConfig {
             thumbnail_longest_side: 320,
             thumbnail_interval_ms: 1_000,
             refine_budget_bytes: 2_000,
+            features: FeatureSet::none(),
         }
     }
 }
@@ -132,7 +135,12 @@ struct Subscription {
 
 enum State {
     AwaitingHello,
-    Open { grants: Grants, cache_bytes: usize },
+    Open {
+        grants: Grants,
+        cache_bytes: usize,
+        /// What both sides advertised, which is the only thing either may send.
+        features: FeatureSet,
+    },
     Closed,
 }
 
@@ -176,6 +184,15 @@ impl<V: TicketVerifier> HostSession<V> {
         matches!(self.state, State::Open { .. })
     }
 
+    /// What both sides settled on, which is all the encoder above this session may use. Empty
+    /// until a viewer is open, and empty for every Stage A viewer.
+    pub fn agreed_features(&self) -> FeatureSet {
+        match self.state {
+            State::Open { features, .. } => features,
+            _ => FeatureSet::none(),
+        }
+    }
+
     /// The ticket verifier, for hosts that learn what a ticket allows outside this session.
     pub const fn verifier_mut(&mut self) -> &mut V {
         &mut self.verifier
@@ -201,9 +218,10 @@ impl<V: TicketVerifier> HostSession<V> {
             State::Open {
                 grants,
                 cache_bytes,
+                features,
             } => {
-                let (grants, cache_bytes) = (*grants, *cache_bytes);
-                self.handle_open(message, grants, cache_bytes, store)
+                let (grants, cache_bytes, features) = (*grants, *cache_bytes, *features);
+                self.handle_open(message, grants, cache_bytes, features, store)
             }
         }
     }
@@ -233,14 +251,23 @@ impl<V: TicketVerifier> HostSession<V> {
             }
         }
         let cache_bytes = hello.cache_bytes.min(MAX_VIEWER_CACHE_BYTES) as usize;
+        // Only what both sides can do: never send a viewer something it cannot decode.
+        let features = self.config.features.shared(hello.features);
         self.state = State::Open {
             grants,
             cache_bytes,
+            features,
         };
         self.outbox.push_back(Message::Welcome(Welcome {
-            version: PROTOCOL_VERSION,
+            // Answer in the version the viewer spoke. A Stage A build refuses a welcome that
+            // claims a version it has never heard of, so replying at 2 would lock out every
+            // phone shipped before the motion path.
+            version: hello.version.min(PROTOCOL_VERSION),
             surfaces: self.surfaces.clone(),
             resume,
+            // The intersection, not this host's whole set: what the welcome names is exactly
+            // what may be sent, so a viewer cannot be talked into expecting more.
+            features,
         }));
         Ok(vec![HostEvent::Opened {
             device: grants.device,
@@ -253,6 +280,7 @@ impl<V: TicketVerifier> HostSession<V> {
         message: Message,
         grants: Grants,
         cache_bytes: usize,
+        features: FeatureSet,
         store: &mut ResumeStore,
     ) -> Result<Vec<HostEvent>, SessionError> {
         match message {
@@ -351,13 +379,28 @@ impl<V: TicketVerifier> HostSession<V> {
                     Ok(vec![HostEvent::InputRefused])
                 }
             }
+            // A viewer only reports what it decoded if both sides agreed to the motion path.
+            // Reporting it otherwise is a viewer talking about a stream that was never sent.
+            Message::VideoAcknowledge { .. } | Message::VideoLost { .. }
+                if !features.has(FeatureSet::LONG_TERM_REFERENCES) =>
+            {
+                self.fail(SessionError::ProtocolViolation, "video_not_agreed", store)
+            }
+            Message::VideoAcknowledge { .. } | Message::VideoLost { .. } => {
+                // M4 wires these to the encoder; until then they are accepted and ignored, so a
+                // viewer that advertises the feature is not disconnected for using it.
+                Ok(Vec::new())
+            }
             Message::Hello(_)
             | Message::Welcome(_)
             | Message::Goodbye { .. }
             | Message::Batch(_)
             | Message::MotionRegion { .. }
             | Message::Control(_)
-            | Message::PanePlacements { .. } => {
+            | Message::PanePlacements { .. }
+            | Message::VideoConfig(_)
+            | Message::VideoFrame(_)
+            | Message::Parity(_) => {
                 self.fail(SessionError::ProtocolViolation, "unexpected_message", store)
             }
         }

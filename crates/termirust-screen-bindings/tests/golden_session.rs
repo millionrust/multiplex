@@ -23,7 +23,12 @@ const TICKET: [u8; 32] = [0x5C; 32];
 const SURFACE: u32 = 1;
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 200;
-const FIXTURE: &str = "tests/vectors/screen-session-v1.json";
+/// What this build's host and viewer say to each other.
+const FIXTURE: &str = "tests/vectors/screen-session-v2.json";
+/// The same session as a version 1 host recorded it, kept exactly as it was. A phone that speaks
+/// the current version has to keep painting the same picture from those bytes, so this file is
+/// never regenerated: if it has to change, version 1 compatibility is what broke.
+const STAGE_A_FIXTURE: &str = "tests/vectors/screen-session-v1.json";
 
 struct Tickets;
 
@@ -177,5 +182,27 @@ fn the_recorded_session_is_the_one_the_fixture_pins() {
     assert_eq!(
         committed, rendered,
         "the host now sends different bytes than {FIXTURE} pins"
+    );
+}
+
+#[test]
+fn a_version_1_host_still_paints_the_same_picture() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(STAGE_A_FIXTURE);
+    let recorded: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).expect("the Stage A fixture"))
+            .expect("valid JSON");
+    let frames: Vec<Vec<u8>> = recorded["host_frames_hex"]
+        .as_array()
+        .expect("recorded frames")
+        .iter()
+        .map(|frame| hex::decode(frame.as_str().expect("hex")).expect("hex"))
+        .collect();
+
+    let (updates, pixels_sha256) = replay(&frames);
+    assert_eq!(updates, recorded["expected_updates"].as_u64().unwrap() as u32);
+    assert_eq!(
+        pixels_sha256,
+        recorded["pixels_sha256"].as_str().unwrap(),
+        "a phone on the current version no longer understands a version 1 host"
     );
 }

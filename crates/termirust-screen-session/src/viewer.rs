@@ -4,8 +4,9 @@ use std::collections::{HashMap, VecDeque};
 
 use termirust_screen_codec::{Decoder, FrameBuffer, Rect};
 use termirust_screen_protocol::{
-    ControlHolder, Hello, MAX_PANES, Message, PROTOCOL_VERSION, PanePlacement, PaneSession,
-    Profile, ResumeOutcome, ResumeRequest, SurfaceInfo, Viewport,
+    ControlHolder, FeatureSet, Hello, MAX_PANES, Message, PROTOCOL_VERSION, PanePlacement,
+    PaneSession, Parity, Profile, ResumeOutcome, ResumeRequest, SurfaceInfo, VideoConfig,
+    VideoFrame, Viewport,
 };
 
 use crate::{InputEvent, SessionError, THUMBNAIL_CACHE_BYTES, THUMBNAIL_SURFACE_BIT};
@@ -34,6 +35,13 @@ pub enum ViewerEvent {
         surface: u32,
         panes: Vec<PanePlacement>,
     },
+    /// The decoder configuration for a surface's motion region; hand it to the decoder before
+    /// the first frame. Only ever sent when both sides agreed to the motion path.
+    VideoConfig(VideoConfig),
+    /// One encoded frame of the motion region, to decode and draw into its rectangle.
+    VideoFrame(VideoFrame),
+    /// One forward error correction shard for a group of video packets.
+    Parity(Parity),
     Closed {
         reason: String,
     },
@@ -48,6 +56,10 @@ enum State {
 
 /// A viewer's side of a session. Decoders survive reconnects so the host can resume.
 pub struct ViewerSession {
+    /// What this viewer can do beyond Stage A.
+    features: FeatureSet,
+    /// What the host agreed to, once the welcome arrives.
+    agreed: FeatureSet,
     cache_bytes: usize,
     state: State,
     surfaces: Vec<SurfaceInfo>,
@@ -60,7 +72,14 @@ pub struct ViewerSession {
 
 impl ViewerSession {
     pub fn new(cache_bytes: usize) -> Self {
+        Self::with_features(cache_bytes, FeatureSet::none())
+    }
+
+    /// A viewer that tells the host what more it can do than Stage A.
+    pub fn with_features(cache_bytes: usize, features: FeatureSet) -> Self {
         Self {
+            features,
+            agreed: FeatureSet::none(),
             cache_bytes,
             state: State::Disconnected,
             surfaces: Vec::new(),
@@ -70,6 +89,12 @@ impl ViewerSession {
             attached: Vec::new(),
             outbox: VecDeque::new(),
         }
+    }
+
+    /// What both sides settled on, which is all this viewer may expect to receive. Empty until
+    /// the welcome arrives, and empty against a host that only speaks Stage A.
+    pub const fn agreed_features(&self) -> FeatureSet {
+        self.agreed
     }
 
     /// Starts a connection with the ticket proof from the Controller channel. When a full view
@@ -93,6 +118,7 @@ impl ViewerSession {
             ticket_proof,
             cache_bytes: self.cache_bytes as u64,
             resume,
+            features: self.features,
         }));
         if !self.attached.is_empty() {
             self.outbox.push_back(Message::AttachedPanes {
@@ -193,6 +219,8 @@ impl ViewerSession {
                 Ok(vec![ViewerEvent::Closed { reason }])
             }
             (State::AwaitingWelcome, Message::Welcome(welcome)) => {
+                // Only what both sides advertised may be used from here on.
+                self.agreed = self.features.shared(welcome.features);
                 self.surfaces = welcome.surfaces.clone();
                 if welcome.resume != ResumeOutcome::Partial {
                     self.decoders
@@ -253,6 +281,21 @@ impl ViewerSession {
                     self.panes.insert(surface, panes.clone());
                 }
                 Ok(vec![ViewerEvent::Panes { surface, panes }])
+            }
+            // The motion path, but only if this viewer asked for it and the host agreed. A host
+            // sending video to a viewer that never advertised it is talking to the wrong peer.
+            (State::Open, Message::VideoConfig(config))
+                if self.agreed.has(FeatureSet::MOTION_VIDEO) =>
+            {
+                Ok(vec![ViewerEvent::VideoConfig(config)])
+            }
+            (State::Open, Message::VideoFrame(frame))
+                if self.agreed.has(FeatureSet::MOTION_VIDEO) =>
+            {
+                Ok(vec![ViewerEvent::VideoFrame(frame)])
+            }
+            (State::Open, Message::Parity(parity)) if self.agreed.has(FeatureSet::VIDEO_PARITY) => {
+                Ok(vec![ViewerEvent::Parity(parity)])
             }
             (State::Open, _) => {
                 self.state = State::Closed;

@@ -190,7 +190,7 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   device and simulator plus `TermiRustRemoteScreens.swift`. The Android half needs NDK 27.1 on the
   machine that runs it.
   Swift replays the same recorded session Rust does (`scripts/test/swift-screen-bindings.sh`,
-  fixture `crates/termirust-screen-bindings/tests/vectors/screen-session-v1.json`) and rebuilds a
+  fixtures under `crates/termirust-screen-bindings/tests/vectors/`) and rebuilds a
   byte-identical picture. Compiling the generated Swift is what caught an error case named
   `Protocol`, which Swift refuses; it is `InvalidMessage` now.
 - [x] 3.2 `feat(ios): show live previews in Fleet and a computer detail screen`
@@ -252,7 +252,13 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
 
 ## M4 — Motion path (Stage B, part 1) [4.4]
 
-- [ ] 4.1 `feat(screen-transport): add video, FEC and LTR acknowledgement messages` + vectors
+- [x] 4.1 `feat(screen-transport): add video, FEC and LTR acknowledgement messages` + vectors
+  Protocol version 2. The hello and the welcome carry a feature set, and a host answers in the
+  version the viewer spoke, so a phone built for Stage A is neither locked out nor sent video it
+  cannot decode. Five messages: video config, video frame, parity, acknowledge, lost. Both sessions
+  fail closed on anything neither side negotiated.
+  The recorded Stage A session in `screen-session-v1.json` is kept byte for byte and replayed by
+  the current viewer; `screen-session-v2.json` pins what this build records.
 - [ ] 4.2 `feat(screen-host): encode motion regions with VideoToolbox and LTR recovery`
 - [ ] 4.3 `feat(screen-transport): send video as datagrams with forward error correction`
 - [ ] 4.4 `feat(screen-client): decode motion regions natively on desktop, iOS and Android`

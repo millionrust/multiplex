@@ -356,7 +356,7 @@ impl ScreenViewer {
                     .session
                     .receive(message)
                     .map_err(|_| ScreenBindingError::InvalidMessage)?;
-                events.extend(applied.into_iter().map(event));
+                events.extend(applied.into_iter().filter_map(event));
             }
         })
     }
@@ -476,8 +476,10 @@ const fn wire_rect(rect: Rect) -> ScreenRect {
     }
 }
 
-fn event(value: ViewerEvent) -> ScreenEvent {
-    match value {
+/// Turns a session event into one the phone can act on. A `None` is an event this binding has
+/// no phone-side use for yet, not an error.
+fn event(value: ViewerEvent) -> Option<ScreenEvent> {
+    Some(match value {
         ViewerEvent::Welcomed { surfaces, resume } => ScreenEvent::Welcomed {
             surfaces: surfaces
                 .into_iter()
@@ -526,7 +528,12 @@ fn event(value: ViewerEvent) -> ScreenEvent {
                 .collect(),
         },
         ViewerEvent::Closed { reason } => ScreenEvent::Closed { reason },
-    }
+        // The motion path. This binding builds a viewer that never advertises it, so a computer
+        // never sends these; 4.4 adds the decoder and the phone-side events that carry it.
+        ViewerEvent::VideoConfig(_) | ViewerEvent::VideoFrame(_) | ViewerEvent::Parity(_) => {
+            return None;
+        }
+    })
 }
 
 /// The messages this boundary refuses to build, so a caller cannot make the computer close the

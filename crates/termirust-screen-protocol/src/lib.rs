@@ -18,7 +18,8 @@ mod message;
 pub use error::ProtocolError;
 pub use framing::{FrameReader, MAX_CONTROL_FRAME_BYTES, MAX_FRAME_BYTES, encode_frame};
 pub use message::{
-    ControlHolder, Hello, InputKind, KeyEvent, MAX_PANES, Message, Modifiers, PROTOCOL_VERSION,
-    PanePlacement, PaneSession, PointerButton, Profile, ResumeOutcome, ResumeRequest, SurfaceInfo,
-    Viewport, Welcome,
+    ControlHolder, FEATURES_PROTOCOL_VERSION, FeatureSet, Hello, InputKind, KeyEvent, MAX_PANES,
+    MAX_PARITY_BYTES, MAX_VIDEO_FRAME_BYTES, MAX_VIDEO_TOKENS, MINIMUM_PROTOCOL_VERSION, Message,
+    Modifiers, MotionCodec, PROTOCOL_VERSION, PanePlacement, PaneSession, Parity, PointerButton,
+    Profile, ResumeOutcome, ResumeRequest, SurfaceInfo, VideoConfig, VideoFrame, Viewport, Welcome,
 };
