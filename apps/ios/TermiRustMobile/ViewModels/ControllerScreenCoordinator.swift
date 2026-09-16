@@ -25,12 +25,22 @@ final class ControllerScreenCoordinator: ObservableObject {
     /// The last picture seen for each computer, keyed by host id.
     @Published private(set) var lastPictures: [String: CGImage] = [:]
     @Published private(set) var unavailable: ControllerScreenUnavailable?
+    /// Set while a dropped session is being opened again. The last picture stays on screen.
+    @Published private(set) var reconnecting = false
+    /// How many times in a row this session has been reopened without succeeding.
+    @Published private(set) var reconnectAttempt = 0
 
     /// The capability bit a computer grants before this phone may watch it at all.
     static let observeScreensCapability: UInt16 = 1 << 5
 
     private var session: Task<Void, Never>?
     private var watchingHost: PairedHostRecord?
+    /// How long to wait before opening a dropped session again. A test shortens it.
+    private let backoff: @Sendable (Int) -> Duration
+
+    init(backoff: @escaping @Sendable (Int) -> Duration = ControllerScreenCoordinator.backoff) {
+        self.backoff = backoff
+    }
 
     deinit {
         session?.cancel()
@@ -69,6 +79,8 @@ final class ControllerScreenCoordinator: ObservableObject {
         watchingHost = nil
         preview = nil
         viewer = nil
+        reconnecting = false
+        reconnectAttempt = 0
     }
 
     private func start(
@@ -85,31 +97,86 @@ final class ControllerScreenCoordinator: ObservableObject {
         self.preview = nil
         viewer = nil
         unavailable = nil
+        reconnecting = false
+        reconnectAttempt = 0
         watchingHost = host
+        run(host: host, connection: connection, preview: wantsPreview)
+    }
+
+    /// Opens the session, and opens it again from the last picture when it drops.
+    ///
+    /// A screen session is a long-lived connection, and a phone loses those: it changes network,
+    /// sleeps, or walks out of range. The last picture stays on screen while this works, because
+    /// a frozen picture of the right computer is more use than an empty one.
+    private func run(
+        host: PairedHostRecord,
+        connection: any ControllerConnecting,
+        preview wantsPreview: Bool
+    ) {
         let hostID = host.id
         session = Task { [weak self] in
-            do {
-                try await connection.watchScreen(
-                    host: host,
-                    surface: nil,
-                    preview: wantsPreview,
-                    onOpened: { [weak self] ticket, viewer in
-                        await self?.opened(
-                            ticket: ticket,
-                            viewer: viewer,
-                            preview: wantsPreview
-                        )
-                    },
-                    onEvent: { [weak self] events in
-                        await self?.apply(events: events, hostID: hostID)
-                    }
-                )
-            } catch is CancellationError {
-                return
-            } catch {
-                await self?.failed(error)
+            while !Task.isCancelled {
+                do {
+                    try await connection.watchScreen(
+                        host: host,
+                        surface: nil,
+                        preview: wantsPreview,
+                        onOpened: { [weak self] ticket, viewer in
+                            await self?.opened(
+                                ticket: ticket,
+                                viewer: viewer,
+                                preview: wantsPreview
+                            )
+                        },
+                        onEvent: { [weak self] events in
+                            await self?.apply(events: events, hostID: hostID)
+                        }
+                    )
+                    return
+                } catch is CancellationError {
+                    return
+                } catch {
+                    guard let self else { return }
+                    let keepTrying = await self.dropped(error)
+                    guard keepTrying else { return }
+                }
+                guard let self else { return }
+                let wait = await self.backoff(self.reconnectAttempt)
+                try? await Task.sleep(for: wait)
             }
         }
+    }
+
+    /// How long to wait before opening the session again, growing with each failure.
+    static let backoff: @Sendable (Int) -> Duration = { attempt in
+        .milliseconds(min(500 * (1 << max(attempt - 1, 0)), 8_000))
+    }
+
+    /// After this many failures in a row the phone stops and says so, rather than draining the
+    /// battery against a computer that is not coming back.
+    static let maximumReconnectAttempts = 5
+
+    /// Records a dropped session. Returns whether it is worth opening again.
+    private func dropped(_ error: Error) -> Bool {
+        if let error = error as? ControllerConnectionError, error == .capabilityDenied {
+            // The computer took screen access away; trying again would only be refused.
+            unavailable = .notGranted
+            reconnecting = false
+            preview = nil
+            viewer = nil
+            return false
+        }
+        reconnectAttempt += 1
+        guard reconnectAttempt <= Self.maximumReconnectAttempts else {
+            unavailable = .failed(Self.message(for: error))
+            reconnecting = false
+            preview = nil
+            viewer = nil
+            return false
+        }
+        // The models stay, so the last picture stays on screen while this reconnects.
+        reconnecting = true
+        return true
     }
 
     private func opened(
@@ -135,15 +202,10 @@ final class ControllerScreenCoordinator: ObservableObject {
         model?.apply(events: events)
         if let picture = model?.image {
             lastPictures[hostID] = picture
+            // Pictures are arriving again, so the session is back.
+            reconnecting = false
+            reconnectAttempt = 0
         }
-    }
-
-    private func failed(_ error: Error) {
-        guard !Task.isCancelled else { return }
-        session = nil
-        preview = nil
-        viewer = nil
-        unavailable = .failed(Self.message(for: error))
     }
 
     private static func message(for error: Error) -> String {

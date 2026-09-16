@@ -178,7 +178,9 @@ struct ControllerRootView: View {
             if let screen = viewModel.screens.viewer {
                 ControllerScreenViewerSheet(
                     model: screen,
+                    screens: viewModel.screens,
                     title: viewModel.selectedHost?.displayName ?? "Screen",
+                    routeName: viewModel.selectedRoute.map(ControllerPresentation.routeTitle),
                     onClose: viewModel.closeScreen
                 )
             }
@@ -210,7 +212,9 @@ struct ControllerRootView: View {
 /// The full screen, with a way back to the computer's page.
 private struct ControllerScreenViewerSheet: View {
     @ObservedObject var model: RemoteScreenViewModel
+    @ObservedObject var screens: ControllerScreenCoordinator
     let title: String
+    let routeName: String?
     let onClose: () -> Void
 
     var body: some View {
@@ -218,7 +222,9 @@ private struct ControllerScreenViewerSheet: View {
             RemoteScreenView(
                 model: model,
                 onRequestControl: model.requestControl,
-                onReleaseControl: model.releaseControl
+                onReleaseControl: model.releaseControl,
+                reconnecting: screens.reconnecting,
+                routeName: routeName
             )
             .navigationTitle(ControllerPresentation.isolated(title))
             .navigationBarTitleDisplayMode(.inline)

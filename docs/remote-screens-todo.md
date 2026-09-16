@@ -192,7 +192,17 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   the arrows, pipe and minus — sent as USB HID usages so layouts stay the computer's business.
   A computer sharing more than one display offers the choice.
   The 21 phone tests run on a simulator (iOS 27.0, 24A434) and pass.
-- [ ] 3.4 `feat(ios): show weak-connection details and reconnect from the last picture`
+- [x] 3.4 `feat(ios): show weak-connection details and reconnect from the last picture`
+  A screen session is long-lived and a phone loses those: it changes network, sleeps, or walks out
+  of range. A dropped session is opened again with a growing wait, up to five times, and the last
+  picture stays on screen under a "Reconnecting…" overlay, because a frozen picture of the right
+  computer says more than an empty one. A computer that takes screen access away is not retried;
+  that is a decision, not a network problem.
+  The connection sheet reports what the phone can actually see: the route, how many pictures have
+  arrived, how long ago the last one was, the display and its size. Stage A rides the Controller
+  channel, which reports no round-trip time or loss, so none is invented — bandwidth, loss and the
+  ladder that reduces detail arrive with the motion path. A banner appears when no picture has
+  arrived for four seconds, and says plainly that nothing has been lost.
 - [ ] 3.5 `feat(android): the same four surfaces in Compose`
 - [ ] 3.6 **(device)** Stage A network matrix on a real iPhone and Android phone [7]
 

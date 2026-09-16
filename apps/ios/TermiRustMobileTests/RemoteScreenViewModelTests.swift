@@ -384,3 +384,165 @@ final class RemoteScreenZoomTests: XCTestCase {
         XCTAssertEqual(RemoteScreenKey.pipe.modifiers, 1, "a pipe is a shifted backslash")
     }
 }
+
+/// What the phone does when a screen session drops, and what it can honestly report about it.
+@MainActor
+final class RemoteScreenReconnectTests: XCTestCase {
+    private func host(capabilities: UInt16 = 0b1110_0011) throws -> PairedHostRecord {
+        try PairedHostRecord(
+            id: "host-1",
+            displayName: "Office Mac",
+            route: HostRoute(address: "192.168.1.10", port: 63322),
+            hostStaticPublicKey: Data(repeating: 1, count: 32),
+            deviceStaticKeyId: "key-1",
+            deviceId: UUID(),
+            identityGeneration: 1,
+            revocationEpoch: 1,
+            sessionGeneration: 1,
+            capabilityBits: capabilities,
+            pairedAt: Date(timeIntervalSince1970: 1)
+        )
+    }
+
+    /// A phone loses long-lived connections all the time. It should try again rather than make
+    /// the person open the screen by hand.
+    func testADroppedSessionIsOpenedAgain() async throws {
+        let coordinator = ControllerScreenCoordinator { _ in .milliseconds(5) }
+        let connection = FlakyScreenConnection(failures: 2)
+        coordinator.startPreview(host: try host(), connection: connection)
+        try await waitUntil { await connection.attempts >= 3 }
+        XCTAssertNil(coordinator.unavailable, "it recovered rather than giving up")
+        coordinator.stop()
+    }
+
+    /// Trying for ever would drain the battery against a computer that is not coming back.
+    func testItGivesUpAfterEnoughFailuresAndSaysWhy() async throws {
+        let coordinator = ControllerScreenCoordinator { _ in .milliseconds(5) }
+        let connection = FlakyScreenConnection(failures: .max)
+        coordinator.startPreview(host: try host(), connection: connection)
+        try await waitUntil { coordinator.unavailable != nil }
+        guard case .failed = coordinator.unavailable else {
+            return XCTFail("expected a failure, got \(String(describing: coordinator.unavailable))")
+        }
+        XCTAssertFalse(coordinator.reconnecting)
+        let attempts = await connection.attempts
+        XCTAssertLessThanOrEqual(
+            attempts,
+            ControllerScreenCoordinator.maximumReconnectAttempts + 1
+        )
+    }
+
+    /// A computer taking screen access away is not a network problem, so retrying is pointless.
+    func testLosingScreenAccessStopsRatherThanRetrying() async throws {
+        let coordinator = ControllerScreenCoordinator { _ in .milliseconds(5) }
+        let connection = FlakyScreenConnection(failures: .max, error: .capabilityDenied)
+        coordinator.startPreview(host: try host(), connection: connection)
+        try await waitUntil { coordinator.unavailable != nil }
+        XCTAssertEqual(coordinator.unavailable, .notGranted)
+        let attempts = await connection.attempts
+        XCTAssertEqual(attempts, 1, "a refusal is not retried")
+    }
+
+    func testAPictureIsCountedAndTimedSoTheInterfaceCanSayHowFreshItIs() {
+        let model = RemoteScreenViewModel(
+            viewer: ScreenViewer(cacheBytes: 1 << 20),
+            surface: 1,
+            ticket: ControllerScreenTicket(
+                commandId: UUID(),
+                ticket: Data(repeating: 3, count: 32),
+                canControlPointer: false,
+                canControlKeyboard: false
+            )
+        )
+        XCTAssertEqual(model.picturesDrawn, 0)
+        XCTAssertNil(model.lastPictureAt)
+    }
+
+    private func waitUntil(
+        attempts: Int = 400,
+        _ condition: @MainActor () async -> Bool
+    ) async throws {
+        for _ in 0..<attempts {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        XCTFail("Condition did not become true before timeout")
+    }
+}
+
+/// A transport whose screen sessions drop, so reconnection can be watched.
+private actor FlakyScreenConnection: ControllerConnecting {
+    private(set) var attempts = 0
+    private let failures: Int
+    private let error: ControllerConnectionError
+
+    init(failures: Int, error: ControllerConnectionError = .malformedResponse) {
+        self.failures = failures
+        self.error = error
+    }
+
+    func watchScreen(
+        host: PairedHostRecord,
+        surface: UInt32?,
+        preview: Bool,
+        onOpened: @escaping @Sendable (ControllerScreenTicket, ScreenViewer) async -> Void,
+        onEvent: @escaping @Sendable ([ScreenEvent]) async throws -> Void
+    ) async throws {
+        attempts += 1
+        if attempts <= failures {
+            throw error
+        }
+        // Stay open until the test stops it, as a healthy session would.
+        try await Task.sleep(for: .seconds(60))
+    }
+
+    func beginPairing(
+        offerText: String,
+        hostName: String,
+        deviceName: String,
+        deviceID: UUID
+    ) async throws -> ControllerPairingChallenge {
+        throw ControllerConnectionError.capabilityDenied
+    }
+
+    func finishPairing(matches: Bool) async throws -> PairedHostRecord {
+        throw ControllerConnectionError.capabilityDenied
+    }
+
+    func fetchSessions(
+        host: PairedHostRecord,
+        progress: @escaping @Sendable (ControllerConnectionProgress) async -> Void
+    ) async throws -> ControllerFleetSnapshot {
+        throw ControllerConnectionError.capabilityDenied
+    }
+
+    func requestWriter(
+        host: PairedHostRecord,
+        identity: ReadOnlyAttachIdentity,
+        commandID: UUID
+    ) async throws {}
+
+    func releaseWriter(
+        host: PairedHostRecord,
+        identity: ReadOnlyAttachIdentity,
+        commandID: UUID
+    ) async throws {}
+
+    func sendInput(
+        host: PairedHostRecord,
+        identity: ReadOnlyAttachIdentity,
+        commandID: UUID,
+        bytes: Data
+    ) async throws {}
+
+    func sendResize(
+        host: PairedHostRecord,
+        identity: ReadOnlyAttachIdentity,
+        commandID: UUID,
+        viewport: TerminalViewportState
+    ) async throws {}
+
+    func forgetDeviceSecret(host: PairedHostRecord) async throws {}
+
+    func cancel() async {}
+}

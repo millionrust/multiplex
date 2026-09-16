@@ -10,15 +10,27 @@ struct RemoteScreenView: View {
     @ObservedObject var model: RemoteScreenViewModel
     let onRequestControl: () -> Void
     let onReleaseControl: () -> Void
+    /// Set while the session is being opened again; the last picture stays on screen.
+    var reconnecting = false
+    /// What this phone is connected over, for the connection sheet.
+    var routeName: String?
 
     @State private var zoomAnchor: CGFloat = 1
     @State private var showingKeyboard = false
     @State private var showingDisplays = false
+    @State private var showingConnection = false
     @State private var typed = ""
+    @State private var now = Date()
     @FocusState private var typing: Bool
+
+    /// Drives the "no picture for a while" test; nothing arrives to trigger it by itself.
+    private let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(spacing: 0) {
+            if weak {
+                weakBanner
+            }
             picture
             if showingKeyboard, model.canControlKeyboard {
                 keyboard
@@ -26,6 +38,7 @@ struct RemoteScreenView: View {
             dock
         }
         .background(Color.mobileBackground)
+        .onReceive(clock) { now = $0 }
         .confirmationDialog("Displays", isPresented: $showingDisplays, titleVisibility: .visible) {
             ForEach(model.displays, id: \.id) { display in
                 Button(ControllerPresentation.isolated(display.name)) {
@@ -34,6 +47,42 @@ struct RemoteScreenView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .sheet(isPresented: $showingConnection) {
+            RemoteScreenConnectionSheet(
+                model: model,
+                routeName: routeName,
+                reconnecting: reconnecting,
+                now: now
+            )
+            .presentationDetents([.medium])
+        }
+    }
+
+    /// Whether the picture has gone still for longer than a pause in the work would explain.
+    private var weak: Bool {
+        guard case .watching = model.state, !reconnecting else { return false }
+        guard let last = model.lastPictureAt else { return false }
+        return now.timeIntervalSince(last) > RemoteScreenViewModel.weakAfter
+    }
+
+    private var weakBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(Color.slateAttention)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Weak connection")
+                    .font(.footnote.weight(.semibold))
+                Text("No new pictures for a moment. Nothing has been lost.")
+                    .font(.caption2)
+                    .foregroundStyle(Color.terminalMuted)
+            }
+            Spacer(minLength: 4)
+            Button("Details") { showingConnection = true }
+                .font(.caption)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.slateAttention.opacity(0.12))
     }
 
     @ViewBuilder
@@ -87,6 +136,19 @@ struct RemoteScreenView: View {
                     scale: model.scale(in: size),
                     origin: model.pictureOrigin(in: size)
                 )
+            }
+            if reconnecting {
+                // Over the last picture, not instead of it: a frozen picture of the right
+                // computer says more than an empty one.
+                VStack(spacing: 8) {
+                    ProgressView()
+                        .tint(.white)
+                    Text("Reconnecting…")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white)
+                }
+                .padding(20)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
         }
         .frame(width: size.width, height: size.height)
@@ -196,6 +258,12 @@ struct RemoteScreenView: View {
                         .labelStyle(.iconOnly)
                 }
             }
+            Button {
+                showingConnection = true
+            } label: {
+                Label("Connection", systemImage: "antenna.radiowaves.left.and.right")
+                    .labelStyle(.iconOnly)
+            }
             Text(controlLabel)
                 .font(.footnote)
                 .foregroundStyle(Color.terminalMuted)
@@ -236,6 +304,59 @@ struct RemoteScreenView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// What this phone actually knows about the connection carrying the screen.
+///
+/// Stage A rides the Controller channel, which reports no round-trip time or loss, so this shows
+/// what the phone can see for itself rather than inventing numbers. Bandwidth, loss and the
+/// steps that reduce detail arrive with the motion path.
+private struct RemoteScreenConnectionSheet: View {
+    @ObservedObject var model: RemoteScreenViewModel
+    let routeName: String?
+    let reconnecting: Bool
+    let now: Date
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    LabeledContent("Route", value: routeName ?? "Private network")
+                    LabeledContent("Pictures", value: "\(model.picturesDrawn)")
+                    LabeledContent("Last picture", value: sinceLastPicture)
+                    if let name = model.displayName {
+                        LabeledContent("Display", value: ControllerPresentation.isolated(name))
+                    }
+                    LabeledContent("Size", value: sizeText)
+                }
+                Section {
+                    Text(reconnecting
+                        ? "The session dropped and is being opened again. The picture on screen is the last one that arrived."
+                        : "A still screen sends nothing, so a pause between pictures is usually the computer being quiet rather than the network.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("Keeping up")
+                } footer: {
+                    Text("Reducing detail to keep a busy screen moving arrives with the motion path; Stage A always sends exact pixels.")
+                }
+            }
+            .navigationTitle("Connection")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private var sinceLastPicture: String {
+        guard let last = model.lastPictureAt else { return "None yet" }
+        let seconds = Int(now.timeIntervalSince(last).rounded())
+        return seconds <= 0 ? "Just now" : "\(seconds)s ago"
+    }
+
+    private var sizeText: String {
+        let size = model.size
+        guard size.width > 0 else { return "Unknown" }
+        return "\(Int(size.width)) × \(Int(size.height))"
     }
 }
 

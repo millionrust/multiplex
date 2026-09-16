@@ -77,8 +77,15 @@ final class RemoteScreenViewModel: ObservableObject {
     /// Where the pointer is in trackpad mode, in the computer's own pixels.
     @Published private(set) var pointer: CGPoint = .zero
 
+    /// How many pictures this session has drawn, and when the last one arrived.
+    @Published private(set) var picturesDrawn = 0
+    @Published private(set) var lastPictureAt: Date?
+
     /// As far in as a finger may zoom. Past this a phone is magnifying its own blur.
     static let maximumZoom: CGFloat = 6
+    /// How long without a picture before the interface says the connection is struggling. A
+    /// still screen sends nothing, so this is deliberately longer than a pause in the work.
+    static let weakAfter: TimeInterval = 4
 
     private let viewer: ScreenViewer
     /// A preview is the computer's thumbnail profile: about one small picture a second.
@@ -359,6 +366,8 @@ final class RemoteScreenViewModel: ObservableObject {
             draw(pixels, into: canvas, surfaceHeight: Int(whole.height))
         }
         image = canvas.makeImage()
+        picturesDrawn += 1
+        lastPictureAt = Date()
         if case .opening = state, image != nil {
             state = .watching
         }
