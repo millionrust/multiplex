@@ -4383,6 +4383,22 @@ id = "remote-devices-restrict-input-action"
 context = "Remove terminal input and resize capabilities from a Controller."
 description = "Restrict Controller input action"
 [[messages]]
+id = "remote-devices-allow-watching-action"
+context = "Let one paired device watch this computer's screens."
+description = "Allow screen watching action"
+[[messages]]
+id = "remote-devices-restrict-watching-action"
+context = "Stop one paired device from watching this computer's screens."
+description = "Stop screen watching action"
+[[messages]]
+id = "remote-devices-allow-screen-control-action"
+context = "Let one paired device point and type on this computer's screens."
+description = "Allow screen control action"
+[[messages]]
+id = "remote-devices-restrict-screen-control-action"
+context = "Stop one paired device from pointing and typing on this computer's screens."
+description = "Stop screen control action"
+[[messages]]
 id = "remote-devices-revoke-action"
 context = "Revoke one Controller device."
 description = "Revoke Controller action"

@@ -27,7 +27,8 @@ use crate::controller::lan::ControllerListenerProcess;
 use crate::controller::ssh_pairing::SshPairingBroker;
 
 use super::controller_coordinator::{
-    ControllerListenerEventProjection, ControllerPairingFailureKind,
+    ControllerDeviceMutationError, ControllerListenerEventProjection, ControllerPairingFailureKind,
+    controls_screens,
 };
 
 use super::*;
@@ -1513,6 +1514,10 @@ impl TermiRustApp {
         let input_allowed = device
             .capabilities
             .contains(ControllerCapability::SendInput);
+        let watching_allowed = device
+            .capabilities
+            .contains(ControllerCapability::ObserveScreens);
+        let screen_control_allowed = controls_screens(device.capabilities);
         let status = remote_device_status(device.status);
         let last_seen = device
             .last_seen_at
@@ -1573,6 +1578,33 @@ impl TermiRustApp {
                                     .disabled(revoked)
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.toggle_remote_device_input(device_id, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new(("remote-device-watching", index))
+                                    .small()
+                                    .label(if watching_allowed {
+                                        localization::remote_devices_restrict_watching_action()
+                                    } else {
+                                        localization::remote_devices_allow_watching_action()
+                                    })
+                                    .disabled(revoked)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.toggle_remote_device_watching(device_id, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new(("remote-device-screen-control", index))
+                                    .small()
+                                    .label(if screen_control_allowed {
+                                        localization::remote_devices_restrict_screen_control_action(
+                                        )
+                                    } else {
+                                        localization::remote_devices_allow_screen_control_action()
+                                    })
+                                    .disabled(revoked)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.toggle_remote_device_screen_control(device_id, cx);
                                     })),
                             )
                             .child(
@@ -1838,6 +1870,66 @@ impl TermiRustApp {
             .and_then(|()| self.remote_devices.refresh());
         if result.is_ok() {
             self.status_message = localization::remote_devices_capabilities_saved();
+        } else {
+            self.error_message = localization::remote_devices_operation_failed();
+        }
+        cx.notify();
+    }
+
+    /// Lets one device watch this computer's screens, or stops it watching.
+    fn toggle_remote_device_watching(
+        &mut self,
+        device_id: ControllerDeviceId,
+        cx: &mut Context<Self>,
+    ) {
+        self.change_device_capabilities(device_id, cx, |coordinator, repository, capabilities| {
+            coordinator.toggle_screen_watching(repository, device_id, capabilities)
+        });
+    }
+
+    /// Lets one device point and type on this computer's screens, or stops it.
+    fn toggle_remote_device_screen_control(
+        &mut self,
+        device_id: ControllerDeviceId,
+        cx: &mut Context<Self>,
+    ) {
+        self.change_device_capabilities(device_id, cx, |coordinator, repository, capabilities| {
+            coordinator.toggle_screen_control(repository, device_id, capabilities)
+        });
+    }
+
+    /// Applies one capability change to a paired device and reports what happened.
+    fn change_device_capabilities(
+        &mut self,
+        device_id: ControllerDeviceId,
+        cx: &mut Context<Self>,
+        change: impl FnOnce(
+            &ControllerCoordinator,
+            ControllerDeviceRepository,
+            termirust_domain::ControllerCapabilities,
+        ) -> Result<(), ControllerDeviceMutationError>,
+    ) {
+        let result = self
+            .remote_devices
+            .devices
+            .iter()
+            .find(|device| device.device_id == device_id)
+            .map(|device| device.capabilities)
+            .ok_or(())
+            .and_then(|capabilities| {
+                self.remote_devices
+                    .repository
+                    .clone()
+                    .ok_or(())
+                    .map(|repository| (repository, capabilities))
+            })
+            .and_then(|(repository, capabilities)| {
+                change(&self.controller_coordinator, repository, capabilities).map_err(|_| ())
+            })
+            .and_then(|()| self.remote_devices.refresh());
+        if result.is_ok() {
+            self.status_message = localization::remote_devices_capabilities_saved();
+            self.error_message.clear();
         } else {
             self.error_message = localization::remote_devices_operation_failed();
         }

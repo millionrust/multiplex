@@ -987,6 +987,22 @@ static_message!(
     remote_devices_restrict_input_action,
     RemoteDevicesRestrictInputActionArgs
 );
+static_message!(
+    remote_devices_allow_watching_action,
+    RemoteDevicesAllowWatchingActionArgs
+);
+static_message!(
+    remote_devices_restrict_watching_action,
+    RemoteDevicesRestrictWatchingActionArgs
+);
+static_message!(
+    remote_devices_allow_screen_control_action,
+    RemoteDevicesAllowScreenControlActionArgs
+);
+static_message!(
+    remote_devices_restrict_screen_control_action,
+    RemoteDevicesRestrictScreenControlActionArgs
+);
 static_message!(remote_devices_revoke_action, RemoteDevicesRevokeActionArgs);
 static_message!(
     remote_devices_name_edit_action,

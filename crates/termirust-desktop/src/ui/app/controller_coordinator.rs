@@ -195,6 +195,38 @@ impl ControllerCoordinator {
         })
     }
 
+    /// Lets one device watch this computer's screens, or stops it watching.
+    pub fn toggle_screen_watching(
+        &self,
+        repository: ControllerDeviceRepository,
+        device_id: ControllerDeviceId,
+        current: ControllerCapabilities,
+    ) -> Result<(), ControllerDeviceMutationError> {
+        self.device_mutator.mutate(ControllerDeviceMutationRequest {
+            repository,
+            mutation: ControllerDeviceMutation::SetCapabilities {
+                device_id,
+                capabilities: toggled_watching_capabilities(current),
+            },
+        })
+    }
+
+    /// Lets one device point and type on this computer's screens, or stops it.
+    pub fn toggle_screen_control(
+        &self,
+        repository: ControllerDeviceRepository,
+        device_id: ControllerDeviceId,
+        current: ControllerCapabilities,
+    ) -> Result<(), ControllerDeviceMutationError> {
+        self.device_mutator.mutate(ControllerDeviceMutationRequest {
+            repository,
+            mutation: ControllerDeviceMutation::SetCapabilities {
+                device_id,
+                capabilities: toggled_screen_control_capabilities(current),
+            },
+        })
+    }
+
     pub fn revoke_device(
         &self,
         repository: ControllerDeviceRepository,
@@ -354,13 +386,65 @@ impl ControllerCoordinator {
 
 fn toggled_input_capabilities(current: ControllerCapabilities) -> ControllerCapabilities {
     if current.contains(ControllerCapability::SendInput) {
-        ControllerCapabilities::default()
+        // Terminal input goes; watching a screen is a separate grant and stays as it was.
+        let kept = ControllerCapabilities::default()
             .with(ControllerCapability::ObserveSessions)
-            .with(ControllerCapability::AttachOutput)
+            .with(ControllerCapability::AttachOutput);
+        with_screen_grants(kept, current)
     } else {
         current
             .with(ControllerCapability::SendInput)
             .with(ControllerCapability::Resize)
+    }
+}
+
+/// Watching, and pointing and typing on, this computer's screens.
+const SCREEN_CAPABILITIES: [ControllerCapability; 3] = [
+    ControllerCapability::ObserveScreens,
+    ControllerCapability::ControlPointer,
+    ControllerCapability::ControlKeyboard,
+];
+
+fn with_screen_grants(
+    base: ControllerCapabilities,
+    source: ControllerCapabilities,
+) -> ControllerCapabilities {
+    SCREEN_CAPABILITIES
+        .into_iter()
+        .filter(|capability| source.contains(*capability))
+        .fold(base, ControllerCapabilities::with)
+}
+
+/// Whether a device may point or type on this computer's screens.
+pub(super) fn controls_screens(capabilities: ControllerCapabilities) -> bool {
+    capabilities.contains(ControllerCapability::ControlPointer)
+        || capabilities.contains(ControllerCapability::ControlKeyboard)
+}
+
+/// Turns watching on or off for one device. Turning it off also takes away pointer and keyboard,
+/// because driving a screen this device cannot see is not something anyone asked for.
+fn toggled_watching_capabilities(current: ControllerCapabilities) -> ControllerCapabilities {
+    if current.contains(ControllerCapability::ObserveScreens) {
+        SCREEN_CAPABILITIES
+            .into_iter()
+            .fold(current, ControllerCapabilities::without)
+    } else {
+        current.with(ControllerCapability::ObserveScreens)
+    }
+}
+
+/// Turns pointer and keyboard on or off together, as one "can drive this computer" grant.
+/// Granting it implies watching, since driving a screen blind is useless.
+fn toggled_screen_control_capabilities(current: ControllerCapabilities) -> ControllerCapabilities {
+    if controls_screens(current) {
+        current
+            .without(ControllerCapability::ControlPointer)
+            .without(ControllerCapability::ControlKeyboard)
+    } else {
+        current
+            .with(ControllerCapability::ObserveScreens)
+            .with(ControllerCapability::ControlPointer)
+            .with(ControllerCapability::ControlKeyboard)
     }
 }
 
@@ -414,7 +498,8 @@ mod tests {
         ControllerDeviceMutationRequest, ControllerDeviceMutator,
         ControllerListenerEventProjection, ControllerListenerEventProjectionError,
         ControllerListenerSpawner, ControllerPairingFailureKind, SystemControllerListenerSpawner,
-        ssh_pairing_decision, toggled_input_capabilities,
+        ssh_pairing_decision, toggled_input_capabilities, toggled_screen_control_capabilities,
+        toggled_watching_capabilities,
     };
     use crate::controller::lan::{ControllerListenerProcess, ListenerProcessError};
     #[cfg(unix)]
@@ -588,6 +673,42 @@ mod tests {
                 .with(ControllerCapability::ObserveSessions)
                 .with(ControllerCapability::AttachOutput)
         );
+    }
+
+    #[test]
+    fn screen_grants_move_together_and_survive_a_terminal_input_change() {
+        let terminal_only = ControllerCapabilities::default()
+            .with(ControllerCapability::ObserveSessions)
+            .with(ControllerCapability::AttachOutput);
+
+        // Watching is its own grant, and control implies it.
+        let watching = toggled_watching_capabilities(terminal_only);
+        assert!(watching.contains(ControllerCapability::ObserveScreens));
+        assert!(!super::controls_screens(watching));
+        let driving = toggled_screen_control_capabilities(terminal_only);
+        assert!(driving.contains(ControllerCapability::ObserveScreens));
+        assert!(driving.contains(ControllerCapability::ControlPointer));
+        assert!(driving.contains(ControllerCapability::ControlKeyboard));
+
+        // Taking watching away takes the pointer and keyboard with it.
+        let stopped = toggled_watching_capabilities(driving);
+        assert!(!stopped.contains(ControllerCapability::ObserveScreens));
+        assert!(!super::controls_screens(stopped));
+        assert_eq!(stopped, terminal_only, "terminal grants are untouched");
+
+        // Taking control away leaves the device watching.
+        let watching_only = toggled_screen_control_capabilities(driving);
+        assert!(watching_only.contains(ControllerCapability::ObserveScreens));
+        assert!(!super::controls_screens(watching_only));
+
+        // Terminal input is a separate question from screens, in both directions.
+        let typing_and_driving = driving
+            .with(ControllerCapability::SendInput)
+            .with(ControllerCapability::Resize);
+        let no_typing = toggled_input_capabilities(typing_and_driving);
+        assert!(!no_typing.contains(ControllerCapability::SendInput));
+        assert!(no_typing.contains(ControllerCapability::ObserveScreens));
+        assert!(super::controls_screens(no_typing));
     }
 
     #[test]

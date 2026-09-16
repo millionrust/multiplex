@@ -106,7 +106,7 @@ Pure Rust, no platform code, fully testable in CI.
   Sharing one lease with the text path's writer lease happens in 2.7.
 - [ ] 2.12 `feat(desktop): show computers with live previews in Devices`
 - [ ] 2.13 `feat(desktop): open a remote screen tab with zoom, minimap and inspector`
-- [~] 2.14 `feat(desktop): share this computer's screen from Devices`
+- [x] 2.14 `feat(desktop): share this computer's screen from Devices`
   The opt-in and the host wiring landed: Devices has a "Share this screen" choice, off by default,
   which the listener worker reads from its descriptor. Capture and injection run in that worker,
   one capture thread per display and one injection thread, because Core Graphics events need a
@@ -115,7 +115,9 @@ Pure Rust, no platform code, fully testable in CI.
   The sharing indicator landed next: the listener reports who is watching, and who holds control,
   every half second while it changes, and Devices names them and offers "Stop sharing". Reports
   carry device ids only, never screen content, and the last watcher leaving is itself a report.
-  Still to do in 2.14: per-device screen grants in the device editor.
+  Per-device grants finished it: each paired device has "Allow watching" and "Allow pointer and
+  keyboard", which write the Controller-v1 capability bits. Control implies watching, taking
+  watching away takes control with it, and the terminal input choice no longer wipes either.
 - [x] 2.15 `feat(screen-host): serve screens over the Controller channel, end to end`
   `termirust-screen-host` is the screen session the listener carries: it reassembles the protocol
   from screen frames, spends the ticket, checks each frame's capability against what the message

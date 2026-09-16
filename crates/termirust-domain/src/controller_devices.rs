@@ -332,6 +332,11 @@ impl ControllerCapabilities {
     pub const fn with(self, capability: ControllerCapability) -> Self {
         Self(self.0 | capability.bit())
     }
+
+    #[must_use]
+    pub const fn without(self, capability: ControllerCapability) -> Self {
+        Self(self.0 & !capability.bit())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
