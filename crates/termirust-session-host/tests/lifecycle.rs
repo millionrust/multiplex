@@ -165,3 +165,44 @@ async fn activity_lifecycle_stop_archive_restore_requires_confirmed_host_exit() 
     assert!(process.try_wait().unwrap().is_some());
     assert!(session_dir.is_dir());
 }
+
+/// The runtime root lives under a per-user directory in the temporary directory, which nothing
+/// has created on a machine that has never run a durable session. Starting one has to make it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_first_session_on_a_machine_creates_its_runtime_root() {
+    let fixture = tempfile::tempdir().unwrap();
+    // A Unix socket path is limited to about 100 bytes, so stay out of long temp dirs.
+    let runtime = tempfile::Builder::new()
+        .prefix("tr-first-")
+        .tempdir_in("/tmp")
+        .unwrap();
+    let session_id = HostedSessionId::new();
+    let descriptor = LaunchDescriptor {
+        format_version: LaunchDescriptor::FORMAT_VERSION,
+        session_id,
+        host_instance_id: HostInstanceId::new(),
+        expected_occupant_generation: None,
+        // Neither this directory nor its parent exists yet.
+        runtime_root: runtime.path().join("never-used").join("r"),
+        session_dir: fixture.path().join("durable-sessions").join("session"),
+        executable: std::fs::canonicalize("/bin/sh").unwrap(),
+        runtime_detection: None,
+        arguments: vec![
+            "-c".to_string(),
+            "trap 'exit 0' TERM INT; while :; do sleep 1; done".to_string(),
+        ],
+        environment: BTreeMap::from([("PATH".to_string(), "/usr/bin:/bin".to_string())]),
+        cwd: Some(fixture.path().to_path_buf()),
+        columns: 80,
+        rows: 24,
+        journal_limits: JournalLimits::default(),
+        stop_deadlines: StopDeadlines::default(),
+    };
+    let runtime_root = descriptor.runtime_root.clone();
+
+    let host = termirust_session_host::start(descriptor)
+        .await
+        .expect("the Host creates the runtime root it was given");
+    assert!(runtime_root.is_dir());
+    host.shutdown().await.unwrap();
+}
