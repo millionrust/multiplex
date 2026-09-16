@@ -117,6 +117,13 @@ conformance runner replay. They are test-only, add no package, and stay outside 
 controller-security dependency closure; every Controller vector is unchanged, and the workspace
 lock and ADR checksums were reviewed and repinned.
 
+On 2026-09-16 the mobile Controller fixture was taught to serve a synthetic screen, so a phone can
+be tested against a real host. That adds `termirust-screen-codec`, `-host`, `-protocol` and
+`-session` to `termirust-controller-listener`'s **dev**-dependencies only. It adds no external
+package, changes no selected version or feature, and nothing reaches a published artifact or the
+controller-security dependency closure; every Controller vector is unchanged, and the workspace
+lock and ADR checksums were reviewed and repinned.
+
 On 2026-09-16 the new `termirust-screen-bindings` workspace crate was added so phones can watch
 and drive a screen. It mirrors `termirust-controller-bindings`: the same pinned `uniffi 0.32.0`,
 no other external package, and the screen workspace crates. It never touches Controller-v1 keys or

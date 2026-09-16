@@ -127,16 +127,33 @@ impl ScreenSessionFactory for ScreenSharing {
         let sharing = self.clone();
         let (input_sender, input_receiver) = channel();
         let layout = layout(&displays);
+        // The listener makes a screen session for every Controller connection, so capture waits
+        // for a device to actually open one. A phone that only watches a terminal must never turn
+        // this computer's screen recording on.
+        let pending = Arc::new(Mutex::new(Some((displays.clone(), layout, input_receiver))));
+        // The observer needs the handle that this call has not produced yet.
+        let opened_handle: Arc<Mutex<Option<ScreenHostHandle>>> = Arc::new(Mutex::new(None));
+        let observer_handle = Arc::clone(&opened_handle);
         let (session, handle) = ScreenHost::new(
             displays.iter().map(|display| display.surface()).collect(),
             HostConfig::default(),
             outgoing,
             Arc::new(move |event| match event {
-                ScreenHostEvent::Opened { .. } => sharing.add_watcher(ScreenWatcher {
-                    device_id,
-                    display_name: String::new(),
-                    controlling: false,
-                }),
+                ScreenHostEvent::Opened { .. } => {
+                    sharing.add_watcher(ScreenWatcher {
+                        device_id,
+                        display_name: String::new(),
+                        controlling: false,
+                    });
+                    let handle = observer_handle.lock().expect("screen handle").clone();
+                    let started = pending.lock().expect("screen capture start").take();
+                    if let (Some(handle), Some((displays, layout, input))) = (handle, started) {
+                        for display in &displays {
+                            spawn_capture(display.clone(), handle.clone());
+                        }
+                        spawn_injection(layout, input, handle);
+                    }
+                }
                 ScreenHostEvent::Input(input) => {
                     let _ = input_sender.send(Some(input));
                 }
@@ -148,10 +165,7 @@ impl ScreenSessionFactory for ScreenSharing {
                 }
             }),
         );
-        for display in &displays {
-            spawn_capture(display.clone(), handle.clone());
-        }
-        spawn_injection(layout, input_receiver, handle.clone());
+        *opened_handle.lock().expect("screen handle") = Some(handle);
         Some(Box::new(session))
     }
 

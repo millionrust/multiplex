@@ -3,6 +3,8 @@
 
 #[cfg(unix)]
 mod fixture;
+#[cfg(unix)]
+mod screens;
 
 fn main() {
     #[cfg(unix)]

@@ -29,5 +29,11 @@ libc = "0.2"
 
 [dev-dependencies]
 proptest = "=1.11.0"
+# The mobile fixture serves a synthetic screen, so a phone can be tested against a real host.
+# A development-only cycle: the screen host is built on this crate.
+termirust-screen-codec = { version = "0.1.0", path = "../termirust-screen-codec" }
+termirust-screen-host = { version = "0.1.0", path = "../termirust-screen-host" }
+termirust-screen-protocol = { version = "0.1.0", path = "../termirust-screen-protocol" }
+termirust-screen-session = { version = "0.1.0", path = "../termirust-screen-session" }
 tempfile = "3.27"
 tokio = { version = "1", features = ["test-util"] }

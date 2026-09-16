@@ -19,16 +19,19 @@ status_line() {
   printf '[%s] %s\n' "$1" "$2"
 }
 
+# Sends one command to the fixture's control channel and prints its answer.
+control_command() {
+  local address port
+  [[ -n "$CONFIG_PATH" && -f "$CONFIG_PATH" ]] || return 1
+  address="$(jq -r '.control_address // empty' "$CONFIG_PATH" 2>/dev/null || true)"
+  port="$(jq -r '.control_port // empty' "$CONFIG_PATH" 2>/dev/null || true)"
+  [[ -n "$address" && -n "$port" ]] || return 1
+  jq -c --arg command "$1" '{token:.control_token,command:$command}' "$CONFIG_PATH" \
+    | nc -w 4 "$address" "$port" 2>/dev/null
+}
+
 shutdown_fixture() {
-  if [[ -n "$CONFIG_PATH" && -f "$CONFIG_PATH" ]]; then
-    local address port
-    address="$(jq -r '.control_address // empty' "$CONFIG_PATH" 2>/dev/null || true)"
-    port="$(jq -r '.control_port // empty' "$CONFIG_PATH" 2>/dev/null || true)"
-    if [[ -n "$address" && -n "$port" ]]; then
-      jq -c '{token:.control_token,command:"shutdown"}' "$CONFIG_PATH" 2>/dev/null \
-        | nc -w 2 "$address" "$port" >/dev/null 2>&1 || true
-    fi
-  fi
+  control_command shutdown >/dev/null 2>&1 || true
 }
 
 restore_resource() {
@@ -180,6 +183,26 @@ else
     -destination "$IOS_DESTINATION" \
     -only-testing:TermiRustMobileTests/ControllerPairingFleetTests/testLiveRustControllerPairingTerminalLifecycleAndRevocation
 fi
+
+# A missing fixture makes the test skip itself, and a skip is reported as a pass. Ask the
+# fixture what it saw instead, so only a phone that really paired, watched the screen and drove
+# it can finish this script.
+status_line RUN "confirming the phone reached the fixture"
+FIXTURE_STATS="$(control_command screen_stats | jq -r '.value // empty' 2>/dev/null || true)"
+case "$FIXTURE_STATS" in
+  *"opened=1"*) ;;
+  *)
+    status_line FAIL "the phone never opened the fixture's screen (screen_stats: ${FIXTURE_STATS:-none})"
+    exit 1
+    ;;
+esac
+case "$FIXTURE_STATS" in
+  *"pointer=0"* | *"keyboard=0"*)
+    status_line FAIL "the phone never drove the fixture's screen (screen_stats: $FIXTURE_STATS)"
+    exit 1
+    ;;
+esac
+status_line PASS "the fixture saw the phone watch and drive its screen ($FIXTURE_STATS)"
 
 shutdown_fixture
 for _ in {1..50}; do

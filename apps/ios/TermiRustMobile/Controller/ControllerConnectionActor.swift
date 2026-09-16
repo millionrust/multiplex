@@ -540,6 +540,8 @@ actor ControllerConnectionActor: ControllerConnecting {
     private static let supportedCapabilityBits = observeCapability
         | attachCapability | inputCapability | resizeCapability | approvalCapability
         | observeScreensCapability | controlPointerCapability | controlKeyboardCapability
+    /// The tile cache a phone keeps for one screen. The computer models the same budget.
+    private static let screenCacheBytes: UInt64 = 32 * 1_024 * 1_024
     private static let maxOfferBytes = 4 * 1_024
     private static let maxHandshakeFrameBytes = 1_024
     private static let maxSecureFrameBytes = 64 * 1_024
@@ -900,9 +902,9 @@ actor ControllerConnectionActor: ControllerConnecting {
             hostStaticPublicKey: host.hostStaticPublicKey,
             identityGeneration: host.identityGeneration,
             revocationEpoch: host.revocationEpoch,
-            // Ask for what this device was granted, and no more: a computer refuses a
-            // connection that requests a capability it never gave.
-            requestedCapabilityBits: host.capabilityBits & Self.supportedCapabilityBits,
+            // Ask for everything this app version understands. The computer answers with what
+            // it actually granted, which is how a new grant reaches a device that never had it.
+            requestedCapabilityBits: Self.supportedCapabilityBits,
             clientNonce: try Self.randomBytes(count: 32),
             nowMillis: started
         )
@@ -1296,6 +1298,153 @@ actor ControllerConnectionActor: ControllerConnecting {
             capabilityBit: Self.resizeCapability,
             payload: payload
         )
+    }
+
+    /// Watches a computer's screen until `onEvent` throws or the task is cancelled.
+    ///
+    /// The session starts with an `open_screen` command, whose one-time ticket the screen
+    /// protocol's hello proves. After that every frame is a screen frame claiming the capability
+    /// its contents need, which the computer checks again before acting on it.
+    func watchScreen(
+        host: PairedHostRecord,
+        surface: UInt32,
+        preview: Bool,
+        onOpened: @escaping @Sendable (ControllerScreenTicket, ScreenViewer) async -> Void,
+        onEvent: @escaping @Sendable ([ScreenEvent]) async throws -> Void
+    ) async throws {
+        await cancel()
+        guard host.schemaVersion == PairedHostRecord.currentSchemaVersion,
+              host.capabilityBits & Self.observeScreensCapability == Self.observeScreensCapability
+        else {
+            throw ControllerConnectionError.capabilityDenied
+        }
+        let requested = host.capabilityBits & Self.supportedCapabilityBits
+        let (network, _) = try await openHostConnection(host)
+        connection = network
+        let started = Self.uptimeMillis()
+        let request = ConnectionStartRequest(
+            staticKeyId: host.deviceStaticKeyId,
+            ephemeralPrivateKey: try Self.randomBytes(count: 32),
+            hostStaticPublicKey: host.hostStaticPublicKey,
+            identityGeneration: host.identityGeneration,
+            revocationEpoch: host.revocationEpoch,
+            requestedCapabilityBits: requested,
+            clientNonce: try Self.randomBytes(count: 32),
+            nowMillis: started
+        )
+        let authentication: AuthenticatedSessionResult = try await withTimeout(Self.handshakeTimeout) {
+            try await Self.send(Self.authenticationPreface, over: network)
+            let prelude = try self.securityEngine.connectionPrelude(request: request)
+            try await Self.send(prelude, over: network)
+            let challenge = try await Self.receiveExactly(36, over: network)
+            let session = try self.securityEngine.connectionStart(
+                request: request,
+                challengeBytes: challenge
+            )
+            let hello = try session.handshakeOutbound(nowMillis: Self.uptimeMillis())
+            try await Self.sendFrame(hello, maximum: Self.maxHandshakeFrameBytes, over: network)
+            let accept = try await Self.receiveFrame(
+                maximum: Self.maxHandshakeFrameBytes,
+                over: network
+            )
+            let result = try session.handshakeReceiveAccept(
+                message: accept,
+                nowMillis: Self.uptimeMillis()
+            )
+            return AuthenticatedSessionResult(publicResult: result, session: session)
+        }
+        let publicResult = authentication.publicResult
+        let authenticatedSession = authentication.session
+        defer {
+            try? authenticatedSession.finish()
+            network.cancel()
+            if connection === network { connection = nil }
+        }
+        guard publicResult.hostStaticPublicKey == host.hostStaticPublicKey,
+              publicResult.identityGeneration == host.identityGeneration,
+              publicResult.revocationEpoch == host.revocationEpoch,
+              publicResult.grantedCapabilityBits & Self.observeScreensCapability
+                  == Self.observeScreensCapability,
+              publicResult.grantedCapabilityBits & ~Self.supportedCapabilityBits == 0 else {
+            throw ControllerConnectionError.authenticationFailed
+        }
+
+        let ticket = try await openScreenSession(
+            host: host,
+            session: authenticatedSession,
+            network: network
+        )
+        let viewer = ScreenViewer(cacheBytes: Self.screenCacheBytes)
+        try viewer.connect(ticket: ticket.ticket)
+        viewer.subscribe(surface: surface, preview: preview)
+        await onOpened(ticket, viewer)
+
+        let pump = ControllerScreenPump(ticket: ticket)
+        while !Task.isCancelled {
+            for (capability, bytes) in try pump.drain(viewer) {
+                let sealed = try authenticatedSession.sealFrame(
+                    kind: .screen,
+                    capability: capability,
+                    revocationEpoch: host.revocationEpoch,
+                    payload: bytes
+                )
+                try await Self.sendFrame(
+                    sealed,
+                    maximum: Self.maxTerminalFrameBytes,
+                    over: network
+                )
+            }
+            let sealedFrame = try await Self.receiveFrame(
+                maximum: Self.maxTerminalFrameBytes,
+                over: network
+            )
+            let opened = try authenticatedSession.openFrame(frame: sealedFrame)
+            guard opened.kind == .screen,
+                  opened.revocationEpoch == host.revocationEpoch,
+                  opened.capability == .observeScreens else {
+                throw ControllerConnectionError.malformedResponse
+            }
+            try await onEvent(try viewer.receive(bytes: opened.payload))
+        }
+    }
+
+    /// Asks for a screen session and reads the one-time ticket it answers with.
+    private func openScreenSession(
+        host: PairedHostRecord,
+        session: ControllerConnectionSession,
+        network: any ControllerDuplexConnection
+    ) async throws -> ControllerScreenTicket {
+        let commandID = UUID()
+        let envelope: [String: Any] = [
+            "version": 1,
+            "command_id": commandID.uuidString,
+            "session_generation": host.sessionGeneration,
+            "deadline_millis": Self.wallClockMillis().saturatingAdd(30_000),
+            "command": ControllerScreenCommand.openBody(),
+        ]
+        let payload = try JSONSerialization.data(withJSONObject: envelope)
+        let sealed = try session.sealFrame(
+            kind: .control,
+            capability: .observeScreens,
+            revocationEpoch: host.revocationEpoch,
+            payload: payload
+        )
+        try await Self.sendFrame(sealed, maximum: Self.maxSecureFrameBytes, over: network)
+        let response = try await Self.receiveFrame(
+            maximum: Self.maxSecureFrameBytes,
+            over: network
+        )
+        let opened = try session.openFrame(frame: response)
+        guard opened.kind == .control,
+              opened.capability == .observeScreens,
+              opened.revocationEpoch == host.revocationEpoch else {
+            throw ControllerConnectionError.malformedResponse
+        }
+        let ticket = try ControllerScreenResponse.ticket(from: opened.payload)
+        guard ticket.commandId == commandID else {
+            throw ControllerConnectionError.malformedResponse
+        }
+        return ticket
     }
 
     func forgetDeviceSecret(host: PairedHostRecord) async throws {

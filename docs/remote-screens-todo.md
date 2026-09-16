@@ -161,8 +161,11 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
 - [ ] 3.2 `feat(ios): show live previews in Fleet and a computer detail screen`
   Started: the phone can ask for a screen session (`ControllerScreenSession.swift`: the two
   commands, the ticket parser, and the pump that tags each chunk with the capability its contents
-  need). Still to do: opening that session from `ControllerConnectionActor`, and the Fleet
-  surfaces that show previews and lead to a computer.
+  need), and `ControllerConnectionActor.watchScreen` now opens one and pumps it. A real iPhone
+  simulator watches and drives a real Rust host end to end: the live fixture
+  (`scripts/test/mobile-ios-controller-host.sh`) serves a synthetic 320×200 screen, and the test
+  asserts the welcome, three distinct pictures, the control handover, and the pointer and typing
+  the host recorded. Still to do: the Fleet surfaces that show previews and lead to a computer.
 - [ ] 3.3 `feat(ios): add the remote screen viewer with zoom, minimap, pointer modes and keyboard`
   Started: `RemoteScreenViewModel` and `RemoteScreenView` draw damaged rectangles into one bitmap,
   fit the picture, map a tap back through the same transform, and offer control only when the

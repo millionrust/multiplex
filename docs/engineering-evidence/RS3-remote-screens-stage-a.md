@@ -83,8 +83,34 @@ PASS: 11 tests, 0 failures, on iOS 27.0 (24A434)
 Reading the phone's connection path to write them found a defect the Rust tests could not:
 the app refused any granted capability set containing a bit it did not recognise, so granting a
 paired phone `ObserveScreens` would have broken its **terminal** connection with
-`authenticationFailed`. Fixed by teaching the app the three bits, and by requesting what the
-pairing granted rather than a fixed set.
+`authenticationFailed`. Fixed by teaching the app the three bits.
+
+## The phone against a real host
+
+```text
+./scripts/test/mobile-ios-controller-host.sh
+PASS: the fixture saw the phone watch and drive its screen
+      (opened=1 pointer=1 keyboard=1 control_requests=1)
+PASS: real iOS Controller pairing, terminal lifecycle, and revocation completed
+```
+
+The live fixture (`crates/termirust-controller-listener/examples/mobile_controller_fixture/`)
+now serves a synthetic 320 × 200 screen: no capture and no platform code, just a caret that moves
+every frame, which is enough to prove pixels reach the phone. One simulator run pairs, lists
+sessions, drives a terminal, then watches that screen: it asserts the welcome names the surface,
+that three *distinct* pictures arrived, that control asked for and given reaches the phone, and
+that the pointer and the typing it sent were recorded by the host. It then re-attaches a terminal
+and confirms revocation closes both the terminal and a new screen session.
+
+Two defects surfaced only because a real phone drove a real host:
+
+- The listener makes a screen session for **every** authenticated Controller connection, before
+  any device asks to watch. The desktop started its ScreenCaptureKit threads there, so a phone
+  that opened only a terminal would have switched this Mac's screen recording on with nobody
+  watching. Capture and injection now start on `ScreenHostEvent::Opened`.
+- A script that only reads the test's exit status cannot tell a pass from a skip, and a missing
+  fixture makes this test skip itself. The script now asks the fixture what it saw and fails
+  unless the phone really opened, watched and drove the screen.
 
 ## Not proven here
 
