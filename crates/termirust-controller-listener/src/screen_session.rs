@@ -48,10 +48,12 @@ impl ScreenFrameCapability {
 /// Where a screen session pushes bytes for the device. Each send is sealed into screen frames,
 /// split across frames when it is larger than [`MAX_SCREEN_PAYLOAD_BYTES`]. Dropping every sender
 /// ends the screen session and leaves the Controller connection open.
-pub type ScreenOutgoing = tokio::sync::mpsc::Sender<Vec<u8>>;
-
-/// How many sends may wait for the connection before the host has to slow down.
-pub const SCREEN_OUTGOING_DEPTH: usize = 8;
+///
+/// The queue is unbounded here because dropping screen bytes would desynchronise the tile
+/// encoder from the viewer's cache. What bounds it is the session itself, which stops encoding
+/// new frames while the viewer's acknowledgements are outstanding, so a stalled connection stops
+/// producing rather than piling up.
+pub type ScreenOutgoing = tokio::sync::mpsc::UnboundedSender<Vec<u8>>;
 
 /// One device's screen session on the host. Implemented by the application that owns the screens.
 #[async_trait]

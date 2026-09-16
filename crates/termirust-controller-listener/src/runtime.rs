@@ -21,11 +21,10 @@ use crate::{
     AuthRateLimiter, BoundAddress, BoundControllerListeners, BoundedFrameQueue,
     BridgeAuthorization, ControllerBinder, ControllerCommandEnvelope, ControllerConnectionPurpose,
     ControllerPairingAuthority, ControllerResponse, ControllerScreenSession, InterfaceProvider,
-    ListenerError, ListenerErrorCode, MAX_SCREEN_PAYLOAD_BYTES, QueueClass, SCREEN_OUTGOING_DEPTH,
-    ScreenFrameCapability, ScreenGrants, ScreenOutgoing, ScreenTicketStore, SourceBucket,
-    SourceBucketKey, SystemBinder, SystemHandshakeEntropy, authenticate_controller, bind_address,
-    decode_command, encode_response, pair_controller, pair_controller_with_code,
-    read_bounded_frame, write_bounded_frame,
+    ListenerError, ListenerErrorCode, MAX_SCREEN_PAYLOAD_BYTES, QueueClass, ScreenFrameCapability,
+    ScreenGrants, ScreenOutgoing, ScreenTicketStore, SourceBucket, SourceBucketKey, SystemBinder,
+    SystemHandshakeEntropy, authenticate_controller, bind_address, decode_command, encode_response,
+    pair_controller, pair_controller_with_code, read_bounded_frame, write_bounded_frame,
 };
 
 const AUTHORITY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
@@ -553,7 +552,7 @@ async fn serve_authenticated_stream<S: AsyncRead + AsyncWrite + Unpin>(
     let peer = authenticated.peer;
     let mut transport = authenticated.connection.transport;
     let mut backend = backend_factory.open(&peer)?;
-    let (screen_sender, mut screen_receiver) = mpsc::channel(SCREEN_OUTGOING_DEPTH);
+    let (screen_sender, mut screen_receiver) = mpsc::unbounded_channel();
     let mut screens = backend_factory.open_screens(&peer, screen_sender);
     let mut screen_tickets = ScreenTicketStore::default();
     let mut screen_entropy = SystemHandshakeEntropy;
@@ -1243,7 +1242,6 @@ mod tests {
                     .ok_or_else(|| ListenerError::new(ListenerErrorCode::Unauthorized))?;
                 self.outgoing
                     .send(vec![7; ECHO_SCREEN_BYTES])
-                    .await
                     .map_err(|_| ListenerError::new(ListenerErrorCode::Io))?;
             }
             self.seen.lock().unwrap().push((capability, bytes.len()));

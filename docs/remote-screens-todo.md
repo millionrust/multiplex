@@ -107,7 +107,14 @@ Pure Rust, no platform code, fully testable in CI.
 - [ ] 2.12 `feat(desktop): show computers with live previews in Devices`
 - [ ] 2.13 `feat(desktop): open a remote screen tab with zoom, minimap and inspector`
 - [ ] 2.14 `feat(desktop): add screen sharing settings, grants and the sharing indicator`
-- [ ] 2.15 `test(screen-host): loopback end to end, capability denial on every route, stale epoch`
+- [x] 2.15 `feat(screen-host): serve screens over the Controller channel, end to end`
+  `termirust-screen-host` is the screen session the listener carries: it reassembles the protocol
+  from screen frames, spends the ticket, checks each frame's capability against what the message
+  would do, and answers with tile batches. A test drives a real viewer over a real Controller
+  connection: three captured frames arrive pixel-exact, control is asked for and granted, a click
+  reaches the host, and typing is refused because the keyboard was never granted. Injection stays
+  with the caller, so this crate has no platform code.
+  Capability denial per route and stale epochs are covered in the listener's own tests.
 
 ## M3 — Phone clients (Stage A) [4.1]
 

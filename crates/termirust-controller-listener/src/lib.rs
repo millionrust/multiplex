@@ -90,8 +90,7 @@ pub use runtime::{
     ListenerServices, ListeningAddressObserver, serve_authenticated_stdio_stream,
 };
 pub use screen_session::{
-    ControllerScreenSession, MAX_SCREEN_PAYLOAD_BYTES, SCREEN_OUTGOING_DEPTH,
-    ScreenFrameCapability, ScreenOutgoing,
+    ControllerScreenSession, MAX_SCREEN_PAYLOAD_BYTES, ScreenFrameCapability, ScreenOutgoing,
 };
 pub use screen_tickets::{ScreenGrants, ScreenTicketStore};
 pub use ssh_pairing_broker::{

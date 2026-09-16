@@ -176,6 +176,11 @@ impl<V: TicketVerifier> HostSession<V> {
         matches!(self.state, State::Open { .. })
     }
 
+    /// The ticket verifier, for hosts that learn what a ticket allows outside this session.
+    pub const fn verifier_mut(&mut self) -> &mut V {
+        &mut self.verifier
+    }
+
     /// The next message to send, oldest first.
     pub fn poll_outgoing(&mut self) -> Option<Message> {
         self.outbox.pop_front()

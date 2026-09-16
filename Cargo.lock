@@ -10589,6 +10589,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "termirust-screen-host"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "termirust-controller-listener",
+ "termirust-controller-security",
+ "termirust-domain",
+ "termirust-screen-codec",
+ "termirust-screen-protocol",
+ "termirust-screen-session",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "termirust-screen-input"
 version = "0.1.0"
 dependencies = [

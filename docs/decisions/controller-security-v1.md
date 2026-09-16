@@ -111,6 +111,13 @@ package, depends only on the screen codec and protocol crates, stays outside the
 dependency closure, and changes no Controller vector; the workspace lock and ADR checksums were
 reviewed and repinned.
 
+On 2026-09-16 the new `termirust-screen-host` workspace crate was added to serve screens over the
+Controller channel. It adds no external package: it uses the already-locked `async-trait 0.1`,
+`tokio`, and `tokio-util`, plus the screen and Controller workspace crates. It depends on
+`termirust-controller-listener`, not on the controller-security crate's internals, so the
+controller-security dependency closure is unchanged and every Controller vector still matches; the
+workspace lock and ADR checksums were reviewed and repinned.
+
 On 2026-09-15 the new `termirust-screen-input` workspace crate was added. It adds no external
 package: on macOS it uses the already-locked `core-graphics 0.24.0` (MIT OR Apache-2.0) with the
 dependency-free `highsierra` feature for scroll events. It stays outside the controller-security

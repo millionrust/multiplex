@@ -245,9 +245,27 @@ const SCROLL: u8 = 0x34;
 const KEY: u8 = 0x35;
 const TEXT: u8 = 0x36;
 
+/// Which kind of input a message carries, for hosts that grant pointer and keyboard separately.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InputKind {
+    Pointer,
+    Keyboard,
+}
+
 impl Message {
     pub const fn is_batch(&self) -> bool {
         matches!(self, Self::Batch(_))
+    }
+
+    /// The input this message would inject, if any.
+    pub const fn input_kind(&self) -> Option<InputKind> {
+        match self {
+            Self::PointerMove { .. } | Self::PointerButton { .. } | Self::Scroll { .. } => {
+                Some(InputKind::Pointer)
+            }
+            Self::Key(_) | Self::Text { .. } => Some(InputKind::Keyboard),
+            _ => None,
+        }
     }
 
     pub(crate) const fn kind_is_batch(kind: u8) -> bool {
