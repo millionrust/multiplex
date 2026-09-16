@@ -71,6 +71,21 @@ Measured on synthetic content at 1512 × 982, unchanged by this milestone:
 Real capture on this Mac (RS2) settles at 32.8 KB/s at native scale with no dirty rectangles
 reported by macOS 27.0, so the tile hashing carries the whole diff.
 
+## The phone, on a simulator
+
+```text
+xcodebuild -scheme TermiRustMobile -destination 'platform=iOS Simulator,id=<iOS 27.0 device>' \
+  -only-testing:TermiRustMobileTests/RemoteScreenViewModelTests \
+  -only-testing:TermiRustMobileTests/ControllerScreenSessionTests test
+PASS: 11 tests, 0 failures, on iOS 27.0 (24A434)
+```
+
+Reading the phone's connection path to write them found a defect the Rust tests could not:
+the app refused any granted capability set containing a bit it did not recognise, so granting a
+paired phone `ObserveScreens` would have broken its **terminal** connection with
+`authenticationFailed`. Fixed by teaching the app the three bits, and by requesting what the
+pairing granted rather than a fixed set.
+
 ## Not proven here
 
 - **(device)** Whether the listener worker inherits the app's Screen Recording and Accessibility

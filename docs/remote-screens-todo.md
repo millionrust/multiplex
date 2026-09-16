@@ -167,8 +167,7 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   Started: `RemoteScreenViewModel` and `RemoteScreenView` draw damaged rectangles into one bitmap,
   fit the picture, map a tap back through the same transform, and offer control only when the
   computer has given it. Still to do: zoom and pan, the minimap, pointer modes, and the keyboard.
-  **(device)** Nothing here has run: this Mac has no simulator runtime, so the iOS tests compile
-  but do not execute.
+  The 11 phone tests run on a simulator (iOS 27.0, 24A434) and pass.
 - [ ] 3.4 `feat(ios): show weak-connection details and reconnect from the last picture`
 - [ ] 3.5 `feat(android): the same four surfaces in Compose`
 - [ ] 3.6 **(device)** Stage A network matrix on a real iPhone and Android phone [7]
