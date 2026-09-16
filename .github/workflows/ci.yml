@@ -138,7 +138,7 @@ jobs:
           cache-on-failure: true
 
       - name: Compile and test Windows workspace
-        run: cargo test --workspace --all-targets --all-features --locked
+        run: cargo test --workspace --all-targets --all-features --locked --no-fail-fast
 
       - name: Build required Windows release executables
         run: >-
