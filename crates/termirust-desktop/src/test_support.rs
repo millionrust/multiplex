@@ -441,8 +441,11 @@ impl Drop for TestSshAgent {
 }
 
 impl DockerSshServer {
+    /// Whether a Docker daemon can run this fixture. The image is a Linux one, so a daemon in
+    /// Windows-container mode cannot, and tests skip themselves rather than fail.
     pub fn docker_available() -> bool {
-        run_command("docker", &["info"], None).is_ok()
+        run_command("docker", &["info", "-f", "{{.OSType}}"], None)
+            .is_ok_and(|os| os.trim().eq_ignore_ascii_case("linux"))
     }
 
     pub fn start() -> Result<Self, String> {
@@ -548,9 +551,15 @@ impl DockerSshServer {
 
         let logs = run_command("docker", &["logs", &self.container_name], None)
             .unwrap_or_else(|error| error);
+        let hint = if docker_daemon_host().is_some() {
+            "\nThe Docker daemon runs on another machine. Set TERMIRUST_DOCKER_FIXTURE_HOST to \
+             an address that machine's published ports are reachable at."
+        } else {
+            ""
+        };
         Err(format!(
-            "timed out waiting for Docker SSH server on port {}.\n{}",
-            self.port, logs
+            "timed out waiting for Docker SSH server at {}:{}.{hint}\n{}",
+            self.host, self.port, logs
         ))
     }
 }
