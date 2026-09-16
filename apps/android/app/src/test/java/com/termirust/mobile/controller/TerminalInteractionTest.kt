@@ -206,7 +206,9 @@ class TerminalInteractionTest {
 
     private fun fixture(): Fixture {
         val stream = checkNotNull(javaClass.classLoader?.getResourceAsStream("terminal-interaction-v1.json"))
-        return stream.use { Json.decodeFromString<Fixture>(it.reader().readText()) }
+        // The fixture also carries the desktop pointer, shortcut and drop cases.
+        val json = Json { ignoreUnknownKeys = true }
+        return stream.use { json.decodeFromString<Fixture>(it.reader().readText()) }
     }
 
     private fun List<Int>.toBytes() = map(Int::toByte).toByteArray()

@@ -151,7 +151,10 @@ use crate::storage::{
 use crate::terminal::{TerminalSize, TerminalState};
 use crate::ui::accessibility::shell::ShellAccessibilityAdapter;
 use crate::ui::autocomplete::{AutocompleteCandidate, AutocompleteSource};
-use crate::ui::keys::{MouseEventKind, encode_mouse_report, encode_terminal_input};
+use crate::ui::keys::{
+    AppShortcut, MouseEventKind, TerminalShortcut, app_shortcut, dropped_paths_text,
+    encode_mouse_report, encode_terminal_input, terminal_shortcut,
+};
 use crate::ui::localization;
 use crate::ui::path::remote_parent_path;
 use crate::ui::render_terminal::{
@@ -352,15 +355,15 @@ impl NavSection {
     }
 }
 
-fn primary_nav_shortcut(key: &str) -> Option<NavSection> {
-    match key {
-        "1" => Some(NavSection::Activity),
-        "2" => Some(NavSection::Projects),
-        "3" => Some(NavSection::Hosts),
-        "4" => Some(NavSection::Sessions),
-        "5" => Some(NavSection::Sftp),
-        "6" => Some(NavSection::Devices),
-        "7" => Some(NavSection::Settings),
+fn primary_nav_shortcut(number: u8) -> Option<NavSection> {
+    match number {
+        1 => Some(NavSection::Activity),
+        2 => Some(NavSection::Projects),
+        3 => Some(NavSection::Hosts),
+        4 => Some(NavSection::Sessions),
+        5 => Some(NavSection::Sftp),
+        6 => Some(NavSection::Devices),
+        7 => Some(NavSection::Settings),
         _ => None,
     }
 }
@@ -10810,42 +10813,36 @@ impl TermiRustApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        if event.keystroke.modifiers.secondary()
-            && event.keystroke.modifiers.shift
-            && event.keystroke.key == "escape"
-        {
-            self.focus_terminal_chrome(pane_id, window, cx);
-            return true;
-        }
-
-        if event.keystroke.modifiers.secondary() {
-            match event.keystroke.key.as_str() {
-                "c" => {
-                    if self.copy_active_selection(cx) {
-                        return true;
-                    }
-                }
-                "v" => {
-                    if self.paste_to_active_pane(cx) {
-                        return true;
-                    }
-                }
-                "f" => {
-                    self.toggle_workspace_search(window, cx);
-                    return true;
-                }
-                "k" => {
-                    self.toggle_command_palette(window, cx);
-                    return true;
-                }
-                "w" => {
-                    if let Some(workspace_id) = self.active_workspace_id {
-                        self.close_workspace(workspace_id, cx);
-                        return true;
-                    }
-                }
-                _ => {}
+        match terminal_shortcut(&event.keystroke) {
+            Some(TerminalShortcut::FocusChrome) => {
+                self.focus_terminal_chrome(pane_id, window, cx);
+                return true;
             }
+            Some(TerminalShortcut::Copy) => {
+                if self.copy_active_selection(cx) {
+                    return true;
+                }
+            }
+            Some(TerminalShortcut::Paste) => {
+                if self.paste_to_active_pane(cx) {
+                    return true;
+                }
+            }
+            Some(TerminalShortcut::Search) => {
+                self.toggle_workspace_search(window, cx);
+                return true;
+            }
+            Some(TerminalShortcut::CommandPalette) => {
+                self.toggle_command_palette(window, cx);
+                return true;
+            }
+            Some(TerminalShortcut::CloseWorkspace) => {
+                if let Some(workspace_id) = self.active_workspace_id {
+                    self.close_workspace(workspace_id, cx);
+                    return true;
+                }
+            }
+            None => {}
         }
 
         let Some(pane) = self.pane(pane_id) else {
@@ -13956,94 +13953,77 @@ impl TermiRustApp {
             }
         }
 
-        if !event.keystroke.modifiers.secondary() {
+        let Some(shortcut) = app_shortcut(&event.keystroke) else {
             return false;
-        }
+        };
 
-        if !event.keystroke.modifiers.shift && event.keystroke.key.as_str() == "k" {
-            self.toggle_command_palette(window, cx);
-            return true;
-        }
-
-        if event.keystroke.modifiers.alt && self.workspaces.len() > 1 {
-            match event.keystroke.key.as_str() {
-                "right" | "tab" => {
-                    if self.cycle_active_workspace(true, window, cx) {
-                        return true;
-                    }
-                }
-                "left" => {
-                    if self.cycle_active_workspace(false, window, cx) {
-                        return true;
-                    }
-                }
-                _ => {}
+        match shortcut {
+            AppShortcut::CommandPalette => {
+                self.toggle_command_palette(window, cx);
+                return true;
             }
-        }
-
-        if event.keystroke.modifiers.shift {
-            match event.keystroke.key.as_str() {
-                "f" => {
-                    if self.active_workspace_id.is_some() {
-                        self.open_active_workspace_files(cx);
-                        return true;
-                    }
-                }
-                "t" => {
-                    // Cmd+Shift+T: toggle Files/Terminal view
-                    if self.active_workspace_id.is_some() {
-                        if self.active_workspace().is_some_and(|workspace| {
-                            workspace.view_mode == WorkspaceViewMode::Files
-                        }) {
-                            self.show_active_workspace_terminal(cx);
-                        } else {
-                            self.open_active_workspace_files(cx);
-                        }
-                    }
+            AppShortcut::CycleWorkspace { forward } => {
+                if self.workspaces.len() > 1 && self.cycle_active_workspace(forward, window, cx) {
                     return true;
                 }
-                "b" => {
-                    if let Some(workspace_id) = self.active_workspace_id {
-                        self.toggle_workspace_broadcast(workspace_id, cx);
-                        return true;
+            }
+            AppShortcut::OpenFiles => {
+                if self.active_workspace_id.is_some() {
+                    self.open_active_workspace_files(cx);
+                    return true;
+                }
+            }
+            AppShortcut::ToggleFilesAndTerminal => {
+                if self.active_workspace_id.is_some() {
+                    if self
+                        .active_workspace()
+                        .is_some_and(|workspace| workspace.view_mode == WorkspaceViewMode::Files)
+                    {
+                        self.show_active_workspace_terminal(cx);
+                    } else {
+                        self.open_active_workspace_files(cx);
                     }
                 }
-                "l" => {
-                    if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
-                        self.clear_pane_screen(pane_id, cx);
-                        return true;
-                    }
+                return true;
+            }
+            AppShortcut::BroadcastInput => {
+                if let Some(workspace_id) = self.active_workspace_id {
+                    self.toggle_workspace_broadcast(workspace_id, cx);
+                    return true;
                 }
-                _ => {}
             }
-        }
-
-        if !event.keystroke.modifiers.shift && event.keystroke.key.as_str() == "t" {
-            self.open_local_terminal(window, cx);
-            return true;
-        }
-
-        if !event.keystroke.modifiers.shift
-            && !event.keystroke.modifiers.alt
-            && let Some(section) = primary_nav_shortcut(event.keystroke.key.as_str())
-        {
-            if section == NavSection::Sftp {
-                self.open_files_library(artifact_gallery::FilesLibraryTab::Artifacts, window, cx);
-            } else {
-                self.activate_library_section(section, window, cx);
+            AppShortcut::ClearScreen => {
+                if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
+                    self.clear_pane_screen(pane_id, cx);
+                    return true;
+                }
             }
-            self.project_list_focus.focus(window);
-            return true;
-        }
-
-        match event.keystroke.key.as_str() {
-            "," => {
+            AppShortcut::LocalTerminal => {
+                self.open_local_terminal(window, cx);
+                return true;
+            }
+            AppShortcut::NavigateSection(number) => {
+                if let Some(section) = primary_nav_shortcut(number) {
+                    if section == NavSection::Sftp {
+                        self.open_files_library(
+                            artifact_gallery::FilesLibraryTab::Artifacts,
+                            window,
+                            cx,
+                        );
+                    } else {
+                        self.activate_library_section(section, window, cx);
+                    }
+                    self.project_list_focus.focus(window);
+                    return true;
+                }
+            }
+            AppShortcut::Settings => {
                 self.activate_library_section(NavSection::Settings, window, cx);
                 self.project_list_focus.focus(window);
-                true
+                return true;
             }
-            "l" => {
-                // Cmd+L: from library → focus host search; from workspace → go to logs
+            AppShortcut::LogsOrHostSearch => {
+                // From a workspace this opens the logs; from the library it focuses host search.
                 if self.active_workspace_id.is_some() {
                     self.activate_library_section(NavSection::Logs, window, cx);
                     self.status_message =
@@ -14056,9 +14036,9 @@ impl TermiRustApp {
                 }
                 self.error_message.clear();
                 cx.notify();
-                true
+                return true;
             }
-            "n" => {
+            AppShortcut::NewHostOrSession => {
                 if self.active_workspace_id.is_none() {
                     if self.nav_section == NavSection::Projects
                         && let Some(project_id) = self.project_library.selected_id
@@ -14068,21 +14048,18 @@ impl TermiRustApp {
                     }
                     self.activate_library(window, cx);
                     self.open_editor_for_new_host(window, cx);
-                    true
-                } else {
-                    false
+                    return true;
                 }
             }
-            "d" => {
+            AppShortcut::DuplicatePane => {
                 if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
                     self.duplicate_pane_into_split(pane_id, SplitAxis::Horizontal, window, cx);
-                    true
-                } else {
-                    false
+                    return true;
                 }
             }
-            _ => false,
         }
+
+        false
     }
 
     fn render_editor_dialog(&self, _window: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -14166,31 +14143,6 @@ impl TermiRustApp {
                     ),
             )
     }
-}
-
-/// Dropped paths as one line of shell words followed by a space, so the next word can be typed
-/// straight after. Paths of plain characters stay readable; any other path is single-quoted.
-fn dropped_paths_text(paths: &[PathBuf]) -> String {
-    let mut text = paths
-        .iter()
-        .map(|path| {
-            let path = path.to_string_lossy();
-            if !path.is_empty()
-                && path
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || "/._-+,:@%=".contains(c))
-            {
-                path.into_owned()
-            } else {
-                format!("'{}'", path.replace('\'', "'\\''"))
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ");
-    if !text.is_empty() {
-        text.push(' ');
-    }
-    text
 }
 
 fn search_rows(rows: &[String], query: &str) -> Vec<SearchMatch> {

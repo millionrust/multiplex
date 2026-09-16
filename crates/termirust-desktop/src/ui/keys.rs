@@ -226,6 +226,121 @@ pub fn encode_terminal_input(keystroke: &Keystroke, application_cursor: bool) ->
     )
 }
 
+/// What a shortcut asks the app to do. Every one of them is held with the platform's primary
+/// modifier: Command on macOS, Control elsewhere, which is what GPUI calls `secondary`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AppShortcut {
+    CommandPalette,
+    CycleWorkspace {
+        forward: bool,
+    },
+    OpenFiles,
+    ToggleFilesAndTerminal,
+    BroadcastInput,
+    ClearScreen,
+    LocalTerminal,
+    /// The numbered library sections, 1 through 7.
+    NavigateSection(u8),
+    Settings,
+    LogsOrHostSearch,
+    NewHostOrSession,
+    DuplicatePane,
+}
+
+/// What a shortcut does while a terminal pane has the keyboard, before the keystroke would be
+/// typed into the program.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TerminalShortcut {
+    FocusChrome,
+    Copy,
+    Paste,
+    Search,
+    CommandPalette,
+    CloseWorkspace,
+}
+
+/// Classifies a keystroke, with no reference to what the app is showing. Whether the action can
+/// run is the caller's decision.
+pub fn app_shortcut(keystroke: &Keystroke) -> Option<AppShortcut> {
+    if !keystroke.modifiers.secondary() {
+        return None;
+    }
+    let shift = keystroke.modifiers.shift;
+    let alt = keystroke.modifiers.alt;
+    let key = keystroke.key.as_str();
+    if alt {
+        return match key {
+            "right" | "tab" => Some(AppShortcut::CycleWorkspace { forward: true }),
+            "left" => Some(AppShortcut::CycleWorkspace { forward: false }),
+            _ => None,
+        };
+    }
+    if shift {
+        return match key {
+            "f" => Some(AppShortcut::OpenFiles),
+            "t" => Some(AppShortcut::ToggleFilesAndTerminal),
+            "b" => Some(AppShortcut::BroadcastInput),
+            "l" => Some(AppShortcut::ClearScreen),
+            _ => None,
+        };
+    }
+    match key {
+        "k" => Some(AppShortcut::CommandPalette),
+        "t" => Some(AppShortcut::LocalTerminal),
+        "1" | "2" | "3" | "4" | "5" | "6" | "7" => {
+            key.parse().ok().map(AppShortcut::NavigateSection)
+        }
+        "," => Some(AppShortcut::Settings),
+        "l" => Some(AppShortcut::LogsOrHostSearch),
+        "n" => Some(AppShortcut::NewHostOrSession),
+        "d" => Some(AppShortcut::DuplicatePane),
+        _ => None,
+    }
+}
+
+/// Classifies a keystroke that reached a focused terminal pane.
+pub fn terminal_shortcut(keystroke: &Keystroke) -> Option<TerminalShortcut> {
+    if !keystroke.modifiers.secondary() {
+        return None;
+    }
+    if keystroke.modifiers.shift {
+        return (keystroke.key == "escape").then_some(TerminalShortcut::FocusChrome);
+    }
+    match keystroke.key.as_str() {
+        "c" => Some(TerminalShortcut::Copy),
+        "v" => Some(TerminalShortcut::Paste),
+        "f" => Some(TerminalShortcut::Search),
+        "k" => Some(TerminalShortcut::CommandPalette),
+        "w" => Some(TerminalShortcut::CloseWorkspace),
+        _ => None,
+    }
+}
+
+/// Dropped paths as one line of shell words followed by a space, so the next word can be typed
+/// straight after. Paths of plain characters stay readable; any other path is single-quoted.
+pub fn dropped_paths_text(paths: &[std::path::PathBuf]) -> String {
+    let mut text = paths
+        .iter()
+        .map(|path| {
+            let path = path.to_string_lossy();
+            if !path.is_empty()
+                && path
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "/._-+,:@%=".contains(c))
+            {
+                path.into_owned()
+            } else {
+                format!("'{}'", path.replace('\'', "'\\''"))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    if !text.is_empty() {
+        text.push(' ');
+    }
+    text
+}
+
 pub fn encode_control_char(key: &str) -> Option<u8> {
     if key.len() == 1 {
         let ch = key.as_bytes()[0];
@@ -379,6 +494,10 @@ mod tests {
         selection_cases: Vec<SelectionCase>,
         ime_cases: Vec<ImeCase>,
         url_cases: Vec<UrlCase>,
+        mouse_cases: Vec<MouseCase>,
+        scroll_cases: Vec<ScrollCase>,
+        shortcut_cases: Vec<ShortcutCase>,
+        drop_cases: Vec<DropCase>,
     }
 
     #[derive(Deserialize)]
@@ -460,6 +579,79 @@ mod tests {
         name: String,
         text: String,
         expected: Vec<String>,
+    }
+
+    #[derive(Deserialize)]
+    struct MouseCase {
+        name: String,
+        mode: String,
+        encoding: String,
+        kind: String,
+        row: u16,
+        col: u16,
+        #[serde(default)]
+        shift: bool,
+        #[serde(default)]
+        control: bool,
+        #[serde(default)]
+        alt: bool,
+        #[serde(default)]
+        dragging: bool,
+        #[serde(default)]
+        wheel_lines: f32,
+        expected: Option<Vec<u8>>,
+    }
+
+    #[derive(Deserialize)]
+    struct ScrollCase {
+        name: String,
+        lines: i32,
+        application_cursor: bool,
+        expected: Vec<u8>,
+    }
+
+    #[derive(Deserialize)]
+    struct ShortcutCase {
+        name: String,
+        scope: String,
+        keystroke: String,
+        expected: Option<String>,
+    }
+
+    #[derive(Deserialize)]
+    struct DropCase {
+        name: String,
+        paths: Vec<String>,
+        expected: String,
+    }
+
+    fn shortcut_name(shortcut: AppShortcut) -> String {
+        match shortcut {
+            AppShortcut::CommandPalette => "command_palette".to_owned(),
+            AppShortcut::CycleWorkspace { forward: true } => "cycle_workspace_forward".to_owned(),
+            AppShortcut::CycleWorkspace { forward: false } => "cycle_workspace_back".to_owned(),
+            AppShortcut::OpenFiles => "open_files".to_owned(),
+            AppShortcut::ToggleFilesAndTerminal => "toggle_files_and_terminal".to_owned(),
+            AppShortcut::BroadcastInput => "broadcast_input".to_owned(),
+            AppShortcut::ClearScreen => "clear_screen".to_owned(),
+            AppShortcut::LocalTerminal => "local_terminal".to_owned(),
+            AppShortcut::NavigateSection(number) => format!("navigate_section_{number}"),
+            AppShortcut::Settings => "settings".to_owned(),
+            AppShortcut::LogsOrHostSearch => "logs_or_host_search".to_owned(),
+            AppShortcut::NewHostOrSession => "new_host_or_session".to_owned(),
+            AppShortcut::DuplicatePane => "duplicate_pane".to_owned(),
+        }
+    }
+
+    fn terminal_shortcut_name(shortcut: TerminalShortcut) -> &'static str {
+        match shortcut {
+            TerminalShortcut::FocusChrome => "focus_chrome",
+            TerminalShortcut::Copy => "copy",
+            TerminalShortcut::Paste => "paste",
+            TerminalShortcut::Search => "search",
+            TerminalShortcut::CommandPalette => "command_palette",
+            TerminalShortcut::CloseWorkspace => "close_workspace",
+        }
     }
 
     fn fixture() -> Fixture {
@@ -583,6 +775,89 @@ mod tests {
                 "{}",
                 case.name
             );
+        }
+    }
+
+    #[test]
+    fn terminal_interaction_conformance_mouse_and_scroll() {
+        for case in fixture().mouse_cases {
+            let mode = match case.mode.as_str() {
+                "none" => MouseProtocolMode::None,
+                "press" => MouseProtocolMode::Press,
+                "press_release" => MouseProtocolMode::PressRelease,
+                "button_motion" => MouseProtocolMode::ButtonMotion,
+                "any_motion" => MouseProtocolMode::AnyMotion,
+                other => panic!("{}: unknown mouse mode {other}", case.name),
+            };
+            let encoding = match case.encoding.as_str() {
+                "default" => MouseProtocolEncoding::Default,
+                "utf8" => MouseProtocolEncoding::Utf8,
+                "sgr" => MouseProtocolEncoding::Sgr,
+                other => panic!("{}: unknown mouse encoding {other}", case.name),
+            };
+            let kind = match case.kind.as_str() {
+                "press" => MouseEventKind::Press,
+                "release" => MouseEventKind::Release,
+                "move" => MouseEventKind::Move {
+                    dragging: case.dragging,
+                },
+                "wheel" => MouseEventKind::Wheel {
+                    delta: ScrollDelta::Lines(gpui::point(0.0, case.wheel_lines)),
+                },
+                other => panic!("{}: unknown mouse event {other}", case.name),
+            };
+            let actual = encode_mouse_report(
+                mode,
+                encoding,
+                kind,
+                TerminalCellPos {
+                    row: case.row,
+                    col: case.col,
+                },
+                Modifiers {
+                    shift: case.shift,
+                    control: case.control,
+                    alt: case.alt,
+                    ..Modifiers::none()
+                },
+            );
+            assert_eq!(actual, case.expected, "{}", case.name);
+        }
+
+        for case in fixture().scroll_cases {
+            assert_eq!(
+                alternate_scroll_keys(case.lines, case.application_cursor),
+                case.expected,
+                "{}",
+                case.name
+            );
+        }
+    }
+
+    /// The shortcuts are held with the platform's primary modifier, so this runs the same table
+    /// on macOS, Linux and Windows.
+    #[test]
+    fn terminal_interaction_conformance_shortcuts_and_drops() {
+        for case in fixture().shortcut_cases {
+            let keystroke = Keystroke::parse(&case.keystroke)
+                .unwrap_or_else(|error| panic!("{}: {error:?}", case.name));
+            let actual = match case.scope.as_str() {
+                "app" => app_shortcut(&keystroke).map(shortcut_name),
+                "terminal" => terminal_shortcut(&keystroke)
+                    .map(terminal_shortcut_name)
+                    .map(str::to_owned),
+                other => panic!("{}: unknown scope {other}", case.name),
+            };
+            assert_eq!(actual, case.expected, "{}", case.name);
+        }
+
+        for case in fixture().drop_cases {
+            let paths = case
+                .paths
+                .iter()
+                .map(std::path::PathBuf::from)
+                .collect::<Vec<_>>();
+            assert_eq!(dropped_paths_text(&paths), case.expected, "{}", case.name);
         }
     }
 

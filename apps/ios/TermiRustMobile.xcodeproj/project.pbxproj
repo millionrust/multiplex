@@ -17,6 +17,7 @@
 		0A7590D7E393493CB6F678FD /* AppleControllerRouteCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93124ABD5704C86D689C6B56 /* AppleControllerRouteCoordinator.swift */; };
 		0B902263DAB53899FA02F6A5 /* ControllerRemoteRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9E768178327CD2896B0371F /* ControllerRemoteRoute.swift */; };
 		0CD35E18DDA691D2A6450F2A /* mobile-cross-route-acceptance-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 6AD282CBDD90BF824CBC1910 /* mobile-cross-route-acceptance-v1.json */; };
+		0E460E88A693016C693DC811 /* ControllerComputerDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 603D52101024FCCCCBFE8122 /* ControllerComputerDiscovery.swift */; };
 		0FA605ED6702CB632508DDA7 /* EnrollmentRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5345E0FEC3299E45F394BA0C /* EnrollmentRepository.swift */; };
 		11B42406FC878DBE6DBDCD09 /* MobileVaultImporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EE76EC7D67CB1EAE446215D /* MobileVaultImporterTests.swift */; };
 		11DE6D4B812FCAB2549D352A /* terminal-conformance-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 8469494854C891EFB7A1F62A /* terminal-conformance-v1.json */; };
@@ -56,7 +57,6 @@
 		775848E92C529BF6B8B02838 /* AppleControllerRouteViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E1408239ECD857465267C7 /* AppleControllerRouteViewModelTests.swift */; };
 		79A6A8B2381FB2C9319EFD99 /* ControllerReadOnlyAttach.swift in Sources */ = {isa = PBXBuildFile; fileRef = C71FF821F9BC71B9C9F14692 /* ControllerReadOnlyAttach.swift */; };
 		7A740E922F044472CD76815E /* controller-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 26B5CDEA33B10C29FDE1E103 /* controller-v1.json */; };
-		7BC8A68AFD7F628C878B91FC /* ControllerComputerDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 902F6D061E1E88F5175F1292 /* ControllerComputerDiscovery.swift */; };
 		7F3B1423EA45161ABAA62A33 /* TerminalInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E45128AD706AEC225C1F294 /* TerminalInteraction.swift */; };
 		842AE4985FCB208E1989689D /* ControllerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E63E0CD0058EC2B95291EA /* ControllerModels.swift */; };
 		86C24C98934FA85F83D98AAB /* TmuxBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA16ACD0D263656AC038DB1F /* TmuxBootstrap.swift */; };
@@ -167,6 +167,7 @@
 		55B9F9D4A45EB9BC8D19AACC /* ReplicationDocumentReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplicationDocumentReaderTests.swift; sourceTree = "<group>"; };
 		57E4611CBFB4855809D086F6 /* MobileRouteContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileRouteContract.swift; sourceTree = "<group>"; };
 		59FF87EDAB4C4C33227940A4 /* terminal-acceptance-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "terminal-acceptance-v1.json"; sourceTree = "<group>"; };
+		603D52101024FCCCCBFE8122 /* ControllerComputerDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerComputerDiscovery.swift; sourceTree = "<group>"; };
 		65E63E0CD0058EC2B95291EA /* ControllerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerModels.swift; sourceTree = "<group>"; };
 		6607B45E761A907718C7B501 /* OpenSSHPrivateKeyParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSSHPrivateKeyParser.swift; sourceTree = "<group>"; };
 		6613EB256CEB11627A9B8B66 /* TerminalConformanceV1Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalConformanceV1Tests.swift; sourceTree = "<group>"; };
@@ -185,7 +186,6 @@
 		88ED49DA30BE70BA0E0093B3 /* MobileCrossRouteAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileCrossRouteAcceptanceTests.swift; sourceTree = "<group>"; };
 		8AE2126D151AC4C903C6094B /* ControllerReadOnlyTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerReadOnlyTerminalView.swift; sourceTree = "<group>"; };
 		8F8A73060A2F2CB2C2B9A13A /* TermiRustReplicationSecurity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermiRustReplicationSecurity.swift; sourceTree = "<group>"; };
-		902F6D061E1E88F5175F1292 /* ControllerComputerDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerComputerDiscovery.swift; sourceTree = "<group>"; };
 		92D39B67AFDC7D7C61741A03 /* HostListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostListView.swift; sourceTree = "<group>"; };
 		93124ABD5704C86D689C6B56 /* AppleControllerRouteCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleControllerRouteCoordinator.swift; sourceTree = "<group>"; };
 		938B1ACAB594425CA571469D /* EnrollmentWorkflowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnrollmentWorkflowTests.swift; sourceTree = "<group>"; };
@@ -298,7 +298,7 @@
 			isa = PBXGroup;
 			children = (
 				93124ABD5704C86D689C6B56 /* AppleControllerRouteCoordinator.swift */,
-				902F6D061E1E88F5175F1292 /* ControllerComputerDiscovery.swift */,
+				603D52101024FCCCCBFE8122 /* ControllerComputerDiscovery.swift */,
 				71E5A5A35F189CA5BC2F20B5 /* ControllerConnectionActor.swift */,
 				DC34F0E3B404895E7409A163 /* ControllerFleetCache.swift */,
 				C71FF821F9BC71B9C9F14692 /* ControllerReadOnlyAttach.swift */,
@@ -636,9 +636,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				EBF57C6FEA19F4072673BEF0 /* TermiRustMobileUITests */,
 				8BB149ECB3860B51DED20059 /* TermiRustMobile */,
 				FCA0E6EC4D0EC7F65956EBCA /* TermiRustMobileTests */,
-				EBF57C6FEA19F4072673BEF0 /* TermiRustMobileUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -720,7 +720,7 @@
 				0A7590D7E393493CB6F678FD /* AppleControllerRouteCoordinator.swift in Sources */,
 				CF19CCC1721C06ACDE6305A0 /* BoundedTerminalBuffer.swift in Sources */,
 				AAB0819E064995753EAA1A3D /* ContentView.swift in Sources */,
-				7BC8A68AFD7F628C878B91FC /* ControllerComputerDiscovery.swift in Sources */,
+				0E460E88A693016C693DC811 /* ControllerComputerDiscovery.swift in Sources */,
 				DED7BE7953D0C47B99D16B98 /* ControllerConnectionActor.swift in Sources */,
 				004842E2EB33142C220EBFA5 /* ControllerFleetCache.swift in Sources */,
 				CC94246F576586CCE0B4663D /* ControllerKeychainBlobStore.swift in Sources */,
@@ -979,8 +979,8 @@
 					"\"Replication\"",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Scan a TermiRust Desktop pairing code without saving camera images.";
 				INFOPLIST_FILE = TermiRustMobile/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scan a TermiRust Desktop pairing code without saving camera images.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "TermiRust finds TermiRust desktops on your local network and connects to the ones you pair.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -1028,8 +1028,8 @@
 					"\"Replication\"",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Scan a TermiRust Desktop pairing code without saving camera images.";
 				INFOPLIST_FILE = TermiRustMobile/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scan a TermiRust Desktop pairing code without saving camera images.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "TermiRust finds TermiRust desktops on your local network and connects to the ones you pair.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
