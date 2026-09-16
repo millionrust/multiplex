@@ -20031,6 +20031,20 @@ sleep 1
                         cx,
                     );
                     app.save_profile(window, cx);
+                    assert!(
+                        app.saved
+                            .profiles
+                            .iter()
+                            .any(|profile| profile.label == "Docker Bastion"),
+                        "the bastion should be saved before it is used as a jump host: \
+                         error={:?} labels={:?}",
+                        app.error_message,
+                        app.saved
+                            .profiles
+                            .iter()
+                            .map(|profile| profile.label.clone())
+                            .collect::<Vec<_>>()
+                    );
                     app.connect_current(window, cx);
                 })
             })
