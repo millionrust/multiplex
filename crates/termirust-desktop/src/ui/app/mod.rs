@@ -14930,8 +14930,9 @@ mod tests {
             }
             _ => (0.0, 0, 0),
         };
+        // Typed, so the byte ceilings below are compared as u64 rather than overflowing i32.
         #[cfg(not(unix))]
-        let (cpu_percent, max_rss_bytes, rss_growth_bytes) = (0.0, 0, 0);
+        let (cpu_percent, max_rss_bytes, rss_growth_bytes): (f64, u64, u64) = (0.0, 0, 0);
 
         println!(
             "terminal entity profile: startup={}ms; input-to-settled p50={}us p95={}us p99={}us; output-frame p50={}us p95={}us p99={}us; sustained={throughput_mib:.2}MiB/s cpu={cpu_percent:.1}% peak-rss={:.1}MiB rss-growth={:.1}MiB renders={}",
