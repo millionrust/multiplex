@@ -7,23 +7,7 @@ use anyhow::{Context, Result, bail};
 
 use crate::models::{SavedManagedWorktree, SavedManagedWorktreeDisposition};
 
-/// The path in its one true form, written the way Git can use it. On Windows a canonical path
-/// starts with the `\\?\` verbatim prefix, and Git cannot create the directories of a worktree
-/// under such a path: it reads it back as `//?/C:/...` and gives up.
-pub(crate) fn canonical_for_git(path: &Path) -> std::io::Result<PathBuf> {
-    let canonical = path.canonicalize()?;
-    #[cfg(windows)]
-    {
-        let text = canonical.as_os_str().to_string_lossy();
-        if let Some(share) = text.strip_prefix(r"\\?\UNC\") {
-            return Ok(PathBuf::from(format!(r"\\{share}")));
-        }
-        if let Some(drive) = text.strip_prefix(r"\\?\") {
-            return Ok(PathBuf::from(drive));
-        }
-    }
-    Ok(canonical)
-}
+use termirust_domain::canonical_path as canonical_for_git;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ManagedWorktreeStatus {

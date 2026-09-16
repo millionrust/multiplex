@@ -261,7 +261,11 @@ fn artifacts_cancel_and_source_change_remove_staging_without_committing() {
                 move |_| {
                     if !changed {
                         changed = true;
-                        fs::write(&source_for_progress, vec![b'b'; IO_CHUNK_BYTES * 2]).unwrap();
+                        // Replaces the file rather than rewriting it in place: two writes of the
+                        // same length can land in one tick of the clock the filesystem stamps
+                        // files with, and the source then looks untouched.
+                        fs::remove_file(&source_for_progress).unwrap();
+                        fs::write(&source_for_progress, vec![b'b'; IO_CHUNK_BYTES * 3]).unwrap();
                     }
                 }
             )

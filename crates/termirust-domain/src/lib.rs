@@ -95,7 +95,7 @@ pub use preset::{
 };
 pub use project::{
     AddProject, CanonicalPath, FileIdentity, LocalizedUserText, MAX_LABEL_SCALARS, Project,
-    ProjectError, ProjectService, ProjectStatus, ProjectSummary,
+    ProjectError, ProjectService, ProjectStatus, ProjectSummary, canonical_path,
 };
 pub use replication::{
     MAX_REPLICATION_CANDIDATES_PER_ENTRY, MAX_REPLICATION_DOCUMENT_BYTES, MAX_REPLICATION_ENTRIES,

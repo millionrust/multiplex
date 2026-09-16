@@ -11,7 +11,7 @@ mod stream;
 #[cfg(all(test, unix))]
 mod structured_contract;
 mod transcript;
-pub(crate) mod worktree;
+mod worktree;
 
 pub use activity::activity_projection_for_agent_event;
 pub use adapter::provider_descriptor;

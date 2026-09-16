@@ -20755,17 +20755,27 @@ sleep 1
 
         cx.simulate_keystrokes(*window, "p w d enter");
 
+        // The directory's own name, because a shell prints the path it was given the way it
+        // spells paths: the one Git ships on Windows answers with /c/Users/... for C:\Users\....
+        let local_dir_name = local_dir
+            .file_name()
+            .expect("the local shell directory should have a name")
+            .to_string_lossy()
+            .into_owned();
         wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
             let pane = app.pane(pane_id)?;
             pane.terminal
                 .all_rows_text()
                 .iter()
-                .any(|row| row.contains(local_dir.to_string_lossy().as_ref()))
+                .any(|row| row.contains(&local_dir_name))
                 .then_some(())
         });
 
         app.read_with(cx, |app, _| {
-            assert_eq!(app.saved.settings.default_local_shell.program, "/bin/sh");
+            assert_eq!(
+                app.saved.settings.default_local_shell.program,
+                crate::test_support::test_shell_program()
+            );
             assert_eq!(
                 app.saved.settings.default_local_shell.cwd.as_deref(),
                 Some(local_dir.to_string_lossy().as_ref())
@@ -24158,11 +24168,12 @@ sleep 1
             .expect("canvas switch should succeed");
 
         app.update(cx, |app, cx| {
-            // Turns mouse reporting on and then waits for the six bytes a click sends, which the
-            // terminal echoes as it reads them. The shell does this itself, so the test needs no
-            // interpreter installed on the machine it runs on.
+            // Turns mouse reporting on, reads the six bytes a click sends, and writes them out
+            // visibly. The program prints them itself rather than leaving it to the terminal to
+            // echo what it read, which only spells an escape as ^[ where the line discipline
+            // says so, and never on Windows.
             assert!(app.run_command_in_active_pane(
-                "printf '\\033[?1000h'; head -c 6 >/dev/null",
+                "stty raw -echo; printf '\\033[?1000h'; head -c 6 | cat -v; stty sane",
                 "Mouse probe started.",
                 cx
             ));
