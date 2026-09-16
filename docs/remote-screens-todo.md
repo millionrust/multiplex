@@ -75,7 +75,11 @@ Pure Rust, no platform code, fully testable in CI.
 - [ ] 2.6 `feat(screen-transport): carry screen sessions as Controller screen frames`
   Stage A decision (2026-09-16): the existing LAN, SSH and relay routes, not iroh. The QUIC
   transport moves to M4/M5 with the motion path; spike 0.4 gates it there, not here.
-- [ ] 2.7 `feat(controller-listener): issue screen tickets over the Controller channel`
+- [x] 2.7 `feat(controller-listener): issue screen tickets over the Controller channel`
+  `OpenScreen` and `CloseScreen` commands, answered by the listener itself, mint and withdraw a
+  one-time 32-byte ticket bound to the connection and to what the device's capabilities allow.
+  Screen grants come from the paired record, so taking `ObserveScreens` away stops the next
+  request on an open connection. The ticket is what the screen protocol's hello proves.
 - [x] 2.8 `feat(screen-session): add the host and viewer session state machines`
   Covers the protocol logic of 2.8 and 2.10 in `termirust-screen-session`: ticket and grant
   checks, one encoder per subscription with flow control, previews, refinement, motion region

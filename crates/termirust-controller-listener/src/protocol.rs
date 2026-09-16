@@ -16,6 +16,8 @@ const MAX_SESSION_TITLE_SCALARS: usize = 256;
 pub const MAX_SESSION_PAGE_RECORDS: u16 = 1_000;
 pub const MAX_SESSION_PAGE_BYTES: usize = MAX_CONTROL_PAYLOAD_BYTES - 256;
 pub const MAX_SNAPSHOT_CHUNK_BYTES: usize = 128 * 1024;
+/// A screen ticket is exactly one 32-byte proof.
+pub const SCREEN_TICKET_BYTES: usize = 32;
 
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -116,6 +118,10 @@ pub enum ControllerCommand {
         session_id: HostedSessionId,
         occupant_generation: OccupantGeneration,
     },
+    /// Asks for a ticket that opens a Remote Screens session on this connection.
+    OpenScreen,
+    /// Ends the screen session and invalidates its ticket.
+    CloseScreen,
 }
 
 impl ControllerCommand {
@@ -129,12 +135,14 @@ impl ControllerCommand {
             Self::Resize { .. } => BridgeCommandKind::Resize,
             Self::Approval { .. } => BridgeCommandKind::Approval,
             Self::Detach { .. } => BridgeCommandKind::Detach,
+            Self::OpenScreen => BridgeCommandKind::OpenScreen,
+            Self::CloseScreen => BridgeCommandKind::CloseScreen,
         }
     }
 
     pub const fn session_id(&self) -> Option<HostedSessionId> {
         match self {
-            Self::ListSessions { .. } => None,
+            Self::ListSessions { .. } | Self::OpenScreen | Self::CloseScreen => None,
             Self::Attach { session_id, .. }
             | Self::AcquireWriter { session_id, .. }
             | Self::ReleaseWriter { session_id, .. }
@@ -147,7 +155,7 @@ impl ControllerCommand {
 
     pub const fn occupant_generation(&self) -> Option<OccupantGeneration> {
         match self {
-            Self::ListSessions { .. } => None,
+            Self::ListSessions { .. } | Self::OpenScreen | Self::CloseScreen => None,
             Self::Attach {
                 occupant_generation,
                 ..
@@ -196,7 +204,9 @@ impl ControllerCommand {
             | Self::Detach { .. }
             | Self::Approval { .. }
             | Self::AcquireWriter { .. }
-            | Self::ReleaseWriter { .. } => Ok(()),
+            | Self::ReleaseWriter { .. }
+            | Self::OpenScreen
+            | Self::CloseScreen => Ok(()),
             Self::Attach { columns, rows, .. } | Self::Resize { columns, rows, .. }
                 if *columns == 0 || *rows == 0 || *columns > 1_000 || *rows > 1_000 =>
             {
@@ -255,6 +265,13 @@ pub enum ControllerResponse {
     },
     Detached {
         command_id: CommandId,
+    },
+    /// The screen session may start. The ticket proves it to the screen protocol's hello, once.
+    ScreenOpened {
+        command_id: CommandId,
+        ticket: Vec<u8>,
+        can_control_pointer: bool,
+        can_control_keyboard: bool,
     },
     Error {
         command_id: CommandId,
@@ -433,6 +450,9 @@ fn validate_response(response: &ControllerResponse) -> Result<(), ListenerError>
         {
             Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
         }
+        ControllerResponse::ScreenOpened { ticket, .. } if ticket.len() != SCREEN_TICKET_BYTES => {
+            Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
+        }
         ControllerResponse::Error { code, .. }
             if code.is_empty()
                 || code.len() > MAX_ERROR_CODE_BYTES
@@ -463,6 +483,7 @@ fn response_kind(response: &ControllerResponse) -> &'static str {
         ControllerResponse::Output { .. } => "output",
         ControllerResponse::Completed { .. } => "completed",
         ControllerResponse::Detached { .. } => "detached",
+        ControllerResponse::ScreenOpened { .. } => "screen_opened",
         ControllerResponse::Error { .. } => "error",
     }
 }

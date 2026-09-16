@@ -25,6 +25,7 @@ mod protocol;
 mod queue;
 mod rate_limit;
 mod runtime;
+mod screen_tickets;
 mod ssh_pairing_broker;
 mod tmux_sessions;
 
@@ -87,6 +88,7 @@ pub use runtime::{
     ControllerConnectionBackend, HostCommandContext, ListenerRuntime, ListenerRuntimeReport,
     ListenerServices, ListeningAddressObserver, serve_authenticated_stdio_stream,
 };
+pub use screen_tickets::{ScreenGrants, ScreenTicketStore};
 pub use ssh_pairing_broker::{
     SshHostPairingDecision, SshHostPairingDecisionValue, SshHostPairingPrompt,
     request_ssh_host_pairing_decision,

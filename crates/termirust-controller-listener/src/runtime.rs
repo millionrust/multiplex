@@ -21,9 +21,10 @@ use crate::{
     AuthRateLimiter, BoundAddress, BoundControllerListeners, BoundedFrameQueue,
     BridgeAuthorization, ControllerBinder, ControllerCommandEnvelope, ControllerConnectionPurpose,
     ControllerPairingAuthority, ControllerResponse, InterfaceProvider, ListenerError,
-    ListenerErrorCode, QueueClass, SourceBucket, SourceBucketKey, SystemBinder,
-    SystemHandshakeEntropy, authenticate_controller, bind_address, decode_command, encode_response,
-    pair_controller, pair_controller_with_code, read_bounded_frame, write_bounded_frame,
+    ListenerErrorCode, QueueClass, ScreenGrants, ScreenTicketStore, SourceBucket, SourceBucketKey,
+    SystemBinder, SystemHandshakeEntropy, authenticate_controller, bind_address, decode_command,
+    encode_response, pair_controller, pair_controller_with_code, read_bounded_frame,
+    write_bounded_frame,
 };
 
 const AUTHORITY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
@@ -540,6 +541,8 @@ async fn serve_authenticated_stream<S: AsyncRead + AsyncWrite + Unpin>(
     let peer = authenticated.peer;
     let mut transport = authenticated.connection.transport;
     let mut backend = backend_factory.open(&peer)?;
+    let mut screen_tickets = ScreenTicketStore::default();
+    let mut screen_entropy = SystemHandshakeEntropy;
     let mut refresh = tokio::time::interval(AUTHORITY_REFRESH_INTERVAL);
     refresh.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut host_output_poll = tokio::time::interval(HOST_OUTPUT_POLL_INTERVAL);
@@ -584,7 +587,28 @@ async fn serve_authenticated_stream<S: AsyncRead + AsyncWrite + Unpin>(
                 )?;
                 let response_capability = security_capability(command.command.kind().capability());
                 let mut outbound = BoundedFrameQueue::new(ConnectionBudget::default())?;
-                for response in backend.execute(command, &cancel).await? {
+                // Screen sessions live on this connection, so the listener answers for them.
+                let responses = match command.command {
+                    crate::ControllerCommand::OpenScreen => {
+                        let grants = ScreenGrants::from_capabilities(peer.device_id, peer.capabilities);
+                        let ticket = screen_tickets.issue(grants, &mut screen_entropy)?;
+                        vec![ControllerResponse::ScreenOpened {
+                            command_id: command.command_id,
+                            ticket: ticket.to_vec(),
+                            can_control_pointer: grants.can_control_pointer,
+                            can_control_keyboard: grants.can_control_keyboard,
+                        }]
+                    }
+                    crate::ControllerCommand::CloseScreen => {
+                        screen_tickets.close();
+                        vec![ControllerResponse::Completed {
+                            command_id: command.command_id,
+                            applied: true,
+                        }]
+                    }
+                    _ => backend.execute(command, &cancel).await?,
+                };
+                for response in responses {
                     let (kind, capability, maximum) =
                         response_security(&response, response_capability);
                     let payload = encode_response(&response, maximum)?;
@@ -662,6 +686,9 @@ fn security_capability(capability: DomainCapability) -> SecurityCapability {
         DomainCapability::SendInput => SecurityCapability::SendInput,
         DomainCapability::Resize => SecurityCapability::Resize,
         DomainCapability::RespondToApproval => SecurityCapability::RespondToApproval,
+        DomainCapability::ObserveScreens => SecurityCapability::ObserveScreens,
+        DomainCapability::ControlPointer => SecurityCapability::ControlPointer,
+        DomainCapability::ControlKeyboard => SecurityCapability::ControlKeyboard,
     }
 }
 
@@ -683,6 +710,11 @@ fn response_security(
         ControllerResponse::Attached { .. } | ControllerResponse::Detached { .. } => (
             ControllerFrameKind::Control,
             SecurityCapability::AttachOutput,
+            control_payload_limit(),
+        ),
+        ControllerResponse::ScreenOpened { .. } => (
+            ControllerFrameKind::Control,
+            SecurityCapability::ObserveScreens,
             control_payload_limit(),
         ),
         ControllerResponse::Completed { .. } | ControllerResponse::Error { .. } => (
@@ -900,6 +932,20 @@ mod tests {
         }
     }
 
+    fn authority_with_screens(
+        host_private: &StaticPrivateKey,
+        device_private: &StaticPrivateKey,
+    ) -> ControllerDeviceAuthority {
+        let mut authority = authority(host_private, device_private);
+        for device in &mut authority.devices {
+            device.capabilities = device
+                .capabilities
+                .with(DomainCapability::ObserveScreens)
+                .with(DomainCapability::ControlPointer);
+        }
+        authority
+    }
+
     fn authority(
         host_private: &StaticPrivateKey,
         device_private: &StaticPrivateKey,
@@ -1074,6 +1120,98 @@ mod tests {
             ListenerErrorCode::AuthenticationFailed
         );
         cancel.cancel();
+    }
+
+    #[tokio::test]
+    async fn screen_tickets_are_issued_and_withdrawn_with_the_screen_capabilities() {
+        let host_private = StaticPrivateKey::from_fixture_bytes([31; 32]);
+        let device_private = StaticPrivateKey::from_fixture_bytes([32; 32]);
+        let authority = Arc::new(Authority {
+            value: Mutex::new(authority_with_screens(&host_private, &device_private)),
+            host_private: host_private.clone(),
+        });
+        let provider: Arc<dyn ControllerAuthorityProvider> = authority.clone();
+        let (client, mut server) = tokio::io::duplex(8 * 1024);
+        let server_task = tokio::spawn(async move {
+            serve_authenticated_stdio_stream(
+                &mut server,
+                provider,
+                Arc::new(Backends::default()),
+                CancellationToken::new(),
+            )
+            .await
+        });
+        let mut channel = crate::ControllerClientChannel::connect(
+            client,
+            1,
+            2,
+            9,
+            HostStaticPublicKey(host_public_key_from_private(&host_private).0),
+            device_private,
+            CapabilitySet::default()
+                .with(SecurityCapability::ObserveScreens)
+                .with(SecurityCapability::ControlPointer),
+            &mut crate::SystemHandshakeEntropy,
+        )
+        .await
+        .unwrap();
+
+        let deadline = unix_millis().saturating_add(10_000);
+        let command_id = channel
+            .send(crate::ControllerCommand::OpenScreen, deadline)
+            .await
+            .unwrap();
+        let ControllerResponse::ScreenOpened {
+            command_id: answered,
+            ticket,
+            can_control_pointer,
+            can_control_keyboard,
+        } = channel.read_response().await.unwrap()
+        else {
+            panic!("a screen session was not opened");
+        };
+        assert_eq!(answered, command_id);
+        assert_eq!(ticket.len(), 32);
+        assert!(can_control_pointer, "the device may point");
+        assert!(!can_control_keyboard, "the device may not type");
+
+        // A second request replaces the ticket rather than repeating it.
+        channel
+            .send(crate::ControllerCommand::OpenScreen, deadline)
+            .await
+            .unwrap();
+        let ControllerResponse::ScreenOpened { ticket: second, .. } =
+            channel.read_response().await.unwrap()
+        else {
+            panic!("a screen session was not opened");
+        };
+        assert_ne!(second, ticket);
+
+        channel
+            .send(crate::ControllerCommand::CloseScreen, deadline)
+            .await
+            .unwrap();
+        assert!(matches!(
+            channel.read_response().await.unwrap(),
+            ControllerResponse::Completed { applied: true, .. }
+        ));
+
+        // Taking the capability away stops the next request, even on the open connection.
+        {
+            let mut current = authority.value.lock().unwrap();
+            current.devices[0].capabilities = ControllerCapabilities::default()
+                .with(DomainCapability::ObserveSessions)
+                .with(DomainCapability::AttachOutput);
+        }
+        channel
+            .send(crate::ControllerCommand::OpenScreen, deadline)
+            .await
+            .unwrap();
+        assert!(
+            channel.read_response().await.is_err(),
+            "a withdrawn capability ends the connection"
+        );
+        assert!(server_task.await.unwrap().is_err());
     }
 
     #[tokio::test]

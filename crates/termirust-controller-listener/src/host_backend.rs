@@ -455,6 +455,14 @@ impl ControllerConnectionBackend for HostConnectionBackend {
                 code: "approval_unavailable".to_owned(),
                 completion_unknown: false,
             }]),
+            // The listener answers screen commands itself, so a backend never sees one.
+            ControllerCommand::OpenScreen | ControllerCommand::CloseScreen => {
+                Ok(vec![ControllerResponse::Error {
+                    command_id,
+                    code: "unexpected_command".to_owned(),
+                    completion_unknown: false,
+                }])
+            }
             ControllerCommand::Detach { session_id, .. } => {
                 if let Some(mut client) = self.clients.remove(&session_id) {
                     client.disconnect();

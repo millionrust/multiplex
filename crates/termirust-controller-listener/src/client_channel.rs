@@ -162,6 +162,11 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ControllerClientChannel<S> {
                 self.require_pending(*command_id, SecurityCapability::AttachOutput)?,
                 true,
             ),
+            ControllerResponse::ScreenOpened { command_id, .. } => (
+                ControllerFrameKind::Control,
+                self.require_pending(*command_id, SecurityCapability::ObserveScreens)?,
+                true,
+            ),
             ControllerResponse::Completed { command_id, .. }
             | ControllerResponse::Error { command_id, .. } => (
                 ControllerFrameKind::Control,
@@ -195,6 +200,7 @@ fn response_command_id(response: &ControllerResponse) -> Option<CommandId> {
         | ControllerResponse::Snapshot { command_id, .. }
         | ControllerResponse::Completed { command_id, .. }
         | ControllerResponse::Detached { command_id }
+        | ControllerResponse::ScreenOpened { command_id, .. }
         | ControllerResponse::Error { command_id, .. } => Some(*command_id),
         ControllerResponse::Output { .. } => None,
     }
@@ -207,5 +213,8 @@ fn security_capability(capability: DomainCapability) -> SecurityCapability {
         DomainCapability::SendInput => SecurityCapability::SendInput,
         DomainCapability::Resize => SecurityCapability::Resize,
         DomainCapability::RespondToApproval => SecurityCapability::RespondToApproval,
+        DomainCapability::ObserveScreens => SecurityCapability::ObserveScreens,
+        DomainCapability::ControlPointer => SecurityCapability::ControlPointer,
+        DomainCapability::ControlKeyboard => SecurityCapability::ControlKeyboard,
     }
 }

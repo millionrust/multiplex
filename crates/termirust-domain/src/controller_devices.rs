@@ -290,6 +290,9 @@ pub enum ControllerCapability {
     SendInput,
     Resize,
     RespondToApproval,
+    ObserveScreens,
+    ControlPointer,
+    ControlKeyboard,
 }
 
 impl ControllerCapability {
@@ -303,7 +306,8 @@ impl ControllerCapability {
 pub struct ControllerCapabilities(u16);
 
 impl ControllerCapabilities {
-    pub const KNOWN_MASK: u16 = 0x1f;
+    /// Bits 0 to 4 from Controller-v1, bits 5 to 7 from its Remote Screens amendment.
+    pub const KNOWN_MASK: u16 = 0xff;
 
     pub fn from_bits(bits: u16) -> Result<Self, ControllerDeviceError> {
         if bits & !Self::KNOWN_MASK == 0 {
