@@ -26,6 +26,10 @@ jobs:
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          # CI has been red, and rust-cache saves nothing from a failed job by default, so every
+          # run rebuilt the whole workspace from scratch.
+          cache-on-failure: true
 
       # The MCP, browser and diagnostics gates search with ripgrep, which the runners lack.
       - uses: taiki-e/install-action@v2
@@ -99,6 +103,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.88.0
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          # CI has been red, and rust-cache saves nothing from a failed job by default, so every
+          # run rebuilt the whole workspace from scratch.
+          cache-on-failure: true
 
       - name: Linux build dependencies
         run: |
@@ -124,6 +132,10 @@ jobs:
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          # CI has been red, and rust-cache saves nothing from a failed job by default, so every
+          # run rebuilt the whole workspace from scratch.
+          cache-on-failure: true
 
       - name: Compile and test Windows workspace
         run: cargo test --workspace --all-targets --all-features --locked
@@ -171,6 +183,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.97.1
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          # CI has been red, and rust-cache saves nothing from a failed job by default, so every
+          # run rebuilt the whole workspace from scratch.
+          cache-on-failure: true
 
       # The Kotlin conformance tests call the generated bindings through JNA on the build
       # machine, so they need the host build of the library the APK packages for each ABI.

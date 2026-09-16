@@ -20031,19 +20031,19 @@ sleep 1
                         cx,
                     );
                     app.save_profile(window, cx);
+                    // Both hosts are saved one right after the other, which is where two
+                    // records used to share an identifier and the second replaced the first.
+                    let labels = app
+                        .saved
+                        .profiles
+                        .iter()
+                        .map(|profile| profile.label.clone())
+                        .collect::<Vec<_>>();
                     assert!(
-                        app.saved
-                            .profiles
-                            .iter()
-                            .any(|profile| profile.label == "Docker Bastion"),
-                        "the bastion should be saved before it is used as a jump host: \
-                         error={:?} labels={:?}",
+                        labels.iter().any(|label| label == "Docker Bastion"),
+                        "the bastion should still be saved when it is used as a jump host: \
+                         error={:?} labels={labels:?}",
                         app.error_message,
-                        app.saved
-                            .profiles
-                            .iter()
-                            .map(|profile| profile.label.clone())
-                            .collect::<Vec<_>>()
                     );
                     app.connect_current(window, cx);
                 })

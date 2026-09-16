@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use termirust_domain::{
     GroupDestination, GroupId, HostedSession, HostedSessionId, HostedSessionState, OutputSequence,
@@ -982,7 +983,7 @@ impl SavedVault {
     }
 
     pub fn vault_id() -> String {
-        format!("vault-{}", now_millis())
+        new_id("vault")
     }
 
     pub fn is_personal(&self) -> bool {
@@ -1103,7 +1104,7 @@ fn normalize_tags(tags: Vec<String>) -> Vec<String> {
 
 impl SavedVaultMember {
     pub fn member_id() -> String {
-        format!("member-{}", now_millis())
+        new_id("member")
     }
 
     pub fn display_name(&self) -> String {
@@ -1141,7 +1142,7 @@ impl SavedSnippet {
     }
 
     pub fn snippet_id() -> String {
-        format!("snippet-{}", now_millis())
+        new_id("snippet")
     }
 
     pub fn effective_vault_id(&self) -> &str {
@@ -1781,11 +1782,7 @@ impl DraftProfile {
     }
 
     pub fn profile_id() -> String {
-        let millis = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_millis())
-            .unwrap_or(0);
-        format!("profile-{millis}")
+        new_id("profile")
     }
 
     pub fn display_name(&self) -> String {
@@ -3305,6 +3302,15 @@ fn now_millis() -> u64 {
         .unwrap_or(0)
 }
 
+/// A new identifier for a saved record. The millisecond keeps identifiers in the order they were
+/// made; the counter keeps two made in the same millisecond apart, which saving one host right
+/// after another does, and which otherwise gives the second record the first one's identifier.
+fn new_id(prefix: &str) -> String {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
+    format!("{prefix}-{}-{sequence}", now_millis())
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionLogStatus {
@@ -3333,7 +3339,7 @@ pub struct SessionLogEntry {
 impl SessionLogEntry {
     pub fn new(request: &ConnectRequest) -> Self {
         Self {
-            id: format!("log-{}", now_millis()),
+            id: new_id("log"),
             host: request.host.clone(),
             port: request.port,
             username: request.username.clone(),
@@ -3835,6 +3841,36 @@ mod tests {
         HostedSessionId, HostedSessionState, PresetId, ProjectId, Revision, SessionLaunchRoute,
         SessionOrigin, SshAgentForwardingPolicy, SshAuthenticationKind, TitleSource,
     };
+
+    #[test]
+    fn two_records_saved_in_the_same_millisecond_get_different_identifiers() {
+        let mut saved = SavedState::default();
+        for label in ["First", "Second"] {
+            let profile = HostProfile {
+                id: DraftProfile::profile_id(),
+                label: label.to_string(),
+                host: "example.com".to_string(),
+                username: "ubuntu".to_string(),
+                ..HostProfile::default()
+            };
+            saved.upsert_profile(profile);
+        }
+
+        let labels = saved
+            .profiles
+            .iter()
+            .map(|profile| profile.label.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            labels,
+            vec!["First", "Second"],
+            "saving one host right after another must keep both"
+        );
+        assert_ne!(saved.profiles[0].id, saved.profiles[1].id);
+        assert_ne!(SavedSnippet::snippet_id(), SavedSnippet::snippet_id());
+        assert_ne!(SavedVault::vault_id(), SavedVault::vault_id());
+        assert_ne!(SavedVaultMember::member_id(), SavedVaultMember::member_id());
+    }
 
     #[test]
     fn parses_user_at_host() {
