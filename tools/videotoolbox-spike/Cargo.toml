@@ -1,0 +1,12 @@
+[package]
+name = "termirust-videotoolbox-spike"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Spike 0.3: HEVC low-latency encoding with long-term references from Rust, to decide the Stage B motion path"
+
+[workspace]
+
+[dependencies]

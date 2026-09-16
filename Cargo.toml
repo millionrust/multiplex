@@ -44,6 +44,7 @@ members = [
 exclude = [
     "tools/browser-engine-spike",
     "tools/relay-spike",
+    "tools/videotoolbox-spike",
 ]
 
 [workspace.package]

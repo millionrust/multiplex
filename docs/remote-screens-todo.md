@@ -51,7 +51,16 @@ Pure Rust, no platform code, fully testable in CI.
 - [x] 0.2 ScreenCaptureKit example: dirty-rect counts, idle ratio, bytes (`capture_stats`)
   Ran on this Mac: no dirty rects on macOS 27.0, 32.8 KB/s steady at native scale. See RS2.
   Scripted typing, scrolling, and video sessions remain to be captured by the owner.
-- [ ] 0.3 VideoToolbox example from Rust: HEVC low-latency session with LTR round trip under forced loss
+- [x] 0.3 VideoToolbox example from Rust: HEVC low-latency session with LTR round trip under forced loss
+  Ran on this Mac. Recovery with a long-term reference costs 1,141 bytes at 1080p and 4,217 at 4K,
+  against 154,116 and 687,913 for the keyframe it replaces: 135x and 163x. M4 can be built on
+  `EnableLTR` plus `ForceLTRRefresh`. Evidence, and three traps that would each have cost M4 a day
+  — low latency is an encoder specification not a session property, `ForceKeyFrame` is really
+  `"EncoderForceKeyframe"` and a wrong key is silently ignored, and the encoder drops frames so
+  tokens must never be matched by counting — are in
+  [RS4-videotoolbox-ltr.md](engineering-evidence/RS4-videotoolbox-ltr.md).
+  The spike is `tools/videotoolbox-spike`, an excluded workspace, so it adds nothing to the
+  workspace lockfile.
 - [ ] 0.4 **(device)** iroh phone ↔ Mac over cellular with a self-hosted relay; go/no-go note
   Now gates the Stage B transport (M5), not Stage A.
 - [ ] 0.5 `docs(remote-screens): record spike results` in `docs/engineering-evidence/`
