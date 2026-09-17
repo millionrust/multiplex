@@ -17,6 +17,6 @@ mod source;
 
 pub use error::CaptureError;
 #[cfg(target_os = "macos")]
-pub use macos::{ScreenCaptureKitSource, displays};
+pub use macos::{ScreenCaptureKitSource, displays, request_screen_capture, screen_capture_allowed};
 pub use replay::ReplaySource;
 pub use source::{CaptureConfig, CapturedFrame, Damage, DisplayInfo, FrameSource};

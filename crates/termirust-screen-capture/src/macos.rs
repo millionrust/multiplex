@@ -180,3 +180,26 @@ fn copy_frame(sample: &CMSampleBuffer, started: Instant) -> Option<CapturedFrame
         scale: sample.scale_factor().map(|scale| scale as f32),
     })
 }
+
+/// Whether this process may capture the screen, without asking for it.
+///
+/// Worth checking before a session opens rather than after, because a process without the grant
+/// does not fail loudly: ScreenCaptureKit hands back frames of a blank desktop, and the person
+/// watching sees an empty screen with nothing to explain it.
+///
+/// macOS records the grant against the **responsible process**, which for the desktop app is the
+/// app and for the LaunchAgent is the LaunchAgent itself — it has no responsible parent to
+/// inherit from. So the two answer this differently even on a Mac where the app works, which is
+/// the whole reason it has to be asked per process rather than assumed.
+pub fn screen_capture_allowed() -> bool {
+    core_graphics::access::ScreenCaptureAccess.preflight()
+}
+
+/// Asks for the grant, which shows the system prompt the first time and opens nothing after
+/// that. Returns whether it is now held.
+///
+/// Only for a process a person is looking at. A background service that called this would
+/// prompt from nowhere, so it reports instead and lets the app ask.
+pub fn request_screen_capture() -> bool {
+    core_graphics::access::ScreenCaptureAccess.request()
+}

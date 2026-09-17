@@ -338,7 +338,18 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
 - [ ] 6.1 `feat(screen-capture): capture with Desktop Duplication on Windows`
 - [ ] 6.2 `feat(screen-capture): capture through the PipeWire portal on Linux`
 - [ ] 6.3 `feat(screen-host): inject input on Windows and Linux`
-- [ ] 6.4 `feat(controller-service): serve screens from the macOS background service`
+- [x] 6.4 `feat(controller-service): serve screens from the macOS background service`
+  The app's listener worker already served screens; the LaunchAgent's used the plain worker, so a
+  paired phone could watch this Mac only while the app happened to be open — the one thing the
+  background service exists to stop being true. Both now get the same provider.
+  The permission finding from the `(device)` investigation is what makes this more than a one-line
+  change. macOS records a grant against the responsible process, and a LaunchAgent has no
+  responsible parent, so granting TermiRust Screen Recording does **not** cover the service.
+  Without the grant ScreenCaptureKit returns frames of a blank desktop rather than failing, so
+  `controller-service status` now says so, names the label to allow, and says why the app's own
+  grant was not enough.
+  **(device)** Still to confirm on a real install: that the LaunchAgent prompts under its own name
+  and that the grant sticks across a restart.
 
 ## Release gates [8]
 

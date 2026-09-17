@@ -10,4 +10,5 @@ license = "MIT OR Apache-2.0"
 termirust-screen-codec = { version = "0.1.0", path = "../termirust-screen-codec" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = "0.24"
 screencapturekit = { version = "=10.0.3", default-features = false }
