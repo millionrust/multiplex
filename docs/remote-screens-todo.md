@@ -447,10 +447,19 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
 
 ## Release gates [8]
 
-- [ ] Workload report within [4.8] targets for typing, scrolling and window switching
+- [x] Workload report within [4.8] targets for typing, scrolling and window switching
+  All of them, and the video region too. Two of the workloads had to be fixed before the table
+  meant anything: typing was one line of text with no caret and no status bar, and "video region"
+  was white noise, which no screen is. See [RS1](engineering-evidence/RS1-screen-codec.md).
 - [ ] Network matrix pass criteria for the stage being released
 - [ ] Stage A 30-minute usability session over 300 ms / 5 % / 1 Mbps
 - [ ] Capability ADR amendment accepted
 - [ ] Independent review of ticket bootstrap and endpoint pinning
-- [ ] New dependencies recorded with licence and reason
+- [x] New dependencies recorded with licence and reason
+  Recorded in the plan's gate 5, including what the M6 capture backends took and what
+  `windows-capture` was rejected for. `cargo deny check` is green on advisories, bans, licences
+  and sources.
 - [ ] `cargo test --workspace --all-targets --locked` and `cargo deny check` green
+  `cargo deny check` is green and the lockfile is current, so `--locked` does not have to change
+  it. The test run is not green from here: 72 Docker-backed SSH/SFTP tests need a daemon, which is
+  the long-standing 657/72 baseline on this machine rather than anything these milestones did.

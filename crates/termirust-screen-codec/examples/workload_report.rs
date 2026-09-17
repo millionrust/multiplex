@@ -12,7 +12,8 @@ fn main() {
         workloads::typing(),
         workloads::scrolling(),
         workloads::window_switching(),
-        workloads::video(),
+        workloads::video_smooth(),
+        workloads::video_noise(),
     ];
     println!(
         "Surface {} x {}, 30 frames a second, synthetic content\n",

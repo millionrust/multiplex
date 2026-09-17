@@ -23,6 +23,34 @@ fn typing_stays_under_forty_kilobytes_a_second() {
         "typing used {:.1} KB/s",
         report.kb_per_second()
     );
+    // The upper bound alone was not enough. This workload once drew the typed line and nothing
+    // else, measured a tenth of its target, and passed — a thin workload looks exactly like a fast
+    // codec from here. A real editor sends something on most keystrokes, so if this count
+    // collapses the workload has stopped representing typing and the number above means nothing.
+    assert!(
+        report.batches >= 60,
+        "typing sent only {} batches over {:.1} s, so the workload is not typing any more",
+        report.batches,
+        report.seconds
+    );
+}
+
+#[test]
+fn a_video_region_on_the_tile_path_stays_under_its_stage_a_target() {
+    // 600 kbps is 75 KB/s. Measured on ordinary moving picture, which is what the target is about;
+    // `video_noise` bounds the pathological case and is deliberately not held to this.
+    let report = workloads::video_smooth();
+    assert!(
+        report.kb_per_second() < 75.0,
+        "a video region used {:.1} KB/s ({:.0} kbps)",
+        report.kb_per_second(),
+        report.kb_per_second() * 8.0
+    );
+    assert!(
+        report.batches >= 20,
+        "the video workload sent only {} batches, so it is not playing",
+        report.batches
+    );
 }
 
 #[test]

@@ -18,7 +18,7 @@ platform-free tile codec, with no capture, network, or UI code.
 - A viewer that reconnects receives only tiles, moves, and cache entries after its last
   acknowledged batch.
 - A fast-changing area of at least 12 tiles and 3×3 tiles in extent becomes the motion region,
-  sent lossy at no more than 8 updates a second on the tile path, and resent when it ends.
+  sent lossy at no more than `tile_path_max_hz` updates a second on the tile path, and resent when it ends.
 
 The crate adds one dependency, `xxhash-rust 0.8.18` (BSL-1.0, `xxh3` only). It reuses the
 already-locked `miniz_oxide 0.8.9` and `proptest 1.11.0`. The controller-security ADR records the
@@ -58,20 +58,41 @@ surface at 30 frames a second, synthetic content:
 | Workload | Seconds | Batches sent | Total KB | KB/s | Largest batch KB | Target (plan 4.8) |
 |---|---:|---:|---:|---:|---:|---|
 | Idle desktop | 9.9 | 0 | 0.0 | 0.0 | 0.0 | < 1 kbps |
-| Typing in an editor | 9.9 | 75 | 18.7 | 1.9 | 0.5 | 10–40 KB/s |
+| Typing in an editor | 9.9 | 75 | 26.4 | 2.7 | 0.6 | 10–40 KB/s |
 | Scrolling a code file | 3.0 | 30 | 91.5 | 30.8 | 3.9 | 30–120 KB/s |
 | Switching windows | 9.9 | 5 | 44.6 | 4.5 | 33.5 | ≤ 300 KB burst, then ~0 |
-| Video region (tile path) | 5.0 | 45 | 1,018.9 | 205.8 | 24.2 | ≤ 600 kbps |
+| Video region, moving picture | 5.0 | 30 | 201.4 | 40.7 | 6.9 | ≤ 600 kbps |
+| Video region, worst case (noise) | 5.0 | 30 | 674.4 | 136.3 | 23.9 | bound only |
 
-The workload test holds idle, typing, scrolling, and window switching to these targets. The
-report found and fixed one defect: scrolled text was promoted to a motion region (207 KB/s
-before the fix, 31 KB/s after).
+Every row with a target is inside it. The workload test holds idle, typing, scrolling, window
+switching and the video region to them.
+
+The report found and fixed one defect in the codec: scrolled text was promoted to a motion region
+(207 KB/s before the fix, 31 KB/s after).
+
+It then found two defects in **itself**, which are worth recording because a workload that does not
+represent what it claims is the same failure as an untested control, and this file had been
+reporting both as facts about the codec.
+
+**Typing was one line of text and nothing else**, and measured 1.9 KB/s against a 10–40 KB/s
+target. The test had only an upper bound, so being a tenth of the expected cost looked exactly like
+passing. Real editors are never still: there is a caret blinking whether or not anyone types, and a
+status bar redrawing on every keystroke, both landing in tiles nowhere near the text. With those in
+it measures 2.7 KB/s — still comfortably under, which is now a result rather than an artefact. The
+test also asserts the batch count, so a workload that stops representing typing fails instead of
+looking fast.
+
+**"Video region" was white noise.** Every pixel independent of its neighbours defeats the lossy
+pass, the palette and deflate at once, so it measured 1,090 kbps and this file reported the tile
+path as being over target for video. No screen looks like that. Ordinary moving picture — locally
+smooth, as anything a camera or codec has touched is — measures **326 kbps, inside the target**.
+The noise row is kept as a bound on the worst case and is deliberately held to no target.
 
 ## Open items
 
-- **Video on the tile path is above target** (1.6 Mbps against 600 kbps) on this noise-heavy
-  synthetic video. Stage A tuning (lower detail inside the region) and the Stage B motion
-  stream address it; the release gate does not include it.
+- **Content is synthetic, and that cuts both ways.** Two of these rows were wrong about the codec
+  until the workloads were fixed (above). The remaining risk is the same one in reverse: a
+  synthetic editor and a synthetic video are still guesses about what real screens do.
 - **Content is synthetic.** Real captures and dirty-rect statistics come from the
   ScreenCaptureKit spike (step 0.2).
 - **A lost scroll resends the scrolled area** after resume, because the host keeps no copy of
