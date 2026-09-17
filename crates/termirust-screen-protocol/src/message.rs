@@ -18,6 +18,7 @@
 //! | 0x24 | host → viewer | video config: surface, codec, rectangle, decoder parameter sets |
 //! | 0x25 | host → viewer | video frame: surface, sequence, keyframe, optional LTR token, payload |
 //! | 0x26 | host → viewer | parity: surface, group, shard index, data shard count, payload |
+//! | 0x27 | host → viewer | burst mark: closes one paced burst, with the bytes it carried |
 //! | 0x30 | viewer → host | request control |
 //! | 0x31 | viewer → host | release control |
 //! | 0x32 | viewer → host | pointer move: surface, x, y |
@@ -27,6 +28,7 @@
 //! | 0x36 | viewer → host | text: surface, UTF-8 up to 256 bytes |
 //! | 0x37 | viewer → host | video acknowledge: surface, long-term reference tokens held |
 //! | 0x38 | viewer → host | video lost: surface, the sequence that did not arrive whole |
+//! | 0x39 | viewer → host | burst report: burst, bytes that arrived, how long they took |
 //!
 //! Version 2 adds a feature set to the hello and the welcome, and everything from 0x24 on. A
 //! version 1 peer never sends those bytes and is never sent them.
@@ -75,10 +77,16 @@ impl FeatureSet {
     pub const VIDEO_PARITY: u32 = 1 << 1;
     /// Long-term reference acknowledgement, so loss recovers without a keyframe.
     pub const LONG_TERM_REFERENCES: u32 = 1 << 2;
+    /// The viewer times the bursts it receives and reports them, so the host can measure the
+    /// link rather than guess at it.
+    pub const BANDWIDTH_REPORTS: u32 = 1 << 3;
 
     /// Every bit this build understands. An unknown bit is dropped rather than refused, so a
     /// later peer advertising more does not end the session.
-    pub const KNOWN: u32 = Self::MOTION_VIDEO | Self::VIDEO_PARITY | Self::LONG_TERM_REFERENCES;
+    pub const KNOWN: u32 = Self::MOTION_VIDEO
+        | Self::VIDEO_PARITY
+        | Self::LONG_TERM_REFERENCES
+        | Self::BANDWIDTH_REPORTS;
 
     pub const fn none() -> Self {
         Self(0)
@@ -357,6 +365,26 @@ pub enum Message {
         surface: u32,
         sequence: u64,
     },
+    /// Closes one paced burst, naming what the host just sent.
+    ///
+    /// The host can only time its own sending, which measures its own pacing and nothing about
+    /// the link. This is what lets the viewer time the arrival instead.
+    BurstMark {
+        burst: u64,
+        /// Bytes sent in this burst, not counting this message.
+        bytes: u64,
+    },
+    /// What the viewer measured for one burst.
+    BurstReport {
+        burst: u64,
+        /// Bytes that arrived during the measured interval: everything after the chunk that
+        /// started it. The first chunk opens the clock rather than being timed by it, so
+        /// counting it here would read the link as faster than it is.
+        bytes: u64,
+        /// Microseconds between the first byte of the burst arriving and the mark that closed it.
+        /// The burst's rate is `bytes / spread`, which is what the link actually delivered.
+        spread_micros: u64,
+    },
 }
 
 const HELLO: u8 = 0x01;
@@ -384,6 +412,8 @@ const KEY: u8 = 0x35;
 const TEXT: u8 = 0x36;
 const VIDEO_ACKNOWLEDGE: u8 = 0x37;
 const VIDEO_LOST: u8 = 0x38;
+const BURST_MARK: u8 = 0x27;
+const BURST_REPORT: u8 = 0x39;
 
 /// Which kind of input a message carries, for hosts that grant pointer and keyboard separately.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -657,6 +687,21 @@ impl Message {
                 w.u32(*surface);
                 w.u64(*sequence);
             }
+            Self::BurstMark { burst, bytes } => {
+                w.u8(BURST_MARK);
+                w.u64(*burst);
+                w.u64(*bytes);
+            }
+            Self::BurstReport {
+                burst,
+                bytes,
+                spread_micros,
+            } => {
+                w.u8(BURST_REPORT);
+                w.u64(*burst);
+                w.u64(*bytes);
+                w.u64(*spread_micros);
+            }
         }
         Ok(w.0)
     }
@@ -913,6 +958,15 @@ impl Message {
                 surface: r.u32()?,
                 sequence: r.u64()?,
             },
+            BURST_MARK => Self::BurstMark {
+                burst: r.u64()?,
+                bytes: r.u64()?,
+            },
+            BURST_REPORT => Self::BurstReport {
+                burst: r.u64()?,
+                bytes: r.u64()?,
+                spread_micros: r.u64()?,
+            },
             _ => return Err(ProtocolError::Malformed),
         };
         if r.remaining() != 0 {
@@ -1071,7 +1125,7 @@ mod tests {
     use termirust_screen_codec::{SurfaceId, TileOp};
 
     /// Keep in step with `all_messages`; the mutation property indexes into it.
-    const ALL_MESSAGE_COUNT: usize = 30;
+    const ALL_MESSAGE_COUNT: usize = 32;
 
     fn all_messages() -> Vec<Message> {
         vec![
@@ -1228,6 +1282,15 @@ mod tests {
                 surface: 1,
                 sequence: 4097,
             },
+            Message::BurstMark {
+                burst: 12,
+                bytes: 65_536,
+            },
+            Message::BurstReport {
+                burst: 12,
+                bytes: 65_000,
+                spread_micros: 40_000,
+            },
             // The two hellos a host must tell apart: a Stage A viewer that has no feature field
             // at all, and a Stage B one that asks for the motion path.
             Message::Hello(Hello {
@@ -1379,6 +1442,28 @@ mod tests {
         assert_eq!(
             lost.encode().unwrap(),
             vec![0x38, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 2],
+        );
+
+        let mark = Message::BurstMark {
+            burst: 3,
+            bytes: 1_024,
+        };
+        assert_eq!(
+            mark.encode().unwrap(),
+            vec![0x27, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 4, 0],
+        );
+        let report = Message::BurstReport {
+            burst: 3,
+            bytes: 1_000,
+            spread_micros: 20_000,
+        };
+        assert_eq!(
+            report.encode().unwrap(),
+            vec![
+                0x39, 0, 0, 0, 0, 0, 0, 0, 3, // kind, burst
+                0, 0, 0, 0, 0, 0, 3, 232, // bytes
+                0, 0, 0, 0, 0, 0, 78, 32, // microseconds
+            ],
         );
     }
 

@@ -22,7 +22,8 @@ use termirust_controller_listener::{
 };
 use termirust_screen_codec::{Frame, Rect};
 use termirust_screen_protocol::{
-    ControlHolder, FrameReader, InputKind, Message, PanePlacement, SurfaceInfo, encode_frame,
+    ControlHolder, FeatureSet, FrameReader, InputKind, Message, PanePlacement, SurfaceInfo,
+    encode_frame,
 };
 use termirust_screen_session::{
     Grants, HostConfig, HostEvent, HostSession, InputEvent, ResumeStore, TicketVerifier,
@@ -30,6 +31,7 @@ use termirust_screen_session::{
 
 pub mod motion;
 pub mod parity;
+pub mod rate;
 #[cfg(target_os = "macos")]
 mod video;
 
@@ -37,6 +39,7 @@ pub use motion::{
     MotionEncoder, MotionEncoders, MotionFrame, MotionRequest, MotionSender, NoEncoders,
     platform_encoders,
 };
+pub use rate::RateEstimator;
 
 /// Something the application must act on while a device watches its screens.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -78,6 +81,10 @@ struct Inner {
     open: bool,
     /// Sends the motion region as video, for viewers that negotiated it. Idle otherwise.
     motion: MotionSender,
+    /// Names the burst each flush closes, so a report can be matched to what it measured.
+    burst: u64,
+    /// What the link has recently delivered, measured rather than assumed.
+    rate: RateEstimator,
 }
 
 impl Inner {
@@ -91,6 +98,24 @@ impl Inner {
         }
         if bytes.is_empty() {
             return Ok(());
+        }
+        // One flush is one burst. The mark closes it and says how much went before it, which is
+        // the half of the measurement only this side knows; the viewer supplies the other half by
+        // timing the arrival. Built here rather than through the session's outbox because the
+        // count is of encoded bytes, which is a fact about this layer and not about the protocol.
+        if self
+            .session
+            .agreed_features()
+            .has(FeatureSet::BANDWIDTH_REPORTS)
+        {
+            let mark = Message::BurstMark {
+                burst: self.burst,
+                bytes: bytes.len() as u64,
+            };
+            let frame = encode_frame(&mark)
+                .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))?;
+            bytes.extend(frame);
+            self.burst = self.burst.wrapping_add(1);
         }
         self.outgoing
             .send(bytes)
@@ -112,6 +137,13 @@ impl Inner {
                 // is about the stream, not about what the device is allowed to do.
                 HostEvent::VideoAcknowledged { tokens, .. } => self.motion.acknowledged(&tokens),
                 HostEvent::VideoLost { .. } => self.motion.lost(),
+                // The measurement of the link. It stays here rather than reaching the
+                // application: what to do about it is 5.2, and nothing above this needs it.
+                HostEvent::BurstMeasured {
+                    bytes,
+                    spread_micros,
+                    ..
+                } => self.rate.record(bytes, spread_micros),
                 HostEvent::InputRefused
                 | HostEvent::Subscribed { .. }
                 | HostEvent::Unsubscribed { .. } => {}
@@ -167,6 +199,8 @@ impl ScreenHost {
             grants: None,
             open: true,
             motion: MotionSender::new(encoders),
+            burst: 0,
+            rate: RateEstimator::new(),
         }));
         (
             Self {
@@ -329,6 +363,19 @@ impl ScreenHostHandle {
     /// Whether a device is still watching.
     pub fn is_open(&self) -> bool {
         self.inner.lock().expect("screen host mutex").open
+    }
+
+    /// Bytes per second this link has recently delivered, once enough bursts have been measured.
+    ///
+    /// `None` means nothing is known yet — a session that has only sent a few hundred bytes of
+    /// typing has measured nothing worth acting on — and a caller should keep its defaults rather
+    /// than degrade on an estimate it does not have. 5.2 is what acts on it.
+    pub fn estimated_bytes_per_second(&self) -> Option<u64> {
+        self.inner
+            .lock()
+            .expect("screen host mutex")
+            .rate
+            .estimate()
     }
 
     /// Stops sharing with this device.

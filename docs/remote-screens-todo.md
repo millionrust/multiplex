@@ -300,7 +300,15 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
 
 ## M5 — Rate control, roaming, bad networks (Stage B, part 2) [4.6, 7]
 
-- [ ] 5.1 `feat(screen-transport): estimate bandwidth from frame-paced bursts`
+- [x] 5.1 `feat(screen-transport): estimate bandwidth from frame-paced bursts`
+  The host closes each flush with a burst mark; the viewer times the arrival and reports it; the
+  estimate is the harmonic mean of the last eight bursts less fifteen percent. A new
+  `BANDWIDTH_REPORTS` bit, so a peer that cannot time bursts is never asked to.
+  The subtlety worth remembering: the chunk that opens a burst starts the clock and must not be
+  counted by it. Counting it read a one megabyte link as 1.44 MB/s — inflated by n/(n-1) over a
+  burst of n chunks — which is exactly the kind of wrong that looks plausible.
+  Measured over whatever carries the bytes, so today that is the ordered Controller channel; iroh
+  datagrams in 5.3 make the spread mean more. Nothing acts on the number yet: that is 5.2.
 - [ ] 5.2 `feat(screen-host): drive the degradation steps from the estimate`
 - [ ] 5.3 `feat(screen-transport): survive network changes with migration and 0-RTT resume`
 - [ ] 5.4 `docs(self-hosted-relay): deploy an iroh relay next to relay-host`

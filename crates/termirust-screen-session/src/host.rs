@@ -97,6 +97,13 @@ pub enum HostEvent {
         surface: u32,
         sequence: u64,
     },
+    /// What the viewer measured for one burst: the bytes that arrived and how long they took.
+    /// Feed it to the rate estimator; it is the only measurement of the link either side has.
+    BurstMeasured {
+        burst: u64,
+        bytes: u64,
+        spread_micros: u64,
+    },
 }
 
 /// Encoders kept after a viewer leaves, so it can resume on its next connection.
@@ -405,6 +412,20 @@ impl<V: TicketVerifier> HostSession<V> {
             Message::VideoLost { surface, sequence } => {
                 Ok(vec![HostEvent::VideoLost { surface, sequence }])
             }
+            // A viewer reporting on a burst it was never asked to time is talking about a
+            // measurement this session never set up.
+            Message::BurstReport { .. } if !features.has(FeatureSet::BANDWIDTH_REPORTS) => {
+                self.fail(SessionError::ProtocolViolation, "reports_not_agreed", store)
+            }
+            Message::BurstReport {
+                burst,
+                bytes,
+                spread_micros,
+            } => Ok(vec![HostEvent::BurstMeasured {
+                burst,
+                bytes,
+                spread_micros,
+            }]),
             Message::Hello(_)
             | Message::Welcome(_)
             | Message::Goodbye { .. }
@@ -414,7 +435,8 @@ impl<V: TicketVerifier> HostSession<V> {
             | Message::PanePlacements { .. }
             | Message::VideoConfig(_)
             | Message::VideoFrame(_)
-            | Message::Parity(_) => {
+            | Message::Parity(_)
+            | Message::BurstMark { .. } => {
                 self.fail(SessionError::ProtocolViolation, "unexpected_message", store)
             }
         }

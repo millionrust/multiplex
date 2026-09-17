@@ -54,6 +54,38 @@ enum State {
     Closed,
 }
 
+/// What arrived since the last burst mark.
+///
+/// Only the receiver can measure a link. The host can time its own sending, but that measures how
+/// fast it chose to send, which is exactly the thing being questioned. So the host closes each
+/// burst with a mark, and this times how long the bytes before it took to arrive.
+#[derive(Debug, Default)]
+struct BurstArrival {
+    /// When the first byte of this burst arrived. Absent until a transport says so, which is how
+    /// a caller that never reports arrivals ends up never claiming a measurement.
+    first_at_micros: Option<u64>,
+    /// When the most recent chunk arrived. The mark that closes a burst is in the last chunk, so
+    /// this is when the burst finished arriving, and nothing needs a clock of its own.
+    last_at_micros: u64,
+    bytes: u64,
+}
+
+impl BurstArrival {
+    /// Closes the burst and returns the bytes that arrived and how long they took, if that was
+    /// measured at all.
+    fn close(&mut self) -> Option<(u64, u64)> {
+        let first = self.first_at_micros.take()?;
+        let bytes = std::mem::take(&mut self.bytes);
+        // A burst that arrived inside one clock tick says nothing about the link's rate beyond
+        // "faster than this clock can see", and dividing by zero would claim an absurd figure.
+        let spread = self
+            .last_at_micros
+            .checked_sub(first)
+            .filter(|spread| *spread > 0)?;
+        (bytes > 0).then_some((bytes, spread))
+    }
+}
+
 /// A viewer's side of a session. Decoders survive reconnects so the host can resume.
 pub struct ViewerSession {
     /// What this viewer can do beyond Stage A.
@@ -68,6 +100,8 @@ pub struct ViewerSession {
     panes: HashMap<u32, Vec<PanePlacement>>,
     attached: Vec<PaneSession>,
     outbox: VecDeque<Message>,
+    /// What has arrived since the last burst mark, for measuring the link.
+    burst: BurstArrival,
     /// Rebuilds video frames the link dropped, from the parity the host sends with each group.
     repair: VideoRepair,
     /// Decodes the motion region and draws it into the surface it belongs to.
@@ -92,6 +126,7 @@ impl ViewerSession {
             panes: HashMap::new(),
             attached: Vec::new(),
             outbox: VecDeque::new(),
+            burst: BurstArrival::default(),
             repair: VideoRepair::default(),
             motion: MotionView::default(),
         }
@@ -156,6 +191,30 @@ impl ViewerSession {
 
     pub fn poll_outgoing(&mut self) -> Option<Message> {
         self.outbox.pop_front()
+    }
+
+    /// Tells the session that `bytes` of the screen stream arrived at `now_micros`.
+    ///
+    /// Call it from the transport, with every chunk, before feeding the messages it decodes to
+    /// [`Self::receive`]. This is the only place a measurement of the link can come from: the
+    /// host times its own sending, which measures its own pacing and nothing else.
+    ///
+    /// A caller that never calls it simply never reports, and the host falls back to whatever its
+    /// transport knows. Nothing breaks; the estimate is just coarser.
+    pub fn observed_bytes(&mut self, bytes: usize, now_micros: u64) {
+        if bytes == 0 {
+            return;
+        }
+        self.burst.last_at_micros = now_micros;
+        if self.burst.first_at_micros.is_none() {
+            // The first chunk starts the clock; it does not count toward what the clock measures.
+            // Its own journey happened before the interval opened, so counting its bytes against
+            // a spread that excludes its transit time reads the link as faster than it is — by
+            // a factor of n/(n-1) over a burst of n chunks, which on a short burst is enormous.
+            self.burst.first_at_micros = Some(now_micros);
+            return;
+        }
+        self.burst.bytes = self.burst.bytes.saturating_add(bytes as u64);
     }
 
     /// The full view of `surface`, once any batch arrived.
@@ -422,6 +481,20 @@ impl ViewerSession {
                     events.extend(self.deliver(repaired));
                 }
                 Ok(events)
+            }
+            // The host closed a burst. Answer with what arrived and how long it took, which is
+            // the one measurement of the link neither side can take alone.
+            (State::Open, Message::BurstMark { burst, bytes: _ })
+                if self.agreed.has(FeatureSet::BANDWIDTH_REPORTS) =>
+            {
+                if let Some((bytes, spread_micros)) = self.burst.close() {
+                    self.outbox.push_back(Message::BurstReport {
+                        burst,
+                        bytes,
+                        spread_micros,
+                    });
+                }
+                Ok(Vec::new())
             }
             (State::Open, Message::Parity(parity)) if self.agreed.has(FeatureSet::VIDEO_PARITY) => {
                 let repaired = self.repair.parity(&parity);
