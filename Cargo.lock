@@ -10634,6 +10634,7 @@ name = "termirust-screen-input"
 version = "0.1.0"
 dependencies = [
  "core-graphics 0.24.0",
+ "libc",
  "termirust-screen-codec",
  "termirust-screen-protocol",
  "termirust-screen-session",

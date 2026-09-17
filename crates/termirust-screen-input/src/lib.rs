@@ -16,6 +16,8 @@ mod error;
 mod injector;
 mod keymap;
 mod layout;
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 mod sink;
@@ -24,8 +26,10 @@ mod windows;
 
 pub use error::InputError;
 pub use injector::{DOUBLE_CLICK_DISTANCE_POINTS, DOUBLE_CLICK_MS, Injector};
-pub use keymap::{mac_virtual_keycode, windows_scancode};
+pub use keymap::{linux_keycode, mac_virtual_keycode, windows_scancode};
 pub use layout::{DisplayLayout, DisplayPlacement, Point};
+#[cfg(target_os = "linux")]
+pub use linux::UinputSink;
 #[cfg(target_os = "macos")]
 pub use macos::{CoreGraphicsSink, INJECTED_EVENT_TAG, accessibility_trusted};
 pub use sink::{InputSink, RecordingSink, SinkEvent, TEXT_CHUNK_UTF16};

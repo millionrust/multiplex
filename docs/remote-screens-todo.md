@@ -349,7 +349,18 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
     differ on rather than letting a gap appear silently — `F13` upwards, Apple's `Help` and keypad
     `=` one way; Print Screen, Scroll Lock and the Menu key the other.
     Cross-checked against `x86_64-pc-windows-msvc`. **(device)** Never run on Windows.
-  - [ ] Linux, through `uinput`.
+  - [x] Linux, through `uinput`. A virtual device in the kernel, so it works the same under X11,
+    Wayland and a bare console, where the X11 and Wayland routes would each need their own.
+    **Text is the one thing it cannot do.** A `uinput` device reports key positions and nothing
+    here can reach the keymap that turns positions into characters, so a pasted accent or an emoji
+    returns `UnmappedKey` rather than silently arriving as the wrong letters. Typing ordinary keys
+    works. Doing better needs a custom XKB keymap uploaded with the device, which is its own step.
+    `/dev/uinput` is root-only by default; a desktop install wants a udev rule for the `input`
+    group rather than a host running as root, and the error says so.
+    Writing the third keymap made the set checkable: Linux turns out to be a strict superset of
+    both other hosts, including `Pause`, which Windows cannot express and macOS has no event for.
+    Type-checked against `x86_64-unknown-linux-gnu`; it cannot be linked or run from a Mac.
+    **(device)** Never run on Linux.
 - [x] 6.4 `feat(controller-service): serve screens from the macOS background service`
   The app's listener worker already served screens; the LaunchAgent's used the plain worker, so a
   paired phone could watch this Mac only while the app happened to be open — the one thing the

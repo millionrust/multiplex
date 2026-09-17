@@ -432,3 +432,209 @@ mod windows_tests {
         }
     }
 }
+
+/// The Linux input event code (`KEY_*`, `linux/input-event-codes.h`) for a USB HID keyboard-page
+/// usage.
+///
+/// Positional, like the other two: the device this crate creates reports key presses, and the
+/// compositor's own layout decides which character each one produces.
+///
+/// Linux names more keys than either of the others — it has `F13` upwards like macOS, the Menu
+/// key like Windows, and `Pause`, which neither of the other two can express. So this table is a
+/// superset of both, and the tests check that rather than assume it.
+pub const fn linux_keycode(usage: u16) -> Option<u16> {
+    Some(match usage {
+        0x04 => 30, // A
+        0x05 => 48, // B
+        0x06 => 46, // C
+        0x07 => 32, // D
+        0x08 => 18, // E
+        0x09 => 33, // F
+        0x0A => 34, // G
+        0x0B => 35, // H
+        0x0C => 23, // I
+        0x0D => 36, // J
+        0x0E => 37, // K
+        0x0F => 38, // L
+        0x10 => 50, // M
+        0x11 => 49, // N
+        0x12 => 24, // O
+        0x13 => 25, // P
+        0x14 => 16, // Q
+        0x15 => 19, // R
+        0x16 => 31, // S
+        0x17 => 20, // T
+        0x18 => 22, // U
+        0x19 => 47, // V
+        0x1A => 17, // W
+        0x1B => 45, // X
+        0x1C => 21, // Y
+        0x1D => 44, // Z
+        0x1E => 2,  // 1
+        0x1F => 3,  // 2
+        0x20 => 4,  // 3
+        0x21 => 5,  // 4
+        0x22 => 6,  // 5
+        0x23 => 7,  // 6
+        0x24 => 8,  // 7
+        0x25 => 9,  // 8
+        0x26 => 10, // 9
+        0x27 => 11, // 0
+        0x28 => 28, // Enter
+        0x29 => 1,  // Escape
+        0x2A => 14, // Backspace
+        0x2B => 15, // Tab
+        0x2C => 57, // Space
+        0x2D => 12, // -
+        0x2E => 13, // =
+        0x2F => 26, // [
+        0x30 => 27, // ]
+        // Backslash and the non-US hash key are one position, as they are everywhere else.
+        0x31 | 0x32 => 43,
+        0x33 => 39,  // ;
+        0x34 => 40,  // '
+        0x35 => 41,  // `
+        0x36 => 51,  // ,
+        0x37 => 52,  // .
+        0x38 => 53,  // /
+        0x39 => 58,  // Caps Lock
+        0x3A => 59,  // F1
+        0x3B => 60,  // F2
+        0x3C => 61,  // F3
+        0x3D => 62,  // F4
+        0x3E => 63,  // F5
+        0x3F => 64,  // F6
+        0x40 => 65,  // F7
+        0x41 => 66,  // F8
+        0x42 => 67,  // F9
+        0x43 => 68,  // F10
+        0x44 => 87,  // F11
+        0x45 => 88,  // F12
+        0x46 => 99,  // Print Screen (SysRq)
+        0x47 => 70,  // Scroll Lock
+        0x48 => 119, // Pause, which only Linux can express
+        0x49 => 110, // Insert
+        0x4A => 102, // Home
+        0x4B => 104, // Page Up
+        0x4C => 111, // Delete
+        0x4D => 107, // End
+        0x4E => 109, // Page Down
+        0x4F => 106, // Right
+        0x50 => 105, // Left
+        0x51 => 108, // Down
+        0x52 => 103, // Up
+        0x53 => 69,  // Num Lock
+        0x54 => 98,  // Keypad /
+        0x55 => 55,  // Keypad *
+        0x56 => 74,  // Keypad -
+        0x57 => 78,  // Keypad +
+        0x58 => 96,  // Keypad Enter
+        0x59 => 79,  // Keypad 1
+        0x5A => 80,  // Keypad 2
+        0x5B => 81,  // Keypad 3
+        0x5C => 75,  // Keypad 4
+        0x5D => 76,  // Keypad 5
+        0x5E => 77,  // Keypad 6
+        0x5F => 71,  // Keypad 7
+        0x60 => 72,  // Keypad 8
+        0x61 => 73,  // Keypad 9
+        0x62 => 82,  // Keypad 0
+        0x63 => 83,  // Keypad .
+        0x64 => 86,  // Non-US backslash
+        0x65 => 127, // Application, the Menu key
+        0x67 => 117, // Keypad =
+        0x68 => 183, // F13
+        0x69 => 184, // F14
+        0x6A => 185, // F15
+        0x6B => 186, // F16
+        0x6C => 187, // F17
+        0x6D => 188, // F18
+        0x6E => 189, // F19
+        0x6F => 190, // F20
+        0x75 => 138, // Help
+        0xE0 => 29,  // Left Control
+        0xE1 => 42,  // Left Shift
+        0xE2 => 56,  // Left Alt
+        0xE3 => 125, // Left Meta
+        0xE4 => 97,  // Right Control
+        0xE5 => 54,  // Right Shift
+        0xE6 => 100, // Right Alt
+        0xE7 => 126, // Right Meta
+        _ => return None,
+    })
+}
+
+#[cfg(test)]
+mod linux_tests {
+    use super::{linux_keycode, mac_virtual_keycode, windows_scancode};
+
+    #[test]
+    fn the_letters_are_where_the_kernel_puts_them() {
+        // KEY_Q through KEY_T, 16..20, which is the same order as the PS/2 codes they came from.
+        for (usage, expected) in [
+            (0x14, 16), // Q
+            (0x1A, 17), // W
+            (0x08, 18), // E
+            (0x15, 19), // R
+            (0x17, 20), // T
+        ] {
+            assert_eq!(linux_keycode(usage), Some(expected), "{usage:#x}");
+        }
+    }
+
+    #[test]
+    fn linux_can_press_everything_the_other_two_can() {
+        // The kernel names more keys than either desktop: F13 upwards like macOS, the Menu key
+        // like Windows, and Pause, which neither of the others can express. So anything the other
+        // two can send has to work here, and a gap would mean a key that works on two hosts and
+        // silently does nothing on the third.
+        for usage in 0..=0xFFu16 {
+            if mac_virtual_keycode(usage).is_some() {
+                assert!(
+                    linux_keycode(usage).is_some(),
+                    "{usage:#x} works on macOS but not on Linux"
+                );
+            }
+            if windows_scancode(usage).is_some() {
+                assert!(
+                    linux_keycode(usage).is_some(),
+                    "{usage:#x} works on Windows but not on Linux"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_key_neither_desktop_could_express_is_here() {
+        // Pause: a three-byte scancode sequence on Windows and no event at all on macOS, but an
+        // ordinary key code to the kernel.
+        assert_eq!(linux_keycode(0x48), Some(119));
+        assert_eq!(windows_scancode(0x48), None);
+        assert_eq!(mac_virtual_keycode(0x48), None);
+    }
+
+    #[test]
+    fn distinct_keys_share_a_code_only_where_a_keyboard_does() {
+        let mut seen = std::collections::HashMap::new();
+        for usage in 0..=0xFFu16 {
+            let Some(code) = linux_keycode(usage) else {
+                continue;
+            };
+            if let Some(previous) = seen.insert(code, usage) {
+                // Backslash and the non-US hash key are one physical position.
+                assert_eq!(
+                    (previous, usage),
+                    (0x31, 0x32),
+                    "{previous:#x} and {usage:#x} both map to {code}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_key_a_phone_can_send_reaches_linux_too() {
+        for usage in [0x29, 0x2B, 0xE0, 0x50, 0x52, 0x51, 0x4F, 0x31, 0x2D] {
+            assert!(linux_keycode(usage).is_some(), "{usage:#x}");
+        }
+    }
+}

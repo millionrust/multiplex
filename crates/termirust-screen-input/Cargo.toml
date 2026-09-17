@@ -13,3 +13,6 @@ termirust-screen-session = { version = "0.1.0", path = "../termirust-screen-sess
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = { version = "0.24", features = ["highsierra"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
