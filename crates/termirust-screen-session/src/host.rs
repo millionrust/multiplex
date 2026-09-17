@@ -177,6 +177,13 @@ struct Subscription {
     encoder: Encoder,
     factor: u32,
     acked: u64,
+    /// The last sequence this host actually put on the wire.
+    ///
+    /// Not the encoder's sequence counter, which advances for every frame it is shown including
+    /// the ones that turn out to have changed nothing. Those batches are dropped rather than sent,
+    /// so counting them as outstanding meant a screen that sat still for `max_unacked_batches`
+    /// frames could never be acknowledged down again and the session stopped updating for good.
+    sent: u64,
     pending: Pending,
     last_sent_ms: Option<u64>,
     viewport: Option<Viewport>,
@@ -400,9 +407,8 @@ impl<V: TicketVerifier> HostSession<V> {
                     && subscription.encoder.generation() == ack.generation
                 {
                     subscription.encoder.acknowledge(ack.sequence);
-                    subscription.acked = subscription
-                        .acked
-                        .max(ack.sequence.min(subscription.encoder.next_sequence() - 1));
+                    subscription.acked =
+                        subscription.acked.max(ack.sequence.min(subscription.sent));
                 }
                 Ok(Vec::new())
             }
@@ -637,7 +643,7 @@ impl<V: TicketVerifier> HostSession<V> {
                 continue;
             };
             subscription.pending.add(damage);
-            let unacked = subscription.encoder.next_sequence() - 1 - subscription.acked;
+            let unacked = subscription.sent.saturating_sub(subscription.acked);
             if unacked >= config.max_unacked_batches {
                 continue;
             }
@@ -665,6 +671,13 @@ impl<V: TicketVerifier> HostSession<V> {
                                 .filter(|rect| !rect.is_empty())
                                 .collect::<Vec<_>>(),
                         ),
+                        // A capture that cannot say what changed means "assume all of it did".
+                        // That still has to be cut down to what the viewer is looking at, or this
+                        // rung saves nothing at all for a host that does not report damage — and
+                        // most do not. Leaving it out made the rung look free: the ladder would
+                        // take it, give up the pixels outside the viewport on paper, and send
+                        // exactly as many bytes as before.
+                        (Pending::Everything, true, Some(viewport)) => Some(vec![viewport.rect]),
                         _ => None,
                     };
                     let rects = match (&clipped, &pending) {
@@ -731,6 +744,11 @@ impl<V: TicketVerifier> HostSession<V> {
                 }
             };
             if let Some(batch) = batch.filter(|batch| !batch.ops.is_empty()) {
+                subscription.sent = batch.sequence;
+                // What the interval is measured from. Without this it stayed `None` for every
+                // interactive subscription for the life of the session, so `too_soon` was never
+                // true and the rung that slows frames down did nothing whatsoever.
+                subscription.last_sent_ms = Some(now_ms);
                 self.outbox.push_back(Message::Batch(batch));
             }
         }
@@ -774,7 +792,7 @@ impl<V: TicketVerifier> HostSession<V> {
                 )
             }
         };
-        let encoder = match profile {
+        let mut encoder = match profile {
             Profile::Interactive => self.resumable.remove(&info.id),
             Profile::Thumbnail => None,
         }
@@ -790,12 +808,22 @@ impl<V: TicketVerifier> HostSession<V> {
                 },
             )
         });
+        // A subscription made while the ladder is already down starts down too. `set_limits` only
+        // reaches subscriptions that exist when it is called, so without this the usual order —
+        // limits set, then the viewer subscribes — gave the viewer full quality no matter what the
+        // link could carry, and so did any second surface subscribed to while degraded.
+        if profile == Profile::Interactive {
+            encoder.set_lossy_detail(self.limits.lossy_detail);
+        }
+        // A resumed encoder starts wherever it left off, and nothing is outstanding on a session
+        // that has only just opened.
         let acked = encoder.next_sequence() - 1;
         Subscription {
             profile,
             encoder,
             factor,
             acked,
+            sent: acked,
             pending: Pending::Everything,
             last_sent_ms: None,
             viewport: None,
