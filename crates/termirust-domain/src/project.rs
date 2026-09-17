@@ -6,6 +6,25 @@ use serde::{Deserialize, Serialize};
 
 use crate::{PositionKey, ProjectId, Revision};
 
+/// A path in its one true form, written the way every tool that receives it can use. Windows
+/// canonical paths start with the `\\?\` verbatim prefix: Git reads that back as `//?/C:/...` and
+/// refuses to create directories under it, and a path written the ordinary way never compares
+/// equal to one written with it, so containment checks on a canonical root fail.
+pub fn canonical_path(path: &Path) -> std::io::Result<PathBuf> {
+    let canonical = fs::canonicalize(path)?;
+    #[cfg(windows)]
+    {
+        let text = canonical.as_os_str().to_string_lossy();
+        if let Some(share) = text.strip_prefix(r"\\?\UNC\") {
+            return Ok(PathBuf::from(format!(r"\\{share}")));
+        }
+        if let Some(drive) = text.strip_prefix(r"\\?\") {
+            return Ok(PathBuf::from(drive));
+        }
+    }
+    Ok(canonical)
+}
+
 pub const MAX_PROJECTS: usize = 1_000;
 pub const MAX_LABEL_SCALARS: usize = 256;
 pub const MAX_PATH_BYTES: usize = 32 * 1024;
@@ -41,7 +60,7 @@ impl CanonicalPath {
             return Err(ProjectError::NotDirectory);
         }
 
-        let path = fs::canonicalize(input).map_err(map_path_error)?;
+        let path = canonical_path(input).map_err(map_path_error)?;
         let encoded = path.to_str().ok_or(ProjectError::NonUnicodePath)?;
         if encoded.len() > MAX_PATH_BYTES {
             return Err(ProjectError::PathTooLong);

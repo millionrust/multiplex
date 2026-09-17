@@ -3069,8 +3069,10 @@ mod tests {
             .iter()
             .map(|(key, _)| key.clone())
             .collect::<Vec<_>>();
+        // The target is reached from inside the jump host, so it is that container's own
+        // loopback; the jump host itself is wherever the Docker daemon runs.
         assert!(endpoints.contains(&"127.0.0.1:22".to_string()));
-        assert!(endpoints.contains(&format!("127.0.0.1:{}", server.port)));
+        assert!(endpoints.contains(&format!("{}:{}", server.host(), server.port)));
     }
 
     #[test]

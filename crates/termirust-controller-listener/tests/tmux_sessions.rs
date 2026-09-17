@@ -389,6 +389,10 @@ impl Controller {
         }
     }
 
+    /// Types the input until the session answers with the expected output. A tmux client that is
+    /// still attaching drops what is typed at it, and the shell then never runs the command, so
+    /// waiting longer does not help: the input is sent again instead. The command is written so
+    /// that repeating it is harmless.
     async fn type_and_expect(
         &mut self,
         session_id: HostedSessionId,
@@ -396,20 +400,51 @@ impl Controller {
         input: &[u8],
         expected: &[u8],
     ) {
-        let command_id = self
-            .channel
-            .send(
-                ControllerCommand::Input {
-                    session_id,
-                    occupant_generation: generation,
-                    bytes: input.to_vec(),
-                },
-                deadline(),
-            )
-            .await
-            .unwrap();
-        self.expect_output(session_id, expected, Some(command_id))
-            .await;
+        let mut bytes = Vec::new();
+        for _ in 0..WAIT.as_secs() {
+            self.channel
+                .send(
+                    ControllerCommand::Input {
+                        session_id,
+                        occupant_generation: generation,
+                        bytes: input.to_vec(),
+                    },
+                    deadline(),
+                )
+                .await
+                .unwrap();
+            let channel = &mut self.channel;
+            let collected = &mut bytes;
+            let read = async {
+                loop {
+                    match channel.read_response().await.unwrap() {
+                        ControllerResponse::Completed { applied, .. } => assert!(applied),
+                        ControllerResponse::Output {
+                            session_id: actual,
+                            bytes: chunk,
+                            ..
+                        } if actual == session_id => collected.extend(chunk),
+                        response => {
+                            panic!("unexpected response while reading output: {response:?}")
+                        }
+                    }
+                    if contains(collected, expected) {
+                        return;
+                    }
+                }
+            };
+            if tokio::time::timeout(Duration::from_secs(1), read)
+                .await
+                .is_ok()
+            {
+                return;
+            }
+        }
+        panic!(
+            "expected {:?} in tmux output, got {:?}",
+            String::from_utf8_lossy(expected),
+            String::from_utf8_lossy(&bytes)
+        );
     }
 
     async fn expect_output(

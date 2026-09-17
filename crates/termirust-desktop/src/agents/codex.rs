@@ -733,8 +733,8 @@ fn emit(event_tx: &SyncSender<AgentEvent>, event: AgentEvent) {
 #[cfg(test)]
 mod tests {
     use super::{
-        CodexSessionConfig, MAX_STDERR_BYTES, RemoteCodexSessionConfig, capture_stderr,
-        spawn_codex_session, spawn_remote_codex_session,
+        CodexSessionConfig, CodexSessionHandle, MAX_STDERR_BYTES, RemoteCodexSessionConfig,
+        capture_stderr, spawn_codex_session, spawn_remote_codex_session,
     };
     use crate::agents::protocol::{AgentApprovalKind, AgentEvent, AgentRole, AgentRunState};
     use crate::models::{
@@ -746,7 +746,7 @@ mod tests {
     use serde_json::{Value, json};
     use std::fs;
     use std::path::PathBuf;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     #[test]
     fn stderr_capture_enforces_its_byte_limit_without_newlines() {
@@ -816,17 +816,43 @@ sleep 1
         (executable, directory)
     }
 
+    /// Starts the fake app server, waiting out "text file busy". The tests run in parallel, and
+    /// Linux refuses to run a program another process still holds open for writing: a test that
+    /// forks while this program is being written inherits that handle until it runs its own.
+    #[cfg(unix)]
+    fn spawn_fake_codex(config: CodexSessionConfig) -> CodexSessionHandle {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            match spawn_codex_session(config.clone()) {
+                Ok(session) => return session,
+                Err(error) if busy_program(&error) && Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                Err(error) => panic!("unable to start the fake app server: {error:?}"),
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    fn busy_program(error: &anyhow::Error) -> bool {
+        error.chain().any(|cause| {
+            cause
+                .downcast_ref::<std::io::Error>()
+                .and_then(std::io::Error::raw_os_error)
+                == Some(libc::ETXTBSY)
+        })
+    }
+
     #[test]
     #[cfg(unix)]
     fn performs_handshake_and_normalizes_turn_events() {
         let (executable, working_directory) = fake_codex();
-        let session = spawn_codex_session(CodexSessionConfig {
+        let session = spawn_fake_codex(CodexSessionConfig {
             executable,
             working_directory,
             permission_policy: AgentPermissionPolicy::WorkspaceWrite,
             initial_prompt: Some("finish the task".to_string()),
-        })
-        .unwrap();
+        });
         let mut events = Vec::new();
         while events.len() < 7 {
             events.push(
@@ -932,13 +958,12 @@ sleep 1
     #[cfg(unix)]
     fn clears_the_process_id_after_the_app_server_exits() {
         let (executable, working_directory) = fake_codex();
-        let session = spawn_codex_session(CodexSessionConfig {
+        let session = spawn_fake_codex(CodexSessionConfig {
             executable,
             working_directory,
             permission_policy: AgentPermissionPolicy::ReadOnly,
             initial_prompt: Some("finish the task".to_string()),
-        })
-        .unwrap();
+        });
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         while session.child_id.load(std::sync::atomic::Ordering::Acquire) != 0
             && std::time::Instant::now() < deadline
@@ -956,13 +981,12 @@ sleep 1
     #[cfg(unix)]
     fn app_server_exit_is_reported_after_buffered_turn_events() {
         let (executable, working_directory) = fake_codex();
-        let session = spawn_codex_session(CodexSessionConfig {
+        let session = spawn_fake_codex(CodexSessionConfig {
             executable,
             working_directory,
             permission_policy: AgentPermissionPolicy::ReadOnly,
             initial_prompt: Some("finish the task".to_string()),
-        })
-        .unwrap();
+        });
         let mut states = Vec::new();
         loop {
             if let AgentEvent::StateChanged(state) = session
@@ -984,13 +1008,12 @@ sleep 1
     #[cfg(unix)]
     fn dropping_a_session_stops_an_active_app_server() {
         let (executable, working_directory) = fake_codex();
-        let session = spawn_codex_session(CodexSessionConfig {
+        let session = spawn_fake_codex(CodexSessionConfig {
             executable,
             working_directory,
             permission_policy: AgentPermissionPolicy::ReadOnly,
             initial_prompt: None,
-        })
-        .unwrap();
+        });
         let child_id = session.child_id.load(std::sync::atomic::Ordering::Acquire);
         assert_ne!(child_id, 0);
 
@@ -1037,13 +1060,12 @@ sleep 1
         permissions.set_mode(0o700);
         fs::set_permissions(&executable, permissions).unwrap();
         let response_path = PathBuf::from(format!("{}.response", executable.display()));
-        let session = spawn_codex_session(CodexSessionConfig {
+        let session = spawn_fake_codex(CodexSessionConfig {
             executable,
             working_directory: directory,
             permission_policy: AgentPermissionPolicy::WorkspaceWrite,
             initial_prompt: None,
-        })
-        .unwrap();
+        });
         let approval = loop {
             match session
                 .event_rx

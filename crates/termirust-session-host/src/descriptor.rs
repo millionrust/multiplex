@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
-use std::io::{Read, Take};
+use std::io::{self, Read, Take};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -229,11 +229,17 @@ fn validate_directory_parent(path: &Path) -> Result<(), HostError> {
     let parent = path
         .parent()
         .ok_or_else(|| HostError::new(HostErrorCode::DescriptorInvalid))?;
-    let metadata = fs::symlink_metadata(parent).map_err(HostError::io)?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err(HostError::new(HostErrorCode::DescriptorInvalid));
+    match fs::symlink_metadata(parent) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+            Err(HostError::new(HostErrorCode::DescriptorInvalid))
+        }
+        Ok(_) => Ok(()),
+        // The first durable session on a machine creates these directories: the runtime root
+        // lives under a per-user directory in the temporary directory, which nothing has made
+        // yet. The Host creates them and then refuses anything it does not own.
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(HostError::io(error)),
     }
-    Ok(())
 }
 
 fn validate_executable(path: &Path) -> Result<(), HostError> {
@@ -267,6 +273,58 @@ pub fn stdin_is_pipe() -> Result<bool, HostError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The runtime root lives under a per-user directory in the temporary directory, which the
+    /// first durable session on a machine has to create. A descriptor naming one is valid; a
+    /// parent that exists but is a symlink or a file is not.
+    #[test]
+    fn a_runtime_root_whose_parent_is_not_there_yet_is_valid() {
+        let fixture = tempfile::tempdir().unwrap();
+        let descriptor = |runtime_root: PathBuf| LaunchDescriptor {
+            format_version: LaunchDescriptor::FORMAT_VERSION,
+            session_id: HostedSessionId::new(),
+            host_instance_id: HostInstanceId::new(),
+            expected_occupant_generation: None,
+            runtime_root,
+            session_dir: fixture.path().join("session"),
+            executable: std::fs::canonicalize("/bin/sh").unwrap(),
+            runtime_detection: None,
+            arguments: Vec::new(),
+            environment: BTreeMap::new(),
+            cwd: Some(fixture.path().to_path_buf()),
+            columns: 80,
+            rows: 24,
+            journal_limits: JournalLimits::default(),
+            stop_deadlines: StopDeadlines::default(),
+        };
+
+        descriptor(fixture.path().join("not-there-yet").join("runtime"))
+            .validate()
+            .expect("the Host creates the runtime root and its parent");
+
+        let file = fixture.path().join("a-file");
+        std::fs::write(&file, b"").unwrap();
+        assert_eq!(
+            descriptor(file.join("runtime"))
+                .validate()
+                .unwrap_err()
+                .code,
+            HostErrorCode::DescriptorInvalid
+        );
+
+        #[cfg(unix)]
+        {
+            let link = fixture.path().join("a-link");
+            std::os::unix::fs::symlink(fixture.path(), &link).unwrap();
+            assert_eq!(
+                descriptor(link.join("runtime"))
+                    .validate()
+                    .unwrap_err()
+                    .code,
+                HostErrorCode::DescriptorInvalid
+            );
+        }
+    }
 
     #[test]
     fn descriptor_debug_redacts_paths_arguments_and_environment() {

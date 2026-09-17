@@ -95,7 +95,9 @@ workspace() {
   cargo check --workspace --all-targets --all-features --locked
   cargo clippy --workspace --all-targets --all-features
   python3 scripts/dev/clippy-changed.py
-  cargo test --workspace --all-targets --locked
+  # Runs every test binary even after one fails, so a red run reports all of its failures
+  # instead of the first one and hides the rest behind it.
+  cargo test --workspace --all-targets --locked --no-fail-fast
   cargo doc --workspace --no-deps
   policy
   git diff --check

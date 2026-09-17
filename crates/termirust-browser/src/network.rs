@@ -17,7 +17,9 @@ const MAX_ORIGINS: usize = 32;
 const MAX_PROXY_CONNECTIONS: usize = 32;
 const MAX_PROXY_HEADER_BYTES: usize = 16 * 1024;
 const MAX_NETWORK_BYTES: u64 = 32 * 1024 * 1024;
-const IO_TIMEOUT: Duration = Duration::from_millis(100);
+/// How long to wait before looking again at a socket that had nothing to say. The proxy's sockets
+/// do not block, so that a transfer nobody is waiting for any more can be abandoned promptly.
+const POLL_PAUSE: Duration = Duration::from_millis(5);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
@@ -198,6 +200,9 @@ impl NetworkPolicy {
 pub(crate) struct FilteringProxy {
     address: SocketAddr,
     stop: Arc<AtomicBool>,
+    /// What the listener has taken off the backlog, which only the tests ask about.
+    #[cfg(test)]
+    accepted: Arc<AtomicUsize>,
     thread: Option<thread::JoinHandle<()>>,
 }
 
@@ -205,14 +210,17 @@ impl FilteringProxy {
     fn start(policy: NetworkPolicy) -> Result<Self, BrowserError> {
         let listener =
             TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|_| BrowserError::Unavailable)?;
-        listener
-            .set_nonblocking(true)
-            .map_err(|_| BrowserError::Unavailable)?;
         let address = listener
             .local_addr()
             .map_err(|_| BrowserError::Unavailable)?;
         let stop = Arc::new(AtomicBool::new(false));
+        let accepted = Arc::new(AtomicUsize::new(0));
         let worker_stop = stop.clone();
+        let worker_accepted = accepted.clone();
+        #[cfg(not(test))]
+        let _ = &accepted;
+        // The listener waits for a connection rather than asking over and over whether one has
+        // arrived: dropping this proxy opens one itself to wake the wait.
         let thread = thread::spawn(move || {
             let active = Arc::new(AtomicUsize::new(0));
             let transferred = Arc::new(AtomicU64::new(0));
@@ -227,30 +235,25 @@ impl FilteringProxy {
                         index += 1;
                     }
                 }
-                match listener.accept() {
-                    Ok((stream, _)) if active.load(Ordering::Acquire) < MAX_PROXY_CONNECTIONS => {
-                        if stream.set_nonblocking(false).is_err() {
-                            let _ = stream.shutdown(Shutdown::Both);
-                            continue;
-                        }
-                        active.fetch_add(1, Ordering::AcqRel);
-                        let policy = policy.clone();
-                        let stop = worker_stop.clone();
-                        let active = active.clone();
-                        let transferred = transferred.clone();
-                        workers.push(thread::spawn(move || {
-                            let _guard = ActiveConnection(active);
-                            let _ = handle_proxy_connection(stream, &policy, stop, transferred);
-                        }));
-                    }
-                    Ok((stream, _)) => {
-                        let _ = stream.shutdown(Shutdown::Both);
-                    }
-                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                        thread::sleep(Duration::from_millis(10));
-                    }
-                    Err(_) => break,
+                let Ok((stream, _)) = listener.accept() else {
+                    break;
+                };
+                worker_accepted.fetch_add(1, Ordering::AcqRel);
+                if worker_stop.load(Ordering::Acquire)
+                    || active.load(Ordering::Acquire) >= MAX_PROXY_CONNECTIONS
+                {
+                    let _ = stream.shutdown(Shutdown::Both);
+                    continue;
                 }
+                active.fetch_add(1, Ordering::AcqRel);
+                let policy = policy.clone();
+                let stop = worker_stop.clone();
+                let active = active.clone();
+                let transferred = transferred.clone();
+                workers.push(thread::spawn(move || {
+                    let _guard = ActiveConnection(active);
+                    let _ = handle_proxy_connection(stream, &policy, stop, transferred);
+                }));
             }
             for worker in workers {
                 let _ = worker.join();
@@ -259,6 +262,8 @@ impl FilteringProxy {
         Ok(Self {
             address,
             stop,
+            #[cfg(test)]
+            accepted,
             thread: Some(thread),
         })
     }
@@ -266,11 +271,18 @@ impl FilteringProxy {
     pub(crate) fn address(&self) -> SocketAddr {
         self.address
     }
+
+    #[cfg(test)]
+    pub(crate) fn accepted(&self) -> usize {
+        self.accepted.load(Ordering::Acquire)
+    }
 }
 
 impl Drop for FilteringProxy {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
+        // Wakes the listener, which is waiting for a connection and will find the flag set.
+        let _ = TcpStream::connect_timeout(&self.address, Duration::from_secs(1));
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
@@ -291,8 +303,10 @@ fn handle_proxy_connection(
     stop: Arc<AtomicBool>,
     transferred: Arc<AtomicU64>,
 ) -> Result<(), BrowserError> {
-    client.set_read_timeout(Some(IO_TIMEOUT)).map_err(map_io)?;
-    client.set_write_timeout(Some(IO_TIMEOUT)).map_err(map_io)?;
+    // The relay looks at each socket in turn rather than waiting on one with a timeout: a
+    // timeout that expires leaves a Windows socket in a state where it stops delivering what
+    // arrives afterwards, and the answer to a request never reaches whoever asked.
+    client.set_nonblocking(true).map_err(map_io)?;
     let header = read_header(&mut client)?;
     let first_line = header
         .split(|byte| *byte == b'\n')
@@ -314,9 +328,7 @@ fn handle_proxy_connection(
         }
         let upstream = TcpStream::connect_timeout(&policy.endpoint(host, port)?, CONNECT_TIMEOUT)
             .map_err(map_io)?;
-        client
-            .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-            .map_err(map_io)?;
+        write_all_patiently(&mut client, b"HTTP/1.1 200 Connection Established\r\n\r\n")?;
         tunnel(client, upstream, stop, transferred)
     } else {
         let url = Url::parse(target).map_err(|_| BrowserError::NetworkDenied)?;
@@ -331,12 +343,7 @@ fn handle_proxy_connection(
         let mut upstream =
             TcpStream::connect_timeout(&policy.endpoint(host, port)?, CONNECT_TIMEOUT)
                 .map_err(map_io)?;
-        upstream
-            .set_read_timeout(Some(IO_TIMEOUT))
-            .map_err(map_io)?;
-        upstream
-            .set_write_timeout(Some(IO_TIMEOUT))
-            .map_err(map_io)?;
+        upstream.set_nonblocking(true).map_err(map_io)?;
         let version = parts.next().ok_or(BrowserError::NetworkDenied)?;
         let path = match url.query() {
             Some(query) => format!("{}?{query}", url.path()),
@@ -346,12 +353,42 @@ fn handle_proxy_connection(
             .iter()
             .position(|byte| *byte == b'\n')
             .ok_or(BrowserError::NetworkDenied)?;
-        write!(upstream, "{method} {path} {version}\r\n").map_err(map_io)?;
-        upstream
-            .write_all(&header[first_line_end.saturating_add(1)..])
-            .map_err(map_io)?;
+        write_all_patiently(
+            &mut upstream,
+            format!("{method} {path} {version}\r\n").as_bytes(),
+        )?;
+        write_all_patiently(&mut upstream, &header[first_line_end.saturating_add(1)..])?;
         tunnel(client, upstream, stop, transferred)
     }
+}
+
+/// Writes every byte, waiting out the short timeout these sockets carry. Reads already treat that
+/// timeout as "nothing yet, look again", and a write has to do the same: a peer that is slow to
+/// read for a tenth of a second is slow, not gone, and failing there tears down a connection that
+/// was working.
+fn write_all_patiently(stream: &mut TcpStream, bytes: &[u8]) -> Result<(), BrowserError> {
+    let deadline = Instant::now() + CONNECT_TIMEOUT;
+    let mut remaining = bytes;
+    while !remaining.is_empty() {
+        match stream.write(remaining) {
+            Ok(0) => return Err(BrowserError::Unavailable),
+            Ok(written) => remaining = &remaining[written..],
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                ) =>
+            {
+                if Instant::now() >= deadline {
+                    return Err(BrowserError::Timeout);
+                }
+                thread::sleep(POLL_PAUSE);
+            }
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(map_io(error)),
+        }
+    }
+    Ok(())
 }
 
 fn read_header(stream: &mut TcpStream) -> Result<Vec<u8>, BrowserError> {
@@ -367,6 +404,7 @@ fn read_header(stream: &mut TcpStream) -> Result<Vec<u8>, BrowserError> {
                     io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
                 ) && started.elapsed() < CONNECT_TIMEOUT =>
             {
+                thread::sleep(POLL_PAUSE);
                 continue;
             }
             Err(error)
@@ -443,13 +481,16 @@ fn copy_bounded(
                 if total > MAX_NETWORK_BYTES {
                     return Err(BrowserError::ResourceLimit);
                 }
-                writer.write_all(&buffer[..count]).map_err(map_io)?;
+                write_all_patiently(writer, &buffer[..count])?;
             }
             Err(error)
                 if matches!(
                     error.kind(),
                     io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
-                ) => {}
+                ) =>
+            {
+                thread::sleep(POLL_PAUSE);
+            }
             Err(error) => return Err(map_io(error)),
         }
     }
@@ -541,6 +582,98 @@ fn map_io(error: io::Error) -> BrowserError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Drives the proxy by hand, one stage at a time, so a machine where a download through it
+    /// times out says which stage stopped rather than only that nothing arrived.
+    #[test]
+    fn the_proxy_carries_a_request_to_an_approved_origin() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind the test origin");
+        let address = listener.local_addr().expect("the test origin's address");
+        let reached = Arc::new(AtomicBool::new(false));
+        let answered = Arc::new(AtomicUsize::new(0));
+        let reached_by_server = reached.clone();
+        let answered_by_server = answered.clone();
+        let server = thread::spawn(move || -> io::Result<()> {
+            let (mut stream, _) = listener.accept()?;
+            reached_by_server.store(true, Ordering::Release);
+            stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 512];
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let read = stream.read(&mut chunk)?;
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..read]);
+            }
+            // Counts what the origin was asked for, so a request that never arrives whole is told
+            // apart from an answer that never makes it back.
+            answered_by_server.store(request.len().max(1), Ordering::Release);
+            stream.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nproxy",
+            )?;
+            stream.shutdown(Shutdown::Write)?;
+            Ok(())
+        });
+
+        let origin = format!("http://{address}");
+        let policy =
+            NetworkPolicy::resolve_loopback(std::slice::from_ref(&origin)).expect("policy");
+        let proxy = policy.start_proxy().expect("start the proxy");
+
+        let mut client = TcpStream::connect_timeout(&proxy.address(), Duration::from_secs(10))
+            .expect("connect to the proxy");
+        client
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("set a read deadline");
+        write!(client, "GET {origin}/ HTTP/1.1\r\nHost: {address}\r\n\r\n")
+            .expect("send the request to the proxy");
+
+        let mut response = Vec::new();
+        let mut chunk = [0_u8; 512];
+        let started = Instant::now();
+        let deadline = started + Duration::from_secs(10);
+        let mut ending = "read to the deadline";
+        while !response.ends_with(b"proxy") && Instant::now() < deadline {
+            match client.read(&mut chunk) {
+                Ok(0) => {
+                    ending = "the proxy closed the connection";
+                    break;
+                }
+                Ok(read) => response.extend_from_slice(&chunk[..read]),
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                    ) => {}
+                Err(error) => panic!("read the proxy's answer: {error}"),
+            }
+        }
+
+        let text = String::from_utf8_lossy(&response).into_owned();
+        assert!(
+            text.starts_with("HTTP/1.1 200 OK"),
+            "the proxy should carry the origin's answer back, got {text:?} after {:?}: {ending}, \
+             the proxy accepted {} connections, the origin {} reached, and it was asked for {} \
+             bytes before it answered",
+            started.elapsed(),
+            proxy.accepted(),
+            if reached.load(Ordering::Acquire) {
+                "was"
+            } else {
+                "was never"
+            },
+            answered.load(Ordering::Acquire)
+        );
+        assert!(
+            text.ends_with("proxy"),
+            "the body should arrive, got {text:?}"
+        );
+        server
+            .join()
+            .expect("the test origin thread")
+            .expect("the test origin should have served one request");
+    }
 
     #[test]
     fn origin_is_exact_and_credentials_are_rejected() {

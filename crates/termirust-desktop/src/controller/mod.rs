@@ -69,11 +69,21 @@ mod tests {
     use super::*;
     use termirust_controller_listener::{DesktopPaneBridgeServer, DesktopPaneRegistry};
 
+    // The desktop pane bridge listens on a Unix socket, which Windows has none of.
+    #[cfg(unix)]
     #[test]
     fn bridge_sources_follow_the_published_bridge_and_the_sharing_setting() {
+        // A short parent keeps the Unix socket paths under it within the length the platform
+        // allows, which the usual temporary directory on macOS is too deep for. Windows has no
+        // /tmp and no such limit.
+        let short_parent = if cfg!(windows) {
+            std::env::temp_dir()
+        } else {
+            std::path::PathBuf::from("/tmp")
+        };
         let fixture = tempfile::Builder::new()
             .prefix("tr-src-")
-            .tempdir_in("/tmp")
+            .tempdir_in(short_parent)
             .unwrap();
         let runtime_parent = fixture.path();
         let none = bridge_sources(runtime_parent, false, false);

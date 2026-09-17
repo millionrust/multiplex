@@ -15479,6 +15479,71 @@ mod tests {
         }
     }
 
+    /// Waits until a pane has stopped receiving its shell's startup output. Output clears the
+    /// pane's selection, so a test that selects text while the prompt is still arriving loses the
+    /// selection before it can copy it.
+    fn wait_for_quiet_pane(cx: &mut TestAppContext, app: &Entity<TermiRustApp>, pane_id: u64) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut last: Option<String> = None;
+        let mut settled = 0;
+        while Instant::now() < deadline {
+            let text = app.update(cx, |app, cx| {
+                app.process_events(cx);
+                app.pane(pane_id)
+                    .map(|pane| pane.terminal.all_rows_text().join("\n"))
+            });
+            match text {
+                // A shell that has printed nothing yet may still be about to.
+                Some(text) if !text.trim().is_empty() => {
+                    if last.as_ref() == Some(&text) {
+                        settled += 1;
+                        if settled >= 4 {
+                            return;
+                        }
+                    } else {
+                        settled = 0;
+                        last = Some(text);
+                    }
+                }
+                _ => settled = 0,
+            }
+            std::thread::sleep(TEST_POLL_INTERVAL);
+        }
+    }
+
+    /// Runs a probe command until its output appears. A pseudoterminal that has just been resized
+    /// can swallow what is typed right after it — Windows loses the first byte — and the shell
+    /// then runs a command that is not the one the test sent. These probes only print, so sending
+    /// one again is harmless.
+    fn run_probe_until(
+        cx: &mut TestAppContext,
+        app: &Entity<TermiRustApp>,
+        pane_id: u64,
+        command: &str,
+        status: &str,
+        marker: &str,
+    ) {
+        for _ in 0..5 {
+            app.update(cx, |app, cx| {
+                assert!(app.run_command_in_active_pane(command, status, cx));
+            });
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while Instant::now() < deadline {
+                let seen = app.update(cx, |app, cx| {
+                    app.process_events(cx);
+                    app.pane(pane_id).is_some_and(|pane| {
+                        pane.terminal.all_rows_text().join("\n").contains(marker)
+                    })
+                });
+                if seen {
+                    return;
+                }
+                std::thread::sleep(TEST_POLL_INTERVAL);
+            }
+        }
+        panic!("the probe {command:?} never printed {marker:?}");
+    }
+
     fn wait_for_window_app_state<R>(
         cx: &mut TestAppContext,
         window: WindowHandle<Root>,
@@ -16390,7 +16455,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -16485,7 +16550,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -16525,25 +16590,19 @@ mod tests {
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.follow_grid_bounds(window, cx);
-                    let size = app.pane(pane_id).unwrap().last_size.unwrap();
-                    assert!(app.run_command_in_active_pane(
-                        "printf 'zoom-low-size='; stty size",
-                        "Low zoom PTY probe started.",
-                        cx,
-                    ));
-                    size
+                    app.pane(pane_id).unwrap().last_size.unwrap()
                 })
             })
             .expect("low zoom update should succeed");
         let low_marker = format!("zoom-low-size={} {}", low_size.rows, low_size.cols);
-        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
-            app.pane(pane_id)?
-                .terminal
-                .all_rows_text()
-                .join("\n")
-                .contains(&low_marker)
-                .then_some(())
-        });
+        run_probe_until(
+            cx,
+            &app,
+            pane_id,
+            "printf 'zoom-low-size='; stty size",
+            "Low zoom PTY probe started.",
+            &low_marker,
+        );
 
         window
             .update(cx, |_, window, cx| {
@@ -16564,27 +16623,21 @@ mod tests {
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.follow_grid_bounds(window, cx);
-                    let size = app.pane(pane_id).unwrap().last_size.unwrap();
-                    assert!(app.run_command_in_active_pane(
-                        "printf 'zoom-high-size='; stty size",
-                        "High zoom PTY probe started.",
-                        cx,
-                    ));
-                    size
+                    app.pane(pane_id).unwrap().last_size.unwrap()
                 })
             })
             .expect("high zoom update should succeed");
         assert!(high_size.cols > low_size.cols);
         assert!(high_size.rows > low_size.rows);
         let high_marker = format!("zoom-high-size={} {}", high_size.rows, high_size.cols);
-        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
-            app.pane(pane_id)?
-                .terminal
-                .all_rows_text()
-                .join("\n")
-                .contains(&high_marker)
-                .then_some(())
-        });
+        run_probe_until(
+            cx,
+            &app,
+            pane_id,
+            "printf 'zoom-high-size='; stty size",
+            "High zoom PTY probe started.",
+            &high_marker,
+        );
     }
 
     #[gpui::test]
@@ -16594,7 +16647,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -16677,7 +16730,7 @@ mod tests {
             ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -16781,7 +16834,7 @@ mod tests {
             ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -16909,7 +16962,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -16973,7 +17026,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -17057,7 +17110,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -17362,7 +17415,7 @@ mod tests {
                         ConnectRequest::local_shell_with_config(
                             0,
                             LocalShellConfig {
-                                program: "/bin/sh".to_string(),
+                                program: crate::test_support::test_shell_program(),
                                 args: Vec::new(),
                                 cwd: Some(std::env::temp_dir().display().to_string()),
                             },
@@ -17672,7 +17725,7 @@ mod tests {
                         ConnectRequest::local_shell_with_config(
                             0,
                             LocalShellConfig {
-                                program: "/bin/sh".to_string(),
+                                program: crate::test_support::test_shell_program(),
                                 args: Vec::new(),
                                 cwd: Some(std::env::temp_dir().display().to_string()),
                             },
@@ -17715,7 +17768,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -17797,7 +17850,7 @@ mod tests {
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -17898,7 +17951,7 @@ mod tests {
         let local_request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -18072,7 +18125,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(initial_directory.display().to_string()),
             },
@@ -18276,7 +18329,7 @@ mod tests {
         let local_request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(fixture_directory.display().to_string()),
             },
@@ -18460,7 +18513,7 @@ sleep 30
                 local_forwards: Vec::new(),
                 local_forward: None,
                 local_shell: Some(LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(fixture_directory.display().to_string()),
                 }),
@@ -18535,7 +18588,7 @@ sleep 1
         let local_request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(fixture_directory.display().to_string()),
             },
@@ -18802,7 +18855,7 @@ sleep 1
         let local_request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -20062,6 +20115,20 @@ sleep 1
                         cx,
                     );
                     app.save_profile(window, cx);
+                    // Both hosts are saved one right after the other, which is where two
+                    // records used to share an identifier and the second replaced the first.
+                    let labels = app
+                        .saved
+                        .profiles
+                        .iter()
+                        .map(|profile| profile.label.clone())
+                        .collect::<Vec<_>>();
+                    assert!(
+                        labels.iter().any(|label| label == "Docker Bastion"),
+                        "the bastion should still be saved when it is used as a jump host: \
+                         error={:?} labels={labels:?}",
+                        app.error_message,
+                    );
                     app.connect_current(window, cx);
                 })
             })
@@ -20686,7 +20753,7 @@ sleep 1
                 app.update(cx, |app, cx| {
                     TermiRustApp::set_input_value(
                         &app.settings_inputs.local_shell_program,
-                        "/bin/sh",
+                        crate::test_support::test_shell_program(),
                         window,
                         cx,
                     );
@@ -20719,17 +20786,27 @@ sleep 1
 
         cx.simulate_keystrokes(*window, "p w d enter");
 
+        // The directory's own name, because a shell prints the path it was given the way it
+        // spells paths: the one Git ships on Windows answers with /c/Users/... for C:\Users\....
+        let local_dir_name = local_dir
+            .file_name()
+            .expect("the local shell directory should have a name")
+            .to_string_lossy()
+            .into_owned();
         wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
             let pane = app.pane(pane_id)?;
             pane.terminal
                 .all_rows_text()
                 .iter()
-                .any(|row| row.contains(local_dir.to_string_lossy().as_ref()))
+                .any(|row| row.contains(&local_dir_name))
                 .then_some(())
         });
 
         app.read_with(cx, |app, _| {
-            assert_eq!(app.saved.settings.default_local_shell.program, "/bin/sh");
+            assert_eq!(
+                app.saved.settings.default_local_shell.program,
+                crate::test_support::test_shell_program()
+            );
             assert_eq!(
                 app.saved.settings.default_local_shell.cwd.as_deref(),
                 Some(local_dir.to_string_lossy().as_ref())
@@ -20811,7 +20888,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -20940,7 +21017,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -21038,7 +21115,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -21527,7 +21604,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -21647,7 +21724,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -21682,7 +21759,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -22143,7 +22220,7 @@ sleep 1
                 .and_then(|pane| pane.connected.then_some(()))
         });
 
-        let endpoint = format!("127.0.0.1:{}", server.port);
+        let endpoint = format!("{}:{}", server.host(), server.port);
         app.read_with(cx, |app, _| {
             assert!(
                 app.known_hosts
@@ -22354,7 +22431,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -22374,6 +22451,8 @@ sleep 1
                 .is_some_and(|pane| pane.connected)
                 .then_some(())
         });
+
+        wait_for_quiet_pane(cx, &app, pane_id);
 
         window
             .update(cx, |_, window, cx| {
@@ -22417,7 +22496,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -22428,7 +22507,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -22492,7 +22571,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -22503,7 +22582,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -22589,7 +22668,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -22600,7 +22679,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -22611,7 +22690,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -22694,7 +22773,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -22793,7 +22872,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -22864,7 +22943,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -22955,7 +23034,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -23030,7 +23109,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -23050,6 +23129,8 @@ sleep 1
                 .is_some_and(|pane| pane.connected)
                 .then_some(())
         });
+
+        wait_for_quiet_pane(cx, &app, pane_id);
 
         window
             .update(cx, |_, window, cx| {
@@ -23180,7 +23261,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -23191,7 +23272,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -23305,7 +23386,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -23316,7 +23397,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -23432,7 +23513,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -23526,7 +23607,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -23630,7 +23711,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -23736,7 +23817,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -24047,7 +24128,7 @@ sleep 1
             ..ConnectRequest::local_shell_with_config(
                 0,
                 LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 },
@@ -24084,7 +24165,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -24118,8 +24199,12 @@ sleep 1
             .expect("canvas switch should succeed");
 
         app.update(cx, |app, cx| {
+            // Turns mouse reporting on, reads the six bytes a click sends, and writes them out
+            // visibly. The program prints them itself rather than leaving it to the terminal to
+            // echo what it read, which only spells an escape as ^[ where the line discipline
+            // says so, and never on Windows.
             assert!(app.run_command_in_active_pane(
-                "python3 -c \"import sys; sys.stdout.write('\\x1b[?1000h'); sys.stdout.flush(); data=sys.stdin.buffer.read(6); print(data)\"",
+                "stty raw -echo; printf '\\033[?1000h'; head -c 6 | cat -v; stty sane",
                 "Mouse probe started.",
                 cx
             ));
@@ -24163,7 +24248,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -24339,7 +24424,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -26614,7 +26699,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -26727,7 +26812,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -26851,7 +26936,7 @@ sleep 1
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: Vec::new(),
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -26883,6 +26968,8 @@ sleep 1
                 })
             })
             .expect("canvas switch should succeed");
+
+        wait_for_quiet_pane(cx, &app, pane_id);
 
         window
             .update(cx, |_, window, cx| {
@@ -28679,7 +28766,7 @@ sleep 1
                 local_forwards: Vec::new(),
                 local_forward: None,
                 local_shell: Some(LocalShellConfig {
-                    program: "/bin/sh".to_string(),
+                    program: crate::test_support::test_shell_program(),
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 }),
@@ -28708,7 +28795,7 @@ sleep 1
         let mut pane = ConnectRequest::local_shell_with_config(
             1,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: vec!["-c".to_string(), "touch should-not-exist".to_string()],
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
@@ -29729,10 +29816,9 @@ sleep 1
         )
         .expect("unable to write temp ssh config");
 
-        let previous_home = std::env::var_os("HOME");
-        unsafe {
-            std::env::set_var("HOME", &temp_home);
-        }
+        // Import reads the user's SSH directory, which the test isolation points at an empty
+        // one; aim it at this fixture instead of changing HOME for the whole process.
+        let previous_ssh_dir = crate::storage::set_test_ssh_dir_override(Some(ssh_dir.clone()));
 
         let chevron_click = selector_click_center(window, cx, "library-new-host-chevron");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
@@ -29742,10 +29828,7 @@ sleep 1
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(import_click, gpui::Modifiers::none());
 
-        match previous_home {
-            Some(home) => unsafe { std::env::set_var("HOME", home) },
-            None => unsafe { std::env::remove_var("HOME") },
-        }
+        crate::storage::set_test_ssh_dir_override(previous_ssh_dir);
 
         app.read_with(cx, |app, _| {
             let profile = app

@@ -103,16 +103,26 @@ wrapped tab sources right after `new-session`, so its options apply to that sess
 - a quiet grey selection and no `[n/n]` copy-mode position counter, also for new windows;
 - dragging selects and copies to the clipboard (`pbcopy` on macOS), and the selection stays put
   while you scroll;
-- a click, or scrolling back to the bottom, leaves copy mode, so typing always reaches the
-  program;
+- a click clears the selection, and at the bottom of the history it also leaves copy mode, so
+  typing reaches the program again. Scrolled back it stays in copy mode, because leaving it
+  there would return the view to the live screen and the text would move under the click;
+- scrolling back to the bottom leaves copy mode too, however it was entered;
 - two lines per wheel step instead of five.
 
-A wrapped tab also starts its tmux client with `-u`, so tmux writes UTF-8 whatever the locale
-says, and with `-T RGB` when the terminal sets `COLORTERM` to `truecolor` or `24bit`. Without
-that, tmux converts every 24-bit color to the nearest of 256 and the tab looks unlike the one it
-replaced. tmux 3.4 and newer usually work this out for themselves; tmux 3.2 and 3.3, which
-Ubuntu 22.04 and Debian 12 ship, never do. The phone attaches the same way, since TermiRust's own
-terminals show 24-bit color.
+A wrapped tab also tells tmux what its terminal can do, because tmux only works that out for
+itself from a terminal that answers its questions:
+
+- `-u`, so tmux writes UTF-8 whatever the locale says;
+- `-T RGB` when the terminal sets `COLORTERM` to `truecolor` or `24bit`, because tmux otherwise
+  converts every 24-bit color to the nearest of 256 and the tab looks unlike the one it replaced.
+  tmux 3.4 and newer usually work this out for themselves; tmux 3.2 and 3.3, which Ubuntu 22.04
+  and Debian 12 ship, never do;
+- `sync` for Zed, iTerm2, Ghostty, WezTerm, and the VS Code terminal, which understand
+  synchronized updates. tmux then draws each frame between a begin and an end, so the terminal
+  never paints half of one. Without it, a program that redraws constantly, such as a coding
+  agent's spinner, flickers. Terminal.app has no such support and is left as it was.
+
+The phone attaches with both features, since TermiRust's own terminals support them.
 
 tmux key bindings belong to the whole server, so each binding checks the session name and keeps
 tmux's default behavior in every other session. Applying the setup also updates sessions already
@@ -143,11 +153,15 @@ if [[ -o interactive && -z "$TMUX" && -z "$TERMIRUST_NO_WRAP" ]]; then
   case "$TERM_PROGRAM" in
     Apple_Terminal|zed|iTerm.app|ghostty|WezTerm|vscode)
       if [[ -x '/opt/homebrew/bin/tmux' ]]; then
-        if [[ $COLORTERM == (truecolor|24bit) ]]; then
-          '/opt/homebrew/bin/tmux' -u -T RGB new-session -s "termirust-${PWD:t}-$$" \; source-file -q '/Users/you/.config/termirust/tmux.conf' && exit
-        else
-          '/opt/homebrew/bin/tmux' -u new-session -s "termirust-${PWD:t}-$$" \; source-file -q '/Users/you/.config/termirust/tmux.conf' && exit
-        fi
+        termirust_terminal=()
+        [[ $COLORTERM == (truecolor|24bit) ]] && termirust_terminal+=RGB
+        case "$TERM_PROGRAM" in
+          zed|iTerm.app|ghostty|WezTerm|vscode) termirust_terminal+=sync ;;
+        esac
+        termirust_features=()
+        (( ${#termirust_terminal} )) && termirust_features=(-T ${(j:,:)termirust_terminal})
+        '/opt/homebrew/bin/tmux' -u $termirust_features new-session -s "termirust-${PWD:t}-$$" \; source-file -q '/Users/you/.config/termirust/tmux.conf' && exit
+        unset termirust_terminal termirust_features
       fi
       ;;
   esac

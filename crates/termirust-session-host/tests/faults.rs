@@ -8,7 +8,8 @@ use std::time::{Duration, Instant};
 use termirust_client::LocalEndpoint;
 use termirust_domain::{HostInstanceId, HostedSessionId};
 use termirust_session_host::{
-    HostErrorCode, LaunchDescriptor, MAX_LIVE_HOSTS, StopDeadlines, start, start_with_cancel,
+    HostErrorCode, LaunchDescriptor, MAX_LIVE_HOSTS, SessionHostHandle, StopDeadlines, start,
+    start_with_cancel,
 };
 use termirust_store::JournalLimits;
 use tokio_util::sync::CancellationToken;
@@ -90,6 +91,16 @@ async fn shutdown_joins_tasks_and_kills_owned_grandchild() {
     }
 }
 
+async fn wait_for_connections(host: &SessionHostHandle, expected: usize, within: Duration) {
+    let deadline = Instant::now() + within;
+    while Instant::now() < deadline {
+        if host.stats().await.active_connections == expected {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn slow_handshake_peers_are_bounded_to_connection_limit() {
     let fixture = tempfile::tempdir().unwrap();
@@ -104,20 +115,13 @@ async fn slow_handshake_peers_are_bounded_to_connection_limit() {
             peers.push(peer);
         }
     }
-    for _ in 0..100 {
-        if host.stats().await.active_connections == 32 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    // A busy machine takes longer to accept these and longer to notice they are gone; the test
+    // is about how many the Host holds, not how quickly it gets there.
+    let settle = Duration::from_secs(10);
+    wait_for_connections(&host, 32, settle).await;
     assert_eq!(host.stats().await.active_connections, 32);
     drop(peers);
-    for _ in 0..100 {
-        if host.stats().await.active_connections == 0 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    wait_for_connections(&host, 0, settle).await;
     assert_eq!(host.stats().await.active_connections, 0);
     host.shutdown().await.unwrap();
 }

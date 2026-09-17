@@ -674,7 +674,7 @@ mod tests {
         let request = ConnectRequest::local_shell_with_config(
             903,
             LocalShellConfig {
-                program: "/bin/sh".to_string(),
+                program: crate::test_support::test_shell_program(),
                 args: vec!["-c".to_string(), command],
                 cwd: Some(fixture.display().to_string()),
             },

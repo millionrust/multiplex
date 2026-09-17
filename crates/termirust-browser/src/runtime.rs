@@ -688,7 +688,6 @@ mod tests {
             NetworkPolicy::resolve_loopback(std::slice::from_ref(&origin)).expect("policy");
         let cancellation = BrowserCancellation::default();
         let worker_cancellation = cancellation.clone();
-        let started = std::time::Instant::now();
         let worker = std::thread::spawn(move || {
             BrowserRuntime::new(BrowserRuntimeConfig {
                 profile_parent: temp.path().join("browser-profiles"),
@@ -704,15 +703,19 @@ mod tests {
                 &worker_cancellation,
             )
         });
+        // Getting the request as far as the origin takes as long as the machine takes; what this
+        // test is about is how quickly the transfer ends once nobody is waiting for it, so the
+        // clock starts at the cancellation and not before it.
         headers_rx
-            .recv_timeout(Duration::from_secs(2))
+            .recv_timeout(Duration::from_secs(10))
             .expect("response headers sent");
+        let cancelled_at = std::time::Instant::now();
         cancellation.cancel();
         assert_eq!(
             worker.join().expect("download worker"),
             Err(BrowserError::Cancelled)
         );
-        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(cancelled_at.elapsed() < Duration::from_secs(2));
         server.join().expect("server");
     }
 

@@ -49,6 +49,9 @@ pub const MAX_LIVE_HOSTS: usize = 32;
 const PTY_CHANNEL_FRAMES: usize = 64;
 const ACTIVITY_CHANNEL_EVENTS: usize = 128;
 const TASK_JOIN_DEADLINE: Duration = Duration::from_secs(2);
+/// How long a shutting-down host waits for a stop request to be answered before it gives up on
+/// the connection that asked.
+const STOP_RESPONSE_DEADLINE: Duration = Duration::from_secs(5);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
 const IDEMPOTENCY_TTL: Duration = Duration::from_secs(10 * 60);
 const HOST_SLOT_PREFIX: &str = "host-slot-";
@@ -148,9 +151,7 @@ struct RuntimeState {
     exited: AtomicBool,
     exit_code: StdMutex<Option<i32>>,
     exit_notify: Notify,
-    stop_requested: AtomicBool,
-    stop_response_sent: AtomicBool,
-    stop_response_notify: Notify,
+    stop_response: StopResponse,
     writer_lease: Mutex<Option<u64>>,
     active_connections: AtomicU64,
     next_connection: AtomicU64,
@@ -215,8 +216,10 @@ impl RuntimeState {
                 Ok(())
             } else {
                 let error = io::Error::last_os_error();
-                if error.raw_os_error() == Some(libc::ESRCH) && self.exited.load(Ordering::Acquire)
-                {
+                // No process left to signal means the process this stops is already gone. The
+                // watcher may not have marked it exited yet, and failing on that timing reports a
+                // stop that worked as an error to whoever asked for it.
+                if error.raw_os_error() == Some(libc::ESRCH) {
                     Ok(())
                 } else {
                     Err(HostError::io(error))
@@ -322,16 +325,50 @@ impl RuntimeState {
     }
 
     async fn wait_for_stop_response(&self) {
-        if !self.stop_requested.load(Ordering::Acquire)
-            || self.stop_response_sent.load(Ordering::Acquire)
-        {
+        self.stop_response.wait().await;
+    }
+}
+
+/// The answer a client's stop request is owed. A host closes its connections once the child has
+/// exited, which can happen while that answer is still being written, and a client whose
+/// connection ends first sees the stop it asked for fail.
+#[derive(Default)]
+struct StopResponse {
+    requested: AtomicBool,
+    answered: AtomicBool,
+    notify: Notify,
+}
+
+impl StopResponse {
+    /// Records that an answer is owed until the returned guard is dropped.
+    fn begin(&self) -> StopResponseGuard<'_> {
+        self.requested.store(true, Ordering::Release);
+        StopResponseGuard { response: self }
+    }
+
+    /// Waits for an owed answer. The guard ends this wait however the request ends — answered,
+    /// failed, or abandoned — so the deadline only bounds a connection that stopped making
+    /// progress.
+    async fn wait(&self) {
+        if !self.requested.load(Ordering::Acquire) || self.answered.load(Ordering::Acquire) {
             return;
         }
-        let notified = self.stop_response_notify.notified();
-        if self.stop_response_sent.load(Ordering::Acquire) {
+        let notified = self.notify.notified();
+        if self.answered.load(Ordering::Acquire) {
             return;
         }
-        let _ = timeout(Duration::from_millis(500), notified).await;
+        let _ = timeout(STOP_RESPONSE_DEADLINE, notified).await;
+    }
+}
+
+struct StopResponseGuard<'a> {
+    response: &'a StopResponse,
+}
+
+impl Drop for StopResponseGuard<'_> {
+    fn drop(&mut self) {
+        self.response.answered.store(true, Ordering::Release);
+        self.response.notify.notify_waiters();
     }
 }
 
@@ -470,9 +507,7 @@ pub async fn start_with_cancel(
         exited: AtomicBool::new(false),
         exit_code: StdMutex::new(None),
         exit_notify: Notify::new(),
-        stop_requested: AtomicBool::new(false),
-        stop_response_sent: AtomicBool::new(false),
-        stop_response_notify: Notify::new(),
+        stop_response: StopResponse::default(),
         writer_lease: Mutex::new(None),
         active_connections: AtomicU64::new(0),
         next_connection: AtomicU64::new(1),
@@ -1318,7 +1353,7 @@ async fn serve_connection(
             }
             Some(envelope_payload::Message::StopRequest(request)) => {
                 require_session(&request.session_id, &state)?;
-                state.stop_requested.store(true, Ordering::Release);
+                let _stop_response = state.stop_response.begin();
                 let command_id = decode_command_id(&request.command_id)
                     .map_err(|_| HostError::new(HostErrorCode::Protocol))?;
                 validate_command_request(command_id, envelope.request_id)?;
@@ -1354,8 +1389,6 @@ async fn serve_connection(
                     &cancel,
                 )
                 .await?;
-                state.stop_response_sent.store(true, Ordering::Release);
-                state.stop_response_notify.notify_waiters();
             }
             Some(envelope_payload::Message::ActivitySnapshotRequest(request)) => {
                 require_session(&request.session_id, &state)?;
@@ -1892,6 +1925,40 @@ mod tests {
         RuntimeDetectionStatus, RuntimeId,
     };
     use termirust_store::JournalLimits;
+
+    #[tokio::test]
+    async fn a_host_with_no_stop_to_answer_does_not_wait() {
+        let response = StopResponse::default();
+        timeout(Duration::from_millis(50), response.wait())
+            .await
+            .expect("a host nobody asked to stop should close its connections at once");
+    }
+
+    #[tokio::test]
+    async fn a_host_waits_for_the_stop_it_owes_an_answer() {
+        let response = StopResponse::default();
+        let guard = response.begin();
+        assert!(
+            timeout(Duration::from_millis(100), response.wait())
+                .await
+                .is_err(),
+            "the host must hold the connection open while the answer is still being written"
+        );
+        drop(guard);
+        timeout(Duration::from_millis(100), response.wait())
+            .await
+            .expect("an answered stop releases the host at once");
+    }
+
+    #[tokio::test]
+    async fn a_stop_that_cannot_be_answered_still_releases_the_host() {
+        let response = StopResponse::default();
+        let waiting = response.wait();
+        drop(response.begin());
+        timeout(Duration::from_millis(100), waiting)
+            .await
+            .expect("a request that ends without an answer must not hold the host to the deadline");
+    }
 
     fn descriptor_with_detection(
         executable: PathBuf,

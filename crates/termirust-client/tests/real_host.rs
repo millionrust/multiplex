@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::process::{Child, Command};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use termirust_client::{ClientErrorCode, ConnectOptions, HostClient, LocalEndpoint};
 use termirust_domain::{CommandId, HostInstanceId, HostedSessionId, OutputSequence};
@@ -38,18 +38,48 @@ fn descriptor(fixture: &tempfile::TempDir, session_id: HostedSessionId) -> Launc
     }
 }
 
+/// How long a test waits for a real Host to get somewhere. Generous, because a busy machine
+/// running the whole suite takes far longer to start a shell and carry its output than an idle
+/// one, and these tests assert what happens, not how quickly.
+const PATIENCE: Duration = Duration::from_secs(10);
+
 async fn wait_for_sequence(client: &mut HostClient, minimum: u64, cancel: &CancellationToken) {
-    for _ in 0..100 {
-        if client
-            .get_state(cancel)
-            .await
-            .is_ok_and(|state| state.latest_sequence >= minimum)
-        {
-            return;
+    let deadline = Instant::now() + PATIENCE;
+    let mut last = String::from("never asked");
+    while Instant::now() < deadline {
+        match client.get_state(cancel).await {
+            Ok(state) if state.latest_sequence >= minimum => return,
+            Ok(state) => last = format!("reached sequence {}", state.latest_sequence),
+            Err(error) => last = format!("the Host answered with {error:?}"),
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    panic!("real Host output did not reach sequence {minimum}");
+    // Says whether the Host was quiet or unreachable, which a bare timeout does not.
+    panic!("real Host output did not reach sequence {minimum}: {last}");
+}
+
+/// Waits until everything the Host has recorded carries this text. Output is split into as many
+/// records as the machine happens to produce, so how many records have arrived says nothing about
+/// whether what the test is waiting for is among them.
+async fn wait_for_output(client: &mut HostClient, expected: &str, cancel: &CancellationToken) {
+    let deadline = Instant::now() + PATIENCE;
+    let mut carried = Vec::new();
+    while Instant::now() < deadline {
+        if let Ok(records) = client.attach(OutputSequence::ZERO, 80, 24, cancel).await {
+            carried = records
+                .iter()
+                .flat_map(|output| output.bytes.iter().copied())
+                .collect::<Vec<_>>();
+            if String::from_utf8_lossy(&carried).contains(expected) {
+                return;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!(
+        "the real Host never carried {expected:?}, only {:?}",
+        String::from_utf8_lossy(&carried)
+    );
 }
 
 fn stop_sentinel(child: &mut Child) {
@@ -142,16 +172,7 @@ async fn real_host_survives_detach_replays_output_and_stops_only_owned_group() {
             .await
             .unwrap()
     );
-    wait_for_sequence(&mut client, 3, &cancel).await;
-    let before_detach = client
-        .attach(OutputSequence::ZERO, 80, 24, &cancel)
-        .await
-        .unwrap();
-    let before_bytes = before_detach
-        .iter()
-        .flat_map(|output| output.bytes.iter().copied())
-        .collect::<Vec<_>>();
-    assert!(String::from_utf8_lossy(&before_bytes).contains("HOST-OUT:first-input"));
+    wait_for_output(&mut client, "HOST-OUT:first-input", &cancel).await;
     client.disconnect();
     tokio::time::sleep(Duration::from_millis(30)).await;
     assert!(!host.stats().await.recording_paused);
@@ -266,7 +287,8 @@ async fn real_host_compacts_to_snapshot_and_quota_pause_keeps_pty_alive() {
     )
     .await
     .unwrap();
-    for _ in 0..300 {
+    let deadline = Instant::now() + PATIENCE;
+    while Instant::now() < deadline {
         if snapshot_path.exists() && compact_output_done.exists() {
             break;
         }
@@ -308,7 +330,8 @@ async fn real_host_compacts_to_snapshot_and_quota_pause_keeps_pty_alive() {
         retained_segments: 1,
     };
     let quota_host = start(quota).await.unwrap();
-    for _ in 0..200 {
+    let deadline = Instant::now() + PATIENCE;
+    while Instant::now() < deadline {
         let stats = quota_host.stats().await;
         if stats.recording_paused {
             assert_eq!(stats.lifecycle, termirust_domain::HostLifecycle::Ready);

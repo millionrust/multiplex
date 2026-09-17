@@ -182,9 +182,11 @@ cargo run -p termirust-slate --example gallery  # Slate component gallery
 cargo run -p termirust-ui-contract --bin generate-tokens  # after editing design/tokens.toml; also writes the mobile SlateTokens.swift and SlateTokens.kt
 ```
 
-The Docker-backed SSH/SFTP tests bind-mount files from `tests/fixtures/`, so they need a
-local Docker daemon; with `DOCKER_HOST` pointing at a remote machine the mounts resolve on
-that machine and the fixtures fail to start.
+The Docker-backed SSH/SFTP tests carry their fixture files in the image, so they also run
+against a daemon on another machine through `DOCKER_HOST`. Such a daemon publishes the
+fixture's port on its own machine, so set `TERMIRUST_DOCKER_FIXTURE_HOST` to an address that
+machine is reachable at when its own name does not resolve to one (a host on several private
+networks). Tests skip themselves when no daemon answers.
 
 On macOS, GPUI may need access to the system shader cache during first compile/run.
 

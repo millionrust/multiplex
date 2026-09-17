@@ -718,8 +718,8 @@ pub fn resolve_launch(
 }
 
 fn canonical_directory(path: &Path) -> Result<PathBuf, LaunchResolutionError> {
-    let canonical =
-        fs::canonicalize(path).map_err(|_| LaunchResolutionError::WorkingDirectoryUnavailable)?;
+    let canonical = crate::project::canonical_path(path)
+        .map_err(|_| LaunchResolutionError::WorkingDirectoryUnavailable)?;
     let metadata =
         fs::metadata(&canonical).map_err(|_| LaunchResolutionError::WorkingDirectoryUnavailable)?;
     if !metadata.is_dir() {
@@ -730,7 +730,7 @@ fn canonical_directory(path: &Path) -> Result<PathBuf, LaunchResolutionError> {
 }
 
 fn canonical_executable(path: &Path) -> Result<PathBuf, LaunchResolutionError> {
-    let canonical = fs::canonicalize(path).map_err(|error| {
+    let canonical = crate::project::canonical_path(path).map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
             LaunchResolutionError::ExecutableMissing
         } else {
@@ -771,8 +771,8 @@ fn identity_for(path: &Path) -> Result<FileIdentity, LaunchResolutionError> {
 
 #[cfg(not(unix))]
 fn identity_for(path: &Path) -> Result<FileIdentity, LaunchResolutionError> {
-    let canonical =
-        fs::canonicalize(path).map_err(|_| LaunchResolutionError::ProjectUnavailable)?;
+    let canonical = crate::project::canonical_path(path)
+        .map_err(|_| LaunchResolutionError::ProjectUnavailable)?;
     let encoded = canonical
         .to_str()
         .ok_or(LaunchResolutionError::ProjectUnavailable)?;

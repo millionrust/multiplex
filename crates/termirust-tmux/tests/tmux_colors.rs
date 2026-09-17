@@ -47,10 +47,12 @@ impl WrappedPane {
             .expect("a pseudo-terminal stands in for the terminal app");
 
         // The same client flags a wrapped tab and the phone's attach start tmux with.
-        let mut arguments = termirust_tmux::appearance::client_flags(truecolor)
-            .into_iter()
-            .map(str::to_owned)
-            .collect::<Vec<_>>();
+        let features: &[&str] = if truecolor {
+            &[termirust_tmux::appearance::TRUECOLOR_FEATURE]
+        } else {
+            &[]
+        };
+        let mut arguments = termirust_tmux::appearance::client_flags(features);
         arguments.extend(["-f".to_owned(), "/dev/null".to_owned()]);
 
         let mut command = CommandBuilder::new(tmux.executable());

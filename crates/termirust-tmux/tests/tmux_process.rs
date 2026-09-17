@@ -59,6 +59,26 @@ fn fake_tmux(directory: &Path, body: &str) -> PathBuf {
     path
 }
 
+/// Reads the version of a tmux that was just written, waiting out "text file busy". These tests
+/// run in parallel, and Linux refuses to run a program another process still holds open for
+/// writing: a test that forks while this one is being written holds that handle until it runs its
+/// own program. Only the version probe is retried, because these fakes record what they are asked
+/// to do and running one again would be recorded too.
+fn tmux_at(path: &Path) -> Result<Tmux, TmuxError> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let result = Tmux::at(path);
+        let still_busy = result
+            .as_ref()
+            .err()
+            .is_some_and(|error| error.to_string().contains("file busy"));
+        if !still_busy || std::time::Instant::now() >= deadline {
+            return result;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
 #[test]
 fn no_server_is_an_empty_listing() {
     let Some(server) = IsolatedServer::start() else {
@@ -146,7 +166,7 @@ fn canonical_executable_resolves_symlinks() {
     let real = fake_tmux(fixture.path(), "echo 'tmux 3.7c'");
     let link = fixture.path().join("linked-tmux");
     std::os::unix::fs::symlink(&real, &link).unwrap();
-    let tmux = Tmux::at(&link).unwrap();
+    let tmux = tmux_at(&link).unwrap();
     assert_eq!(tmux.executable(), link);
     assert_eq!(tmux.version(), "tmux 3.7c");
     assert_eq!(
@@ -163,11 +183,7 @@ fn fake_tmux_listing_and_failures_are_typed() {
         r#"if [ "$1" = "-V" ]; then echo 'tmux 3.4'; exit 0; fi
 printf '$0\t100\t1\t1\tfrom fake\tzsh\n$1\t101\t0\t2\tsecond\tvim\n'"#,
     );
-    let sessions = Tmux::at(&listing)
-        .unwrap()
-        .list_sessions()
-        .unwrap()
-        .sessions;
+    let sessions = tmux_at(&listing).unwrap().list_sessions().unwrap().sessions;
     assert_eq!(sessions.len(), 2);
     assert_eq!(sessions[0].name, "from fake");
     assert_eq!(sessions[1].windows, 2);
@@ -179,7 +195,7 @@ printf '$0\t100\t1\t1\tfrom fake\tzsh\n$1\t101\t0\t2\tsecond\tvim\n'"#,
 echo 'no server running on /tmp/tmux-0/default' >&2; exit 1"#,
     );
     assert!(
-        Tmux::at(&no_server)
+        tmux_at(&no_server)
             .unwrap()
             .list_sessions()
             .unwrap()
@@ -194,7 +210,7 @@ echo 'no server running on /tmp/tmux-0/default' >&2; exit 1"#,
 echo 'server exploded' >&2; exit 2"#,
     );
     assert_eq!(
-        Tmux::at(&broken).unwrap().list_sessions().unwrap_err(),
+        tmux_at(&broken).unwrap().list_sessions().unwrap_err(),
         TmuxError::CommandFailed {
             status: Some(2),
             diagnostic: "server exploded".to_owned(),
@@ -204,7 +220,7 @@ echo 'server exploded' >&2; exit 2"#,
     let fourth = tempfile::tempdir().unwrap();
     let no_version = fake_tmux(fourth.path(), "exit 3");
     assert!(matches!(
-        Tmux::at(&no_version).unwrap_err(),
+        tmux_at(&no_version).unwrap_err(),
         TmuxError::VersionProbe(message) if message.contains("status 3")
     ));
 }
@@ -219,7 +235,7 @@ exec sleep 30"#,
     );
     let started = std::time::Instant::now();
     assert_eq!(
-        Tmux::at(&hung).unwrap().list_sessions().unwrap_err(),
+        tmux_at(&hung).unwrap().list_sessions().unwrap_err(),
         TmuxError::TimedOut
     );
     assert!(started.elapsed() < std::time::Duration::from_secs(10));
@@ -234,7 +250,7 @@ fn oversized_output_is_rejected_without_blocking() {
 head -c 2000000 /dev/zero | tr '\0' 'x'"#,
     );
     assert_eq!(
-        Tmux::at(&chatty).unwrap().list_sessions().unwrap_err(),
+        tmux_at(&chatty).unwrap().list_sessions().unwrap_err(),
         TmuxError::OutputTooLarge
     );
 }
@@ -270,7 +286,7 @@ fn verification_reports_old_and_broken_tmux() {
     let fixture = tempfile::tempdir().unwrap();
     let old = fake_tmux(fixture.path(), "echo 'tmux 3.1c'");
     assert_eq!(
-        Tmux::at(&old).unwrap().verify_listing(),
+        tmux_at(&old).unwrap().verify_listing(),
         Err(termirust_tmux::VerificationError::TooOld)
     );
     let other = tempfile::tempdir().unwrap();
@@ -281,7 +297,7 @@ if [ "$1" = "new-session" ]; then echo '$9'; exit 0; fi
 exit 0"#,
     );
     assert_eq!(
-        Tmux::at(&silent).unwrap().verify_listing(),
+        tmux_at(&silent).unwrap().verify_listing(),
         Err(termirust_tmux::VerificationError::NotListed)
     );
 }
@@ -316,7 +332,7 @@ fn run_wrapped_shell(
         "-l",
         &format!("touch '{}'\n", ready.display()),
     ]);
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     loop {
         let names = server
             .tmux
@@ -537,6 +553,183 @@ fn the_setup_hides_wrapped_status_bars_and_clears_the_old_scrollback_override() 
         "removing puts tmux's default binding back"
     );
     assert!(!overrides().contains("smcup@"));
+}
+
+/// Attaches a client to `session` on a pseudo-terminal, because copy-mode scrolling belongs to
+/// a client and a detached session never scrolls.
+fn attach_client(server: &IsolatedServer, session: &str) -> Box<dyn portable_pty::Child + Send> {
+    let pty = portable_pty::native_pty_system()
+        .openpty(portable_pty::PtySize {
+            rows: 10,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .expect("a pseudo-terminal stands in for the terminal app");
+    let mut command = portable_pty::CommandBuilder::new(server.tmux.executable());
+    command.args(["-u", "-f", "/dev/null", "attach-session", "-t", session]);
+    for (name, value) in server.tmux.client_environment() {
+        command.env(name, value);
+    }
+    command.env("TERM", "xterm-256color");
+    // tmux refuses to attach a session from inside another one, and these tests are often run
+    // from a terminal this app has already wrapped in tmux.
+    command.env_remove("TMUX");
+    command.env_remove("TMUX_PANE");
+    let child = pty
+        .slave
+        .spawn_command(command)
+        .expect("a tmux client should attach");
+    drop(pty.slave);
+    // The reader has to keep draining, or tmux blocks once the pipe fills.
+    let mut reader = pty.master.try_clone_reader().expect("reader");
+    std::thread::spawn(move || {
+        use std::io::Read as _;
+        let mut buffer = [0_u8; 4096];
+        while let Ok(read) = reader.read(&mut buffer) {
+            if read == 0 {
+                return;
+            }
+        }
+    });
+    std::mem::forget(pty.master);
+    child
+}
+
+/// A click starts a selection under the mouse. At the bottom of the history it also leaves copy
+/// mode, so typing reaches the program again. Further back it must not: leaving copy mode there
+/// returns the view to the live screen, and the text moves out from under the click.
+#[test]
+fn a_click_leaves_copy_mode_only_at_the_bottom_of_the_history() {
+    let Some(server) = IsolatedServer::start() else {
+        return;
+    };
+    let session = "termirust-click";
+    server.run(&["new-session", "-d", "-s", session, "-x", "80", "-y", "10"]);
+    server.run(&["send-keys", "-t", session, "seq 1 200", "Enter"]);
+    let mut client = attach_client(&server, session);
+
+    let ask = |format: &str| server.output(&["display-message", "-p", "-t", session, format]);
+    // Long enough for a machine running the whole suite at once: attaching a real client and
+    // having tmux report it takes far longer there than on an idle one.
+    let wait_until = |format: &str, done: &dyn Fn(&str) -> bool, what: &str| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        loop {
+            let value = server.output(&["display-message", "-p", "-t", session, format]);
+            if done(&value) {
+                return;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "{format} never {what}, last {value:?}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    };
+    let wait_for = |format: &str, value: &'static str| {
+        wait_until(format, &move |seen: &str| seen == value, value);
+    };
+    // The client has to be attached before copy mode can scroll.
+    wait_for("#{session_attached}", "1");
+
+    // What the MouseDown1Pane binding runs.
+    let click = || {
+        server.run(&[
+            "if-shell",
+            "-t",
+            session,
+            "-F",
+            "#{==:#{scroll_position},0}",
+            "send-keys -X cancel",
+            "send-keys -X clear-selection",
+        ]);
+    };
+
+    // The shell has to have printed enough to scroll back through.
+    wait_until(
+        "#{history_size}",
+        &|seen: &str| seen.parse::<u32>().unwrap_or(0) >= 20,
+        "filled the history",
+    );
+
+    server.run(&["copy-mode", "-t", session]);
+    server.run(&["send-keys", "-t", session, "-X", "-N", "5", "scroll-up"]);
+    wait_for("#{scroll_position}", "5");
+    click();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert_eq!(
+        ask("#{scroll_position}"),
+        "5",
+        "a click scrolled the view while the history was scrolled back"
+    );
+    assert_eq!(ask("#{pane_in_mode}"), "1", "a click left copy mode early");
+
+    server.run(&["send-keys", "-t", session, "-X", "-N", "5", "scroll-down"]);
+    wait_for("#{scroll_position}", "0");
+    click();
+    wait_for("#{pane_in_mode}", "0");
+
+    let _ = client.kill();
+    let _ = client.wait();
+}
+
+/// A wrapped tab has to tell tmux what its terminal can do: tmux only works that out for
+/// itself from a terminal that answers its questions, and Terminal.app cannot draw a frame in
+/// one piece the way the others can.
+#[test]
+fn a_wrapped_tab_tells_tmux_what_its_terminal_can_do() {
+    use termirust_tmux::shell_integration::{Shell, ShellIntegration};
+
+    for (shell_path, kind, init_name) in [
+        ("/bin/zsh", Shell::Zsh, "shell-init.zsh"),
+        ("/bin/bash", Shell::Bash, "shell-init.bash"),
+    ] {
+        if !Path::new(shell_path).is_file() {
+            eprintln!("skipping {shell_path}: not installed");
+            continue;
+        }
+        let home = tempfile::tempdir().unwrap();
+        let home_path = fs::canonicalize(home.path()).unwrap();
+        let recorded = home_path.join("arguments");
+        let tmux = fake_tmux(
+            &home_path,
+            &format!("printf '%s\\n' \"$*\" >> '{}'", recorded.display()),
+        );
+        ShellIntegration::new(&home_path, &tmux)
+            .plan_enable(&[kind])
+            .unwrap()
+            .apply()
+            .unwrap();
+        let init = home_path.join(".config/termirust").join(init_name);
+
+        for (program, colorterm, expected) in [
+            ("zed", Some("truecolor"), "-u -T RGB,sync"),
+            ("iTerm.app", Some("24bit"), "-u -T RGB,sync"),
+            ("Apple_Terminal", Some("truecolor"), "-u -T RGB"),
+            ("zed", None, "-u -T sync"),
+            ("Apple_Terminal", None, "-u"),
+        ] {
+            fs::write(&recorded, "").unwrap();
+            let mut command = std::process::Command::new(shell_path);
+            command
+                .args(["-i", "-c", &format!(". '{}'", init.display())])
+                .env("HOME", &home_path)
+                .env("TERM_PROGRAM", program)
+                .env_remove("TMUX")
+                .env_remove("TERMIRUST_NO_WRAP");
+            match colorterm {
+                Some(value) => command.env("COLORTERM", value),
+                None => command.env_remove("COLORTERM"),
+            };
+            let output = command.output().unwrap();
+            let arguments = fs::read_to_string(&recorded).unwrap();
+            assert!(
+                arguments.starts_with(&format!("{expected} new-session -s termirust-")),
+                "{shell_path}, {program}, COLORTERM={colorterm:?}: expected {expected:?}, \
+                 tmux got {arguments:?} ({output:?})"
+            );
+        }
+    }
 }
 
 /// Every option of a session or its windows, with inherited ones included. `-A` marks those
