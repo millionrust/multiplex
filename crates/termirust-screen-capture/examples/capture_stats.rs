@@ -1,17 +1,22 @@
-//! Spike 0.2: measure real ScreenCaptureKit damage on this Mac.
+//! Spike 0.2: measure what the operating system really reports as damage.
 //!
 //! `cargo run -p termirust-screen-capture --release --example capture_stats -- 10 2.0`
 //!
 //! Captures the main display for the given seconds at the given pixels per point, feeds every
 //! frame to the codec with the reported damage, and prints how often frames arrive, how much of
 //! the screen the damage covers, whether any tile that really changed was missing from the damage,
-//! and how many bytes the codec would send. Needs the Screen Recording permission for the terminal.
+//! and how many bytes the codec would send.
+//!
+//! The same measurement on every platform, deliberately: the numbers are only worth having if a
+//! Windows run can be set beside a macOS one. On macOS it needs the Screen Recording permission
+//! for the terminal; on Windows it needs no permission, but Desktop Duplication cannot resample,
+//! so the scale argument must be left at 1.
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn main() {
     use std::time::{Duration, Instant};
 
-    use termirust_screen_capture::{CaptureConfig, FrameSource, ScreenCaptureKitSource, displays};
+    use termirust_screen_capture::{CaptureConfig, FrameSource, displays};
     use termirust_screen_codec::{
         Encoder, EncoderConfig, Generation, SurfaceId, TileGrid, TileHashes,
     };
@@ -23,7 +28,10 @@ fn main() {
     let displays = match displays() {
         Ok(displays) => displays,
         Err(error) => {
-            eprintln!("capture unavailable: {error}. Allow Screen Recording for this terminal.");
+            eprintln!("capture unavailable: {error}");
+            if cfg!(target_os = "macos") {
+                eprintln!("allow Screen Recording for this terminal and run it again");
+            }
             std::process::exit(2);
         }
     };
@@ -38,10 +46,17 @@ fn main() {
     let mut config = CaptureConfig::display(display.id);
     config.scale = scale;
     config.max_fps = 30;
-    let mut source = match ScreenCaptureKitSource::start(config) {
+    #[cfg(target_os = "macos")]
+    let started_source = termirust_screen_capture::ScreenCaptureKitSource::start(config);
+    #[cfg(target_os = "windows")]
+    let started_source = termirust_screen_capture::DesktopDuplicationSource::start(config);
+    let mut source = match started_source {
         Ok(source) => source,
         Err(error) => {
             eprintln!("capture did not start: {error}");
+            if cfg!(target_os = "windows") && (scale - 1.0).abs() > f32::EPSILON {
+                eprintln!("Desktop Duplication captures at native pixels; try a scale of 1");
+            }
             std::process::exit(2);
         }
     };
@@ -140,7 +155,7 @@ fn main() {
     );
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn main() {
-    eprintln!("capture_stats needs macOS");
+    eprintln!("capture_stats needs macOS or Windows");
 }

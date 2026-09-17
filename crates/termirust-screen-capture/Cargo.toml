@@ -12,3 +12,14 @@ termirust-screen-codec = { version = "0.1.0", path = "../termirust-screen-codec"
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = "0.24"
 screencapturekit = { version = "=10.0.3", default-features = false }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    # DXGI_OUTPUT_DESC carries an HMONITOR, so the output description only exists with Gdi.
+    "Win32_Graphics_Gdi",
+] }

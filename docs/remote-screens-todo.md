@@ -346,7 +346,28 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
 
 ## M6 — Windows and Linux hosts, background hosting [4.2, 4.7]
 
-- [ ] 6.1 `feat(screen-capture): capture with Desktop Duplication on Windows`
+- [x] 6.1 `feat(screen-capture): capture with Desktop Duplication on Windows`
+  Windows has two capture APIs and only one of them suits this codec. Windows.Graphics.Capture is
+  newer, composites the cursor and can capture a single window, but hands back a whole texture
+  every frame and never says what changed. Desktop Duplication is whole-display only and leaves
+  the cursor out, but reports dirty and move rectangles — and the entire cost model here is
+  damage, so damage wins.
+  A move is reported as damage at **both** ends: the destination holds new pixels, and whatever is
+  at the source now arrived some other way. Over-reporting costs tile comparisons; under-reporting
+  leaves a viewer looking at pixels that stay wrong until something else happens to touch them.
+  Losing the duplication is not an error — a resolution change, a full-screen game, or a UAC
+  prompt all take it away — so it is reopened silently and the next frame is marked
+  `Damage::Unknown`, because the rectangles from before it went say nothing about now. A display
+  that comes back a different size is not recoverable here and the caller has to start again.
+  No new crate: `windows` 0.61 was already in the lock file, and the only Cargo.lock change is
+  this crate naming it.
+  **(device)** Type-checked and clippy-clean for `x86_64-pc-windows-msvc`, never run: the byte
+  counts and the damage quality need `capture_stats` on a real Windows machine, which now builds
+  there and prints the same measurement as the macOS run so the two can be set side by side.
+  Not done yet: compositing the cursor (so `show_cursor` has no effect), resampling (a config
+  asking for anything but native pixels is refused rather than quietly served at the wrong size),
+  and wiring the backend into `controller/screen_sharing.rs`, which still names the macOS source
+  directly.
 - [ ] 6.2 `feat(screen-capture): capture through the PipeWire portal on Linux`
 - [ ] 6.3 `feat(screen-host): inject input on Windows and Linux`
   - [x] Windows, with `SendInput`. Hand-declared FFI in one `allow(unsafe_code)` module, so the
