@@ -368,10 +368,13 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   **(device)** Type-checked and clippy-clean for `x86_64-pc-windows-msvc`, never run: the byte
   counts and the damage quality need `capture_stats` on a real Windows machine, which now builds
   there and prints the same measurement as the macOS run so the two can be set side by side.
-  Not done yet: compositing the cursor (so `show_cursor` has no effect), resampling (a config
-  asking for anything but native pixels is refused rather than quietly served at the wrong size),
-  and wiring the backend into `controller/screen_sharing.rs`, which still names the macOS source
-  directly.
+  Wired into `controller/screen_sharing.rs`: the app enumerates DXGI outputs and captures them
+  through the same session path macOS uses, with the frame loop factored out so the two platforms
+  share it. The app cannot be cross-compiled to Windows from a Mac (`ring` needs a C toolchain for
+  that target), so the `cfg` wiring itself is review-only — though both types it names are checked
+  by the capture crate's own Windows build.
+  Not done yet: compositing the cursor, so `show_cursor` has no effect, and resampling — a config
+  asking for anything but native pixels is refused rather than quietly served at the wrong size.
 - [x] 6.2 `feat(screen-capture): capture through the PipeWire portal on Linux`
   On Wayland an application cannot enumerate screens, choose one, or start capturing them — the
   compositor does all three behind a portal the user answers. That is the security model, not an
@@ -391,6 +394,12 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   import this does not do.
   New dependency `pipewire` 0.8 (MIT) and its tree, recorded in the plan's gate 5. It links the
   system `libpipewire-0.3`, so a Linux build needs `libpipewire-0.3-dev`.
+  Not wired into `controller/screen_sharing.rs`, and deliberately so. Every other platform lets
+  the host enumerate screens, publish them, and let the watching device pick one; on Wayland the
+  portal does the picking and cannot be asked until a session is starting, so there is nothing
+  truthful to publish beforehand. Publishing one invented display would make the device's picker
+  work and the pick mean nothing, so Linux publishes an empty list until the flow is reshaped
+  around a "share a screen" action on the host. That is product work, not wiring.
   **(device)** Type-checked, clippy-clean and unit-tested on `x86_64-unknown-linux-gnu` in a
   container — the pure parts (stride unpacking, short-buffer rejection, the offered format) have
   real tests — but never run against a live compositor. What is unverified is everything that

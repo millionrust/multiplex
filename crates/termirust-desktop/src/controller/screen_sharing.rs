@@ -16,7 +16,7 @@ use termirust_controller_listener::{
     ControllerScreenSession, ScreenOutgoing, ScreenSessionFactory, ScreenWatcherReport,
 };
 use termirust_domain::AuthenticatedPeer;
-use termirust_screen_capture::{CaptureConfig, Damage, FrameSource, ScreenCaptureKitSource};
+use termirust_screen_capture::{CaptureConfig, Damage, FrameSource};
 use termirust_screen_codec::{Frame, Size};
 use termirust_screen_host::{ScreenHost, ScreenHostEvent, ScreenHostHandle};
 use termirust_screen_input::{DisplayLayout, DisplayPlacement, Injector};
@@ -253,9 +253,41 @@ fn displays() -> Result<Vec<SharedDisplay>, termirust_screen_capture::CaptureErr
         .collect())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 fn displays() -> Result<Vec<SharedDisplay>, termirust_screen_capture::CaptureError> {
-    // Windows and Linux capture arrives in milestone M6.
+    // Desktop Duplication hands back the desktop's own pixels and cannot resample, so there is no
+    // scale to choose here the way there is on macOS: what DXGI calls the desktop coordinates is
+    // already the pixel count.
+    Ok(termirust_screen_capture::displays()?
+        .into_iter()
+        .enumerate()
+        .map(|(index, display)| SharedDisplay {
+            id: display.id,
+            name: if index == 0 {
+                "Main Display".to_owned()
+            } else {
+                format!("Display {}", index + 1)
+            },
+            pixels: display.size_points,
+            size_points: display.size_points,
+            origin_points: display.origin_points,
+            scale_milli: 1000,
+        })
+        .collect())
+}
+
+/// Linux shares nothing yet, and an empty list is the honest answer rather than a placeholder.
+///
+/// The backend exists and works; what does not fit is this flow. Every other platform lets the
+/// host enumerate screens, publish them, and let the watching device pick one. On Wayland the
+/// compositor's portal does the picking, and it cannot be asked until a session is being started —
+/// so there is nothing truthful to publish beforehand. Offering one invented display would make
+/// the device's picker work and the pick mean nothing.
+///
+/// Closing this needs a different shape: a "share a screen" action on this computer that opens the
+/// portal, and a display list published from what came back. That is product work, not wiring.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn displays() -> Result<Vec<SharedDisplay>, termirust_screen_capture::CaptureError> {
     Ok(Vec::new())
 }
 
@@ -275,8 +307,38 @@ fn layout(displays: &[SharedDisplay]) -> DisplayLayout {
     )
 }
 
+/// Feeds a session from a capture source until it closes. Platform-free on purpose: the backends
+/// differ in how they start, not in what a frame means once it arrives.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn pump(mut source: impl FrameSource, display_id: u32, handle: &ScreenHostHandle) {
+    while handle.is_open() {
+        match source.next_frame(CAPTURE_POLL) {
+            Ok(Some(captured)) => {
+                let Ok(frame) = Frame::new(captured.size, captured.stride, &captured.pixels) else {
+                    continue;
+                };
+                let damage = match &captured.damage {
+                    Damage::Rects(rects) => Some(rects.as_slice()),
+                    Damage::Unknown => None,
+                };
+                if handle
+                    .frame(display_id, &frame, damage, captured.timestamp_ms)
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(None) => {}
+            Err(_) => {
+                handle.stop("capture_ended");
+                return;
+            }
+        }
+    }
+}
+
 /// Captures one display until the session closes.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn spawn_capture(display: SharedDisplay, handle: ScreenHostHandle) {
     std::thread::Builder::new()
         .name(format!("screen-capture-{}", display.id))
@@ -287,41 +349,21 @@ fn spawn_capture(display: SharedDisplay, handle: ScreenHostHandle) {
                 max_fps: 60,
                 show_cursor: true,
             };
-            let Ok(mut source) = ScreenCaptureKitSource::start(config) else {
+            #[cfg(target_os = "macos")]
+            let started = termirust_screen_capture::ScreenCaptureKitSource::start(config);
+            #[cfg(target_os = "windows")]
+            let started = termirust_screen_capture::DesktopDuplicationSource::start(config);
+            let Ok(source) = started else {
                 handle.stop("capture_not_permitted");
                 return;
             };
-            while handle.is_open() {
-                match source.next_frame(CAPTURE_POLL) {
-                    Ok(Some(captured)) => {
-                        let Ok(frame) =
-                            Frame::new(captured.size, captured.stride, &captured.pixels)
-                        else {
-                            continue;
-                        };
-                        let damage = match &captured.damage {
-                            Damage::Rects(rects) => Some(rects.as_slice()),
-                            Damage::Unknown => None,
-                        };
-                        if handle
-                            .frame(display.id, &frame, damage, captured.timestamp_ms)
-                            .is_err()
-                        {
-                            return;
-                        }
-                    }
-                    Ok(None) => {}
-                    Err(_) => {
-                        handle.stop("capture_ended");
-                        return;
-                    }
-                }
-            }
+            pump(source, display.id, &handle);
         })
         .ok();
 }
 
-#[cfg(not(target_os = "macos"))]
+/// Nothing to capture where nothing was published; see `displays` above.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn spawn_capture(_display: SharedDisplay, _handle: ScreenHostHandle) {}
 
 /// Injects the input the session allowed, on a thread that owns the platform's event source.
