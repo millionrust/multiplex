@@ -471,6 +471,16 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   `windows-capture` was rejected for. `cargo deny check` is green on advisories, bans, licences
   and sources.
 - [ ] `cargo test --workspace --all-targets --locked` and `cargo deny check` green
-  `cargo deny check` is green and the lockfile is current, so `--locked` does not have to change
-  it. The test run is not green from here: 72 Docker-backed SSH/SFTP tests need a daemon, which is
-  the long-standing 657/72 baseline on this machine rather than anything these milestones did.
+  `cargo deny check` is green on advisories, bans, licences and sources, and the lockfile is
+  current so `--locked` does not have to change it.
+  The suite is **952 passed, 1 failed** with `TERMIRUST_DOCKER_FIXTURE_HOST` set. It was 657/72
+  until this branch merged `dev`: the Docker fixtures gained image-carried keys and remote-daemon
+  support there, and a stale branch fails them with bind-mount and port-timeout errors that read
+  exactly like a broken Docker environment. Merge `dev` before investigating any of them.
+  The one remaining failure, `worker_pairs_a_phone_over_tcp_with_the_code_it_shows`, is
+  environmental rather than a defect. The listener announces private addresses and never loopback,
+  so the test pairs over this machine's LAN address, and macOS Local Network permission is granted
+  per code signature. `dev`'s test binary has been approved; this branch's differs, so its packets
+  are dropped after `connect` succeeds and the handshake times out at 60 s. Both sides sample as
+  healthy and parked on I/O. It needs the owner to allow the binary once, which is why it cannot
+  be closed from here.
