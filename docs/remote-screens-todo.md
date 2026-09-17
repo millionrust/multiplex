@@ -320,7 +320,16 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   capped bitrate. Two rungs the plan names are **not** here: half-scale viewport tiles and 480p
   video both need work that does not exist yet (viewport priority in the codec, and a scaler), so
   the ladder stops at five rather than pretending to have seven.
-- [ ] 5.3 `feat(screen-transport): survive network changes with migration and 0-RTT resume`
+- [x] 5.3a `feat(screen-transport): class each message by the delivery it needs`
+  A `termirust-screen-transport` crate holding the seam iroh will fit into: every message carries a
+  `Class`, and a transport says what it promises each one. Stage A gives all three the same ordered
+  stream, so the bytes are unchanged — the grouping is correct before there is anything to group.
+  The seam is about keeping the classes apart, not blurring them. Tile batches are differences from
+  the last picture, so one lost batch leaves the screen wrong forever; only the motion path may take
+  a route that drops things, because it is the only part built for it. A transport that claims
+  otherwise is refused when the session opens rather than when a batch goes missing.
+- [ ] 5.3b `feat(screen-transport): survive network changes with migration and 0-RTT resume`
+  **Blocked on the 0.4 iroh spike.** The seam above is what it plugs into.
 - [ ] 5.4 `docs(self-hosted-relay): deploy an iroh relay next to relay-host`
 - [ ] 5.5 **(device)** Full network matrix for both stages; tune the steps
 

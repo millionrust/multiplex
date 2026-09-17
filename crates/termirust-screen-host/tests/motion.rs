@@ -102,6 +102,14 @@ impl MotionEncoders for Fakes {
     }
 }
 
+/// The variant name of a message, so a test can say which classing it expected.
+fn message_name(message: &termirust_screen_protocol::Message) -> String {
+    format!("{message:?}")
+        .chars()
+        .take_while(|character| character.is_alphanumeric())
+        .collect()
+}
+
 /// The sequence of a video frame message, or zero for anything else. Zero is never a real
 /// sequence, so it can stand for "not a video frame".
 fn video_sequence(message: &termirust_screen_protocol::Message) -> u64 {
@@ -157,6 +165,9 @@ struct Link {
     dropped: usize,
     /// Parity shards the host put on the wire.
     parity_sent: usize,
+    /// The class of every message the host sent, and what it was.
+    host_classes: Vec<termirust_screen_protocol::Class>,
+    host_message_classes: Vec<(termirust_screen_protocol::Class, String)>,
 }
 
 impl Link {
@@ -184,6 +195,8 @@ impl Link {
             drop_video_frames: Vec::new(),
             dropped: 0,
             parity_sent: 0,
+            host_classes: Vec::new(),
+            host_message_classes: Vec::new(),
         };
         link.viewer.connect(TICKET);
         link.viewer.subscribe(SURFACE, Profile::Interactive);
@@ -215,6 +228,10 @@ impl Link {
                 if matches!(message, termirust_screen_protocol::Message::Parity(_)) {
                     self.parity_sent += 1;
                 }
+                let class = message.class();
+                self.host_classes.push(class);
+                self.host_message_classes
+                    .push((class, message_name(&message)));
                 if self.drop_video_frames.contains(&video_sequence(&message)) {
                     // The link ate it. Nothing tells the viewer directly; it finds out from the
                     // gap, and repairs it from the group's parity.
@@ -483,6 +500,36 @@ fn a_viewer_without_the_parity_bit_is_sent_none() {
         link.parity_sent, 0,
         "parity costs bandwidth, so a viewer that cannot use it is sent none"
     );
+}
+
+#[test]
+fn only_the_motion_path_is_put_on_a_route_that_may_lose_it() {
+    use termirust_screen_protocol::Class;
+
+    let log = Arc::new(Mutex::new(Recorder::default()));
+    let mut link = Link::open(Box::new(Fakes(Arc::clone(&log))), everything());
+    link.until_promoted();
+    for step in 500..540 {
+        link.show(step, true);
+    }
+
+    // Everything the host sent, by class. Tile batches and the messages that say what the session
+    // is must never be classed as losable; the motion path must be, because it is the only part
+    // built to survive loss.
+    let classes = link.host_classes.clone();
+    assert!(
+        classes.contains(&Class::Video),
+        "the motion path never ran, so this proves nothing"
+    );
+    assert!(classes.contains(&Class::Tiles) && classes.contains(&Class::Control));
+    for (class, name) in &link.host_message_classes {
+        let expected = match name.as_str() {
+            "VideoFrame" | "Parity" => Class::Video,
+            "Batch" => Class::Tiles,
+            _ => Class::Control,
+        };
+        assert_eq!(*class, expected, "{name} was classed wrongly");
+    }
 }
 
 #[test]

@@ -1,0 +1,10 @@
+[package]
+name = "termirust-screen-transport"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "What carries a TermiRust Remote Screens session: the delivery each class of message needs, and the seam a QUIC transport will fit into"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+termirust-screen-protocol = { version = "0.1.0", path = "../termirust-screen-protocol" }

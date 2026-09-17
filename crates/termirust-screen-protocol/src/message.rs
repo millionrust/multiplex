@@ -159,6 +159,21 @@ pub struct Parity {
     pub payload: Vec<u8>,
 }
 
+/// What a message needs from whatever carries it.
+///
+/// Three classes rather than two, because tiles and control differ in priority even though both
+/// need delivery: a large refinement batch must not hold up a keystroke, which on QUIC means
+/// separate streams and on one ordered channel means nothing at all.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub enum Class {
+    /// Must arrive, in order, and first. The session's own state.
+    Control,
+    /// Must arrive, in order. Pixels that are differences from the last ones.
+    Tiles,
+    /// May be lost or reordered. The motion path repairs or reports what it misses.
+    Video,
+}
+
 /// How much detail a subscription wants.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Profile {
@@ -435,6 +450,28 @@ impl Message {
             }
             Self::Key(_) | Self::Text { .. } => Some(InputKind::Keyboard),
             _ => None,
+        }
+    }
+
+    /// Which delivery this message needs.
+    ///
+    /// This is a property of the message, not of the transport that happens to be carrying it.
+    /// Stage A puts every class on one ordered stream, which satisfies all three; a transport
+    /// with datagrams can route by it and stop a slow refinement from holding up a keystroke.
+    pub const fn class(&self) -> Class {
+        match self {
+            // Tile batches are differential: applying one without its predecessor produces a
+            // picture that is wrong and stays wrong, because nothing later will correct it. They
+            // need order and delivery, always.
+            Self::Batch(_) => Class::Tiles,
+            // The motion path is built to lose things. A frame that never arrives is repaired
+            // from parity, or reported and answered with a reference refresh, so it can go by a
+            // route that trades delivery for latency.
+            Self::VideoFrame(_) | Self::Parity(_) => Class::Video,
+            // Everything else decides what the session *is*: what was agreed, who holds control,
+            // where the panes are, what the viewer wants. Losing any of it desynchronises the two
+            // sides with no way to notice.
+            _ => Class::Control,
         }
     }
 

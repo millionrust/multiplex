@@ -28,6 +28,7 @@ use termirust_screen_protocol::{
 use termirust_screen_session::{
     Grants, HostConfig, HostEvent, HostSession, InputEvent, ResumeStore, TicketVerifier,
 };
+use termirust_screen_transport::{Class, Delivery, Outbound, Transport, TransportError};
 
 pub mod ladder;
 pub mod motion;
@@ -60,6 +61,27 @@ pub enum ScreenHostEvent {
 
 /// Where the application receives [`ScreenHostEvent`]s. Called from the connection's task.
 pub type ScreenHostObserver = Arc<dyn Fn(ScreenHostEvent) + Send + Sync>;
+
+/// The Controller channel as a transport: one authenticated, ordered, reliable stream carrying
+/// every class, which is what Stage A is.
+///
+/// It gathers rather than sending, because the listener's own outgoing side takes one chunk per
+/// screen frame and the burst mark has to be appended after everything else. A QUIC transport
+/// will send directly instead, which is the point of the seam.
+struct Collect<'a>(&'a mut Vec<u8>);
+
+impl Transport for Collect<'_> {
+    fn delivery(&self, _class: Class) -> Delivery {
+        // One ordered stream satisfies every class. Video does not benefit, but nothing is
+        // harmed: a frame that arrives late was going to be late anyway on this route.
+        Delivery::Reliable
+    }
+
+    fn send(&mut self, _class: Class, bytes: &[u8]) -> Result<(), TransportError> {
+        self.0.extend_from_slice(bytes);
+        Ok(())
+    }
+}
 
 /// The ticket the listener issued is what the screen protocol's hello proves. The grants are held
 /// only between spending the ticket and the session verifying the hello.
@@ -94,15 +116,22 @@ struct Inner {
 impl Inner {
     /// Sends everything the session has queued as one chunk of the screen byte stream.
     fn flush(&mut self) -> Result<(), ListenerError> {
-        let mut bytes = Vec::new();
+        // Grouped by what each message needs from the route, even though Stage A gives all three
+        // classes the same one. The grouping is what a QUIC transport will route on, and it is
+        // correct here before there is anything to route.
+        let mut outbound = Outbound::new();
         while let Some(message) = self.session.poll_outgoing() {
             let frame = encode_frame(&message)
                 .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))?;
-            bytes.extend(frame);
+            outbound.push(message.class(), frame);
         }
-        if bytes.is_empty() {
+        if outbound.is_empty() {
             return Ok(());
         }
+        let mut bytes = Vec::with_capacity(outbound.len());
+        outbound
+            .flush(&mut Collect(&mut bytes))
+            .map_err(|_| ListenerError::new(ListenerErrorCode::Io))?;
         // One flush is one burst. The mark closes it and says how much went before it, which is
         // the half of the measurement only this side knows; the viewer supplies the other half by
         // timing the arrival. Built here rather than through the session's outbox because the

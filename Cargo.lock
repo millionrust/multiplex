@@ -10622,6 +10622,7 @@ dependencies = [
  "termirust-screen-codec",
  "termirust-screen-protocol",
  "termirust-screen-session",
+ "termirust-screen-transport",
  "termirust-screen-video",
  "tokio",
  "tokio-util",
@@ -10652,6 +10653,13 @@ dependencies = [
  "termirust-screen-codec",
  "termirust-screen-protocol",
  "termirust-screen-video",
+]
+
+[[package]]
+name = "termirust-screen-transport"
+version = "0.1.0"
+dependencies = [
+ "termirust-screen-protocol",
 ]
 
 [[package]]
