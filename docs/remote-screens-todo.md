@@ -396,7 +396,7 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   real tests — but never run against a live compositor. What is unverified is everything that
   needs one: whether the portal dialog appears and is answered, whether a restore token actually
   skips it next time, and whether a real compositor offers a mappable buffer rather than DMA-BUF.
-- [ ] 6.3 `feat(screen-host): inject input on Windows and Linux`
+- [x] 6.3 `feat(screen-host): inject input on Windows and Linux`
   - [x] Windows, with `SendInput`. Hand-declared FFI in one `allow(unsafe_code)` module, so the
     crate keeps `deny(unsafe_code)` everywhere else and the `windows` crate stays out of the
     lockfile for four functions and a struct.
@@ -418,8 +418,11 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
     group rather than a host running as root, and the error says so.
     Writing the third keymap made the set checkable: Linux turns out to be a strict superset of
     both other hosts, including `Pause`, which Windows cannot express and macOS has no event for.
-    Type-checked against `x86_64-unknown-linux-gnu`; it cannot be linked or run from a Mac.
-    **(device)** Never run on Linux.
+    Now genuinely tested on Linux rather than only cross-compiled, through
+    `scripts/verify/linux-screens.sh`: the keymaps, the pointer scaling, and — the two that a
+    cross-compile could never have caught — that `input_event` is the size the kernel reads and
+    that the ioctl request numbers match the kernel header on a real Linux target.
+    **(device)** Still never run against `/dev/uinput`, which needs a machine with one.
 - [x] 6.4 `feat(controller-service): serve screens from the macOS background service`
   The app's listener worker already served screens; the LaunchAgent's used the plain worker, so a
   paired phone could watch this Mac only while the app happened to be open — the one thing the
