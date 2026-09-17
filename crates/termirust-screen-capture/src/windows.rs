@@ -33,11 +33,14 @@ use windows::Win32::Graphics::Direct3D11::{
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory1, DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_NOT_FOUND, DXGI_ERROR_WAIT_TIMEOUT,
-    DXGI_OUTDUPL_FRAME_INFO, DXGI_OUTDUPL_MOVE_RECT, DXGI_OUTPUT_DESC, IDXGIAdapter1,
-    IDXGIFactory1, IDXGIOutput1, IDXGIOutputDuplication, IDXGIResource,
+    DXGI_OUTDUPL_FRAME_INFO, DXGI_OUTDUPL_MOVE_RECT, DXGI_OUTDUPL_POINTER_SHAPE_INFO,
+    DXGI_OUTDUPL_POINTER_SHAPE_TYPE_COLOR, DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MASKED_COLOR,
+    DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME, DXGI_OUTPUT_DESC, IDXGIAdapter1, IDXGIFactory1,
+    IDXGIOutput1, IDXGIOutputDuplication, IDXGIResource,
 };
 use windows::core::Interface;
 
+use crate::cursor::{CursorKind, CursorShape, composite};
 use crate::source::pixel_rects;
 use crate::{CaptureConfig, CaptureError, CapturedFrame, Damage, DisplayInfo, FrameSource};
 
@@ -135,10 +138,24 @@ pub struct DesktopDuplicationSource {
     /// promises one. In practice an allocator hands back something well aligned and the
     /// difference never shows, which is exactly what makes it worth not relying on.
     metadata: Vec<u32>,
-    pixels: Vec<u8>,
+    /// The desktop as Windows drew it, with no pointer on it. Kept between frames so a pointer
+    /// that moves over a still screen can be redrawn without waiting for the desktop to change.
+    clean: Vec<u8>,
     /// Set when the duplication had to be reopened, because everything on screen may have changed
     /// while it was gone and the rectangles from before it went say nothing about now.
     resynchronised: bool,
+    /// Whether the caller asked for a pointer at all.
+    show_cursor: bool,
+    /// The pointer, which Desktop Duplication sends separately from the desktop image and only
+    /// when it changes, so it has to be remembered.
+    cursor: Option<CursorShape>,
+    cursor_at: (i32, i32),
+    cursor_visible: bool,
+    /// Where the pointer was drawn last time, so moving it can damage the place it left.
+    cursor_was: Rect,
+    /// Set when the pointer moved but the desktop did not, so the next frame is worth sending
+    /// even though Windows had no new desktop image for us.
+    cursor_moved: bool,
 }
 
 impl DesktopDuplicationSource {
@@ -186,8 +203,14 @@ impl DesktopDuplicationSource {
             size,
             started: Instant::now(),
             metadata: Vec::new(),
-            pixels: Vec::new(),
+            clean: Vec::new(),
             resynchronised: false,
+            show_cursor: config.show_cursor,
+            cursor: None,
+            cursor_at: (0, 0),
+            cursor_visible: false,
+            cursor_was: Rect::default(),
+            cursor_moved: false,
         })
     }
 
@@ -247,28 +270,136 @@ impl DesktopDuplicationSource {
         info: &DXGI_OUTDUPL_FRAME_INFO,
         resource: Option<&IDXGIResource>,
     ) -> Result<Option<CapturedFrame>, CaptureError> {
+        self.take_pointer(info)?;
+
         // A frame whose last present time is zero carries no new desktop image: the pointer moved
-        // and nothing else. Delivering it would wake the encoder to compare a screen that is
-        // identical to the one it already sent.
-        if info.LastPresentTime == 0 {
+        // and nothing else. That is worth sending only because the pointer is part of the picture
+        // here -- without this the cursor would freeze on a still screen until something else
+        // happened to change. The damage is just where it was and where it now is, so a pointer
+        // crossing a still desktop costs two small rectangles rather than a screen.
+        let desktop_changed = info.LastPresentTime != 0 && resource.is_some();
+        if !desktop_changed && !(self.cursor_moved && self.show_cursor) {
             return Ok(None);
         }
-        let Some(resource) = resource else {
-            return Ok(None);
+
+        let mut damage = if desktop_changed {
+            let resource = resource.expect("checked by desktop_changed");
+            let texture: ID3D11Texture2D =
+                resource.cast().map_err(|_| CaptureError::InvalidFrame)?;
+            let damage = self.damage(info)?;
+            unsafe { self.context.CopyResource(&self.staging, &texture) };
+            self.read_staging()?;
+            damage
+        } else {
+            // Reusing the desktop we already have, so only the pointer is damaged.
+            Damage::Rects(Vec::new())
         };
-        let texture: ID3D11Texture2D = resource.cast().map_err(|_| CaptureError::InvalidFrame)?;
-        let damage = self.damage(info)?;
-        unsafe { self.context.CopyResource(&self.staging, &texture) };
-        self.read_staging()?;
+        if self.clean.is_empty() {
+            return Ok(None);
+        }
+
+        let mut pixels = self.clean.clone();
+        let stride = self.size.width() as usize * BYTES_PER_PIXEL;
+        let drawn = self.draw_pointer(&mut pixels, stride);
+        // Both ends of the move: the pointer's new home, and the hole it left behind. Reporting
+        // only the new one leaves a trail of cursors down the screen.
+        if let Damage::Rects(rects) = &mut damage {
+            for rect in [self.cursor_was, drawn] {
+                if !rect.is_empty() {
+                    rects.push(rect);
+                }
+            }
+        }
+        self.cursor_was = drawn;
+        self.cursor_moved = false;
 
         Ok(Some(CapturedFrame {
             size: self.size,
-            stride: self.size.width() as usize * BYTES_PER_PIXEL,
-            pixels: std::mem::take(&mut self.pixels),
+            stride,
+            pixels,
             damage,
             timestamp_ms: self.started.elapsed().as_millis() as u64,
             scale: None,
         }))
+    }
+
+    /// Draws the remembered pointer, and reports where it landed.
+    fn draw_pointer(&self, pixels: &mut [u8], stride: usize) -> Rect {
+        if !self.show_cursor || !self.cursor_visible {
+            return Rect::default();
+        }
+        let Some(shape) = self.cursor.as_ref() else {
+            return Rect::default();
+        };
+        composite(pixels, stride, self.size, shape, self.cursor_at)
+    }
+
+    /// Reads whatever the frame said about the pointer.
+    ///
+    /// Position and shape arrive independently and only when they change, so both are remembered:
+    /// a frame that says nothing about the pointer means it is still where it was, not that it has
+    /// gone. `LastMouseUpdateTime` of zero is how Windows says "nothing about the pointer here",
+    /// and treating that as "the pointer is at 0,0 and hidden" makes it flicker into the corner.
+    fn take_pointer(&mut self, info: &DXGI_OUTDUPL_FRAME_INFO) -> Result<(), CaptureError> {
+        if info.PointerShapeBufferSize > 0 {
+            let mut buffer = vec![0u8; info.PointerShapeBufferSize as usize];
+            let mut shape_info = DXGI_OUTDUPL_POINTER_SHAPE_INFO::default();
+            let mut required = 0;
+            let read = unsafe {
+                self.duplication.GetFramePointerShape(
+                    buffer.len() as u32,
+                    buffer.as_mut_ptr().cast(),
+                    &mut required,
+                    &mut shape_info,
+                )
+            };
+            if read.is_ok() {
+                buffer.truncate(required as usize);
+                let kind = match shape_info.Type {
+                    t if t == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME.0 as u32 => {
+                        Some(CursorKind::Monochrome)
+                    }
+                    t if t == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_COLOR.0 as u32 => {
+                        Some(CursorKind::Color)
+                    }
+                    t if t == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MASKED_COLOR.0 as u32 => {
+                        Some(CursorKind::MaskedColour)
+                    }
+                    // An unknown shape kind is dropped rather than guessed at: drawing a pointer
+                    // wrong is worse than drawing none.
+                    _ => None,
+                };
+                self.cursor = kind.and_then(|kind| {
+                    let height = if kind == CursorKind::Monochrome {
+                        shape_info.Height / 2
+                    } else {
+                        shape_info.Height
+                    };
+                    let shape = CursorShape {
+                        kind,
+                        width: shape_info.Width,
+                        height,
+                        pitch: shape_info.Pitch as usize,
+                        pixels: buffer,
+                    };
+                    shape.is_consistent().then_some(shape)
+                });
+                self.cursor_moved = true;
+            }
+        }
+        if info.LastMouseUpdateTime != 0 {
+            let visible = info.PointerPosition.Visible.as_bool();
+            let at = (
+                info.PointerPosition.Position.x,
+                info.PointerPosition.Position.y,
+            );
+            if visible != self.cursor_visible || at != self.cursor_at {
+                self.cursor_moved = true;
+            }
+            self.cursor_visible = visible;
+            self.cursor_at = at;
+        }
+        Ok(())
     }
 
     /// What changed, from the move and dirty rectangles Windows attached to the frame.
@@ -323,7 +454,7 @@ impl DesktopDuplicationSource {
         Ok(Damage::Rects(collect_rects(moves, dirty, self.size)))
     }
 
-    /// Copies the staging texture into `self.pixels`, tightly packed.
+    /// Copies the staging texture into `self.clean`, tightly packed.
     ///
     /// The mapped rows are padded to the driver's pitch, which is not the codec's stride, so the
     /// rows are copied one at a time rather than in one block.
@@ -342,11 +473,11 @@ impl DesktopDuplicationSource {
             if mapped.pData.is_null() || pitch < row_bytes {
                 return Err(CaptureError::InvalidFrame);
             }
-            self.pixels.clear();
-            self.pixels.reserve(row_bytes * height);
+            self.clean.clear();
+            self.clean.reserve(row_bytes * height);
             for row in 0..height {
                 let start = unsafe { mapped.pData.cast::<u8>().add(row * pitch) };
-                self.pixels
+                self.clean
                     .extend_from_slice(unsafe { std::slice::from_raw_parts(start, row_bytes) });
             }
             Ok(())

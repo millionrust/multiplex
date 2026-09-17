@@ -16,6 +16,7 @@
 
 #![deny(unsafe_code)]
 
+mod cursor;
 mod error;
 #[cfg(target_os = "linux")]
 mod linux;
@@ -26,6 +27,7 @@ mod source;
 #[cfg(target_os = "windows")]
 mod windows;
 
+pub use cursor::{CursorKind, CursorShape, composite};
 pub use error::CaptureError;
 #[cfg(target_os = "linux")]
 pub use linux::PortalScreenCastSource;

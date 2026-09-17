@@ -373,8 +373,19 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   share it. The app cannot be cross-compiled to Windows from a Mac (`ring` needs a C toolchain for
   that target), so the `cfg` wiring itself is review-only — though both types it names are checked
   by the capture crate's own Windows build.
-  Not done yet: compositing the cursor, so `show_cursor` has no effect, and resampling — a config
-  asking for anything but native pixels is refused rather than quietly served at the wrong size.
+  The pointer is drawn in. Desktop Duplication leaves it out of the desktop image and sends the
+  shape and position separately, so a viewer had no pointer at all and could not tell where a
+  click would land. The blending lives in a platform-free `cursor` module so its three shapes can
+  be tested everywhere rather than only on the one machine that can run them — and two of those
+  rules are the kind that look right and are not: a monochrome pointer's mask can mean *invert the
+  screen* rather than opaque-or-transparent, which is what keeps an I-beam visible over text of
+  any colour, and a masked-colour pointer's alpha is a switch between copy and exclusive-or rather
+  than a blend.
+  A pointer moving over a still screen now produces a frame, because the pointer is part of the
+  picture; the damage is only where it was and where it is, so it costs two small rectangles
+  rather than a screen.
+  Not done yet: resampling — a config asking for anything but native pixels is refused rather than
+  quietly served at the wrong size.
 - [x] 6.2 `feat(screen-capture): capture through the PipeWire portal on Linux`
   On Wayland an application cannot enumerate screens, choose one, or start capturing them — the
   compositor does all three behind a portal the user answers. That is the security model, not an
