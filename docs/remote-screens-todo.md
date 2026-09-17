@@ -325,6 +325,12 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   capped bitrate. Two rungs the plan names are **not** here: half-scale viewport tiles and 480p
   video both need work that does not exist yet (viewport priority in the codec, and a scaler), so
   the ladder stops at five rather than pretending to have seven.
+  "Wired to real knobs" turned out to be wrong for four of the five, and every one of them read
+  correctly. `tests/rungs.rs` measures each rung against a workload built so it has something to
+  give up, and [RS6](engineering-evidence/RS6-ladder.md) records what that found — including a
+  host that stopped sending anything at all, permanently, once the screen sat still for four
+  frames. The lesson for the rest of this plan: a control that has never been measured against a
+  workload it can change has not been tested, however carefully it has been read.
 - [x] 5.3a `feat(screen-transport): class each message by the delivery it needs`
   A `termirust-screen-transport` crate holding the seam iroh will fit into: every message carries a
   `Class`, and a transport says what it promises each one. Stage A gives all three the same ordered
