@@ -76,6 +76,8 @@ pub struct MotionSender {
     policy: ParityPolicy,
     /// What the rate controller allows the motion encoder to spend, in bits per second.
     bitrate: u32,
+    /// The viewer has acknowledged at least one frame, so the video is really arriving.
+    confirmed: bool,
 }
 
 impl std::fmt::Debug for MotionSender {
@@ -122,6 +124,7 @@ impl MotionSender {
             acknowledged: Vec::new(),
             policy: ParityPolicy::default(),
             bitrate: DEFAULT_VIDEO_BITRATE,
+            confirmed: false,
         }
     }
 
@@ -141,6 +144,14 @@ impl MotionSender {
     pub fn acknowledged(&mut self, tokens: &[u32]) {
         self.acknowledged.clear();
         self.acknowledged.extend_from_slice(tokens);
+        // The first acknowledgement is proof the viewer's decoder started. Until one arrives the
+        // tile path keeps covering the region, so nothing is ever blank.
+        self.confirmed = !self.acknowledged.is_empty();
+    }
+
+    /// Whether the viewer has confirmed it is decoding the motion region.
+    pub const fn is_confirmed(&self) -> bool {
+        self.confirmed
     }
 
     /// The viewer could not rebuild a frame. The next one is predicted from an older reference
@@ -154,6 +165,7 @@ impl MotionSender {
     pub fn stop(&mut self) {
         self.state = None;
         self.refresh = false;
+        self.confirmed = false;
         self.acknowledged.clear();
     }
 
@@ -170,6 +182,9 @@ impl MotionSender {
             self.stop();
             return;
         }
+        // Tell the tile path whether it still has to cover the region. This is the whole saving
+        // of the motion path: without it the region goes twice, once as video and once as tiles.
+        session.set_motion_carried(surface, self.confirmed);
         // The region is clipped to the frame: a surface can be resized between the tile encoder
         // choosing a rectangle and this frame arriving.
         let region = session
@@ -179,6 +194,7 @@ impl MotionSender {
         let Some(region) = region else {
             // Demoted, or never promoted. The tile path has the rectangle back.
             self.state = None;
+            self.confirmed = false;
             return;
         };
         // A new region needs a new encoder; so does a new bitrate, because the rate controller

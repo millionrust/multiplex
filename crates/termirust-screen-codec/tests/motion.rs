@@ -107,3 +107,76 @@ fn video_is_promoted_throttled_and_resent_when_it_stops() {
         .copy_rect_into(Rect::new(40, 40, 160, 12), &mut actual);
     assert_eq!(actual, expected, "text outside the region stays exact");
 }
+
+/// The saving the motion path exists for.
+///
+/// While a region is promoted but nothing else is carrying it, the tile path keeps covering it at
+/// a throttled rate — that is what a viewer with no decoder sees. Once something above the encoder
+/// says the video is arriving, those tiles are pixels paid for twice, and must stop.
+#[test]
+fn a_carried_region_costs_the_tile_path_nothing() {
+    let size = Size::new(960, 640).unwrap();
+    let mut encoder = Encoder::new(
+        SurfaceId(1),
+        Generation(1),
+        size,
+        EncoderConfig {
+            cache_bytes: CACHE,
+            ..EncoderConfig::default()
+        },
+    );
+
+    let mut now = 0;
+    let mut promoted = false;
+    for step in 0..60u32 {
+        encoder
+            .encode_at(&desktop(size, step).as_frame(), None, now)
+            .unwrap();
+        now += 33;
+        if encoder.motion_region().is_some() {
+            promoted = true;
+            break;
+        }
+    }
+    assert!(promoted, "the region was never promoted");
+    let region = encoder.motion_region().expect("a region");
+
+    let ops_inside = |encoder: &mut Encoder, from: u32, now: &mut u64| {
+        let mut inside = 0;
+        for step in from..from + 30 {
+            let batch = encoder
+                .encode_at(&desktop(size, step).as_frame(), None, *now)
+                .unwrap();
+            *now += 33;
+            for op in &batch.ops {
+                let tile = match op {
+                    TileOp::Solid { tile, .. }
+                    | TileOp::Cached { tile, .. }
+                    | TileOp::Lossy { tile, .. }
+                    | TileOp::Lossless { tile, .. } => *tile,
+                    _ => continue,
+                };
+                // 64-pixel tiles, laid out row by row across the surface.
+                let across = size.width().div_ceil(64);
+                let rect = Rect::new((tile.0 % across) * 64, (tile.0 / across) * 64, 64, 64);
+                if region.contains_rect(rect) {
+                    inside += 1;
+                }
+            }
+        }
+        inside
+    };
+
+    let throttled = ops_inside(&mut encoder, 100, &mut now);
+    assert!(
+        throttled > 0,
+        "the tile path should cover the region while nothing else is"
+    );
+
+    encoder.set_motion_carried(true);
+    let carried = ops_inside(&mut encoder, 200, &mut now);
+    assert_eq!(
+        carried, 0,
+        "a carried region still cost {carried} tile operations, so its pixels go twice"
+    );
+}

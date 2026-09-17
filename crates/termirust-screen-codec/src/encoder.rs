@@ -81,6 +81,9 @@ pub struct Encoder {
     motion: MotionTracker,
     motion_event: Option<MotionEvent>,
     motion_last_sent_ms: Option<u64>,
+    /// Something above this encoder is carrying the motion region as video, and the viewer has
+    /// confirmed it is arriving. Until then the tile path keeps covering it.
+    motion_carried: bool,
     /// When each tile's source pixels last changed, from [`Encoder::encode_at`].
     changed_at_ms: Vec<u64>,
 }
@@ -114,6 +117,7 @@ impl Encoder {
             motion: MotionTracker::new(grid, config.motion),
             motion_event: None,
             motion_last_sent_ms: None,
+            motion_carried: false,
             changed_at_ms: vec![0; grid.len()],
         }
     }
@@ -151,7 +155,11 @@ impl Encoder {
                     .then_some((self.changed_at_ms[index], tile))
             })
             .collect();
-        if ready.is_empty() {
+        // A budget of nothing means nothing, not "one tile anyway". The loop below always sends
+        // its first tile so that a small budget still makes progress rather than stalling
+        // forever, which is right — but it made zero the same as one, and zero is how the rate
+        // controller says to stop refining altogether.
+        if ready.is_empty() || budget_bytes == 0 {
             return Ok(None);
         }
         ready.sort_unstable();
@@ -195,6 +203,16 @@ impl Encoder {
         };
         self.next_sequence += 1;
         Ok(Some(batch))
+    }
+
+    /// Says whether the motion region is being carried as video by something above this encoder.
+    ///
+    /// Turning it on stops the tile path spending anything on the region, which is the whole
+    /// saving of the motion path: without it the region is sent twice, once as video and once as
+    /// throttled tiles. Turn it on only once the viewer has confirmed it is decoding, so a
+    /// viewer whose decoder never started keeps getting a picture.
+    pub const fn set_motion_carried(&mut self, carried: bool) {
+        self.motion_carried = carried;
     }
 
     /// How much detail the first pass currently keeps.
@@ -358,12 +376,21 @@ impl Encoder {
                 self.motion_last_sent_ms = None;
             }
             if self.motion.region().is_some() {
-                let interval = 1_000 / u64::from(self.config.motion.tile_path_max_hz.max(1));
-                motion_throttled = self
-                    .motion_last_sent_ms
-                    .is_some_and(|last| now.saturating_sub(last) < interval);
-                if !motion_throttled {
-                    self.motion_last_sent_ms = Some(now);
+                if self.motion_carried {
+                    // Something else is sending this region and the viewer has confirmed it is
+                    // arriving, so every tile inside it is pixels paid for twice. Before that
+                    // confirmation the tile path keeps going at its throttled rate, which is what
+                    // makes a viewer whose decoder never starts see a moving picture rather than
+                    // a frozen one.
+                    motion_throttled = true;
+                } else {
+                    let interval = 1_000 / u64::from(self.config.motion.tile_path_max_hz.max(1));
+                    motion_throttled = self
+                        .motion_last_sent_ms
+                        .is_some_and(|last| now.saturating_sub(last) < interval);
+                    if !motion_throttled {
+                        self.motion_last_sent_ms = Some(now);
+                    }
                 }
             }
         }

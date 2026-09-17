@@ -63,7 +63,12 @@ Pure Rust, no platform code, fully testable in CI.
   workspace lockfile.
 - [ ] 0.4 **(device)** iroh phone ↔ Mac over cellular with a self-hosted relay; go/no-go note
   Now gates the Stage B transport (M5), not Stage A.
-- [ ] 0.5 `docs(remote-screens): record spike results` in `docs/engineering-evidence/`
+- [x] 0.5 `docs(remote-screens): record spike results` in `docs/engineering-evidence/`
+  0.3 is in [RS4](engineering-evidence/RS4-videotoolbox-ltr.md). What the motion path actually
+  costs, once built, is in [RS5](engineering-evidence/RS5-motion-path.md), measured with the real
+  encoder against the 4.8 target that nothing had measured: Stage B is 3.5x cheaper than the tile
+  path on the workload it exists for, and the measurement found two bugs review had not.
+  0.4 is still unrun, so the transport half of M0 is still open.
 
 ## M2 — Desktop host and desktop viewer on a LAN (Stage A) [4.1, 4.2, 4.6, 4.7, 4.9]
 

@@ -117,6 +117,33 @@ impl MotionTracker {
                 None
             }
             Some((rect, since)) => {
+                // A region is promoted the moment enough of it is hot, which is usually before
+                // all of it is: a video that has just started has only warmed the rows it has
+                // drawn. Left alone the region keeps whatever extent it had at that instant, and
+                // the rest of the window is sent as tiles at full rate for as long as it plays —
+                // measured at about 180 kbps of pure waste on a half-covered 896 x 512 window.
+                // So it is allowed to grow, and only to grow: shrinking while playing would move
+                // the boundary back and forth and re-key the encoder each time.
+                // Only tiles touching the region may join it. Taking the largest hot component
+                // anywhere would let a clock ticking in the far corner be absorbed, and a region
+                // stretched across the screen to reach it never goes quiet enough to demote —
+                // which is exactly what happened the first time this was written.
+                let hot = self.sustained_hot_tiles(now_ms);
+                let reach = Rect::new(
+                    rect.x.saturating_sub(crate::TILE_SIZE),
+                    rect.y.saturating_sub(crate::TILE_SIZE),
+                    rect.width + crate::TILE_SIZE * 2,
+                    rect.height + crate::TILE_SIZE * 2,
+                );
+                let grown = hot
+                    .iter()
+                    .filter_map(|tile| self.grid.tile_rect(tile))
+                    .filter(|tile| !reach.intersect(*tile).is_empty())
+                    .fold(rect, Rect::union);
+                if grown != rect && grown.contains_rect(rect) {
+                    self.region = Some((grown, since));
+                    return Some(MotionEvent::Promoted(grown));
+                }
                 if now_ms.saturating_sub(since) < self.config.demote_ms {
                     return None;
                 }

@@ -559,6 +559,21 @@ impl<V: TicketVerifier> HostSession<V> {
         }
     }
 
+    /// Says that something above this session is carrying `surface`'s motion region as video and
+    /// the viewer has confirmed it arrives, so the tile path can stop paying for those pixels.
+    ///
+    /// Only ever true on the strength of a viewer acknowledgement. A host that assumed it would
+    /// leave a viewer whose decoder never started looking at a frozen rectangle, with the one
+    /// path that could have fixed it switched off.
+    pub fn set_motion_carried(&mut self, surface: u32, carried: bool) {
+        if let Some(subscription) = self
+            .subscriptions
+            .get_mut(&key_for(surface, Profile::Interactive))
+        {
+            subscription.encoder.set_motion_carried(carried);
+        }
+    }
+
     /// The motion region of `surface`, once the tile encoder promoted one. Whoever owns the
     /// video encoder reads this to know what to encode, and gets `None` back the moment the
     /// region is demoted and the tile path takes the rectangle again.

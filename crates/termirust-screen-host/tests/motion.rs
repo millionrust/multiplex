@@ -63,6 +63,10 @@ struct Recorder {
 struct Fake {
     log: Arc<Mutex<Recorder>>,
     token: u32,
+    /// What this encoder was opened for. A region grows as more of the window warms up, so the
+    /// size is whatever the sender asked for, not a constant.
+    width: u32,
+    height: u32,
 }
 
 impl MotionEncoder for Fake {
@@ -73,8 +77,8 @@ impl MotionEncoder for Fake {
     fn encode(&mut self, bgra: &[u8], request: MotionRequest<'_>) -> Vec<MotionFrame> {
         assert_eq!(
             bgra.len(),
-            REGION.width as usize * REGION.height as usize * 4,
-            "the encoder is handed exactly the region, tightly packed"
+            self.width as usize * self.height as usize * 4,
+            "the encoder is handed exactly the region it was opened for, tightly packed"
         );
         self.log.lock().unwrap().asked.push(Asked {
             acknowledged: request.acknowledged.to_vec(),
@@ -98,6 +102,8 @@ impl MotionEncoders for Fakes {
         Some(Box::new(Fake {
             log: Arc::clone(&self.0),
             token: 0,
+            width,
+            height,
         }))
     }
 }
