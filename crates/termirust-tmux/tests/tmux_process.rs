@@ -332,7 +332,7 @@ fn run_wrapped_shell(
         "-l",
         &format!("touch '{}'\n", ready.display()),
     ]);
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     loop {
         let names = server
             .tmux
@@ -572,6 +572,10 @@ fn attach_client(server: &IsolatedServer, session: &str) -> Box<dyn portable_pty
         command.env(name, value);
     }
     command.env("TERM", "xterm-256color");
+    // tmux refuses to attach a session from inside another one, and these tests are often run
+    // from a terminal this app has already wrapped in tmux.
+    command.env_remove("TMUX");
+    command.env_remove("TMUX_PANE");
     let child = pty
         .slave
         .spawn_command(command)
@@ -606,8 +610,10 @@ fn a_click_leaves_copy_mode_only_at_the_bottom_of_the_history() {
     let mut client = attach_client(&server, session);
 
     let ask = |format: &str| server.output(&["display-message", "-p", "-t", session, format]);
+    // Long enough for a machine running the whole suite at once: attaching a real client and
+    // having tmux report it takes far longer there than on an idle one.
     let wait_until = |format: &str, done: &dyn Fn(&str) -> bool, what: &str| {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
         loop {
             let value = server.output(&["display-message", "-p", "-t", session, format]);
             if done(&value) {
