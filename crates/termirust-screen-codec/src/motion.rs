@@ -35,7 +35,7 @@ impl Default for MotionConfig {
             demote_ms: 500,
             min_tiles: 12,
             min_side_tiles: 3,
-            tile_path_max_hz: 8,
+            tile_path_max_hz: 5,
         }
     }
 }

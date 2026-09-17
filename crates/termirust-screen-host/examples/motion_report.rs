@@ -2,7 +2,7 @@
 //!
 //! `cargo run -p termirust-screen-host --release --example motion_report`
 //!
-//! The                                 let inside = tile.map(|tile| { path's workloads are measured in `termirust-screen-codec`'s `workload_report`. This
+//! The tile path's workloads are measured in `termirust-screen-codec`'s `workload_report`. This
 //! is the other half: the target in section 4.8 for "watching a video region" — 300 kbps to
 //! 2 Mbps, adaptive — which nothing had measured, because until M4 there was no motion path to
 //! measure. It runs a real `HostSession`, a real `MotionSender` and this machine's hardware HEVC

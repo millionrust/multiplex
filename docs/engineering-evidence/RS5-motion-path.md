@@ -17,21 +17,25 @@ video.
 
 | Path | Tiles kbps | Video kbps | Parity kbps | Total kbps | Target |
 |---|---:|---:|---:|---:|---|
-| Stage A, tiles only | 707 | — | — | 707 | ≤ 600 kbps, visibly choppy |
-| Stage B, motion path | 14 | 147 | 42 | 202 | 300 kbps – 2 Mbps, adaptive |
+| Stage A, tiles only | 465 | — | — | 465 | ≤ 600 kbps, visibly choppy |
+| Stage B, motion path | 14 | 146 | 42 | 202 | 300 kbps – 2 Mbps, adaptive |
 
-Stage B is **3.5× cheaper** than the tile path on the workload the motion path exists for, and
-lands inside its target. Parity adds 28% on top of the video, which is the ratio the policy picks
+Stage B is **2.3× cheaper** than the tile path on the workload the motion path exists for, and
+lands inside its target. Parity adds 29% on top of the video, which is the ratio the policy picks
 for a link that has reported no loss — the floor, not a reaction to anything.
 
 The first second is excluded from both. A session opens by sending the whole screen once, and on a
 1440 × 900 desktop that one frame is large enough to swamp a short run and make every workload
 measure roughly the same. That is how a benchmark can be precise and meaningless at once.
 
-Stage A is now **over** its ≤ 600 kbps target on this workload. That figure is honest rather than
-new: it is what the tile path has always cost for a window of this size, and it only became
-visible once the region was tracked correctly (below). The synthetic content — every row of the
-window changing every frame — is also harsher than most real video.
+Stage A first measured 707 kbps here, over its ≤ 600 kbps target. That figure was honest rather
+than new — it is what the tile path had always cost for a window of this size, and it only became
+visible once the region was tracked correctly (below). It came down to 465 by lowering
+`tile_path_max_hz` from 8 to 5, which is the rate at which a promoted region is still covered by
+tiles for a viewer with no decoder. That costs smoothness on exactly the content whose target
+already says "visibly choppy", and it is the cheapest lever there is: one number, and the whole
+region's tile cost scales with it. The synthetic content — every row of the window changing every
+frame — is also harsher than most real video.
 
 ## Two bugs the measurement found, which review had not
 
@@ -46,8 +50,8 @@ as 8,400 tile operations inside the video window over 150 batches, about 180 kbp
 region may now grow, and only grow: shrinking while playing would move the boundary back and forth
 and re-key the encoder each time.
 
-**The region was sent twice.** Once promoted, the tile path throttles the region to 8 Hz rather
-than stopping, which is right while nothing else is carrying it — a viewer with no decoder still
+**The region was sent twice.** Once promoted, the tile path throttles the region to
+`tile_path_max_hz` rather than stopping, which is right while nothing else is carrying it — a viewer with no decoder still
 sees a moving picture. But once the motion path *is* carrying it, those tiles are pixels paid for
 twice. The encoder now takes `set_motion_carried`, and the host turns it on **only when the viewer
 has acknowledged a video frame**. Acknowledgement is proof the decoder started; assuming it would
@@ -67,7 +71,10 @@ touching the region may join it.
 - Real captured pixels. The content is synthetic, so the byte counts are indicative.
 - Latency. This measures what goes on the wire, not when it arrives; the 4.8 latency targets need
   a real network.
-- The degradation ladder under a squeeze. On a 320 kbps link it settles at `NoRefinement` and the
+- What the degradation ladder is worth. On a 320 kbps link it settles at `NoRefinement` and the
   workload does not come down, because on this content refinement was never a significant cost and
-  the viewport covers the window. A workload that the ladder can actually shrink is its own test.
+  the viewport covers the window. That is a measurement proving nothing, so the ladder got its own
+  test against a workload it can actually shrink: [RS6](RS6-ladder.md), which found four of the
+  five rungs wired to nothing — including one that stopped a host sending anything at all once the
+  screen sat still.
 - Any machine but this one. The encoder is Apple's; Windows and Linux have neither.
