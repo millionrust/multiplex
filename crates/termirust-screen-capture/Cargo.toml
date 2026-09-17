@@ -23,3 +23,9 @@ windows = { version = "0.61", features = [
     # DXGI_OUTPUT_DESC carries an HMONITOR, so the output description only exists with Gdi.
     "Win32_Graphics_Gdi",
 ] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Wayland gives no way to capture without the portal, and the portal hands back a PipeWire node.
+ashpd = { version = "0.13", default-features = false, features = ["async-io", "screencast"] }
+async-io = "2"
+pipewire = "0.8"

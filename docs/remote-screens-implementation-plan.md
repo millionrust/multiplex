@@ -679,6 +679,15 @@ scheduled-task equivalent.
    (BSL-1.0), `raptorq` (Apache-2.0), `openh264` (BSD-2 with Cisco's patent grant when
    using their binary), `windows-capture`/`ashpd` (already
    locked).
+   As built at M6, the capture backends took: on Windows, `windows` 0.61 (MIT/Apache) — already
+   in the lock file, so nothing new entered the tree; on Linux, `ashpd` 0.13 (MIT, already locked)
+   with its `screencast` feature, `async-io` 2 (MIT/Apache, already locked), and `pipewire` 0.8
+   (MIT), which is new and brings `libspa`, `pipewire-sys`, `libspa-sys` (all MIT),
+   `cookie-factory` (MIT), `nix` (MIT), and a build-time tree of `system-deps` (MIT/Apache) and
+   `bindgen` (BSD-3-Clause). All permissive; `bindgen` and `system-deps` are build-time only.
+   `pipewire-sys` links the system `libpipewire-0.3` (MIT), which is not vendored — a Linux build
+   needs `libpipewire-0.3-dev` present, and `windows-capture` was **not** taken, because it wraps
+   Windows.Graphics.Capture, which reports no damage.
 6. `cargo test --workspace --all-targets --locked` and `cargo deny check` green.
 
 ---

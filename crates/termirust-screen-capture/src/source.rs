@@ -101,6 +101,12 @@ pub trait FrameSource {
 
 /// Converts operating-system rectangles in `f64` pixels to whole-pixel rectangles inside `size`,
 /// rounding outward so no changed pixel is missed. Empty results are dropped.
+///
+/// Unused on Linux, where the portal backend cannot reach PipeWire's damage regions and every
+/// frame reports `Damage::Unknown`. It stays compiled and tested there anyway: it is pure
+/// arithmetic, the test is worth running on every platform, and the day the Linux backend grows
+/// damage this is what it will convert it with.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub fn pixel_rects(rects: impl IntoIterator<Item = (f64, f64, f64, f64)>, size: Size) -> Vec<Rect> {
     rects
         .into_iter()

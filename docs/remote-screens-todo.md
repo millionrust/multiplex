@@ -350,8 +350,12 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   Windows has two capture APIs and only one of them suits this codec. Windows.Graphics.Capture is
   newer, composites the cursor and can capture a single window, but hands back a whole texture
   every frame and never says what changed. Desktop Duplication is whole-display only and leaves
-  the cursor out, but reports dirty and move rectangles — and the entire cost model here is
-  damage, so damage wins.
+  the cursor out, but reports dirty and move rectangles, so it wins.
+  Worth being exact about what damage buys, because it is easy to overstate: it saves the encoder
+  hashing every tile on the screen every frame, not bytes on the wire. Without damage the encoder
+  compares everything and still sends only what changed, so the cost of `Damage::Unknown` is CPU
+  and the latency that comes with it. That is why it is worth having where the platform offers it
+  and survivable where it does not — see 6.2.
   A move is reported as damage at **both** ends: the destination holds new pixels, and whatever is
   at the source now arrived some other way. Over-reporting costs tile comparisons; under-reporting
   leaves a viewer looking at pixels that stay wrong until something else happens to touch them.
@@ -368,7 +372,30 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   asking for anything but native pixels is refused rather than quietly served at the wrong size),
   and wiring the backend into `controller/screen_sharing.rs`, which still names the macOS source
   directly.
-- [ ] 6.2 `feat(screen-capture): capture through the PipeWire portal on Linux`
+- [x] 6.2 `feat(screen-capture): capture through the PipeWire portal on Linux`
+  On Wayland an application cannot enumerate screens, choose one, or start capturing them — the
+  compositor does all three behind a portal the user answers. That is the security model, not an
+  obstacle, and it makes this backend a different shape from the other two: there is no
+  `displays()` at all, because nothing can be listed before the user has picked, and
+  `CaptureConfig::display_id` is ignored. A caller starts a source and then asks it what it got.
+  The restore token is what makes the second run bearable: stored and handed back, the compositor
+  skips the dialog.
+  Frames report `Damage::Unknown`. PipeWire does carry damage, in a `SPA_META_VideoDamage` on
+  each buffer, but the safe `pipewire` 0.8 `Buffer` exposes only the data planes and no metadata,
+  so reaching it means hand-rolling the stream against `pw_sys`. Per 6.1, that costs the encoder
+  a full-screen tile hash per frame — CPU and latency — and not one byte on the wire, which is a
+  fair price for a first backend and a clear follow-up.
+  The format is offered as a negotiation, not a demand: size and framerate as ranges, and both
+  BGRx and BGRA, because naming one exact size is how a stream fails to start on a screen that is
+  not that size. DMA-BUF buffers are dropped rather than rendered black; handling them needs a GPU
+  import this does not do.
+  New dependency `pipewire` 0.8 (MIT) and its tree, recorded in the plan's gate 5. It links the
+  system `libpipewire-0.3`, so a Linux build needs `libpipewire-0.3-dev`.
+  **(device)** Type-checked, clippy-clean and unit-tested on `x86_64-unknown-linux-gnu` in a
+  container — the pure parts (stride unpacking, short-buffer rejection, the offered format) have
+  real tests — but never run against a live compositor. What is unverified is everything that
+  needs one: whether the portal dialog appears and is answered, whether a restore token actually
+  skips it next time, and whether a real compositor offers a mappable buffer rather than DMA-BUF.
 - [ ] 6.3 `feat(screen-host): inject input on Windows and Linux`
   - [x] Windows, with `SendInput`. Hand-declared FFI in one `allow(unsafe_code)` module, so the
     crate keeps `deny(unsafe_code)` everywhere else and the `windows` crate stays out of the
