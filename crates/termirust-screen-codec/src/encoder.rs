@@ -197,6 +197,11 @@ impl Encoder {
         Ok(Some(batch))
     }
 
+    /// How much detail the first pass currently keeps.
+    pub const fn lossy_detail(&self) -> LossyDetail {
+        self.config.lossy_detail
+    }
+
     /// The area currently treated as video, if any.
     pub fn motion_region(&self) -> Option<Rect> {
         self.motion.region()

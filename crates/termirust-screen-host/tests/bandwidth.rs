@@ -224,6 +224,49 @@ fn a_slower_link_measures_slower() {
 }
 
 #[test]
+fn a_link_that_cannot_keep_up_makes_the_session_give_things_up_in_order() {
+    use termirust_screen_host::{Ladder, RateEstimator, Rung};
+
+    // The ladder and estimator, driven by what the real loop measures. This is the same pair the
+    // host wires together; putting them here keeps the test honest about the numbers rather than
+    // asserting on a private field.
+    let mut estimator = RateEstimator::new();
+    let mut ladder = Ladder::new();
+    let mut seen = Vec::new();
+
+    let mut link = Link::new(120_000, everything());
+    let mut now_ms = 0;
+    for step in 0..120 {
+        link.show(step);
+        for (bytes, spread) in link.measured.drain(..) {
+            estimator.record(bytes, spread);
+        }
+        // What the host sends per frame, at the cadence it would send it.
+        ladder.sent(4_000);
+        now_ms += 40;
+        seen.push(ladder.consider(now_ms, estimator.estimate()));
+    }
+
+    let ended = *seen.last().expect("the ladder ran");
+    assert!(
+        ended.is_degraded(),
+        "a link far below what the screen wants should have given something up"
+    );
+    // Whatever it gave up, it gave up in order: no rung is ever skipped on the way down.
+    let mut worst = Rung::Full;
+    for rung in &seen {
+        assert!(
+            *rung <= worst.max(*rung),
+            "the ladder jumped from {worst:?} to {rung:?}"
+        );
+        worst = worst.max(*rung);
+    }
+    // And the first thing it gave up is the one nobody notices.
+    let first_change = seen.iter().find(|rung| **rung != Rung::Full);
+    assert_eq!(first_change, Some(&Rung::NoRefinement));
+}
+
+#[test]
 fn a_viewer_that_never_agreed_is_never_asked_to_measure() {
     let mut link = Link::new(1_000_000, FeatureSet::none());
     for step in 0..12 {

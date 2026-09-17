@@ -29,12 +29,14 @@ use termirust_screen_session::{
     Grants, HostConfig, HostEvent, HostSession, InputEvent, ResumeStore, TicketVerifier,
 };
 
+pub mod ladder;
 pub mod motion;
 pub mod parity;
 pub mod rate;
 #[cfg(target_os = "macos")]
 mod video;
 
+pub use ladder::{Ladder, Rung};
 pub use motion::{
     MotionEncoder, MotionEncoders, MotionFrame, MotionRequest, MotionSender, NoEncoders,
     platform_encoders,
@@ -85,6 +87,8 @@ struct Inner {
     burst: u64,
     /// What the link has recently delivered, measured rather than assumed.
     rate: RateEstimator,
+    /// What has been given up to fit it.
+    ladder: Ladder,
 }
 
 impl Inner {
@@ -117,9 +121,25 @@ impl Inner {
             bytes.extend(frame);
             self.burst = self.burst.wrapping_add(1);
         }
+        self.ladder.sent(bytes.len() as u64);
         self.outgoing
             .send(bytes)
             .map_err(|_| ListenerError::new(ListenerErrorCode::Io))
+    }
+
+    /// Reconsiders what to give up, and tells the session.
+    ///
+    /// Called once per captured frame, which is often enough to follow a link that changes and
+    /// rare enough that the ladder's own dwell time does the deciding rather than this cadence.
+    fn steer(&mut self, now_ms: u64) {
+        let estimate = self.rate.estimate();
+        let before = self.ladder.rung();
+        let rung = self.ladder.consider(now_ms, estimate);
+        if rung != before {
+            self.session.set_limits(rung.limits());
+            self.motion
+                .set_bitrate(rung.video_bitrate(motion::DEFAULT_VIDEO_BITRATE));
+        }
     }
 
     fn emit(&self, event: ScreenHostEvent) {
@@ -138,7 +158,7 @@ impl Inner {
                 HostEvent::VideoAcknowledged { tokens, .. } => self.motion.acknowledged(&tokens),
                 HostEvent::VideoLost { .. } => self.motion.lost(),
                 // The measurement of the link. It stays here rather than reaching the
-                // application: what to do about it is 5.2, and nothing above this needs it.
+                // application: the ladder is what acts on it, and nothing above needs to know.
                 HostEvent::BurstMeasured {
                     bytes,
                     spread_micros,
@@ -201,6 +221,7 @@ impl ScreenHost {
             motion: MotionSender::new(encoders),
             burst: 0,
             rate: RateEstimator::new(),
+            ladder: Ladder::new(),
         }));
         (
             Self {
@@ -343,6 +364,8 @@ impl ScreenHostHandle {
             session, motion, ..
         } = &mut *inner;
         motion.frame(session, surface, frame);
+        // After the frame, so the ladder sees what this one cost before deciding about the next.
+        inner.steer(now_ms);
         inner.flush()
     }
 
@@ -363,6 +386,11 @@ impl ScreenHostHandle {
     /// Whether a device is still watching.
     pub fn is_open(&self) -> bool {
         self.inner.lock().expect("screen host mutex").open
+    }
+
+    /// What the session has given up to fit the link, for a header that has to explain itself.
+    pub fn rung(&self) -> Rung {
+        self.inner.lock().expect("screen host mutex").ladder.rung()
     }
 
     /// Bytes per second this link has recently delivered, once enough bursts have been measured.

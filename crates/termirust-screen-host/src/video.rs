@@ -12,10 +12,10 @@ use crate::motion::{MotionEncoder, MotionEncoders, MotionFrame, MotionRequest};
 pub struct VideoToolbox;
 
 impl MotionEncoders for VideoToolbox {
-    fn open(&self, width: u32, height: u32) -> Option<Box<dyn MotionEncoder>> {
+    fn open(&self, width: u32, height: u32, bitrate: u32) -> Option<Box<dyn MotionEncoder>> {
         // An encoder that will not offer long-term references fails to open, so a Mac that cannot
         // recover cheaply from loss keeps the tile path rather than paying a keyframe per loss.
-        HevcEncoder::open(EncoderConfig::new(width, height))
+        HevcEncoder::open(EncoderConfig::new(width, height).with_bitrate(bitrate))
             .ok()
             .map(|encoder| Box::new(Session { encoder }) as Box<dyn MotionEncoder>)
     }

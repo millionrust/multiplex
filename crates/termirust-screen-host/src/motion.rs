@@ -19,6 +19,9 @@ use termirust_screen_session::{HostSession, TicketVerifier};
 
 use crate::parity::{ParityPolicy, parity_for};
 
+/// What the motion encoder spends on a link nothing is known about yet.
+pub const DEFAULT_VIDEO_BITRATE: u32 = 8_000_000;
+
 /// What the encoder should do with the frame being submitted.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct MotionRequest<'a> {
@@ -56,7 +59,9 @@ pub trait MotionEncoder: Send {
 pub trait MotionEncoders: Send + Sync {
     /// `None` when this machine has no encoder, or none for a region this size. The caller keeps
     /// the tile path, which is always running anyway.
-    fn open(&self, width: u32, height: u32) -> Option<Box<dyn MotionEncoder>>;
+    ///
+    /// `bitrate` is what the rate controller currently allows, in bits per second.
+    fn open(&self, width: u32, height: u32, bitrate: u32) -> Option<Box<dyn MotionEncoder>>;
 }
 
 /// Sends a surface's motion region as video, for as long as there is one.
@@ -69,6 +74,8 @@ pub struct MotionSender {
     acknowledged: Vec<u32>,
     /// How much parity the link currently deserves.
     policy: ParityPolicy,
+    /// What the rate controller allows the motion encoder to spend, in bits per second.
+    bitrate: u32,
 }
 
 impl std::fmt::Debug for MotionSender {
@@ -87,6 +94,8 @@ impl std::fmt::Debug for MotionSender {
 struct Active {
     region: Rect,
     encoder: Box<dyn MotionEncoder>,
+    /// What this encoder was opened for, so a changed allowance is noticed.
+    bitrate: u32,
     sequence: u64,
     /// The decoder configuration is only available after the first frame, so it is sent as soon
     /// as the encoder has one, and once only.
@@ -112,7 +121,14 @@ impl MotionSender {
             refresh: false,
             acknowledged: Vec::new(),
             policy: ParityPolicy::default(),
+            bitrate: DEFAULT_VIDEO_BITRATE,
         }
+    }
+
+    /// Sets what the motion encoder may spend. Takes effect on the next frame, which reopens the
+    /// encoder when the figure actually changed.
+    pub const fn set_bitrate(&mut self, bitrate: u32) {
+        self.bitrate = bitrate;
     }
 
     /// The rectangle currently being streamed, if any. For tests and for the session header.
@@ -165,18 +181,25 @@ impl MotionSender {
             self.state = None;
             return;
         };
+        // A new region needs a new encoder; so does a new bitrate, because the rate controller
+        // has decided the old one is spending more than the link has. That costs a keyframe, but
+        // rung changes are rare by construction, and a stream at the wrong bitrate costs more.
         if self
             .state
             .as_ref()
-            .is_none_or(|active| active.region != region)
+            .is_none_or(|active| active.region != region || active.bitrate != self.bitrate)
         {
-            let Some(encoder) = self.encoders.open(region.width, region.height) else {
+            let Some(encoder) = self
+                .encoders
+                .open(region.width, region.height, self.bitrate)
+            else {
                 self.state = None;
                 return;
             };
             self.state = Some(Active {
                 region,
                 encoder,
+                bitrate: self.bitrate,
                 sequence: 0,
                 sent_config: false,
                 first: true,
@@ -289,7 +312,7 @@ pub fn platform_encoders() -> Box<dyn MotionEncoders> {
 pub struct NoEncoders;
 
 impl MotionEncoders for NoEncoders {
-    fn open(&self, _width: u32, _height: u32) -> Option<Box<dyn MotionEncoder>> {
+    fn open(&self, _width: u32, _height: u32, _bitrate: u32) -> Option<Box<dyn MotionEncoder>> {
         None
     }
 }

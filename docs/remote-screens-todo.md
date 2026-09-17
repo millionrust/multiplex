@@ -309,7 +309,17 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   burst of n chunks — which is exactly the kind of wrong that looks plausible.
   Measured over whatever carries the bytes, so today that is the ordered Controller channel; iroh
   datagrams in 5.3 make the spread mean more. Nothing acts on the number yet: that is 5.2.
-- [ ] 5.2 `feat(screen-host): drive the degradation steps from the estimate`
+- [x] 5.2 `feat(screen-host): drive the degradation steps from the estimate`
+  Five rungs in the plan's order, taken as demand crowds the estimate and given back as it
+  clears: stop refinement, viewport only, slower frames, coarser first pass, capped video. The
+  terminal text path is never on the ladder.
+  A rung holds for 1.5 s before another is taken, and climbing back needs more headroom than
+  staying put. Both exist for the same reason: without them a controller reacts to a measurement
+  of its own previous behaviour and walks itself to the floor.
+  Wired to real knobs — `Limits` on the session, `LossyDetail::LOW`, an encoder reopened at the
+  capped bitrate. Two rungs the plan names are **not** here: half-scale viewport tiles and 480p
+  video both need work that does not exist yet (viewport priority in the codec, and a scaler), so
+  the ladder stops at five rather than pretending to have seven.
 - [ ] 5.3 `feat(screen-transport): survive network changes with migration and 0-RTT resume`
 - [ ] 5.4 `docs(self-hosted-relay): deploy an iroh relay next to relay-host`
 - [ ] 5.5 **(device)** Full network matrix for both stages; tune the steps

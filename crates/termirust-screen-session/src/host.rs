@@ -3,8 +3,8 @@
 use std::collections::{HashMap, VecDeque};
 
 use termirust_screen_codec::{
-    Encoder, EncoderConfig, Frame, FrameBuffer, Generation, MotionEvent, Rect, Size, SurfaceId,
-    downscale, preview_factor,
+    Encoder, EncoderConfig, Frame, FrameBuffer, Generation, LossyDetail, MotionEvent, Rect, Size,
+    SurfaceId, downscale, preview_factor,
 };
 use termirust_screen_protocol::{
     ControlHolder, FeatureSet, Hello, MAX_PANES, Message, PROTOCOL_VERSION, PanePlacement,
@@ -59,6 +59,37 @@ impl Default for HostConfig {
             thumbnail_interval_ms: 1_000,
             refine_budget_bytes: 2_000,
             features: FeatureSet::none(),
+        }
+    }
+}
+
+/// What the session is currently allowed to spend, which the rate controller above it sets.
+///
+/// Every field is something the session can give up without the viewer noticing anything but
+/// less detail or less often. None of it touches the terminal text path: that is the cheapest
+/// thing on the wire and the thing people actually need, so it is never degraded.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Limits {
+    /// Exact-pixel refinement per idle frame. Zero stops the refinement queue, which is the
+    /// first thing to go: it only ever makes an already-readable screen sharper.
+    pub refine_budget_bytes: usize,
+    /// Send nothing outside what the viewer says it is looking at. Costs nothing when the viewer
+    /// is showing the whole screen, and saves a great deal when it is zoomed in.
+    pub viewport_only: bool,
+    /// Least time between interactive batches. Frames captured sooner are folded into the next
+    /// one rather than dropped, so nothing is lost, it just arrives later.
+    pub minimum_interval_ms: u64,
+    /// How much detail the first pass keeps.
+    pub lossy_detail: LossyDetail,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            refine_budget_bytes: 2_000,
+            viewport_only: false,
+            minimum_interval_ms: 0,
+            lossy_detail: LossyDetail::STANDARD,
         }
     }
 }
@@ -177,6 +208,8 @@ pub struct HostSession<V: TicketVerifier> {
     panes: HashMap<u32, Vec<PanePlacement>>,
     attached: Vec<PaneSession>,
     outbox: VecDeque<Message>,
+    /// What the rate controller currently allows. Starts at whatever the config asked for.
+    limits: Limits,
 }
 
 impl<V: TicketVerifier> HostSession<V> {
@@ -197,7 +230,28 @@ impl<V: TicketVerifier> HostSession<V> {
             panes: HashMap::new(),
             attached: Vec::new(),
             outbox: VecDeque::new(),
+            limits: Limits {
+                refine_budget_bytes: config.refine_budget_bytes,
+                ..Limits::default()
+            },
         }
+    }
+
+    /// Sets what this session may spend. See [`Limits`].
+    ///
+    /// Takes effect on the next frame; nothing already sent is disturbed, so a viewer never has
+    /// to be told the rules changed.
+    pub fn set_limits(&mut self, limits: Limits) {
+        self.limits = limits;
+        for subscription in self.subscriptions.values_mut() {
+            if subscription.profile == Profile::Interactive {
+                subscription.encoder.set_lossy_detail(limits.lossy_detail);
+            }
+        }
+    }
+
+    pub const fn limits(&self) -> Limits {
+        self.limits
     }
 
     pub fn is_open(&self) -> bool {
@@ -560,6 +614,7 @@ impl<V: TicketVerifier> HostSession<V> {
             return Ok(());
         }
         let config = self.config;
+        let limits = self.limits;
         let masks = self.masked_rects(surface);
         for profile in [Profile::Interactive, Profile::Thumbnail] {
             let key = key_for(surface, profile);
@@ -573,12 +628,37 @@ impl<V: TicketVerifier> HostSession<V> {
             }
             let batch = match profile {
                 Profile::Interactive => {
+                    // A frame that arrives sooner than the ladder allows is not dropped: its
+                    // damage stays pending and goes out with the next one, so nothing is lost,
+                    // it just arrives later. That is what makes raising the interval safe.
+                    let too_soon = limits.minimum_interval_ms > 0
+                        && subscription.last_sent_ms.is_some_and(|last| {
+                            now_ms.saturating_sub(last) < limits.minimum_interval_ms
+                        });
+                    if too_soon {
+                        continue;
+                    }
                     let pending = std::mem::replace(&mut subscription.pending, Pending::Nothing);
-                    let rects = match &pending {
-                        Pending::Rects(rects) => Some(rects.as_slice()),
+                    // Only what the viewer is looking at, when the ladder says so. Clipping the
+                    // damage leaves the rest pending in the encoder's own tile state, so it is
+                    // sent whenever the rung is given back.
+                    let clipped = match (&pending, limits.viewport_only, subscription.viewport) {
+                        (Pending::Rects(rects), true, Some(viewport)) => Some(
+                            rects
+                                .iter()
+                                .map(|rect| rect.intersect(viewport.rect))
+                                .filter(|rect| !rect.is_empty())
+                                .collect::<Vec<_>>(),
+                        ),
                         _ => None,
                     };
-                    if matches!(pending, Pending::Nothing) {
+                    let rects = match (&clipped, &pending) {
+                        (Some(clipped), _) => Some(clipped.as_slice()),
+                        (None, Pending::Rects(rects)) => Some(rects.as_slice()),
+                        _ => None,
+                    };
+                    if matches!(pending, Pending::Nothing) || rects.is_some_and(<[Rect]>::is_empty)
+                    {
                         None
                     } else {
                         let batch = if masks.is_empty() {
@@ -614,7 +694,7 @@ impl<V: TicketVerifier> HostSession<V> {
                         if batch.ops.is_empty() {
                             subscription
                                 .encoder
-                                .refine_at(now_ms, config.refine_budget_bytes)?
+                                .refine_at(now_ms, limits.refine_budget_bytes)?
                         } else {
                             Some(batch)
                         }

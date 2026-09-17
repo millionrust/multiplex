@@ -93,7 +93,7 @@ impl MotionEncoder for Fake {
 struct Fakes(Arc<Mutex<Recorder>>);
 
 impl MotionEncoders for Fakes {
-    fn open(&self, width: u32, height: u32) -> Option<Box<dyn MotionEncoder>> {
+    fn open(&self, width: u32, height: u32, _bitrate: u32) -> Option<Box<dyn MotionEncoder>> {
         self.0.lock().unwrap().opened.push((width, height));
         Some(Box::new(Fake {
             log: Arc::clone(&self.0),
