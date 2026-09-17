@@ -338,6 +338,18 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
 - [ ] 6.1 `feat(screen-capture): capture with Desktop Duplication on Windows`
 - [ ] 6.2 `feat(screen-capture): capture through the PipeWire portal on Linux`
 - [ ] 6.3 `feat(screen-host): inject input on Windows and Linux`
+  - [x] Windows, with `SendInput`. Hand-declared FFI in one `allow(unsafe_code)` module, so the
+    crate keeps `deny(unsafe_code)` everywhere else and the `windows` crate stays out of the
+    lockfile for four functions and a struct.
+    Keys travel as PS/2 set 1 scancodes rather than virtual keys, which is what keeps them
+    positional: a viewer on a French keyboard driving a US host gets what that host's layout
+    produces from the position pressed. Text goes as `KEYEVENTF_UNICODE`, because a pasted line or
+    an emoji has no position to send.
+    The two keymaps are now checked against each other, and the test names every key the two hosts
+    differ on rather than letting a gap appear silently — `F13` upwards, Apple's `Help` and keypad
+    `=` one way; Print Screen, Scroll Lock and the Menu key the other.
+    Cross-checked against `x86_64-pc-windows-msvc`. **(device)** Never run on Windows.
+  - [ ] Linux, through `uinput`.
 - [x] 6.4 `feat(controller-service): serve screens from the macOS background service`
   The app's listener worker already served screens; the LaunchAgent's used the plain worker, so a
   paired phone could watch this Mac only while the app happened to be open — the one thing the
