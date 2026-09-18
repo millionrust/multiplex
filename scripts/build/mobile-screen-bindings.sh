@@ -115,7 +115,13 @@ case "$(uname -s)" in
 esac
 
 HOST_TARGET="$BUILD_ROOT/host-target"
-CARGO_TARGET_DIR="$HOST_TARGET" cargo build --locked -p "$CRATE" --release \
+# uniffi reads the interface out of the library's static symbol table (`elf.syms` in
+# uniffi_bindgen's extract_from_elf), which the workspace's `strip = "symbols"` release profile
+# deletes on ELF — leaving only "No UniFFI metadata found". Mach-O keeps enough to survive it,
+# so this only ever bit Linux. The host library is a build input, never shipped, so unstripping
+# it costs nothing: the iOS and Android libraries below are separate builds that keep the profile.
+CARGO_PROFILE_RELEASE_STRIP=none CARGO_TARGET_DIR="$HOST_TARGET" \
+  cargo build --locked -p "$CRATE" --release \
   --features bindgen-cli --lib --bin uniffi-bindgen
 HOST_LIB="$HOST_TARGET/release/lib${LIB_STEM}.$HOST_LIB_SUFFIX"
 
