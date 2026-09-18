@@ -257,7 +257,11 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # The four Android ABIs the bindings are built for. A developer's machine usually has them
+      # already, which is why their absence here only shows up as a compile that cannot find core.
       - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
       - uses: Swatinem/rust-cache@v2
         with:
