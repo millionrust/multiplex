@@ -70,6 +70,9 @@ Pure Rust, no platform code, fully testable in CI.
   workspace lockfile.
 - [ ] 0.4 **(device)** iroh phone ↔ Mac over cellular with a self-hosted relay; go/no-go note
   Now gates the Stage B transport (M5), not Stage A.
+  Runbook: [remote-screens-device-runbook.md](remote-screens-device-runbook.md) — setup, what to
+  record, and the pass/no-go line. A simulator cannot help here at all: there is no carrier NAT to
+  punch through and nothing to fall back to a relay for.
 - [x] 0.5 `docs(remote-screens): record spike results` in `docs/engineering-evidence/`
   0.3 is in [RS4](engineering-evidence/RS4-videotoolbox-ltr.md). What the motion path actually
   costs, once built, is in [RS5](engineering-evidence/RS5-motion-path.md), measured with the real
@@ -261,6 +264,11 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   broken its terminal connection. It knows all eight bits now.
   16 unit tests cover the geometry, the capability gate, and the ticket rules.
 - [ ] 3.6 **(device)** Stage A network matrix on a real iPhone and Android phone [7]
+  Runbook: [remote-screens-device-runbook.md](remote-screens-device-runbook.md). Much of this can
+  be run first in a simulator with `scripts/bench/condition-link.sh` (dummynet through dnctl/pfctl,
+  already on macOS) and the Android emulator's own `-netdelay`/`-netspeed`. That settles the stall
+  and convergence criteria against the real client code over a real socket. It does **not** settle
+  input-to-glass P95 — the simulator's display pipeline is the Mac's — so the phones stay required.
 
 ## M4 — Motion path (Stage B, part 1) [4.4]
 
@@ -416,6 +424,15 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   "Converged" was settled by the owner on 2026-09-18 as "showing the current screen, lossy first
   pass allowed"; section 7 now says so.
   What still needs the device: input-to-glass P95, and a real iPhone and Android phone.
+  Runbook: [remote-screens-device-runbook.md](remote-screens-device-runbook.md), which also covers
+  the Stage B criteria the harness cannot reach — P95 under RTT + 40 ms, and no keyframe on the
+  video path after a single lost datagram — and says how to tune the ladder's constants afterwards
+  without undoing what RS6 and RS7 measured.
+  A simulator pass comes first and is worth doing: `scripts/bench/condition-link.sh` shapes the
+  session's port with dummynet, which settles the stall and convergence criteria against the real
+  client code. It cannot settle P95, and it cannot be trusted on the hardware decode path — the
+  Simulator runs on the host's media frameworks, which is the last thing to trust when the whole
+  premise is hardware long-term references.
 
 ## M6 — Windows and Linux hosts, background hosting [4.2, 4.7]
 
@@ -548,9 +565,22 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   meant anything: typing was one line of text with no caret and no status bar, and "video region"
   was white noise, which no screen is. See [RS1](engineering-evidence/RS1-screen-codec.md).
 - [ ] Network matrix pass criteria for the stage being released
+  Gate 2. Not a separate run: it is 3.6 for Stage A or 5.5 for Stage B, met on a real iPhone over
+  cellular and on Wi-Fi with the conditioner. Per stage, so Stage A can pass and ship while Stage B
+  is open. See [remote-screens-device-runbook.md](remote-screens-device-runbook.md).
 - [ ] Stage A 30-minute usability session over 300 ms / 5 % / 1 Mbps
+  Gate 2a. Protocol, observation sheet and pass/fail line:
+  [remote-screens-usability-session.md](remote-screens-usability-session.md). The link is shaped
+  with `sudo scripts/bench/condition-link.sh up 3 --port <port>`, which shapes that port only —
+  conditioning the whole Mac would throttle the screen host too and measure the wrong thing.
+  "No complaint other than speed" is the whole test, and the sheet says what else counts.
 - [ ] Capability ADR amendment accepted
 - [ ] Independent review of ticket bootstrap and endpoint pinning
+  Gate 4. Brief for the reviewer:
+  [remote-screens-security-review-package.md](remote-screens-security-review-package.md) — scope,
+  what changed and how that was checked, the seven questions ranked by what would hurt most, and
+  what a finished note has to contain. Written by the implementer, so every claim in it is a
+  hypothesis with a pointer attached.
 - [x] New dependencies recorded with licence and reason
   Recorded in the plan's gate 5, including what the M6 capture backends took and what
   `windows-capture` was rejected for. `cargo deny check` is green on advisories, bans, licences
