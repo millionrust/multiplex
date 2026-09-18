@@ -232,6 +232,13 @@ bounded rotation and retention. See [docs/diagnostics.md](docs/diagnostics.md).
 - SSH config hosts are imported at startup (shown with an `SSH Config` badge) and runtime-synced, not written back into the app state file.
 - Quick connect uses the first available SSH key; for password-only auth, use the host editor form.
 - Durable hosted sessions still poll their Host for output every `motion.hosted_live_poll` (40 ms); SSH and local panes are drawn as output arrives.
+- Typing by hand into a wrapped tab that is scrolled back returns it to the prompt but loses
+  that first character: tmux answers the catch-all copy-mode binding before any binding for the
+  key itself and tells it nothing about which key ran it, so the binding cannot send the key on.
+  Binding every printable key to send itself does not help — tmux still runs the catch-all, and
+  a key sent from the binding that is leaving copy mode is swallowed. A dropped file is not
+  affected: it arrives bracketed, as one key, and the path that follows reaches the program
+  whole. `a_file_dropped_on_a_scrolled_back_tab_reaches_the_program` covers it.
 - A tmux session the app did not configure cannot discover synchronized updates up to tmux
   3.7c: that build has the `Sync` output capability but no `[?2026$p` probe, so answering the
   query changes nothing and a full-screen program inside such a session tears while it

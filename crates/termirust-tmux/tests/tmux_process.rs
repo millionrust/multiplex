@@ -555,9 +555,30 @@ fn the_setup_hides_wrapped_status_bars_and_clears_the_old_scrollback_override() 
     assert!(!overrides().contains("smcup@"));
 }
 
+/// A tmux client on a pseudo-terminal, with the writing end of that terminal so a test can
+/// type into it the way the terminal app does.
+struct AttachedClient {
+    child: Box<dyn portable_pty::Child + Send>,
+    terminal: Box<dyn std::io::Write + Send>,
+}
+
+impl AttachedClient {
+    /// Sends bytes as if the user had typed them, or as Terminal.app sends a dropped file.
+    fn type_bytes(&mut self, bytes: &[u8]) {
+        use std::io::Write as _;
+        self.terminal.write_all(bytes).expect("the terminal writes");
+        self.terminal.flush().expect("the terminal flushes");
+    }
+
+    fn close(mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
 /// Attaches a client to `session` on a pseudo-terminal, because copy-mode scrolling belongs to
 /// a client and a detached session never scrolls.
-fn attach_client(server: &IsolatedServer, session: &str) -> Box<dyn portable_pty::Child + Send> {
+fn attach_client(server: &IsolatedServer, session: &str) -> AttachedClient {
     let pty = portable_pty::native_pty_system()
         .openpty(portable_pty::PtySize {
             rows: 10,
@@ -592,8 +613,9 @@ fn attach_client(server: &IsolatedServer, session: &str) -> Box<dyn portable_pty
             }
         }
     });
+    let terminal = pty.master.take_writer().expect("writer");
     std::mem::forget(pty.master);
-    child
+    AttachedClient { child, terminal }
 }
 
 /// A click starts a selection under the mouse. At the bottom of the history it also leaves copy
@@ -607,7 +629,7 @@ fn a_click_leaves_copy_mode_only_at_the_bottom_of_the_history() {
     let session = "termirust-click";
     server.run(&["new-session", "-d", "-s", session, "-x", "80", "-y", "10"]);
     server.run(&["send-keys", "-t", session, "seq 1 200", "Enter"]);
-    let mut client = attach_client(&server, session);
+    let client = attach_client(&server, session);
 
     let ask = |format: &str| server.output(&["display-message", "-p", "-t", session, format]);
     // Long enough for a machine running the whole suite at once: attaching a real client and
@@ -669,8 +691,71 @@ fn a_click_leaves_copy_mode_only_at_the_bottom_of_the_history() {
     click();
     wait_for("#{pane_in_mode}", "0");
 
-    let _ = client.kill();
-    let _ = client.wait();
+    client.close();
+}
+
+/// A file dropped on a tab that is scrolled back reaches the program. The terminal types the
+/// path in as a bracketed paste, which copy mode would otherwise swallow whole, leaving a tab
+/// that looks like it stopped taking input.
+#[test]
+fn a_file_dropped_on_a_scrolled_back_tab_reaches_the_program() {
+    let Some(server) = IsolatedServer::start() else {
+        return;
+    };
+    let session = "termirust-typing";
+    server.run(&["new-session", "-d", "-s", session, "-x", "80", "-y", "10"]);
+    server.tmux.apply_wrapped_session_appearance(true).unwrap();
+    server.run(&["send-keys", "-t", session, "seq 1 200", "Enter"]);
+    let mut client = attach_client(&server, session);
+
+    let wait_until = |format: &str, done: &dyn Fn(&str) -> bool, what: &str| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        loop {
+            let value = server.output(&["display-message", "-p", "-t", session, format]);
+            if done(&value) {
+                return;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "{format} never {what}, last {value:?}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    };
+    let wait_for = |format: &str, value: &'static str| {
+        wait_until(format, &move |seen: &str| seen == value, value);
+    };
+    wait_for("#{session_attached}", "1");
+    wait_until(
+        "#{history_size}",
+        &|seen: &str| seen.parse::<u32>().unwrap_or(0) >= 20,
+        "filled the history",
+    );
+
+    server.run(&["copy-mode", "-t", session]);
+    server.run(&["send-keys", "-t", session, "-X", "-N", "5", "scroll-up"]);
+    wait_for("#{scroll_position}", "5");
+
+    // What a terminal sends when a file is dropped on it: the path, shell-quoted, bracketed as
+    // a paste. It arrives on the client's terminal, where a real drop comes from.
+    let dropped = "'/tmp/a b.txt'";
+    client.type_bytes(format!("\x1b[200~{dropped} \x1b[201~").as_bytes());
+
+    wait_for("#{pane_in_mode}", "0");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let screen = server.output(&["capture-pane", "-p", "-t", session]);
+        if screen.contains(dropped) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the dropped path never reached the program, screen was {screen:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+
+    client.close();
 }
 
 /// A wrapped tab has to tell tmux what its terminal can do: tmux only works that out for
