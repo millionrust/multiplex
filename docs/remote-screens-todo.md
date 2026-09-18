@@ -341,7 +341,20 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   otherwise is refused when the session opens rather than when a batch goes missing.
 - [ ] 5.3b `feat(screen-transport): survive network changes with migration and 0-RTT resume`
   **Blocked on the 0.4 iroh spike.** The seam above is what it plugs into.
-- [ ] 5.4 `docs(self-hosted-relay): deploy an iroh relay next to relay-host`
+- [x] 5.4 `docs(self-hosted-relay): deploy an iroh relay next to relay-host`
+  [docs/self-hosted-iroh-relay.md](self-hosted-iroh-relay.md), written in full with concrete config
+  at the owner's direction (2026-09-18) rather than waiting on 0.4.
+  It leads with what a relay can and cannot see, because "relay" reads as "man in the middle" and
+  here it is not: the QUIC connection is end to end between the two devices and the screen session
+  inside it is separately authenticated, so an operator keeping every packet has ciphertext. What
+  they do get is metadata — which stable public keys talk, when, for how long, and from which IP —
+  and that is the reason to run your own rather than use n0's.
+  Same machine as `termirust relay-host` is fine: different protocols on different ports, but they
+  fail for the same reasons and are worth one alert and one certificate rota.
+  The guide says plainly that it has been reasoned about rather than operated: the config keys are
+  iroh 1.2's and unrun, there is no capacity figure because 0.4 is what would produce one, and the
+  relay economics question in section 9 of the plan is still open — a relayed *screen* session is
+  orders of magnitude more bytes than a relayed terminal one.
 - [ ] 5.5 **(device)** Full network matrix for both stages; tune the steps
   The software half is done and green: `cargo test -p termirust-screen-host --test matrix` runs all
   24 cells of section 7's matrix and holds the two criteria that do not need a device — no stall
