@@ -987,6 +987,54 @@ mod tests {
         }
     }
 
+    /// Where the reader was looking survives the pane changing size. A pane is measured again
+    /// whenever the window is laid out, so losing the view there drops the reader at the bottom
+    /// of the history for reasons they did not ask for.
+    #[test]
+    fn a_resize_keeps_the_view_where_the_reader_left_it() {
+        let mut terminal = TerminalState::new(TerminalSize::new(20, 10, 0, 0), 500);
+        for line in 0..200 {
+            terminal.process_bytes(format!("line {line}\r\n").as_bytes());
+        }
+        terminal.set_scrollback(60);
+        assert_eq!(terminal.scrollback(), 60);
+        let looking_at = terminal.visible_row_text(0);
+
+        // Narrower and shorter, as a split or a smaller window makes it, and back again.
+        terminal.resize(TerminalSize::new(20, 6, 0, 0));
+        terminal.resize(TerminalSize::new(20, 10, 0, 0));
+
+        assert_eq!(
+            terminal.scrollback(),
+            60,
+            "the view moved: it is now {} rows from the bottom",
+            terminal.scrollback()
+        );
+        assert_eq!(terminal.visible_row_text(0), looking_at);
+    }
+
+    /// Output that arrives while the reader is looking back does not drag the view with it. A
+    /// program printing while its window is in the background is the ordinary case.
+    #[test]
+    fn output_does_not_move_the_view_away_from_the_reader() {
+        let mut terminal = TerminalState::new(TerminalSize::new(20, 10, 0, 0), 500);
+        for line in 0..100 {
+            terminal.process_bytes(format!("line {line}\r\n").as_bytes());
+        }
+        terminal.set_scrollback(40);
+        let looking_at = terminal.visible_row_text(0);
+
+        for line in 100..160 {
+            terminal.process_bytes(format!("line {line}\r\n").as_bytes());
+        }
+
+        assert_eq!(
+            terminal.visible_row_text(0),
+            looking_at,
+            "the reader is now looking at something else"
+        );
+    }
+
     /// A query that arrives in pieces, as it does from a pseudoterminal, is still answered.
     #[test]
     fn a_query_split_across_reads_is_still_answered() {

@@ -2021,6 +2021,7 @@ impl TermiRustApp {
         app.load_settings_inputs(window, cx);
         app.repair_session_group_references();
         app.refresh_global_search_index();
+        app.refresh_wrapped_tmux_behavior(cx);
 
         if app.saved.settings.restore_workspaces_on_launch {
             app.restore_saved_workspaces(window, cx);
