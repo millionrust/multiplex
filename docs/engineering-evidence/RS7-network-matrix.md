@@ -55,12 +55,13 @@ stall on a perfect link. A picture region is sent as a lossy first pass and only
 it goes idle and refinement catches up, so a playing video is *never* exact. That measurement was
 describing the codec working as designed and calling it a failure.
 
-**"Converged" is ambiguous in the plan, so both readings are reported.** "Caught up" is the viewer
+**"Converged" was ambiguous in the plan; the owner settled it on 2026-09-18 as the first reading
+below, and section 7 now says so.** Both are still reported, because the second is worth knowing. "Caught up" is the viewer
 showing the current screen, allowing the lossy first pass — which is what a person means. "Exact" is
 every picture tile refined to exact pixels. They differ by seconds on a slow link: on the worst
 profile a video screen catches up in 1.1 s and becomes exact at 3.8 s. The 3 s bound is asserted
-against the first reading. **If the owner means the strict one, the worst profile fails it**, and
-that is a decision about the criterion rather than a defect: refinement is bounded by the link, and
+against the first reading, which is the one that counts. Under the strict reading the worst profile
+would fail at 3.8 s — not a defect, but a fact about the link: refinement is bounded by it, and
 200 kbps cannot make a 1280 × 800 screen exact faster than that.
 
 **Loss is modelled only where it can happen.** Stage A's tile path rides an ordered, reliable

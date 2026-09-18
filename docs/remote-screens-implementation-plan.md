@@ -648,7 +648,12 @@ scheduled-task equivalent.
   Apple devices: (RTT, loss, cap) ∈ {(20 ms, 0, ∞), (100 ms, 1%, 5 Mbps),
   (300 ms, 5%, 1 Mbps), (500 ms, 10%, 200 kbps)} × {typing, scrolling, video} ×
   {Stage A, Stage B}. Pass criteria for both: no stall > 1 s, converged screen within
-  3 s after a 10 s outage. Stage A: input-to-glass P95 under RTT + 150 ms on the first
+  3 s after a 10 s outage. **Converged means the viewer is showing the current screen, with
+  picture regions at their lossy first pass** (owner, 2026-09-18) — not every tile refined to
+  exact pixels. The two differ by seconds on a slow link, and exactness is bounded by the link
+  rather than by this codec: 200 kbps cannot make a 1280 x 800 screen exact any faster. A stall
+  likewise means the screen stopped moving, not that it is imprecise; a playing video is never
+  exact, because refinement only runs once a region goes idle. Stage A: input-to-glass P95 under RTT + 150 ms on the first
   three profiles. Stage B: P95 under RTT + 40 ms on the first three profiles, and no
   keyframe on the video path after a single lost datagram.
 - **Capability negotiation**: a host never emits a video, FEC or LTR message kind to a
