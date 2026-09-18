@@ -23,6 +23,9 @@ pub const PANE_MASK_BGRA: [u8; 4] = [0x1C, 0x1E, 0x23, 0xFF];
 pub const THUMBNAIL_CACHE_BYTES: usize = 4 << 20;
 /// Largest cache a viewer may ask the host to model.
 const MAX_VIEWER_CACHE_BYTES: u64 = 1 << 30;
+/// How many times more frames must be refused than sent before the link is blamed. See
+/// [`HostSession::take_link_pressure`].
+const PRESSURE_RATIO: u32 = 3;
 
 /// What a verified ticket allows.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -184,6 +187,11 @@ struct Subscription {
     /// so counting them as outstanding meant a screen that sat still for `max_unacked_batches`
     /// frames could never be acknowledged down again and the session stopped updating for good.
     sent: u64,
+    /// Frames this subscription had something to send for and could not, because too many batches
+    /// were unacknowledged, and frames it did send. Both are per rate-control window and cleared
+    /// by [`HostSession::take_link_pressure`].
+    refused: u32,
+    delivered: u32,
     pending: Pending,
     last_sent_ms: Option<u64>,
     viewport: Option<Viewport>,
@@ -259,6 +267,44 @@ impl<V: TicketVerifier> HostSession<V> {
 
     pub const fn limits(&self) -> Limits {
         self.limits
+    }
+
+    /// Whether the link, rather than the screen, is what is limiting this session — and clears the
+    /// count.
+    ///
+    /// The one thing a host can tell without the viewer measuring anything, which matters because
+    /// reporting bursts is a Stage B feature and a protocol-v1 viewer never measures.
+    ///
+    /// What it counts is *suppressed demand*: frames that had something to send and were refused
+    /// because too many batches were still unacknowledged, against frames that got through. More
+    /// refused than sent means the link is the bottleneck.
+    ///
+    /// Counting a full unacknowledged window instead would be wrong, and was: a window fills on any
+    /// high-latency link simply because acknowledgements take a round trip to come back, which is
+    /// pipelining working rather than congestion. That version degraded a typing session using
+    /// 18 kbps of a 5 Mbps link, which is the opposite of the point.
+    ///
+    /// The threshold is deliberately well past parity. A fixed window of
+    /// [`HostConfig::max_unacked_batches`] caps a session at that many batches per round trip
+    /// whatever the link can carry, so on a slow-but-roomy path some refusals are the window
+    /// talking rather than the link, and a bare majority would degrade a session with bandwidth to
+    /// spare. Refusing several times more frames than it sends is the case where the difference
+    /// stops mattering: whatever the cause, that session is not getting its screen out.
+    ///
+    /// What this still cannot do is tell a small window from a slow link. The ladder's rungs give
+    /// up bytes, which is the right answer to the second and only sometimes to the first; a window
+    /// that scales with the measured round trip would be the better fix and is not built.
+    pub fn take_link_pressure(&mut self) -> bool {
+        let mut refused = 0;
+        let mut delivered = 0;
+        for subscription in self.subscriptions.values_mut() {
+            if subscription.profile != Profile::Interactive {
+                continue;
+            }
+            refused += std::mem::take(&mut subscription.refused);
+            delivered += std::mem::take(&mut subscription.delivered);
+        }
+        refused > delivered.saturating_mul(PRESSURE_RATIO)
     }
 
     pub fn is_open(&self) -> bool {
@@ -645,6 +691,13 @@ impl<V: TicketVerifier> HostSession<V> {
             subscription.pending.add(damage);
             let unacked = subscription.sent.saturating_sub(subscription.acked);
             if unacked >= config.max_unacked_batches {
+                // Only a frame with something to send is evidence of anything: a still screen is
+                // refused for having nothing to say, not because the link is full.
+                if profile == Profile::Interactive
+                    && !matches!(subscription.pending, Pending::Nothing)
+                {
+                    subscription.refused = subscription.refused.saturating_add(1);
+                }
                 continue;
             }
             let batch = match profile {
@@ -745,6 +798,7 @@ impl<V: TicketVerifier> HostSession<V> {
             };
             if let Some(batch) = batch.filter(|batch| !batch.ops.is_empty()) {
                 subscription.sent = batch.sequence;
+                subscription.delivered = subscription.delivered.saturating_add(1);
                 // What the interval is measured from. Without this it stayed `None` for every
                 // interactive subscription for the life of the session, so `too_soon` was never
                 // true and the rung that slows frames down did nothing whatsoever.
@@ -824,6 +878,8 @@ impl<V: TicketVerifier> HostSession<V> {
             factor,
             acked,
             sent: acked,
+            refused: 0,
+            delivered: 0,
             pending: Pending::Everything,
             last_sent_ms: None,
             viewport: None,

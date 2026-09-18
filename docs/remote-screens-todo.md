@@ -353,10 +353,12 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   runs, and RS7 has them: the worst stall is **999 ms against a 1,000 ms bound**, so Stage B video
   on the worst profile passes by one frame; **Stage B is not always cheaper** — 3,073 kbps against
   the tile path's 713 on an uncapped link, because with room to spare the ladder never degrades and
-  a modest smooth region is cheaper as tiles; and **Stage A has no rate control at all** — every
-  Stage A cell stays at `Full`, including one that sends 251 kbps into a 200 kbps link and simply
-  queues, because bandwidth reports are a Stage B feature so a Stage A viewer never times a burst.
-  Stage B does adapt, reaching `ViewportOnly` at 200 kbps.
+  a modest smooth region is cheaper as tiles; and **Stage A had no rate control at all** — every
+  Stage A cell sat at `Full`, including one offering 251 kbps into a 200 kbps link, because
+  bandwidth reports are a Stage B feature so a Stage A viewer never times a burst. Fixed: with no
+  estimate the ladder now steers on suppressed demand (frames refused for want of acknowledgements
+  against frames sent), and Stage A degrades on the constrained profiles while staying at `Full`
+  where there is room.
   "Converged" was settled by the owner on 2026-09-18 as "showing the current screen, lossy first
   pass allowed"; section 7 now says so.
   What still needs the device: input-to-glass P95, and a real iPhone and Android phone.

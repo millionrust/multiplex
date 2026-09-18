@@ -256,3 +256,65 @@ fn nothing_the_limits_do_ever_stops_a_session_answering() {
         .is_none_or(|message| !matches!(message, Message::Batch(_)));
     assert!(answered, "the session stopped answering under its limits");
 }
+
+/// What a host can tell about a link when the viewer measures nothing.
+///
+/// Reporting bursts is a Stage B feature, so a protocol-v1 viewer never times one and the rate
+/// estimator stays empty for the life of the session. Without some other signal the ladder holds
+/// at `Full` and a slow link produces a growing queue rather than a smaller picture — measured in
+/// RS7 as 251 kbps offered into a 200 kbps link.
+///
+/// The signal is suppressed demand: frames that had something to send and were refused because too
+/// many batches were outstanding, against frames that got through.
+#[test]
+fn a_viewer_that_stops_acknowledging_shows_up_as_link_pressure() {
+    let mut link = Link::open();
+    // Nothing is wrong yet: the viewer is keeping up.
+    assert!(
+        !link.host.take_link_pressure(),
+        "a healthy session should not look like a full link"
+    );
+
+    // The viewer goes quiet while the screen keeps changing. Its acknowledgements never arrive, so
+    // the unacknowledged window fills and every further frame is refused.
+    let everything = [Rect::new(0, 0, size().width(), size().height())];
+    for step in 0..40u8 {
+        let buffer = screen(step, 255 - step);
+        link.host
+            .frame(SURFACE, &buffer.as_frame(), Some(&everything), link.now_ms)
+            .expect("the encoder takes the frame");
+        link.now_ms += 40;
+        // Drain the host so it keeps encoding, but never answer it.
+        while link.host.poll_outgoing().is_some() {}
+    }
+    assert!(
+        link.host.take_link_pressure(),
+        "a session refusing most of its frames should report the link as the limit"
+    );
+    // Reading it clears it, so one bad window does not keep the ladder down for ever.
+    assert!(
+        !link.host.take_link_pressure(),
+        "pressure should be per window, not sticky"
+    );
+}
+
+/// A still screen is refused for having nothing to say, which is not the link's fault.
+#[test]
+fn a_quiet_screen_never_looks_like_a_slow_link() {
+    let mut link = Link::open();
+    link.show(10, 20, &[Rect::new(0, 0, size().width(), size().height())]);
+    let _ = link.host.take_link_pressure();
+    for _ in 0..40 {
+        // The same picture over and over, with no damage named.
+        let buffer = screen(10, 20);
+        link.host
+            .frame(SURFACE, &buffer.as_frame(), Some(&[]), link.now_ms)
+            .expect("the encoder takes the frame");
+        link.now_ms += 40;
+        link.pump();
+    }
+    assert!(
+        !link.host.take_link_pressure(),
+        "an idle screen is not a congested link"
+    );
+}

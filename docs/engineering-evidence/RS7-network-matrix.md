@@ -36,25 +36,25 @@ by the end of the run.
 | 20 ms, 0%, uncapped | scrolling | A | 28 | Full | 66 | 33 | 99 |
 | 20 ms, 0%, uncapped | scrolling | B | 30 | Full | 66 | 33 | 99 |
 | 20 ms, 0%, uncapped | video | A | 713 | Full | 166 | 99 | 633 |
-| 20 ms, 0%, uncapped | video | B | 3,082 | NoRefinement | 99 | 99 | 633 |
+| 20 ms, 0%, uncapped | video | B | 3,073 | NoRefinement | 99 | 99 | 633 |
 | 100 ms, 1%, 5 Mbps | typing | A | 18 | Full | 166 | 33 | 199 |
 | 100 ms, 1%, 5 Mbps | typing | B | 19 | Full | 166 | 33 | 233 |
 | 100 ms, 1%, 5 Mbps | scrolling | A | 28 | Full | 99 | 33 | 199 |
-| 100 ms, 1%, 5 Mbps | scrolling | B | 25 | Full | 99 | 233 | 233 |
+| 100 ms, 1%, 5 Mbps | scrolling | B | 25 | NoRefinement | 99 | 233 | 233 |
 | 100 ms, 1%, 5 Mbps | video | A | 675 | Full | 166 | 199 | 833 |
 | 100 ms, 1%, 5 Mbps | video | B | 1,884 | SlowerFrames | 133 | 266 | 1,133 |
-| 300 ms, 5%, 1 Mbps | typing | A | 17 | Full | 266 | 33 | 433 |
-| 300 ms, 5%, 1 Mbps | typing | B | 15 | Full | 299 | 33 | 566 |
-| 300 ms, 5%, 1 Mbps | scrolling | A | 25 | Full | 199 | 433 | 433 |
-| 300 ms, 5%, 1 Mbps | scrolling | B | 22 | Full | 299 | 33 | 566 |
-| 300 ms, 5%, 1 Mbps | video | A | 512 | Full | 366 | 33 | 1,933 |
-| 300 ms, 5%, 1 Mbps | video | B | 507 | NoRefinement | 499 | 33 | 3,199 |
-| 500 ms, 10%, 200 kbps | typing | A | 14 | Full | 366 | 33 | 799 |
-| 500 ms, 10%, 200 kbps | typing | B | 13 | Full | 499 | 33 | 1,066 |
-| 500 ms, 10%, 200 kbps | scrolling | A | 23 | Full | 299 | 33 | 799 |
-| 500 ms, 10%, 200 kbps | scrolling | B | 20 | Full | 533 | 1,066 | 1,066 |
-| 500 ms, 10%, 200 kbps | video | A | 251 | Full | 733 | 1,766 | 4,499 |
-| 500 ms, 10%, 200 kbps | video | B | 233 | ViewportOnly | 999 | 1,999 | 6,699 |
+| 300 ms, 5%, 1 Mbps | typing | A | 17 | NoRefinement | 266 | 33 | 433 |
+| 300 ms, 5%, 1 Mbps | typing | B | 15 | SlowerFrames | 299 | 33 | 566 |
+| 300 ms, 5%, 1 Mbps | scrolling | A | 25 | ViewportOnly | 199 | 433 | 433 |
+| 300 ms, 5%, 1 Mbps | scrolling | B | 22 | ViewportOnly | 299 | 33 | 566 |
+| 300 ms, 5%, 1 Mbps | video | A | 512 | SlowerFrames | 366 | 33 | 3,266 |
+| 300 ms, 5%, 1 Mbps | video | B | 507 | NoRefinement | 499 | 33 | 4,199 |
+| 500 ms, 10%, 200 kbps | typing | A | 14 | SlowerFrames | 366 | 33 | 799 |
+| 500 ms, 10%, 200 kbps | typing | B | 13 | LowerQuality | 499 | 33 | 1,066 |
+| 500 ms, 10%, 200 kbps | scrolling | A | 23 | SlowerFrames | 299 | 33 | 799 |
+| 500 ms, 10%, 200 kbps | scrolling | B | 20 | LowerQuality | 533 | 1,066 | 1,066 |
+| 500 ms, 10%, 200 kbps | video | A | 251 | NoRefinement | 733 | 1,766 | 6,433 |
+| 500 ms, 10%, 200 kbps | video | B | 233 | ViewportOnly | 999 | 1,999 | 7,599 |
 
 ### Three things this says that are worth acting on
 
@@ -72,15 +72,29 @@ both are true: the motion path wins when the tile path is expensive, and loses w
 Worth a decision the plan has not made — whether to promote a region to video only when it is
 actually winning, rather than whenever it looks like video.
 
-**Stage A has no rate control at all, and this is the first measurement that shows it.** Every
-Stage A cell stays at `Full`, including 200 kbps where the session sends 251 kbps into a 200 kbps
-link and simply queues. That is not a bug in the ladder: bandwidth reports are a Stage B feature
-(`FeatureSet::BANDWIDTH_REPORTS`), so a Stage A viewer never times a burst, the host never has an
-estimate, and `Ladder::consider` returns early every time. The design says as much — 5.1 added the
-bit "so a peer that cannot time bursts is never asked to" — but the consequence had not been
-written down: **a Stage A phone on a link below what the screen needs gets a growing queue rather
-than a smaller picture.** Whether that is acceptable, or whether Stage A needs a crude
-send-queue-depth fallback, is a decision the plan has not made.
+**Stage A had no rate control at all, and now it does.** Every Stage A cell used to stay at `Full`,
+including 200 kbps where the session offered 251 kbps into the link and simply queued: bandwidth
+reports are a Stage B feature (`FeatureSet::BANDWIDTH_REPORTS`), so a Stage A viewer never times a
+burst, the host never has an estimate, and `Ladder::consider` returned early every time. The design
+said as much — 5.1 added the bit "so a peer that cannot time bursts is never asked to" — but the
+consequence had not been written down.
+
+The owner chose a fallback (2026-09-18). When there is no estimate the ladder now steers on
+*suppressed demand*: frames that had something to send and were refused because too many batches
+were outstanding, against frames that got through. Stage A degrades on the constrained profiles and
+stays at `Full` where there is room.
+
+Getting that signal right took two attempts, and the first was wrong in an instructive way.
+Counting a **full unacknowledged window** looked obvious and is not: a window fills on any
+high-latency link simply because acknowledgements take a round trip to come back, which is
+pipelining working rather than congestion. That version degraded a typing session using 18 kbps of
+a 5 Mbps link. Counting refusals against deliveries, at a ratio of three to one, separates the two.
+
+What the signal still cannot do is tell a small window from a slow link. A fixed
+`max_unacked_batches` of 4 caps any session at four batches per round trip whatever the link
+carries, so at 300 ms some of the refusals are the window talking. The ladder's rungs give up
+bytes, which is the right answer to a slow link and only sometimes to a small window — **a window
+that scales with the measured round trip is the better fix, and is not built.**
 
 Stage B does adapt, and does it in the right direction: `SlowerFrames` at 5 Mbps, `NoRefinement` at
 1 Mbps, `ViewportOnly` at 200 kbps, with the measured estimate settling around 9.7 KB/s against the

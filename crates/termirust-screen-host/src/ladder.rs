@@ -163,10 +163,19 @@ impl Ladder {
 
     /// Reconsiders the rung, given what the link is measured to deliver.
     ///
-    /// `estimate` of `None` means nothing has been measured. The ladder then holds where it is
-    /// rather than guessing: an unmeasured link is not a slow one, and degrading on no evidence
-    /// would make every session on a quiet screen worse for nothing.
-    pub fn consider(&mut self, now_ms: u64, estimate: Option<u64>) -> Rung {
+    /// `estimate` of `None` means nothing has been measured, and `backlogged` is then the only
+    /// evidence there is: the session has batches outstanding that the viewer has not
+    /// acknowledged, so it is already refusing to encode new frames. That happens on a link too
+    /// small for the screen — and it happens to every Stage A viewer, because reporting bursts is
+    /// a Stage B feature and a protocol-v1 phone never measures anything. Without this the ladder
+    /// returned early on every call for such a peer and the session simply queued: a screen that
+    /// lagged further and further behind rather than one that gave something up. Measured in
+    /// [RS7](../../../docs/engineering-evidence/RS7-network-matrix.md): 251 kbps offered into a
+    /// 200 kbps link, sat at `Full`.
+    ///
+    /// An unmeasured link with nothing backed up is still not a slow one, and the ladder holds
+    /// where it is rather than guessing.
+    pub fn consider(&mut self, now_ms: u64, estimate: Option<u64>, backlogged: bool) -> Rung {
         let elapsed = now_ms.saturating_sub(self.window_start_ms);
         if elapsed < DWELL_MS {
             return self.rung;
@@ -175,19 +184,26 @@ impl Ladder {
         self.sent = 0;
         self.window_start_ms = now_ms;
 
-        let Some(estimate) = estimate.filter(|estimate| *estimate > 0) else {
-            return self.rung;
-        };
         if now_ms.saturating_sub(self.since_ms) < DWELL_MS {
             return self.rung;
         }
-        let share = demand as f64 / estimate as f64;
-        let next = if share > CROWDED {
-            self.rung.down()
-        } else if share < ROOMY {
-            self.rung.up()
-        } else {
-            self.rung
+        let next = match estimate.filter(|estimate| *estimate > 0) {
+            Some(estimate) => {
+                let share = demand as f64 / estimate as f64;
+                if share > CROWDED {
+                    self.rung.down()
+                } else if share < ROOMY {
+                    self.rung.up()
+                } else {
+                    self.rung
+                }
+            }
+            // No number, so no share to compare: one rung at a time while the backlog lasts, and
+            // back up once it clears. Coarser than the measured path deliberately — it knows that
+            // the link is too small, not by how much, and guessing a size from a queue depth would
+            // be inventing precision.
+            None if backlogged => self.rung.down(),
+            None => self.rung.up(),
         };
         if next != self.rung {
             self.rung = next;
@@ -217,7 +233,7 @@ mod tests {
         for _ in 0..seconds * 2 {
             now += 500;
             ladder.sent(bytes_per_second / 2);
-            ladder.consider(now, Some(estimate));
+            ladder.consider(now, Some(estimate), false);
         }
         ladder
     }
@@ -237,7 +253,7 @@ mod tests {
         for _ in 0..4 {
             now += 500;
             ladder.sent(60_000);
-            ladder.consider(now, Some(100_000));
+            ladder.consider(now, Some(100_000), false);
         }
         assert_eq!(ladder.rung(), Rung::NoRefinement);
         assert_eq!(ladder.rung().limits().refine_budget_bytes, 0);
@@ -267,7 +283,7 @@ mod tests {
         for _ in 0..80 {
             now += 500;
             ladder.sent(10_000);
-            ladder.consider(now, Some(1_000_000));
+            ladder.consider(now, Some(1_000_000), false);
         }
         assert_eq!(
             ladder.rung(),
@@ -286,7 +302,7 @@ mod tests {
         for _ in 0..120 {
             now += 500;
             ladder.sent(40_000);
-            seen.push(ladder.consider(now, Some(100_000)));
+            seen.push(ladder.consider(now, Some(100_000), false));
         }
         let settled = *seen.last().unwrap();
         let changes = seen.windows(2).filter(|pair| pair[0] != pair[1]).count();
@@ -303,7 +319,7 @@ mod tests {
         for _ in 0..40 {
             now += 500;
             ladder.sent(1_000_000);
-            ladder.consider(now, None);
+            ladder.consider(now, None, false);
         }
         assert_eq!(
             ladder.rung(),
@@ -312,16 +328,64 @@ mod tests {
         );
     }
 
+    /// The Stage A case, which had no rate control at all until this existed.
+    ///
+    /// Reporting bursts is a Stage B feature, so a protocol-v1 phone never measures the link and
+    /// the host never gets an estimate. The session still knows it is stuck, because the viewer
+    /// has stopped acknowledging batches. RS7 measured what the old behaviour did: 251 kbps
+    /// offered into a 200 kbps link, sitting at `Full` while the queue grew.
+    #[test]
+    fn a_backlogged_link_gives_things_up_even_with_nothing_measured() {
+        let mut ladder = Ladder::new();
+        let mut now = 0;
+        for _ in 0..12 {
+            now += DWELL_MS + 1;
+            ladder.sent(1_000_000);
+            ladder.consider(now, None, true);
+        }
+        assert_eq!(
+            ladder.rung(),
+            Rung::WORST,
+            "a session that cannot get its batches acknowledged should have given everything up"
+        );
+
+        // And it comes back when the backlog clears, or a link that hiccupped once would stay
+        // degraded for the life of the session.
+        for _ in 0..12 {
+            now += DWELL_MS + 1;
+            ladder.sent(1_000);
+            ladder.consider(now, None, false);
+        }
+        assert_eq!(
+            ladder.rung(),
+            Rung::Full,
+            "the backlog cleared and nothing came back"
+        );
+    }
+
+    /// One rung per dwell, not a fall to the floor the moment a queue appears.
+    #[test]
+    fn a_backlog_costs_one_rung_at_a_time() {
+        let mut ladder = Ladder::new();
+        let mut now = DWELL_MS + 1;
+        ladder.sent(1_000_000);
+        assert_eq!(ladder.consider(now, None, true), Rung::NoRefinement);
+        // Within the dwell time nothing more is given up, however backed up it looks.
+        now += 10;
+        ladder.sent(1_000_000);
+        assert_eq!(ladder.consider(now, None, true), Rung::NoRefinement);
+    }
+
     #[test]
     fn a_rung_is_held_long_enough_to_see_what_it_did() {
         let mut ladder = Ladder::new();
         // Two windows of hopeless overload back to back. Without a dwell time the ladder would
         // fall several rungs before the first one had any chance to help.
         ladder.sent(10_000_000);
-        ladder.consider(DWELL_MS + 1, Some(1_000));
+        ladder.consider(DWELL_MS + 1, Some(1_000), false);
         let first = ladder.rung();
         ladder.sent(10_000_000);
-        ladder.consider(DWELL_MS + 2, Some(1_000));
+        ladder.consider(DWELL_MS + 2, Some(1_000), false);
         assert_eq!(
             ladder.rung(),
             first,

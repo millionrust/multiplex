@@ -244,7 +244,7 @@ fn a_link_that_cannot_keep_up_makes_the_session_give_things_up_in_order() {
         // What the host sends per frame, at the cadence it would send it.
         ladder.sent(4_000);
         now_ms += 40;
-        seen.push(ladder.consider(now_ms, estimator.estimate()));
+        seen.push(ladder.consider(now_ms, estimator.estimate(), false));
     }
 
     let ended = *seen.last().expect("the ladder ran");

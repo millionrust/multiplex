@@ -245,7 +245,7 @@ fn run(features: FeatureSet, squeeze: Option<u64>) -> (Measured, Rung) {
         }
         // A link of a fixed size, if one was asked for, so the ladder has something to react to.
         if let Some(bytes_per_second) = squeeze {
-            let rung = ladder.consider(now_ms, Some(bytes_per_second));
+            let rung = ladder.consider(now_ms, Some(bytes_per_second), false);
             host.set_limits(rung.limits());
         }
     }

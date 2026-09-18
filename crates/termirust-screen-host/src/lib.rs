@@ -163,7 +163,9 @@ impl Inner {
     fn steer(&mut self, now_ms: u64) {
         let estimate = self.rate.estimate();
         let before = self.ladder.rung();
-        let rung = self.ladder.consider(now_ms, estimate);
+        let rung = self
+            .ladder
+            .consider(now_ms, estimate, self.session.take_link_pressure());
         if rung != before {
             self.session.set_limits(rung.limits());
             self.motion
