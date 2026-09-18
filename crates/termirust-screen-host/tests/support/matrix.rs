@@ -192,8 +192,14 @@ pub fn screen(workload: Workload, step: u32) -> FrameBuffer {
     buffer
 }
 
-/// A message in flight, with the time it finishes arriving.
+/// A message in flight, with the times its first and last bytes arrive.
+///
+/// Both times matter. The rate estimator works by timing how far apart a burst's bytes arrive, so
+/// a message handed over as one lump at a single instant has nothing to measure — and a harness
+/// that does that reports no estimate at all, which makes the ladder look broken when it is simply
+/// never told anything. `bandwidth.rs` makes the same point about its own fake link.
 struct InFlight {
+    from_micros: u64,
     at_micros: u64,
     message: Message,
 }
@@ -345,6 +351,7 @@ impl Link {
                 let transit = self.transit_micros(encoded, class);
                 self.wire_free_micros = start + transit.min(u64::MAX / 4);
                 self.in_flight.push_back(InFlight {
+                    from_micros: start,
                     at_micros: self.wire_free_micros,
                     message,
                 });
@@ -361,7 +368,17 @@ impl Link {
         {
             let flight = self.in_flight.pop_front().expect("checked");
             let bytes = encode_frame(&flight.message).expect("encodable").len();
-            self.viewer.observed_bytes(bytes, flight.at_micros);
+            // Handed over in chunks, at the times they would really land, because that spread is
+            // the only thing the rate estimator has to work from.
+            let chunks = bytes.div_ceil(CHUNK).max(1);
+            let span = flight.at_micros.saturating_sub(flight.from_micros);
+            let mut left = bytes;
+            for index in 0..chunks {
+                let size = left.min(CHUNK);
+                left -= size;
+                let at = flight.from_micros + span * (index as u64 + 1) / chunks as u64;
+                self.viewer.observed_bytes(size, at);
+            }
             let _ = self.viewer.receive(flight.message);
         }
         while let Some(message) = self.viewer.poll_outgoing() {
@@ -503,6 +520,15 @@ impl Link {
 
 /// Runs one cell of the matrix.
 pub fn run(profile: Profile7, workload: Workload, features: FeatureSet) -> Cell {
+    run_inner(profile, workload, features, false)
+}
+
+/// The same, printing what the rate estimator and the ladder were doing.
+pub fn run_traced(profile: Profile7, workload: Workload, features: FeatureSet) -> Cell {
+    run_inner(profile, workload, features, true)
+}
+
+fn run_inner(profile: Profile7, workload: Workload, features: FeatureSet, trace: bool) -> Cell {
     let mut link = Link::new(profile, features);
     let stage_b = features.has(FeatureSet::MOTION_VIDEO);
 
@@ -524,6 +550,16 @@ pub fn run(profile: Profile7, workload: Workload, features: FeatureSet) -> Cell 
             last_moved = link.now_micros;
         } else {
             longest_stall = longest_stall.max(link.now_micros.saturating_sub(last_moved));
+        }
+        if trace && step % 15 == 0 {
+            eprintln!(
+                "DIAG t={:>5} ms  estimate={:?} B/s  rung={:?}  sent={} B  queued={}",
+                link.now_micros / 1_000,
+                link.handle.estimated_bytes_per_second(),
+                link.rung(),
+                link.bytes,
+                link.in_flight.len(),
+            );
         }
     }
     let settled_rung = link.rung();
