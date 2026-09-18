@@ -217,22 +217,23 @@ async fn watch(address: &str, state_path: &str, seconds: u64) -> Result<(), Stri
                     }
                     ViewerEvent::Control(holder) => {
                         println!("control: {holder:?}");
-                        if holder == ControlHolder::You && !drove {
-                            if let Some(id) = surface {
-                                // A move well away from anything destructive, then one keystroke
-                                // the person can see in a text field if they have one focused.
-                                session.send_input(InputEvent::PointerMove {
-                                    surface: id,
-                                    x: 40,
-                                    y: 40,
-                                });
-                                session.send_input(InputEvent::Text {
-                                    surface: id,
-                                    text: "probe".to_owned(),
-                                });
-                                drove = true;
-                                println!("sent a pointer move and a keystroke");
-                            }
+                        if holder == ControlHolder::You
+                            && !drove
+                            && let Some(id) = surface
+                        {
+                            // A move well away from anything destructive, then one keystroke
+                            // the person can see in a text field if they have one focused.
+                            session.send_input(InputEvent::PointerMove {
+                                surface: id,
+                                x: 40,
+                                y: 40,
+                            });
+                            session.send_input(InputEvent::Text {
+                                surface: id,
+                                text: "probe".to_owned(),
+                            });
+                            drove = true;
+                            println!("sent a pointer move and a keystroke");
                         }
                     }
                     ViewerEvent::Closed { reason } => {

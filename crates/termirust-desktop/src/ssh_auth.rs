@@ -132,11 +132,9 @@ async fn authenticate_with_local_agent<H: client::Handler>(
                             &mut agent,
                         )
                         .await
-                }
-                // A kind this build does not know how to offer. Skipped rather than guessed at:
-                // the next identity may well work, and an agent holding something unfamiliar is
-                // not a reason to fail the whole attempt.
-                _ => return Ok(None),
+                } // Every kind russh describes is offered above. A kind added later has to be
+                  // decided on rather than guessed at, so it stops the build instead of being
+                  // skipped silently here.
             }
             .map(Some)
         };

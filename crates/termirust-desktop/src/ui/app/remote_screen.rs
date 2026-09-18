@@ -10,7 +10,9 @@ use crate::controller::watch_session::{WatchInput, WatchSession, WatchState};
 
 use super::*;
 
-/// As far in as this Mac will magnify another computer's screen.
+/// As far in as this Mac will magnify another computer's screen. Waiting on the gesture that
+/// magnifies, with the geometry below.
+#[allow(dead_code)]
 pub const MAXIMUM_ZOOM: f32 = 6.0;
 
 /// One watched computer, in a workspace tab.
@@ -39,7 +41,9 @@ impl WorkspaceScreenState {
         }
     }
 
-    /// The computer's screen, in its own pixels.
+    /// The computer's screen, in its own pixels. What the geometry above measures against, so it
+    /// arrives with the gesture that needs it.
+    #[allow(dead_code)]
     pub fn size(&self) -> (u32, u32) {
         self.session.size()
     }
@@ -65,6 +69,10 @@ impl Default for ScreenGeometry {
     }
 }
 
+// Magnifying and dragging are worked out and covered by this module's tests, but no pointer
+// gesture reaches them yet: the tab draws the fitted picture. The arithmetic is kept here, tested,
+// rather than written again when the gesture lands.
+#[allow(dead_code)]
 impl ScreenGeometry {
     /// How many tab pixels one of the computer's pixels takes.
     pub fn scale(&self, size: (u32, u32), view: (f32, f32)) -> f32 {

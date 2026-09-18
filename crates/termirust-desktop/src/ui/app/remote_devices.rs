@@ -2283,11 +2283,10 @@ impl TermiRustApp {
             .active_workspace()
             .and_then(|workspace| workspace.screen.as_ref())
             .map(|screen| screen.session.pictures())
+            && drawn != self.watched_screen_pictures
         {
-            if drawn != self.watched_screen_pictures {
-                self.watched_screen_pictures = drawn;
-                cx.notify();
-            }
+            self.watched_screen_pictures = drawn;
+            cx.notify();
         }
         let showing = matches!(self.nav_section, NavSection::Devices);
         if !showing {
