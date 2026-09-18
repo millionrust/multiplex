@@ -343,6 +343,18 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   **Blocked on the 0.4 iroh spike.** The seam above is what it plugs into.
 - [ ] 5.4 `docs(self-hosted-relay): deploy an iroh relay next to relay-host`
 - [ ] 5.5 **(device)** Full network matrix for both stages; tune the steps
+  The software half is done and green: `cargo test -p termirust-screen-host --test matrix` runs all
+  24 cells of section 7's matrix and holds the two criteria that do not need a device — no stall
+  over a second (worst 733 ms) and a screen caught up within three seconds of a ten-second outage
+  (worst 1,099 ms). [RS7](engineering-evidence/RS7-network-matrix.md) has the table and three
+  definitions the criteria turned out to need.
+  Two things it deliberately does not settle. The stage comparison is not trustworthy from that
+  harness, because it drives `HostSession` directly and so runs without the ladder or the rate
+  estimator; putting it on `ScreenHost` is the next step and would make the video rows mean
+  something. And "converged" is ambiguous in the plan: a video screen on the worst profile catches
+  up in 1.1 s and becomes pixel-exact at 3.8 s, so the strict reading fails the 3 s bound — a
+  decision about the criterion rather than a defect, since refinement is bounded by the link.
+  What still needs the device: input-to-glass P95, and a real iPhone and Android phone.
 
 ## M6 — Windows and Linux hosts, background hosting [4.2, 4.7]
 
