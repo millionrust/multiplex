@@ -196,6 +196,11 @@ TERMIRUST_TUI_PROBE="bun run app.ts" cargo test -p termirust --bin termirust -- 
 TERMIRUST_CLIPPY_BASE=<sha> python3 scripts/dev/clippy-changed.py  # the changed-line Clippy
   # policy as CI runs it. Its base defaults to HEAD, so running it with a clean working tree
   # reads no changed lines and always passes; CI passes the sha the push started from.
+TERMIRUST_PERF_BUDGETS=1 cargo test --workspace --benches --locked  # enforce the throughput
+  # budgets. The benches always run and always print their p50/p95; the thresholds in
+  # tests/support/perf_budget.rs are only asserted when `CI` is unset, because a hosted runner
+  # overshoots them by more than ten times without anything in the code changing. Set this to
+  # enforce them on a machine that sets `CI` but is not shared, or `=0` on a busy laptop.
 cargo run -p termirust-slate --example gallery  # Slate component gallery
 cargo run -p termirust-ui-contract --bin generate-tokens  # after editing design/tokens.toml; also writes the mobile SlateTokens.swift and SlateTokens.kt
 ```

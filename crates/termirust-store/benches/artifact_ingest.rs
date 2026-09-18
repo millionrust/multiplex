@@ -7,6 +7,9 @@ use termirust_domain::{
 };
 use termirust_store::{ArtifactIngestRequest, ArtifactRepository};
 
+#[path = "../../../tests/support/perf_budget.rs"]
+mod perf_budget;
+
 fn main() {
     let fixture = tempfile::tempdir().expect("benchmark fixture should be created");
     let source = fixture.path().join("source.bin");
@@ -63,12 +66,10 @@ fn main() {
         first.as_secs_f64() * 1000.0,
         duplicate.as_secs_f64() * 1000.0
     );
-    assert!(
-        first <= Duration::from_secs(10),
-        "25 MiB ingest {first:?} exceeded the ten-second safety target"
-    );
-    assert!(
-        duplicate <= Duration::from_secs(10),
-        "25 MiB duplicate ingest {duplicate:?} exceeded the ten-second safety target"
+    perf_budget::within_budget("25 MiB ingest", first, Duration::from_secs(10));
+    perf_budget::within_budget(
+        "25 MiB duplicate ingest",
+        duplicate,
+        Duration::from_secs(10),
     );
 }

@@ -2,6 +2,9 @@ use std::time::{Duration, Instant};
 
 use termirust_domain::{TranscriptCancellation, normalize_transcript_content};
 
+#[path = "../../../tests/support/perf_budget.rs"]
+mod perf_budget;
+
 fn main() {
     let mut fixture = String::with_capacity(1024 * 1024);
     while fixture.len() < 1024 * 1024 - 128 {
@@ -26,8 +29,5 @@ fn main() {
         p50.as_secs_f64() * 1000.0,
         p95.as_secs_f64() * 1000.0
     );
-    assert!(
-        p95 <= Duration::from_secs(1),
-        "1 MiB normalization p95 {p95:?} exceeded one second"
-    );
+    perf_budget::within_budget("1 MiB normalization p95", p95, Duration::from_secs(1));
 }

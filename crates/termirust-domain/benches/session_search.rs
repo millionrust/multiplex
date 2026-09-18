@@ -6,6 +6,9 @@ use termirust_domain::{
 };
 use uuid::Uuid;
 
+#[path = "../../../tests/support/perf_budget.rs"]
+mod perf_budget;
+
 fn main() {
     let project = ProjectId::from_uuid(Uuid::from_u128(1));
     let mut index = SearchIndex::default();
@@ -68,9 +71,5 @@ fn main() {
         p50.as_secs_f64() * 1000.0,
         p95.as_secs_f64() * 1000.0
     );
-    assert!(
-        p95 <= Duration::from_millis(50),
-        "10k search p95 {:?} exceeded the 50 ms target",
-        p95
-    );
+    perf_budget::within_budget("10k search p95", p95, Duration::from_millis(50));
 }

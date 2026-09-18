@@ -2,6 +2,9 @@ use std::time::{Duration, Instant};
 
 use termirust_domain::{DevUrlCancellation, DevUrlDetector};
 
+#[path = "../../../tests/support/perf_budget.rs"]
+mod perf_budget;
+
 fn main() {
     let mut bytes = Vec::with_capacity(8 * 1024 * 1024);
     for index in 0..65_536 {
@@ -38,8 +41,5 @@ fn main() {
         p50.as_secs_f64() * 1000.0,
         p95.as_secs_f64() * 1000.0
     );
-    assert!(
-        p95 <= Duration::from_millis(250),
-        "bounded URL scan p95 {p95:?} exceeded 250 ms"
-    );
+    perf_budget::within_budget("bounded URL scan p95", p95, Duration::from_millis(250));
 }
