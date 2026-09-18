@@ -50,7 +50,14 @@ Pure Rust, no platform code, fully testable in CI.
 
 - [x] 0.2 ScreenCaptureKit example: dirty-rect counts, idle ratio, bytes (`capture_stats`)
   Ran on this Mac: no dirty rects on macOS 27.0, 32.8 KB/s steady at native scale. See RS2.
-  Scripted typing, scrolling, and video sessions remain to be captured by the owner.
+  The workloads are now scripted — `scripts/bench/capture-workloads.sh [seconds] [scale] [video]`
+  drives idle, typing, scrolling and video in the terminal and runs `capture_stats` against each,
+  so the four rows are one command rather than an open-ended ask. It needs the owner because it
+  needs a real screen: the terminal frontmost and visible, the display awake, Screen Recording
+  allowed. Nothing is written to disk — `capture_stats` prints counts and rates and keeps no
+  pixels. Without a video file argument the video row is a synthetic full-screen animation, which
+  has the characteristic that matters (a large area changing every frame) but is not a decoded
+  video, and the script says so in its output.
 - [x] 0.3 VideoToolbox example from Rust: HEVC low-latency session with LTR round trip under forced loss
   Ran on this Mac. Recovery with a long-term reference costs 1,141 bytes at 1080p and 4,217 at 4K,
   against 154,116 and 687,913 for the keyframe it replaces: 135x and 163x. M4 can be built on
@@ -348,10 +355,23 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   Migration needed no code. QUIC identifies a connection by its id rather than by the address it
   arrived from, so Wi-Fi to cellular keeps the same connection — which is why nothing in the
   module tries to detect roaming. There is nothing to detect.
-  Getting here meant moving `zeroize` to 1.9.0 and `russh` to 0.60, at the owner's direction on
-  2026-09-18: `iroh-base` wants `zeroize ^1.9` against the exact `=1.8.2` the security ADR names,
-  and `ed25519-dalek 3.0.0-rc` wants a released `rand_core ^0.10` that no russh before 0.60
-  allows. The ADR is amended and the Docker SSH and SFTP suite passes whole.
+  Getting here meant moving `zeroize` to 1.9.0 and `russh` to **0.63**, at the owner's direction on
+  2026-09-18. 0.60 was the obvious answer and the wrong one: it cleared the `rand_core` pin, the
+  workspace compiled and the whole Docker SSH and SFTP suite passed — and then adding iroh to the
+  lockfile broke the desktop crate inside `rsa 0.10.0-rc.16`, which neither of them names. iroh's
+  `ed25519 3.0.0` needs released `pkcs8 0.11.0`; that rsa candidate was built against
+  `0.11.0-rc.11`, where `Error::KeyMalformed` is a unit variant. Cargo unifies them and rsa loses.
+  **iroh needs the released RustCrypto crates and russh 0.60 is still on their candidates**, and
+  nothing reconciles that; 0.63 moved to the released stack, which is the only reason the two share
+  a lockfile. Expect this to recur — the workspace now tracks two projects following the same
+  pre-release ecosystem.
+  0.63 also changed `check_server_key` to take a `PublicKeyOrCertificate`. Both call sites pin
+  `public_key()`, which for a certificate is the key the CA vouched for, and deliberately do **not**
+  validate the certificate: there is no CA trust store, and accepting one as verified would be a
+  weaker guarantee wearing a stronger name. And its channel-open callbacks now hand over a handle
+  that refuses on drop — ignore the parameter and every reverse-forwarded connection is silently
+  rejected at runtime while compiling clean. Both sites accept explicitly.
+  The ADR is amended with all of it.
   **Still gated on 0.4 for the thing loopback cannot show**: a phone on cellular, moving between
   networks, punching through a carrier NAT or failing to and reaching a relay. Loopback has no NAT
   and no path to migrate between. The 0-RTT *typestate* — writing the first bytes during the
