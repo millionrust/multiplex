@@ -52,6 +52,10 @@ const TASK_JOIN_DEADLINE: Duration = Duration::from_secs(2);
 /// How long a shutting-down host waits for a stop request to be answered before it gives up on
 /// the connection that asked.
 const STOP_RESPONSE_DEADLINE: Duration = Duration::from_secs(5);
+/// How long a host that is exiting waits for a request a connected client has already sent. Long
+/// enough for one already in the socket, short enough to be invisible in an exit nobody is waiting
+/// on; a host with no client connected never pays it.
+const STOP_REQUEST_GRACE: Duration = Duration::from_millis(250);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
 const IDEMPOTENCY_TTL: Duration = Duration::from_secs(10 * 60);
 const HOST_SLOT_PREFIX: &str = "host-slot-";
@@ -325,7 +329,8 @@ impl RuntimeState {
     }
 
     async fn wait_for_stop_response(&self) {
-        self.stop_response.wait().await;
+        let connected = self.active_connections.load(Ordering::Acquire) > 0;
+        self.stop_response.wait(connected).await;
     }
 }
 
@@ -336,6 +341,7 @@ impl RuntimeState {
 struct StopResponse {
     requested: AtomicBool,
     answered: AtomicBool,
+    began: Notify,
     notify: Notify,
 }
 
@@ -343,15 +349,34 @@ impl StopResponse {
     /// Records that an answer is owed until the returned guard is dropped.
     fn begin(&self) -> StopResponseGuard<'_> {
         self.requested.store(true, Ordering::Release);
+        self.began.notify_waiters();
         StopResponseGuard { response: self }
     }
 
     /// Waits for an owed answer. The guard ends this wait however the request ends — answered,
     /// failed, or abandoned — so the deadline only bounds a connection that stopped making
     /// progress.
-    async fn wait(&self) {
-        if !self.requested.load(Ordering::Acquire) || self.answered.load(Ordering::Acquire) {
+    ///
+    /// `connected` says a client is still on the other end, which is the case this exists for: a
+    /// session told to stop exits on its own at that moment, and the request is answered by
+    /// whoever reads it next. Until it has been read there is nothing recorded as owed, so a host
+    /// that only looked at what it owes would close the connection on the very request that asked
+    /// it to close. A connected client is therefore given a moment for a request already on its
+    /// way. A host nobody is connected to closes at once.
+    async fn wait(&self, connected: bool) {
+        if self.answered.load(Ordering::Acquire) {
             return;
+        }
+        if !self.requested.load(Ordering::Acquire) {
+            if !connected {
+                return;
+            }
+            let began = self.began.notified();
+            if !self.requested.load(Ordering::Acquire)
+                && timeout(STOP_REQUEST_GRACE, began).await.is_err()
+            {
+                return;
+            }
         }
         let notified = self.notify.notified();
         if self.answered.load(Ordering::Acquire) {
@@ -1929,7 +1954,7 @@ mod tests {
     #[tokio::test]
     async fn a_host_with_no_stop_to_answer_does_not_wait() {
         let response = StopResponse::default();
-        timeout(Duration::from_millis(50), response.wait())
+        timeout(Duration::from_millis(50), response.wait(false))
             .await
             .expect("a host nobody asked to stop should close its connections at once");
     }
@@ -1939,13 +1964,13 @@ mod tests {
         let response = StopResponse::default();
         let guard = response.begin();
         assert!(
-            timeout(Duration::from_millis(100), response.wait())
+            timeout(Duration::from_millis(100), response.wait(true))
                 .await
                 .is_err(),
             "the host must hold the connection open while the answer is still being written"
         );
         drop(guard);
-        timeout(Duration::from_millis(100), response.wait())
+        timeout(Duration::from_millis(100), response.wait(true))
             .await
             .expect("an answered stop releases the host at once");
     }
@@ -1953,11 +1978,48 @@ mod tests {
     #[tokio::test]
     async fn a_stop_that_cannot_be_answered_still_releases_the_host() {
         let response = StopResponse::default();
-        let waiting = response.wait();
+        let waiting = response.wait(true);
         drop(response.begin());
         timeout(Duration::from_millis(100), waiting)
             .await
             .expect("a request that ends without an answer must not hold the host to the deadline");
+    }
+
+    /// The race this exists for: the session finishes on its own just as a client asks it to stop,
+    /// so the request is still on its way when the host starts closing. Reading it a moment later
+    /// has to still count, or the stop the client asked for fails against a closed stream.
+    #[tokio::test]
+    async fn a_stop_still_on_its_way_is_waited_for() {
+        let response = Arc::new(StopResponse::default());
+        let reader = Arc::clone(&response);
+        let handle = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            let guard = reader.begin();
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            drop(guard);
+        });
+        timeout(Duration::from_millis(500), response.wait(true))
+            .await
+            .expect("the host must wait for a request a connected client has not had read yet");
+        assert!(
+            response.answered.load(Ordering::Acquire),
+            "the host stopped waiting before the request it read was answered"
+        );
+        handle.await.unwrap();
+    }
+
+    /// The same moment with nobody connected: no request can be on its way, so exiting must not
+    /// pay the grace.
+    #[tokio::test]
+    async fn a_host_with_no_client_does_not_pay_the_grace() {
+        let response = StopResponse::default();
+        let started = std::time::Instant::now();
+        response.wait(false).await;
+        assert!(
+            started.elapsed() < STOP_REQUEST_GRACE,
+            "a host with no client waited {:?} before closing",
+            started.elapsed()
+        );
     }
 
     fn descriptor_with_detection(
