@@ -485,10 +485,18 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
 - [ ] `cargo test --workspace --all-targets --locked` and `cargo deny check` green
   `cargo deny check` is green on advisories, bans, licences and sources, and the lockfile is
   current so `--locked` does not have to change it.
-  The suite is **952 passed, 1 failed** with `TERMIRUST_DOCKER_FIXTURE_HOST` set. It was 657/72
-  until this branch merged `dev`: the Docker fixtures gained image-carried keys and remote-daemon
-  support there, and a stale branch fails them with bind-mount and port-timeout errors that read
-  exactly like a broken Docker environment. Merge `dev` before investigating any of them.
+  The suite reaches **1,004 passed** with `TERMIRUST_DOCKER_FIXTURE_HOST` set. It was 657/72 until
+  this branch merged `dev`: the Docker fixtures gained image-carried keys and remote-daemon support
+  there, and a stale branch fails them with bind-mount and port-timeout errors that read exactly
+  like a broken Docker environment. Merge `dev` before investigating any of them.
+  What is left is flakiness rather than failure, and it is worth describing precisely so nobody
+  reads it as a regression. Three consecutive full runs each failed exactly one test, and a
+  different one each time: the phone-pairing handshake, the background service handing its port
+  back, and SSH auto-reconnect after a server restart. All three are timing-sensitive tests that
+  bind real sockets, all three pass when run alone, and none is touched by this branch. Under
+  `--all-targets` the desktop crate runs hundreds of them in parallel on one machine. The first
+  failure also stops cargo before the later crates run, which is why a flake makes the total look
+  like 731 rather than 1,004.
   One test, `worker_pairs_a_phone_over_tcp_with_the_code_it_shows`, is intermittent on macOS and
   not a defect. The listener announces private addresses and never loopback, so the test pairs over
   this machine's LAN address, where macOS Local Network privacy applies to the test binary. When it
