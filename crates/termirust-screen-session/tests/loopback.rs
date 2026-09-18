@@ -291,7 +291,7 @@ fn a_slow_viewer_is_not_flooded_and_catches_up_exactly() {
         .filter(|m| matches!(m, Message::Batch(_)))
         .count();
     assert!(
-        batches <= HostConfig::default().max_unacked_batches as usize,
+        batches <= HostConfig::default().min_unacked_batches as usize,
         "{batches} batches without acknowledgement"
     );
 
@@ -304,6 +304,99 @@ fn a_slow_viewer_is_not_flooded_and_catches_up_exactly() {
     link.show(&last, 20 * 33);
     link.show(&last, 21 * 33);
     assert_eq!(link.viewer.framebuffer(1).unwrap(), &last);
+}
+
+/// How much a session gets out in a second, on links that differ in nothing but latency.
+///
+/// The window is how many batches may be unacknowledged at once, and a fixed one is wrong at both
+/// ends of the range it has to cover. Four is about one round trip's worth at 130 ms; at 300 ms a
+/// session allowed only four spends most of its time idle with the link empty, because every batch
+/// has to be acknowledged before another may go and an acknowledgement takes a third of a second
+/// to come back. That is not congestion, that is the sender waiting.
+///
+/// So this measures rather than asserts a rule: same frames, same screen, same everything, two
+/// latencies, count what actually left. With the window fixed at four the slow column reads 12 —
+/// four batches per round trip, three round trips in a second — and those are frames the link had
+/// the capacity to carry and never saw.
+///
+/// The fast column is the control. A window that scales has to *not* scale when there is nothing
+/// to scale for: an eight-millisecond link needs no more than the floor, and one that opened up
+/// anyway would only be buffering.
+#[test]
+fn the_send_window_follows_the_round_trip_it_measures() {
+    /// Runs a second of 33 ms frames with every message delayed by half of `rtt_ms` each way, and
+    /// returns how many batches the host got onto the wire.
+    fn batches_in_a_second(rtt_ms: u64) -> usize {
+        const FRAME_MS: u64 = 33;
+        let mut link = connected(CONTROL_TICKET);
+        link.viewer.subscribe(1, Profile::Interactive);
+        link.pump();
+
+        let one_way = rtt_ms / 2;
+        // Messages in flight, with the time each is allowed to arrive.
+        let mut to_viewer: Vec<(Message, u64)> = Vec::new();
+        let mut to_host: Vec<(Message, u64)> = Vec::new();
+        let mut batches = 0usize;
+
+        for step in 0..30u64 {
+            let now = step * FRAME_MS;
+
+            let (arrived, waiting) = to_viewer.into_iter().partition(|(_, at)| *at <= now);
+            to_viewer = waiting;
+            for (message, _) in arrived {
+                if let Ok(events) = link.viewer.receive(message) {
+                    link.viewer_events.extend(events);
+                }
+                while let Some(reply) = link.viewer.poll_outgoing() {
+                    to_host.push((reply, now + one_way));
+                }
+            }
+
+            let (arrived, waiting) = to_host.into_iter().partition(|(_, at)| *at <= now);
+            to_host = waiting;
+            for (message, _) in arrived {
+                let _ = link.host.receive(message, &mut link.store);
+            }
+
+            // A screen that keeps changing, so every frame has something to send and a refusal is
+            // the window and nothing else.
+            link.host
+                .frame(1, &screen(step as u32, 0).as_frame(), None, now)
+                .unwrap();
+            while let Some(message) = link.host.poll_outgoing() {
+                if matches!(message, Message::Batch(_)) {
+                    batches += 1;
+                }
+                to_viewer.push((message, now + one_way));
+            }
+        }
+        batches
+    }
+
+    let fast = batches_in_a_second(8);
+    let slow = batches_in_a_second(300);
+
+    // The fast link is limited by the frame rate, not the window: 30 frames offered, near 30 sent.
+    // It needs no more than the floor and must not be given more.
+    assert!(
+        fast >= 25,
+        "a fast link should be limited by the frame rate, not the window: {fast} batches"
+    );
+
+    // The slow link cannot match that — a round trip is nine frames long, so acknowledgements are
+    // genuinely scarce. What it must not do is sit at the fixed floor. At 300 ms and 33 ms frames
+    // the window opens to about ten, which is most of those frames back.
+    assert!(
+        slow >= 20,
+        "a 300 ms link should still get most frames out once the window scales: {slow} batches"
+    );
+
+    // The mechanism, not just the outcome. This is the assertion that fails at 12 when the ceiling
+    // is pinned back to four, which is how the test was shown to be measuring anything at all.
+    assert!(
+        slow > 4 * 3 + 2,
+        "the slow link is still capped by a fixed window: {slow} batches"
+    );
 }
 
 #[test]

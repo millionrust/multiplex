@@ -44,7 +44,21 @@ pub trait TicketVerifier {
 /// Host tunables.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HostConfig {
-    /// Batches a viewer may leave unacknowledged before new frames wait.
+    /// Batches a viewer may leave unacknowledged before new frames wait, until a round trip has
+    /// been measured, and the floor once one has.
+    ///
+    /// A window is how much a sender may have in flight before it must hear back, so the right
+    /// size is however many batches fit in one round trip. Four is the answer for a link of about
+    /// 130 ms at 33 ms frames, and the wrong answer either side of that: on a LAN it lets a
+    /// session run further ahead than it needs to, and on a 300 ms link it caps the session at
+    /// four batches per round trip no matter how much bandwidth is going spare.
+    pub min_unacked_batches: u64,
+    /// The most a measured round trip may open the window to.
+    ///
+    /// A ceiling exists because the window is also what stops a session burying a slow link in
+    /// batches it cannot deliver, and because a round-trip measurement that goes wrong should cost
+    /// some buffering rather than unbounded queueing. At 33 ms frames this is a second of video in
+    /// flight, which is far past any link worth keeping open.
     pub max_unacked_batches: u64,
     pub thumbnail_longest_side: u32,
     pub thumbnail_interval_ms: u64,
@@ -57,7 +71,8 @@ pub struct HostConfig {
 impl Default for HostConfig {
     fn default() -> Self {
         Self {
-            max_unacked_batches: 4,
+            min_unacked_batches: 4,
+            max_unacked_batches: 32,
             thumbnail_longest_side: 320,
             thumbnail_interval_ms: 1_000,
             refine_budget_bytes: 2_000,
@@ -192,11 +207,99 @@ struct Subscription {
     /// by [`HostSession::take_link_pressure`].
     refused: u32,
     delivered: u32,
+    /// When each unacknowledged batch went out, oldest first.
+    ///
+    /// This is how a round trip gets measured without the acknowledgement path needing a clock:
+    /// `receive` has no time to hand it, and giving it one would change a public signature every
+    /// caller uses for a number that only matters at send time. So the sample is taken in
+    /// [`HostSession::frame`], which is the one place that has both a clock and a reason to care.
+    ///
+    /// The cost is that an acknowledgement is noticed at the next frame rather than the instant it
+    /// lands, so every sample is inflated by up to one frame interval. That is the granularity the
+    /// window is used at anyway, and it biases the window slightly large, which is the safe
+    /// direction: too large costs some buffering the ladder will notice, too small stalls a
+    /// session that had bandwidth to spare.
+    outstanding: VecDeque<(u64, u64)>,
+    /// Smoothed round trip, in milliseconds. `None` until a batch has been acknowledged.
+    rtt_ms: Option<u64>,
+    /// Smoothed spacing between sends, in milliseconds. Measured rather than assumed, because the
+    /// ladder raises it and the capture cadence sets it, and the window is a ratio of the two.
+    interval_ms: Option<u64>,
     pending: Pending,
     last_sent_ms: Option<u64>,
     viewport: Option<Viewport>,
     /// The captured frame with attached panes masked out, reused between frames.
     masked: Option<FrameBuffer>,
+}
+
+/// How much of a round trip a new sample is worth.
+///
+/// One eighth, as TCP has used since RFC 6298, and for the same reason: a single late
+/// acknowledgement should move the estimate a little, not redraw it. A window that follows every
+/// jitter spike would open and close faster than the link actually changes.
+const RTT_SMOOTHING: u64 = 8;
+
+/// The most send timestamps worth keeping: the largest window the config allows, with slack.
+/// A viewer that stops acknowledging cannot grow this, and the entries dropped from the front are
+/// ones a round trip has already outlived.
+const OUTSTANDING_CAP: usize = 64;
+
+impl Subscription {
+    /// Takes a round-trip sample from every batch acknowledged since the last frame.
+    fn measure(&mut self, now_ms: u64) {
+        while let Some(&(sequence, at)) = self.outstanding.front() {
+            if sequence > self.acked {
+                break;
+            }
+            self.outstanding.pop_front();
+            let sample = now_ms.saturating_sub(at);
+            self.rtt_ms = Some(match self.rtt_ms {
+                Some(rtt) => (rtt * (RTT_SMOOTHING - 1) + sample) / RTT_SMOOTHING,
+                None => sample,
+            });
+        }
+    }
+
+    /// How many batches may be outstanding, given what the link has been measured to do.
+    ///
+    /// One round trip's worth of batches, plus one: the `+1` is the batch that would have refilled
+    /// the pipe while the acknowledgement was still travelling, and without it a session idles for
+    /// a frame every round trip.
+    ///
+    /// Until both a round trip and a send interval have been measured this is the fixed floor,
+    /// which is what shipped before and what a session that has not sent anything yet deserves.
+    /// The floor also applies afterwards, so this only ever opens the window: a link too fast to
+    /// need four batches loses nothing by being allowed them.
+    fn window(&self, config: &HostConfig) -> u64 {
+        let floor = config.min_unacked_batches;
+        let (Some(rtt), Some(interval)) = (self.rtt_ms, self.interval_ms) else {
+            return floor;
+        };
+        (rtt.div_ceil(interval.max(1)) + 1).clamp(floor, config.max_unacked_batches.max(floor))
+    }
+
+    /// Records that `sequence` went out at `now_ms`, and what that says about the send cadence.
+    fn record_sent(&mut self, sequence: u64, now_ms: u64) {
+        if let Some(last) = self.last_sent_ms {
+            let sample = now_ms.saturating_sub(last);
+            // A zero-millisecond gap is two sends inside one clock tick, which says nothing about
+            // cadence and would divide the window by nothing.
+            if sample > 0 {
+                self.interval_ms = Some(match self.interval_ms {
+                    Some(interval) => (interval * (RTT_SMOOTHING - 1) + sample) / RTT_SMOOTHING,
+                    None => sample,
+                });
+            }
+        }
+        self.outstanding.push_back((sequence, now_ms));
+        // Bounded by the ceiling the window is clamped to, so a viewer that stops acknowledging
+        // cannot grow this without limit. The oldest entries are the ones a round trip has already
+        // outlived, so dropping from the front loses nothing but a stale sample.
+        while self.outstanding.len() > OUTSTANDING_CAP {
+            self.outstanding.pop_front();
+        }
+        self.last_sent_ms = Some(now_ms);
+    }
 }
 
 enum State {
@@ -284,16 +387,15 @@ impl<V: TicketVerifier> HostSession<V> {
     /// pipelining working rather than congestion. That version degraded a typing session using
     /// 18 kbps of a 5 Mbps link, which is the opposite of the point.
     ///
-    /// The threshold is deliberately well past parity. A fixed window of
-    /// [`HostConfig::max_unacked_batches`] caps a session at that many batches per round trip
-    /// whatever the link can carry, so on a slow-but-roomy path some refusals are the window
-    /// talking rather than the link, and a bare majority would degrade a session with bandwidth to
-    /// spare. Refusing several times more frames than it sends is the case where the difference
-    /// stops mattering: whatever the cause, that session is not getting its screen out.
-    ///
-    /// What this still cannot do is tell a small window from a slow link. The ladder's rungs give
-    /// up bytes, which is the right answer to the second and only sometimes to the first; a window
-    /// that scales with the measured round trip would be the better fix and is not built.
+    /// The threshold is deliberately well past parity, and the reason has narrowed rather than
+    /// gone away. A fixed window capped a session at four batches per round trip whatever the link
+    /// could carry, so on a slow-but-roomy path most refusals were the window talking rather than
+    /// the link, and a bare majority would have degraded a session with bandwidth to spare. The
+    /// window now scales with the measured round trip ([`Subscription::window`]), so that
+    /// particular lie is mostly gone — but only once a round trip has been measured, and a session
+    /// that has never had a batch acknowledged is exactly the session under enough pressure to be
+    /// asking. Refusing several times more frames than it sends is the case where the cause stops
+    /// mattering: whatever is responsible, that session is not getting its screen out.
     pub fn take_link_pressure(&mut self) -> bool {
         let mut refused = 0;
         let mut delivered = 0;
@@ -699,8 +801,13 @@ impl<V: TicketVerifier> HostSession<V> {
                 continue;
             };
             subscription.pending.add(damage);
+            // An acknowledgement that has arrived since the last frame is two things: a slot freed,
+            // and the only measurement of the round trip either side gets. Take the measurement
+            // before deciding how much may be in flight, so the window answers to the link it is
+            // on rather than to the one it was compiled for.
+            subscription.measure(now_ms);
             let unacked = subscription.sent.saturating_sub(subscription.acked);
-            if unacked >= config.max_unacked_batches {
+            if unacked >= subscription.window(&config) {
                 // Only a frame with something to send is evidence of anything: a still screen is
                 // refused for having nothing to say, not because the link is full.
                 if profile == Profile::Interactive
@@ -811,8 +918,10 @@ impl<V: TicketVerifier> HostSession<V> {
                 subscription.delivered = subscription.delivered.saturating_add(1);
                 // What the interval is measured from. Without this it stayed `None` for every
                 // interactive subscription for the life of the session, so `too_soon` was never
-                // true and the rung that slows frames down did nothing whatsoever.
-                subscription.last_sent_ms = Some(now_ms);
+                // true and the rung that slows frames down did nothing whatsoever. It now also
+                // starts this batch's round-trip timer and feeds the send cadence the window is a
+                // ratio of.
+                subscription.record_sent(batch.sequence, now_ms);
                 self.outbox.push_back(Message::Batch(batch));
             }
         }
@@ -890,6 +999,9 @@ impl<V: TicketVerifier> HostSession<V> {
             sent: acked,
             refused: 0,
             delivered: 0,
+            outstanding: VecDeque::new(),
+            rtt_ms: None,
+            interval_ms: None,
             pending: Pending::Everything,
             last_sent_ms: None,
             viewport: None,
