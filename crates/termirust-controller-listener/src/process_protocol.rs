@@ -143,6 +143,14 @@ pub enum ListenerProcessEvent {
         offer_id: Option<PairingOfferId>,
         code: String,
     },
+    /// Who is watching this computer's screens, whenever that changes.
+    ScreenWatchers {
+        schema_version: u16,
+        watchers: Vec<crate::ScreenWatcherReport>,
+    },
+    /// A screen grant worth remembering, so the person is asked for it once rather than once per
+    /// listener run. Only Wayland produces one.
+    ScreenRestoreToken { schema_version: u16, token: String },
 }
 
 impl ListenerProcessEvent {
@@ -230,6 +238,22 @@ impl ListenerProcessEvent {
         }
     }
 
+    /// Reports who is watching this computer's screens, newest listing wins.
+    pub fn screen_watchers(watchers: Vec<crate::ScreenWatcherReport>) -> Self {
+        Self::ScreenWatchers {
+            schema_version: PROCESS_PROTOCOL_VERSION,
+            watchers,
+        }
+    }
+
+    /// Reports a grant token for the application to keep.
+    pub fn screen_restore_token(token: String) -> Self {
+        Self::ScreenRestoreToken {
+            schema_version: PROCESS_PROTOCOL_VERSION,
+            token,
+        }
+    }
+
     pub fn read(reader: &mut impl BufRead) -> Result<Option<Self>, ListenerError> {
         let Some(bytes) = read_line(reader)? else {
             return Ok(None);
@@ -258,7 +282,9 @@ impl ListenerProcessEvent {
             | Self::PairingCode { schema_version, .. }
             | Self::PairingCodeAttemptFailed { schema_version, .. }
             | Self::PairingComplete { schema_version, .. }
-            | Self::PairingFailed { schema_version, .. } => *schema_version,
+            | Self::PairingFailed { schema_version, .. }
+            | Self::ScreenWatchers { schema_version, .. }
+            | Self::ScreenRestoreToken { schema_version, .. } => *schema_version,
         }
     }
 }
@@ -335,6 +361,8 @@ impl std::fmt::Debug for ListenerProcessEvent {
             Self::PairingCodeAttemptFailed { .. } => "pairing_code_attempt_failed",
             Self::PairingComplete { .. } => "pairing_complete",
             Self::PairingFailed { .. } => "pairing_failed",
+            Self::ScreenWatchers { .. } => "screen_watchers",
+            Self::ScreenRestoreToken { .. } => "screen_restore_token",
         };
         formatter
             .debug_struct("ListenerProcessEvent")
@@ -381,6 +409,33 @@ mod tests {
 
         let hostile = b"{\"kind\":\"begin_pairing\",\"schema_version\":1,\"extra\":true}\n";
         assert!(ListenerControlCommand::read(&mut &hostile[..]).is_err());
+    }
+
+    #[test]
+    fn watcher_reports_round_trip_and_carry_no_screen_content() {
+        let watching = ListenerProcessEvent::screen_watchers(vec![crate::ScreenWatcherReport {
+            device_id: termirust_domain::ControllerDeviceId::new(),
+            controlling: true,
+        }]);
+        let mut bytes = Vec::new();
+        watching.write(&mut bytes).unwrap();
+        assert_eq!(
+            ListenerProcessEvent::read(&mut bytes.as_slice()).unwrap(),
+            Some(watching.clone())
+        );
+        assert!(
+            !format!("{watching:?}").contains("device_id"),
+            "debug output stays redacted"
+        );
+
+        let empty = ListenerProcessEvent::screen_watchers(Vec::new());
+        let mut bytes = Vec::new();
+        empty.write(&mut bytes).unwrap();
+        assert_eq!(
+            ListenerProcessEvent::read(&mut bytes.as_slice()).unwrap(),
+            Some(empty),
+            "the last watcher leaving is itself a report"
+        );
     }
 
     #[test]

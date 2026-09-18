@@ -39,6 +39,8 @@ use crate::{
 const LAUNCH_FORMAT_VERSION: u16 = 1;
 const MAX_LAUNCH_DESCRIPTOR_BYTES: u64 = 32 * 1024;
 const PAIRING_OFFER_LIFETIME_SECONDS: u64 = 5 * 60;
+/// How often the listener checks who is watching its screens, to tell the app.
+const SCREEN_WATCHER_POLL: std::time::Duration = std::time::Duration::from_millis(500);
 
 #[derive(Clone)]
 struct ListenerEventSink {
@@ -123,6 +125,13 @@ pub struct ListenerLaunchDescriptor {
     /// Lists and attaches tmux sessions the app did not create. Opt-in.
     #[serde(default)]
     pub tmux_sessions: bool,
+    /// Serves this computer's screens to paired devices that may watch them. Opt-in.
+    #[serde(default)]
+    pub screen_sharing: bool,
+    /// What a previous run was given for reopening a screen grant without asking again. Only
+    /// Wayland has anything to put here; everywhere else capture needs no per-screen permission.
+    #[serde(default)]
+    pub screen_restore_token: Option<String>,
     pub network_revision: ControllerNetworkRevision,
     pub policy: ControllerListenPolicy,
     host_private: [u8; 32],
@@ -147,6 +156,8 @@ impl ListenerLaunchDescriptor {
             runtime_parent,
             desktop_pane_bridge: None,
             tmux_sessions: false,
+            screen_sharing: false,
+            screen_restore_token: None,
             network_revision,
             policy,
             host_private: host_private.copy_for_process_handoff(),
@@ -166,6 +177,17 @@ impl ListenerLaunchDescriptor {
 
     pub fn with_tmux_sessions(mut self, enabled: bool) -> Self {
         self.tmux_sessions = enabled;
+        self
+    }
+
+    pub fn with_screen_sharing(mut self, enabled: bool) -> Self {
+        self.screen_sharing = enabled;
+        self
+    }
+
+    /// Hands back the grant token a previous run reported, so the person is not asked again.
+    pub fn with_screen_restore_token(mut self, token: Option<String>) -> Self {
+        self.screen_restore_token = token;
         self
     }
 
@@ -928,13 +950,26 @@ impl<R: Unpin, W: AsyncWrite + Unpin> AsyncWrite for SplitControllerIo<R, W> {
 /// Live sessions a repository bridge offers beyond durable sessions. The SSH and relay routes
 /// run the bridge in their own process, so they receive these explicitly instead of from a
 /// launch descriptor.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct RepositoryBridgeSources {
     /// The running desktop app's live panes, usually found with
     /// [`crate::DesktopPaneBridgeEndpoint::discover`].
     pub desktop_pane_bridge: Option<crate::DesktopPaneBridgeEndpoint>,
     /// tmux sessions, when the user turned sharing on.
     pub tmux_sessions: Option<TmuxSessionSource>,
+    /// Screens, when the user turned screen sharing on and this build can capture them.
+    pub screens: Option<Arc<dyn crate::ScreenSessionFactory>>,
+}
+
+impl std::fmt::Debug for RepositoryBridgeSources {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RepositoryBridgeSources")
+            .field("desktop_pane_bridge", &self.desktop_pane_bridge)
+            .field("tmux_sessions", &self.tmux_sessions.is_some())
+            .field("screens", &self.screens.is_some())
+            .finish()
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -968,7 +1003,8 @@ where
     let backends: Arc<dyn crate::ControllerBackendFactory> = Arc::new(
         HostBackendFactory::new(sessions, projects, runtime_parent)
             .with_desktop_pane_bridge(sources.desktop_pane_bridge)
-            .with_tmux_sessions(sources.tmux_sessions),
+            .with_tmux_sessions(sources.tmux_sessions)
+            .with_screens(sources.screens),
     );
     let mut stream = SplitControllerIo { reader, writer };
     let purpose = tokio::time::timeout(
@@ -1007,7 +1043,22 @@ where
 /// How long a starting listener waits for another to hand over the route.
 pub const LISTENER_OWNERSHIP_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
-pub fn run_listener_worker<R, W>(mut reader: R, readiness: W) -> Result<(), ListenerError>
+pub fn run_listener_worker<R, W>(reader: R, readiness: W) -> Result<(), ListenerError>
+where
+    R: BufRead + Send + 'static,
+    W: Write + Send + 'static,
+{
+    run_listener_worker_with_screens(reader, readiness, None)
+}
+
+/// The same worker, able to serve Remote Screens when the descriptor asks for it and the caller
+/// supplied a factory. Capture and input injection happen in this process, which therefore needs
+/// the operating system's screen-recording and accessibility permissions.
+pub fn run_listener_worker_with_screens<R, W>(
+    mut reader: R,
+    readiness: W,
+    screens: Option<Arc<dyn crate::ScreenSessionFactory>>,
+) -> Result<(), ListenerError>
 where
     R: BufRead + Send + 'static,
     W: Write + Send + 'static,
@@ -1071,8 +1122,18 @@ where
                     .tmux_sessions
                     .then(|| TmuxSessionSource::system(descriptor.runtime_parent.clone()))
                     .transpose()?,
-            ),
+            )
+            .with_screens(screens.clone().filter(|_| descriptor.screen_sharing)),
     );
+    // Whatever this host must settle before it can offer a screen at all, settled now rather than
+    // when a device arrives. On Wayland that is the portal dialog, and a person who has just
+    // turned sharing on is expecting to be asked; a person whose phone connects an hour later is
+    // not, and by then the session already needs to know what it is sharing.
+    if descriptor.screen_sharing
+        && let Some(screens) = screens.as_ref()
+    {
+        screens.prepare(descriptor.screen_restore_token.as_deref());
+    }
     let mut source_key = [0; 32];
     rand::rngs::OsRng
         .try_fill_bytes(&mut source_key)
@@ -1103,6 +1164,40 @@ where
     let listening = Arc::new(Mutex::new(initial_addresses));
 
     let cancel = CancellationToken::new();
+    // The computer being watched has to be able to say so, so the app hears about every change.
+    if let Some(screens) = screens.filter(|_| descriptor.screen_sharing) {
+        let watcher_events = events.clone();
+        let watcher_cancel = cancel.clone();
+        std::thread::spawn(move || {
+            let mut reported = Vec::new();
+            let mut reported_token: Option<String> = None;
+            while !watcher_cancel.is_cancelled() {
+                let watching = screens.watchers();
+                if watching != reported {
+                    if watcher_events
+                        .send(&ListenerProcessEvent::screen_watchers(watching.clone()))
+                        .is_err()
+                    {
+                        return;
+                    }
+                    reported = watching;
+                }
+                // The grant token appears only once the person has answered the portal, which is
+                // some time after this thread starts, so it is polled rather than read at startup.
+                let token = screens.restore_token();
+                if let Some(token) = token.filter(|token| Some(token) != reported_token.as_ref()) {
+                    if watcher_events
+                        .send(&ListenerProcessEvent::screen_restore_token(token.clone()))
+                        .is_err()
+                    {
+                        return;
+                    }
+                    reported_token = Some(token);
+                }
+                std::thread::sleep(SCREEN_WATCHER_POLL);
+            }
+        });
+    }
     let control_cancel = cancel.clone();
     let control_events = events.clone();
     let control_authority = repository_authority;

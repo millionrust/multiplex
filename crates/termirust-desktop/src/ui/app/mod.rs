@@ -24,6 +24,7 @@ mod project;
 mod project_coordinator;
 mod projects;
 mod remote_devices;
+mod remote_screen;
 mod remote_terminals;
 mod replication_settings;
 mod runtimes;
@@ -555,6 +556,10 @@ struct SettingsInputs {
     remote_identity_reset: Entity<InputState>,
     remote_device_name: Entity<InputState>,
     remote_listener_port: Entity<InputState>,
+    /// The form that pairs this Mac with another computer, as its device.
+    watched_computer_address: Entity<InputState>,
+    watched_computer_code: Entity<InputState>,
+    watched_computer_name: Entity<InputState>,
 }
 
 struct VaultInputs {
@@ -660,6 +665,18 @@ impl SettingsInputs {
             remote_listener_port: cx.new(|cx| {
                 InputState::new(window, cx)
                     .placeholder(localization::remote_devices_listener_port_placeholder())
+            }),
+            watched_computer_address: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(localization::watched_computers_address_placeholder())
+            }),
+            watched_computer_code: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(localization::watched_computers_code_placeholder())
+            }),
+            watched_computer_name: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(localization::watched_computers_name_placeholder())
             }),
         }
     }
@@ -933,6 +950,8 @@ struct WorkspaceTab {
     canvas: CanvasWorkspaceState,
     view_mode: WorkspaceViewMode,
     sftp: Option<WorkspaceSftpState>,
+    /// Another computer's screen, when this tab is watching one.
+    screen: Option<remote_screen::WorkspaceScreenState>,
     search_visible: bool,
     search_query: String,
     search_results: Vec<SearchMatch>,
@@ -1429,6 +1448,10 @@ pub struct TermiRustApp {
     worktree_base_input: Entity<InputState>,
     worktree_branch_input: Entity<InputState>,
     nav_section: NavSection,
+    /// Pictures every watched-computer preview has drawn, so a repaint follows a new one.
+    watched_preview_pictures: u64,
+    /// The same, for a tab watching one computer at full detail.
+    watched_screen_pictures: u64,
     show_editor_panel: bool,
     connection_coordinator: ConnectionCoordinator,
     session_coordinator: SessionCoordinator,
@@ -1774,6 +1797,8 @@ impl TermiRustApp {
             &controller_coordinator,
             desktop_pane_bridge_endpoint,
             saved.settings.remote_tmux_sessions,
+            saved.settings.remote_screen_sharing,
+            saved.settings.remote_screen_restore_token.clone(),
         );
         let project_label_input = cx
             .new(|cx| InputState::new(window, cx).placeholder(localization::project_label_field()));
@@ -1874,6 +1899,8 @@ impl TermiRustApp {
             worktree_base_input,
             worktree_branch_input,
             nav_section: NavSection::Hosts,
+            watched_preview_pictures: 0,
+            watched_screen_pictures: 0,
             show_editor_panel: false,
             connection_coordinator,
             session_coordinator,
@@ -6793,6 +6820,7 @@ impl TermiRustApp {
                 canvas,
                 view_mode: WorkspaceViewMode::Terminal,
                 sftp: None,
+                screen: None,
                 search_visible: false,
                 search_query: String::new(),
                 search_results: Vec::new(),
@@ -7981,6 +8009,7 @@ impl TermiRustApp {
             canvas: CanvasWorkspaceState::from_saved(None, &[pane_id], &self.canvas_coordinator),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
+            screen: None,
             search_visible: false,
             search_query: String::new(),
             search_results: Vec::new(),
@@ -8037,6 +8066,7 @@ impl TermiRustApp {
                     ),
                     view_mode: WorkspaceViewMode::Terminal,
                     sftp: None,
+                    screen: None,
                     search_visible: false,
                     search_query: String::new(),
                     search_results: Vec::new(),
@@ -8331,6 +8361,7 @@ impl TermiRustApp {
             canvas: CanvasWorkspaceState::from_saved(None, &[pane_id], &self.canvas_coordinator),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
+            screen: None,
             search_visible: false,
             search_query: String::new(),
             search_results: Vec::new(),
@@ -9953,6 +9984,7 @@ impl TermiRustApp {
             canvas: CanvasWorkspaceState::from_saved(None, &[pane_id], &self.canvas_coordinator),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
+            screen: None,
             search_visible: false,
             search_query: String::new(),
             search_results: Vec::new(),
@@ -27944,6 +27976,44 @@ sleep 1
                 view.right()
             );
         }
+    }
+
+    #[gpui::test]
+    fn e2e_screen_sharing_is_off_until_chosen_and_then_saved(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Devices, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            assert!(!app.saved.settings.remote_screen_sharing);
+            assert!(!app.remote_devices.screen_sharing());
+        });
+
+        let click = |cx: &mut TestAppContext, selector: &'static str| {
+            scroll_selector_into_view(window, cx, "devices-scroll", selector);
+            let point = selector_click_center(window, cx, selector);
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.simulate_click(point, gpui::Modifiers::none());
+            visual.run_until_parked();
+        };
+
+        click(cx, "remote-screens-sharing-0");
+        app.read_with(cx, |app, _| {
+            assert!(app.saved.settings.remote_screen_sharing);
+            assert!(app.remote_devices.screen_sharing());
+        });
+        click(cx, "remote-screens-sharing-1");
+        app.read_with(cx, |app, _| {
+            assert!(!app.saved.settings.remote_screen_sharing);
+            assert!(!app.remote_devices.screen_sharing());
+        });
     }
 
     #[gpui::test]

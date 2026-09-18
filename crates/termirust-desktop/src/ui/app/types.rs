@@ -64,4 +64,6 @@ pub enum WorkspaceViewMode {
     #[default]
     Terminal,
     Files,
+    /// Another computer's screen, watched over the Controller channel.
+    Screen,
 }

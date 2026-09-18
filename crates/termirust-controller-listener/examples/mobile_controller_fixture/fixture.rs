@@ -16,7 +16,7 @@ use termirust_client::{ConnectOptions, HostClient, LocalEndpoint};
 use termirust_controller_listener::{
     ControllerDeviceService, InterfaceProvider as _, ListenerControlCommand,
     ListenerLaunchDescriptor, ListenerProcessEvent, NoControllerChannels, ProcessPairingDecision,
-    SystemInterfaceProvider, run_listener_worker,
+    SystemInterfaceProvider, run_listener_worker_with_screens,
 };
 use termirust_controller_security::{StaticPrivateKey, host_public_key_from_private};
 use termirust_domain::{
@@ -232,12 +232,24 @@ fn run() -> Result<(), String> {
         saved_network.policy,
         &host_private,
     )
-    .map_err(|_| "listener_descriptor")?;
+    .map_err(|_| "listener_descriptor")?
+    .with_screen_sharing(true);
     let (mut listener_control, listener_input) =
         UnixStream::pair().map_err(|_| "listener_control")?;
     let (listener_output, event_input) = UnixStream::pair().map_err(|_| "listener_events")?;
-    let listener_thread =
-        thread::spawn(move || run_listener_worker(BufReader::new(listener_input), listener_output));
+    // The fixture shares one synthetic screen, so a phone can be tested against a real host.
+    let observations = Arc::new(crate::screens::ScreenObservations::default());
+    let screens = Arc::new(crate::screens::FixtureScreens::new(Arc::clone(
+        &observations,
+    )));
+    let listener_screens = Arc::clone(&screens);
+    let listener_thread = thread::spawn(move || {
+        run_listener_worker_with_screens(
+            BufReader::new(listener_input),
+            listener_output,
+            Some(listener_screens),
+        )
+    });
     launch
         .write(&mut listener_control)
         .map_err(|_| "listener_descriptor")?;
@@ -301,6 +313,8 @@ fn run() -> Result<(), String> {
     let shutdown = Arc::new(AtomicBool::new(false));
     let control_status = status.clone();
     let control_shutdown = shutdown.clone();
+    let control_screens = Arc::clone(&screens);
+    let control_observations = Arc::clone(&observations);
     let control_writer = listener_control
         .try_clone()
         .map_err(|_| "listener_control")?;
@@ -314,6 +328,8 @@ fn run() -> Result<(), String> {
             control_writer,
             control_status,
             control_shutdown,
+            control_screens,
+            control_observations,
         )
     });
 
@@ -515,6 +531,7 @@ fn write_config(path: &Path, config: &FixtureConfig) -> Result<(), String> {
         .map_err(|_| "config_write".to_owned())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn serve_control(
     listener: TcpListener,
     token: String,
@@ -522,6 +539,8 @@ fn serve_control(
     mut listener_control: UnixStream,
     status: Arc<Mutex<FixtureStatus>>,
     shutdown: Arc<AtomicBool>,
+    screens: Arc<crate::screens::FixtureScreens>,
+    observations: Arc<crate::screens::ScreenObservations>,
 ) {
     while !shutdown.load(Ordering::Acquire) {
         match listener.accept() {
@@ -533,6 +552,8 @@ fn serve_control(
                     &mut listener_control,
                     &status,
                     &shutdown,
+                    &screens,
+                    &observations,
                 ) {
                     eprintln!("fixture control request failed: {code}");
                 }
@@ -545,6 +566,7 @@ fn serve_control(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_control(
     mut stream: TcpStream,
     token: &str,
@@ -552,6 +574,8 @@ fn handle_control(
     listener_control: &mut UnixStream,
     status: &Arc<Mutex<FixtureStatus>>,
     shutdown: &Arc<AtomicBool>,
+    screens: &Arc<crate::screens::FixtureScreens>,
+    observations: &Arc<crate::screens::ScreenObservations>,
 ) -> Result<(), String> {
     stream
         .set_nonblocking(false)
@@ -621,6 +645,48 @@ fn handle_control(
                 ControllerDeviceService::new(repository.clone(), Arc::new(NoControllerChannels));
             let ok = service.set_capabilities(device_id, capabilities).is_ok();
             write_control_response(&mut stream, ok, Some(if ok { "granted" } else { "failed" }));
+        }
+        // Lets the paired device watch this fixture's screen, and drive it.
+        "grant_screens" => {
+            let Some(device_id) = locked.device_id else {
+                write_control_response(&mut stream, false, Some("not_paired"));
+                return Ok(());
+            };
+            // Additive: a device watching a screen keeps whatever it already had, so a live
+            // terminal on the same device stays authorized frame by frame.
+            let capabilities = ControllerCapabilities::default()
+                .with(ControllerCapability::ObserveSessions)
+                .with(ControllerCapability::AttachOutput)
+                .with(ControllerCapability::SendInput)
+                .with(ControllerCapability::Resize)
+                .with(ControllerCapability::RespondToApproval)
+                .with(ControllerCapability::ObserveScreens)
+                .with(ControllerCapability::ControlPointer)
+                .with(ControllerCapability::ControlKeyboard);
+            let service =
+                ControllerDeviceService::new(repository.clone(), Arc::new(NoControllerChannels));
+            let ok = service.set_capabilities(device_id, capabilities).is_ok();
+            write_control_response(&mut stream, ok, Some(if ok { "granted" } else { "failed" }));
+        }
+        // Hands the writer lease to the device that asked for it, as a person would.
+        "give_screen_control" => {
+            let ok = screens.give_control();
+            write_control_response(
+                &mut stream,
+                ok,
+                Some(if ok { "given" } else { "no_session" }),
+            );
+        }
+        // What the fixture saw, so a device test can assert its input arrived.
+        "screen_stats" => {
+            let value = format!(
+                "opened={} pointer={} keyboard={} control_requests={}",
+                observations.opened.load(Ordering::Acquire),
+                observations.pointer_events.load(Ordering::Acquire),
+                observations.keyboard_events.load(Ordering::Acquire),
+                observations.control_requests.load(Ordering::Acquire),
+            );
+            write_control_response(&mut stream, true, Some(&value));
         }
         "revoke" => {
             let Some(device_id) = locked.device_id else {

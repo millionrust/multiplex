@@ -617,11 +617,9 @@ pub fn create_test_user_certificate(
     let signer = if trusted_signer {
         &subject
     } else {
-        untrusted_signer = russh::keys::PrivateKey::random(
-            &mut rand::rngs::OsRng,
-            russh::keys::Algorithm::Ed25519,
-        )
-        .expect("unable to generate untrusted certificate signer");
+        untrusted_signer =
+            russh::keys::PrivateKey::random(&mut ssh_rand::rng(), russh::keys::Algorithm::Ed25519)
+                .expect("unable to generate untrusted certificate signer");
         &untrusted_signer
     };
     let now = SystemTime::now()
@@ -629,7 +627,7 @@ pub fn create_test_user_certificate(
         .expect("system clock should be after Unix epoch")
         .as_secs();
     let mut builder = Builder::new_with_random_nonce(
-        &mut rand::rngs::OsRng,
+        &mut ssh_rand::rng(),
         subject.public_key().key_data().clone(),
         now.saturating_sub(60),
         now + 3600,

@@ -12,8 +12,9 @@ use termirust_controller_security::{
     CapabilitySet, CodeKeyExchange, ConnectionChallenge, ConnectionInitiator, ConnectionPrelude,
     ControllerCapability as CoreCapability, ControllerFrameKind as CoreFrameKind,
     ControllerSecurityError, ControllerTransport, ErrorCode, HostStaticPublicKey,
-    MAX_CONTROL_PAYLOAD_BYTES, MAX_TERMINAL_FRAME_BYTES, PairingCode, PairingMachine, PairingNonce,
-    PairingRole as CorePairingRole, RevocationEpoch, StaticPrivateKey, decode_offer,
+    MAX_CONTROL_PAYLOAD_BYTES, MAX_SCREEN_FRAME_BYTES, MAX_TERMINAL_FRAME_BYTES, PairingCode,
+    PairingMachine, PairingNonce, PairingRole as CorePairingRole, RevocationEpoch,
+    StaticPrivateKey, decode_offer,
 };
 use zeroize::Zeroize;
 
@@ -31,12 +32,16 @@ pub enum ControllerCapability {
     SendInput,
     Resize,
     RespondToApproval,
+    ObserveScreens,
+    ControlPointer,
+    ControlKeyboard,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, uniffi::Enum)]
 pub enum ControllerFrameKind {
     Control,
     Terminal,
+    Screen,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, uniffi::Enum)]
@@ -1091,6 +1096,9 @@ fn validate_payload_size(
         ControllerFrameKind::Terminal => length
             .checked_add(48)
             .is_some_and(|frame_length| frame_length <= MAX_TERMINAL_FRAME_BYTES),
+        ControllerFrameKind::Screen => length
+            .checked_add(48)
+            .is_some_and(|frame_length| frame_length <= MAX_SCREEN_FRAME_BYTES),
     };
     if allowed {
         Ok(())
@@ -1149,6 +1157,9 @@ impl From<ControllerCapability> for CoreCapability {
             ControllerCapability::SendInput => Self::SendInput,
             ControllerCapability::Resize => Self::Resize,
             ControllerCapability::RespondToApproval => Self::RespondToApproval,
+            ControllerCapability::ObserveScreens => Self::ObserveScreens,
+            ControllerCapability::ControlPointer => Self::ControlPointer,
+            ControllerCapability::ControlKeyboard => Self::ControlKeyboard,
         }
     }
 }
@@ -1161,6 +1172,9 @@ impl From<CoreCapability> for ControllerCapability {
             CoreCapability::SendInput => Self::SendInput,
             CoreCapability::Resize => Self::Resize,
             CoreCapability::RespondToApproval => Self::RespondToApproval,
+            CoreCapability::ObserveScreens => Self::ObserveScreens,
+            CoreCapability::ControlPointer => Self::ControlPointer,
+            CoreCapability::ControlKeyboard => Self::ControlKeyboard,
         }
     }
 }
@@ -1170,6 +1184,7 @@ impl From<ControllerFrameKind> for CoreFrameKind {
         match kind {
             ControllerFrameKind::Control => Self::Control,
             ControllerFrameKind::Terminal => Self::Terminal,
+            ControllerFrameKind::Screen => Self::Screen,
         }
     }
 }
@@ -1179,6 +1194,7 @@ impl From<CoreFrameKind> for ControllerFrameKind {
         match kind {
             CoreFrameKind::Control => Self::Control,
             CoreFrameKind::Terminal => Self::Terminal,
+            CoreFrameKind::Screen => Self::Screen,
         }
     }
 }

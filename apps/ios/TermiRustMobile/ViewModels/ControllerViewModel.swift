@@ -34,6 +34,8 @@ final class ControllerViewModel: ObservableObject {
     private let deviceID: UUID
     private var operation: Task<Void, Never>?
     let computerBrowser: ControllerComputerBrowser
+    /// The phone's one screen session: the preview on a computer's page and the viewer it opens.
+    let screens = ControllerScreenCoordinator()
 
     init(
         connectionActor: (any ControllerConnecting)? = nil,
@@ -484,6 +486,46 @@ final class ControllerViewModel: ObservableObject {
     func closeReadOnlyTerminal() {
         activeTerminal?.detach()
         activeTerminal = nil
+        retry()
+    }
+
+    /// Whether the selected computer has given this phone screen access.
+    var canWatchSelectedHost: Bool {
+        selectedHost.map(ControllerScreenCoordinator.mayWatch) ?? false
+    }
+
+    /// Starts the preview on a computer's page. The Controller connection carries one session at
+    /// a time, so this waits until the fleet has loaded rather than pre-empting it: the list of
+    /// terminals is what the page is mostly for.
+    func startScreenPreview() {
+        guard activeTerminal == nil,
+              !screens.isWatching,
+              state.connection == .readyReadOnly,
+              !state.isCachedReadOnly,
+              let host = selectedHost,
+              let connection = selectedConnection else { return }
+        operation?.cancel()
+        operation = nil
+        screens.startPreview(host: host, connection: connection)
+    }
+
+    /// Ends the preview. Opening the full screen can take the page off screen, so this leaves a
+    /// viewer alone: it is the same session, and stopping it would close what was just opened.
+    func stopScreenPreview() {
+        guard screens.isWatching, screens.viewer == nil else { return }
+        screens.stop()
+        retry()
+    }
+
+    func openScreen() {
+        guard let host = selectedHost, let connection = selectedConnection else { return }
+        operation?.cancel()
+        operation = nil
+        screens.openViewer(host: host, connection: connection)
+    }
+
+    func closeScreen() {
+        screens.stop()
         retry()
     }
 

@@ -1401,6 +1401,7 @@ async fn wait_for(
             | ControllerResponse::Snapshot { command_id: id, .. }
             | ControllerResponse::Completed { command_id: id, .. }
             | ControllerResponse::Detached { command_id: id }
+            | ControllerResponse::ScreenOpened { command_id: id, .. }
             | ControllerResponse::Error { command_id: id, .. } => *id == command_id,
             ControllerResponse::Output { .. } => false,
         };

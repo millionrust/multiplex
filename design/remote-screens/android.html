@@ -1,0 +1,482 @@
+<title>Remote Screens Android</title>
+<meta name="description" content="Interactive Android prototype for TermiRust Remote Screens with a live network simulator.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="shared/remote-sim.css">
+<style>
+  :root {
+    --canvas: #17191D; --container-low: #1B1E23; --container: #202328; --container-high: #262A30; --outline: #363A41; --outline-var: #2A2E35;
+    --t1: #E6E8EB; --t2: #B4B9C2; --t3: #8C929C; --t4: #6F7580;
+    --accent: #74A7F2; --on-accent: #0E1622; --accent-cont: #2B3B52; --on-accent-cont: #D6E4FB;
+    --done: #6CCB8F; --attention: #E9B061; --attention-cont: #3D3120; --error: #E5787A; --violet: #B69CF0;
+    --float: #262A30F2; --scrim: #08090B8C; --snack: #E6E8EB; --on-snack: #17191D; --snack-action: #2A64C8;
+    --page: #0F1114; --page-panel: #15171B; --page-line: #23262C; --page-text: #E6E8EB; --page-muted: #8C929C; --page-control: #1D2025; --page-control-on: #2B3B52;
+    --bezel: #202226;
+    --rs-spark: #74A7F2; --rs-spark-fill: #74A7F226; --rs-spark-warn: #E9B061; --rs-spark-warn-fill: #E9B06126; --rs-spark-grid: #2A2E35;
+    --ui: "Roboto", system-ui, "Segoe UI", sans-serif;
+    --mono: "Roboto Mono", ui-monospace, Menlo, monospace;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --canvas: #FAFBFC; --container-low: #F1F3F6; --container: #EBEEF2; --container-high: #E3E7EC; --outline: #C4CAD2; --outline-var: #D6DAE0;
+      --t1: #1A1D22; --t2: #3A404A; --t3: #4F5661; --t4: #626974;
+      --accent: #2A64C8; --on-accent: #FFFFFF; --accent-cont: #D7E4FA; --on-accent-cont: #0F2C5E;
+      --done: #1A7A45; --attention: #8F5300; --attention-cont: #F6E6CF; --error: #B8343A; --violet: #6B4FB8;
+      --float: #FFFFFFF2; --scrim: #1A1D2266; --snack: #2B2F36; --on-snack: #F1F3F6; --snack-action: #9CC1F7;
+      --page: #E7EAEE; --page-panel: #F4F6F8; --page-line: #D0D5DC; --page-text: #1A1D22; --page-muted: #4F5661; --page-control: #FFFFFF; --page-control-on: #D7E4FA;
+      --bezel: #C9CED6;
+      --rs-spark: #2A64C8; --rs-spark-fill: #2A64C81F; --rs-spark-warn: #8F5300; --rs-spark-warn-fill: #8F53001F; --rs-spark-grid: #D6DAE0;
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="light"] {
+    --canvas: #FAFBFC; --container-low: #F1F3F6; --container: #EBEEF2; --container-high: #E3E7EC; --outline: #C4CAD2; --outline-var: #D6DAE0;
+    --t1: #1A1D22; --t2: #3A404A; --t3: #4F5661; --t4: #626974;
+    --accent: #2A64C8; --on-accent: #FFFFFF; --accent-cont: #D7E4FA; --on-accent-cont: #0F2C5E;
+    --done: #1A7A45; --attention: #8F5300; --attention-cont: #F6E6CF; --error: #B8343A; --violet: #6B4FB8;
+    --float: #FFFFFFF2; --scrim: #1A1D2266; --snack: #2B2F36; --on-snack: #F1F3F6; --snack-action: #9CC1F7;
+    --page: #E7EAEE; --page-panel: #F4F6F8; --page-line: #D0D5DC; --page-text: #1A1D22; --page-muted: #4F5661; --page-control: #FFFFFF; --page-control-on: #D7E4FA;
+    --bezel: #C9CED6;
+    --rs-spark: #2A64C8; --rs-spark-fill: #2A64C81F; --rs-spark-warn: #8F5300; --rs-spark-warn-fill: #8F53001F; --rs-spark-grid: #D6DAE0;
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] { color-scheme: dark; }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--page); color: var(--page-text); font-family: var(--ui); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- page ---------- */
+  .review { max-width: 1320px; margin: 0 auto; padding-block: 36px 80px; padding-inline: 24px; }
+  .review-head { display: grid; gap: 8px; max-width: 76ch; margin-bottom: 28px; }
+  .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--page-muted); margin: 0; }
+  .review-head h1 { margin: 0; font-size: 30px; line-height: 1.2; font-weight: 500; letter-spacing: -0.01em; text-wrap: balance; }
+  .review-head p { margin: 0; color: var(--page-muted); font-size: 15px; }
+  .proto { display: grid; grid-template-columns: minmax(0, 460px) minmax(0, 1fr); gap: 32px; align-items: start; }
+  @media (max-width: 900px) { .proto { grid-template-columns: minmax(0, 1fr); } }
+  .phone-col { position: sticky; top: 16px; display: grid; justify-items: center; }
+  @media (max-width: 900px) { .phone-col { position: static; } }
+  .proto.landscape { grid-template-columns: minmax(0, 1fr); }
+  .proto.landscape .phone-col { position: static; }
+  .fit { position: relative; width: 100%; }
+  .fit > .device { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  .side { display: grid; gap: 16px; min-width: 0; }
+  .card-p { background: var(--page-panel); border: 1px solid var(--page-line); border-radius: 12px; padding: 16px; display: grid; gap: 12px; }
+  .card-p h2 { margin: 0; font-size: 13px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; color: var(--page-muted); display: flex; justify-content: space-between; gap: 8px; }
+  .card-p h2 small { text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+  .card-p p { margin: 0; color: var(--page-muted); font-size: 13px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pbtn { height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--page-line); background: var(--page-control); cursor: pointer; font-size: 13px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .pbtn:hover { border-color: var(--accent); }
+  .pbtn[aria-pressed="true"] { background: var(--page-control-on); border-color: var(--accent); }
+  .pbtn .sw { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .tour { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .tour li { display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start; font-size: 13.5px; }
+  .tour .tick { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--page-line); margin-top: 1px; display: grid; place-items: center; }
+  .tour li.done { color: var(--page-muted); }
+  .tour li.done .tick { background: var(--done); border-color: var(--done); }
+  .tour li.done .tick::after { content: ""; width: 8px; height: 4px; border: 2px solid var(--page); border-top: 0; border-right: 0; transform: rotate(-45deg) translate(1px, -1px); }
+  .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 360px; overflow-y: auto; font-size: 13px; }
+  .log li { display: grid; grid-template-columns: 64px 1fr; gap: 8px; padding: 6px 8px; border-radius: 8px; border-left: 3px solid var(--page-line); background: color-mix(in srgb, var(--page-panel) 60%, var(--page)); }
+  .log time { color: var(--page-muted); font-variant-numeric: tabular-nums; font-size: 12px; padding-top: 1px; }
+  .log .rs-log-text { border-left-color: var(--done); } .log .rs-log-tile { border-left-color: var(--accent); }
+  .log .rs-log-warn { border-left-color: var(--attention); } .log .rs-log-good { border-left-color: var(--done); }
+  .log .rs-log-input { border-left-color: var(--violet); }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--page-muted); }
+  .legend span { display: inline-flex; gap: 6px; align-items: center; }
+  .legend i { width: 10px; height: 10px; border-radius: 2px; display: block; }
+
+  /* ---------- device ---------- */
+  .device { border-radius: 52px; padding: 10px; background: var(--bezel); box-shadow: 0 30px 60px #00000059, inset 0 0 0 1px #FFFFFF14; }
+  .screen { position: relative; width: 412px; height: 915px; border-radius: 42px; overflow: hidden; background: var(--canvas); color: var(--t1); font-size: 16px; line-height: 24px; }
+  .device.land .screen { width: 915px; height: 412px; }
+  .cam { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); width: 14px; height: 14px; border-radius: 50%; background: #000; z-index: 90; box-shadow: 0 0 0 2px #0B0B0B; }
+  .device.land .cam { left: 12px; top: 50%; transform: translateY(-50%); }
+  .scr { position: absolute; inset: 0; }
+  .status { position: absolute; left: 0; right: 0; top: 0; height: 40px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; font-size: 14px; font-weight: 500; z-index: 40; pointer-events: none; }
+  .status .icons { display: flex; gap: 6px; align-items: center; }
+  .status.onmedia { color: #fff; }
+  .device.land .status { display: none; }
+  .gesture { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); width: 108px; height: 4px; border-radius: 2px; background: var(--t1); opacity: 0.85; z-index: 60; pointer-events: none; }
+  .gesture.onmedia { background: #fff; }
+  .tap { cursor: pointer; }
+
+  .appbar { position: absolute; left: 0; right: 0; top: 40px; height: 64px; display: flex; align-items: center; gap: 4px; padding: 0 4px; z-index: 30; background: var(--canvas); }
+  .appbar .title { font-size: 22px; line-height: 28px; flex: 1; padding-left: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .iconbtn { width: 48px; height: 48px; border-radius: 24px; display: grid; place-items: center; color: var(--t2); flex: none; background: none; border: 0; cursor: pointer; padding: 0; }
+  .iconbtn svg { width: 24px; height: 24px; }
+  .scroll { position: absolute; left: 0; right: 0; top: 104px; bottom: 0; overflow-y: auto; padding: 0 16px 120px; scrollbar-width: none; }
+  .scroll::-webkit-scrollbar { display: none; }
+  .card { background: var(--container-low); border-radius: 16px; overflow: hidden; border: 1px solid var(--outline-var); }
+  .card + .card { margin-top: 12px; }
+  .thumb { position: relative; aspect-ratio: 3 / 1; background: #0B0D10; overflow: hidden; display: block; width: 100%; border: 0; padding: 0; }
+  .thumb .badge { position: absolute; left: 12px; top: 12px; display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 8px; background: #111316D9; color: #E6E8EB; font-size: 12px; font-weight: 500; z-index: 2; }
+  .thumb .badge i { width: 7px; height: 7px; border-radius: 50%; background: #6CCB8F; }
+  .cbody { padding: 12px 16px 12px; display: grid; gap: 2px; width: 100%; background: none; border: 0; text-align: left; }
+  .ctitle { font-size: 16px; font-weight: 500; }
+  .csub { font-size: 14px; line-height: 20px; color: var(--t3); font-variant-numeric: tabular-nums; }
+  .attn { color: var(--attention) !important; }
+  .attn.quiet, small.quiet { color: var(--t3) !important; }
+  .cattn { font-size: 14px; line-height: 20px; }
+  .cactions { display: flex; gap: 8px; padding: 0 16px 12px; }
+  .btn-filled { height: 40px; padding: 0 24px; border-radius: 20px; background: var(--accent); color: var(--on-accent); font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; border: 0; cursor: pointer; }
+  .btn-filled svg { width: 18px; height: 18px; }
+  .btn-text { height: 40px; padding: 0 12px; border-radius: 20px; color: var(--accent); font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; background: none; border: 0; cursor: pointer; }
+  .btn-tonal { height: 40px; padding: 0 20px; border-radius: 20px; background: var(--accent-cont); color: var(--on-accent-cont); font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; border: 0; cursor: pointer; }
+  .label-h { font-size: 14px; font-weight: 500; color: var(--accent); margin: 20px 16px 8px; }
+  .items { background: var(--container-low); border-radius: 16px; overflow: hidden; border: 1px solid var(--outline-var); }
+  .item { display: flex; align-items: center; gap: 16px; min-height: 64px; padding: 8px 16px; width: 100%; background: none; border: 0; text-align: left; font-size: 16px; }
+  .item + .item { border-top: 1px solid var(--outline-var); }
+  .item .lead { width: 40px; height: 40px; border-radius: 20px; display: grid; place-items: center; background: var(--container-high); color: var(--t2); flex: none; }
+  .item .lead svg { width: 22px; height: 22px; }
+  .item .lead.warn { background: var(--attention-cont); color: var(--attention); }
+  .item .tx { flex: 1; min-width: 0; display: grid; }
+  .item .tx small { font-size: 14px; line-height: 20px; color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+  .dot.live { background: var(--done); } .dot.off { border: 2px solid var(--t4); }
+  .segbtn { display: flex; border: 1px solid var(--outline); border-radius: 20px; overflow: hidden; height: 40px; }
+  .segbtn span { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 500; color: var(--t2); }
+  .segbtn span + span { border-left: 1px solid var(--outline); }
+  .segbtn span.on { background: var(--accent-cont); color: var(--on-accent-cont); }
+  .segbtn svg { width: 16px; height: 16px; }
+  .navbar { position: absolute; left: 0; right: 0; bottom: 0; height: 104px; background: var(--container); display: flex; justify-content: space-around; padding-top: 12px; z-index: 30; }
+  .navbar div { display: grid; justify-items: center; align-content: start; gap: 4px; font-size: 12px; font-weight: 500; color: var(--t3); width: 120px; }
+  .navbar .pill { width: 64px; height: 32px; border-radius: 16px; display: grid; place-items: center; }
+  .navbar .on .pill { background: var(--accent-cont); color: var(--on-accent-cont); }
+  .navbar .on { color: var(--t1); }
+  .navbar svg { width: 24px; height: 24px; }
+
+  .termview { position: absolute; left: 0; right: 0; top: 104px; bottom: 0; background: #17191D; padding: 14px 14px 170px; font: 13px/19px var(--mono); color: #C9CDD4; white-space: pre-wrap; overflow: hidden; }
+  .termview .ln-row { display: block; min-height: 19px; }
+  .termview .g { color: #6CCB8F; } .termview .y { color: #E9B061; } .termview .b { color: #74A7F2; } .termview .m { color: #8C929C; } .termview .r { color: #E5787A; }
+  .termview [data-hit] { color: #74A7F2; }
+  .termbar { position: absolute; left: 16px; right: 16px; bottom: 32px; z-index: 30; display: grid; gap: 10px; }
+  .termbar .row { display: flex; gap: 8px; }
+  .termbar .row > * { flex: 1; }
+  .termbar p { margin: 0; font-size: 13px; line-height: 18px; color: #8C929C; text-align: center; }
+
+  /* viewer */
+  .viewer { position: absolute; inset: 0; background: #07080A; }
+  .viewer .stage { position: absolute; inset: 0; }
+  .kbd-open .viewer .stage { bottom: 290px; }
+  .device.land.kbd-open .viewer .stage { bottom: 240px; }
+  .vtop { position: absolute; left: 12px; right: 12px; top: 48px; z-index: 20; display: flex; align-items: center; gap: 8px; pointer-events: none; }
+  .vtop > * { pointer-events: auto; }
+  .device.land .vtop { top: 12px; left: 48px; right: 24px; }
+  .ficon { width: 48px; height: 48px; border-radius: 16px; display: grid; place-items: center; background: var(--float); color: var(--t1); flex: none; box-shadow: 0 2px 8px #00000059; border: 0; cursor: pointer; padding: 0; }
+  .ficon svg { width: 22px; height: 22px; }
+  .fchip { height: 40px; border-radius: 12px; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: var(--float); color: var(--t1); font-size: 14px; white-space: nowrap; box-shadow: 0 2px 8px #00000059; border: 0; cursor: pointer; }
+  .fchip b { font-weight: 500; }
+  .fchip small { color: var(--t3); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .fchip .dot { background: var(--done); }
+  .fchip.warn { background: var(--attention-cont); } .fchip.warn small { color: var(--attention); } .fchip.warn .dot { background: var(--attention); }
+  .fchip.off .dot { background: transparent; border: 2px solid var(--t4); }
+  .vtop .grow { flex: 1; }
+  .zoomchip { height: 32px; padding: 0 12px; border-radius: 8px; background: #111316CC; color: #E6E8EB; font-size: 13px; display: flex; align-items: center; font-variant-numeric: tabular-nums; }
+  .ftoolbar { position: absolute; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: 8px; }
+  .kbd-open .ftoolbar { display: none; }
+  .device.land .ftoolbar { bottom: 16px; }
+  .ftoolbar .bar { display: flex; gap: 2px; padding: 8px; border-radius: 28px; background: var(--float); box-shadow: 0 4px 16px #00000066; }
+  .ftoolbar .tb { width: 48px; height: 48px; border-radius: 24px; display: grid; place-items: center; color: var(--t1); background: none; border: 0; cursor: pointer; }
+  .ftoolbar .tb svg { width: 24px; height: 24px; }
+  .ftoolbar .tb.on { background: var(--accent-cont); color: var(--on-accent-cont); }
+  .ctl { height: 64px; border-radius: 20px; padding: 0 20px; display: flex; align-items: center; gap: 10px; background: var(--accent); color: var(--on-accent); font-weight: 500; font-size: 15px; box-shadow: 0 4px 16px #00000066; white-space: nowrap; border: 0; cursor: pointer; }
+  .ctl svg { width: 20px; height: 20px; }
+  .ctl.watch { background: var(--container-high); color: var(--t1); }
+  .ctl.watch svg { display: none; }
+  .mini { position: absolute; right: 12px; top: 104px; width: 120px; aspect-ratio: 1512 / 982; z-index: 20; border-radius: 12px; overflow: hidden; border: 1px solid #FFFFFF33; box-shadow: 0 8px 20px #00000080; cursor: pointer; }
+  .device.land .mini { top: 68px; }
+  .kbd-open .mini { display: none; }
+  .banner { position: absolute; left: 12px; right: 12px; top: 104px; z-index: 22; display: flex; gap: 12px; align-items: center; padding: 10px 8px 10px 14px; border-radius: 16px; background: var(--attention-cont); color: var(--t1); font-size: 14px; line-height: 20px; box-shadow: 0 2px 8px #00000059; }
+  .banner > svg { width: 20px; height: 20px; color: var(--attention); flex: none; }
+  .banner .grow { flex: 1; }
+  .banner small { display: block; color: var(--t2); font-size: 13px; line-height: 18px; }
+  .device.land .banner { top: 64px; left: 48px; right: 160px; }
+  .banner ~ .mini { top: 184px; }
+  .progress { position: absolute; left: 0; right: 0; top: 40px; height: 4px; z-index: 25; background: #74A7F240; overflow: hidden; }
+  .device.land .progress { top: 0; }
+  .progress::after { content: ""; position: absolute; top: 0; bottom: 0; left: -40%; width: 40%; background: #74A7F2; animation: slide 1.4s ease-in-out infinite; }
+  @keyframes slide { to { left: 100%; } }
+  .snackbar { position: absolute; left: 12px; right: 12px; bottom: 120px; z-index: 50; min-height: 56px; border-radius: 8px; background: var(--snack); color: var(--on-snack); display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 16px; box-shadow: 0 4px 16px #00000066; font-size: 14px; line-height: 20px; }
+  .snackbar .tx { flex: 1; }
+  .snackbar button { color: var(--snack-action); font-weight: 500; padding: 8px 12px; white-space: nowrap; background: none; border: 0; cursor: pointer; }
+  .device.land .snackbar { left: 200px; right: 200px; bottom: 96px; }
+
+  .scrim { position: absolute; inset: 0; background: var(--scrim); z-index: 33; }
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 35; background: var(--container-low); border-radius: 28px 28px 0 0; padding: 4px 16px 36px; max-height: 78%; overflow-y: auto; }
+  .device.land .sheet { left: 180px; right: 180px; max-height: 94%; }
+  .handle { width: 32px; height: 4px; border-radius: 2px; background: var(--t4); margin: 14px auto 18px; }
+  .sheet h3 { margin: 0 8px 4px; font-size: 22px; line-height: 28px; font-weight: 400; display: flex; justify-content: space-between; align-items: center; }
+  .sheet p { margin: 0 8px 14px; font-size: 14px; line-height: 20px; color: var(--t3); }
+  .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .stats div { background: var(--container-high); border-radius: 12px; padding: 10px 14px; display: grid; }
+  .stats small { font-size: 12px; color: var(--t3); }
+  .stats b { font-size: 22px; line-height: 28px; font-weight: 400; font-variant-numeric: tabular-nums; }
+  .stats .is-warn { color: var(--attention); }
+  .sparkbox { background: var(--container-high); border-radius: 12px; padding: 10px 14px; margin-top: 8px; display: grid; gap: 4px; }
+  .sparkbox small { font-size: 12px; color: var(--t3); display: flex; justify-content: space-between; }
+  .sparkbox svg { width: 100%; height: 40px; display: block; }
+  .steps { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 2px; }
+  .rs-step { display: grid; grid-template-columns: 20px 1fr; gap: 14px; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 12px; font-size: 15px; }
+  .rs-step svg { width: 20px; height: 20px; color: var(--t3); }
+  .rs-step.now { background: var(--attention-cont); } .rs-step.now svg { color: var(--attention); }
+  .rs-step.next { color: var(--t3); }
+  .radio { display: flex; align-items: center; gap: 16px; min-height: 56px; padding: 0 12px; border-radius: 12px; width: 100%; background: none; border: 0; text-align: left; cursor: pointer; font-size: 16px; }
+  .radio .rb { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--t3); flex: none; display: grid; place-items: center; }
+  .radio[aria-pressed="true"] .rb { border-color: var(--accent); }
+  .radio[aria-pressed="true"] .rb::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .radio .tx { display: grid; } .radio small { font-size: 14px; color: var(--t3); }
+
+  .keyboard { position: absolute; left: 0; right: 0; bottom: 0; height: 290px; z-index: 30; display: none; flex-direction: column; background: #1F2124; }
+  .kbd-open .keyboard { display: flex; }
+  .device.land .keyboard { height: 240px; }
+  .extra { height: 46px; display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--container); border-top: 1px solid var(--outline-var); flex: none; overflow: hidden; }
+  .device.land .extra { padding: 0 48px; }
+  .extra button { height: 32px; min-width: 40px; padding: 0 8px; border-radius: 8px; background: var(--container-high); color: var(--t1); border: 0; font: 13px var(--mono); cursor: pointer; flex: none; }
+  .extra .grow { flex: 1; }
+  .extra .hide { font-family: var(--ui); }
+  .keys { flex: 1; padding: 8px 6px 26px; display: grid; gap: 8px; align-content: start; }
+  .device.land .keys { padding: 6px 48px 12px; gap: 6px; }
+  .keys .r { display: flex; gap: 5px; justify-content: center; }
+  .keys button { height: 44px; flex: 1; max-width: 36px; border-radius: 8px; background: #3B3E43; color: #E6E8EB; border: 0; font-size: 19px; cursor: pointer; padding: 0; }
+  .device.land .keys button { height: 36px; max-width: 72px; font-size: 17px; }
+  .keys button.s { background: #2C2F33; font-size: 14px; max-width: 52px; }
+  .keys button.space { max-width: 190px; flex: 5; }
+  .device.land .keys button.space { max-width: 360px; }
+  .keys button.ent { background: #74A7F2; color: #0E1622; max-width: 60px; }
+  .keys button:active { background: #5A5E65; }
+
+  .lock { position: absolute; inset: 0; z-index: 80; background: radial-gradient(600px 500px at 50% 25%, #26384F, #0B0D10); color: #fff; display: grid; justify-items: center; align-content: start; padding-top: 140px; gap: 6px; text-align: center; }
+  .lock b { font-size: 96px; line-height: 1; font-weight: 400; }
+  .lock small { font-size: 16px; opacity: 0.8; }
+  .lock .note { margin-top: 36px; padding: 12px 16px; border-radius: 16px; background: #FFFFFF1F; font-size: 14px; max-width: 320px; }
+</style>
+
+<div class="review">
+  <header class="review-head">
+    <p class="eyebrow">TermiRust · Interactive prototype · Android app</p>
+    <h1>Remote Screens on Android</h1>
+    <p>A working Pixel 9, built from Material 3 parts and coloured with Slate. Tap through it like the real app, then change the network on the right to watch TermiRust adapt. The log explains every byte it would send.</p>
+  </header>
+
+  <div class="proto">
+    <div class="phone-col">
+      <div class="fit" id="fit">
+        <div class="device" data-phone-root>
+          <div class="screen">
+            <div class="cam"></div>
+
+            <!-- ================= Devices ================= -->
+            <section class="scr" data-screen="fleet" aria-label="Devices">
+              <div class="status"><span>9:41</span><span class="icons" data-status></span></div>
+              <div class="appbar"><div class="title">Devices</div><button class="iconbtn" type="button" aria-label="Pair a computer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconbtn" type="button" aria-label="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5.5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="18.5" r="1.8"/></svg></button></div>
+              <div class="scroll">
+                <div class="card">
+                  <button class="thumb tap" type="button" data-go="detail"><div data-preview="mac"></div><div class="badge"><i></i>Live</div></button>
+                  <button class="cbody tap" type="button" data-go="detail"><span class="ctitle">mac-studio</span><span class="csub"><span data-conn-text>Direct · 38 ms</span> · 3 terminals</span><span class="cattn attn" data-agent-text>1 agent waiting for approval</span></button>
+                  <div class="cactions"><button class="btn-filled" type="button" data-go="viewer">Open screen</button><button class="btn-text" type="button" data-go="detail">Terminals</button></div>
+                </div>
+                <div class="card">
+                  <div class="thumb"><div data-preview="linux"></div><div class="badge"><i></i>Live</div></div>
+                  <div class="cbody"><span class="ctitle">build-box</span><span class="csub">Relay · 124 ms · 6 terminals</span></div>
+                </div>
+                <div class="label-h">Other computers</div>
+                <div class="items">
+                  <div class="item"><div class="lead"><span class="dot off"></span></div><div class="tx">macbook-air<small>Asleep · last seen 14:02</small></div></div>
+                  <div class="item"><div class="lead"><span class="dot live"></span></div><div class="tx">office-imac<small>Screen sharing off · 2 terminals</small></div></div>
+                </div>
+              </div>
+              <div class="navbar" data-navbar></div>
+              <div class="gesture"></div>
+            </section>
+
+            <!-- ================= Detail ================= -->
+            <section class="scr" data-screen="detail" aria-label="mac-studio" hidden>
+              <div class="status"><span>9:41</span><span class="icons" data-status></span></div>
+              <div class="appbar"><button class="iconbtn" type="button" data-back aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button><div class="title" style="padding-left:4px">mac-studio</div></div>
+              <div class="scroll">
+                <div class="card">
+                  <button class="thumb tap" type="button" data-go="viewer" style="aspect-ratio:1512/982"><div data-preview="mac"></div><div class="badge"><i></i>Live · 1 fps preview</div></button>
+                  <div class="cactions" style="padding-top:14px"><button class="btn-filled" type="button" data-go="viewer" style="flex:1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg>Open screen</button></div>
+                </div>
+                <div class="label-h">Open terminals</div>
+                <div class="items">
+                  <div class="item"><div class="lead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M12 15h5"/></svg></div><div class="tx">zsh — termirust<small>cargo watch · 49 passed</small></div></div>
+                  <button class="item tap" type="button" data-go="terminal"><div class="lead warn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4 21 19H3z"/></svg></div><div class="tx">agent — screen-codec<small class="attn" data-agent-sub>Waiting for approval</small></div></button>
+                  <div class="item"><div class="lead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M12 15h5"/></svg></div><div class="tx">api-prod<small>tmux · idle 6 min</small></div></div>
+                </div>
+                <div class="label-h">Connection route</div>
+                <div class="segbtn"><span class="on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5 6.5 12 13 4.5"/></svg>Local</span><span>Relay</span><span>SSH</span></div>
+              </div>
+              <div class="navbar" data-navbar></div>
+              <div class="gesture"></div>
+            </section>
+
+            <!-- ================= Terminal ================= -->
+            <section class="scr" data-screen="terminal" aria-label="Agent terminal" hidden style="background:#17191D;color:#E6E8EB">
+              <div class="status onmedia"><span>9:41</span><span class="icons" data-status></span></div>
+              <div class="appbar" style="background:#14161A;color:#E6E8EB"><button class="iconbtn" type="button" data-back aria-label="Back" style="color:#B4B9C2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button><div class="title" style="padding-left:4px;font-size:18px">agent — screen-codec</div></div>
+              <div class="termview" data-term-live></div>
+              <div class="termbar">
+                <div class="row" data-agent-live><button class="btn-filled" type="button" data-approve style="background:#74A7F2;color:#0E1622">Yes</button><button class="btn-tonal" type="button" data-deny style="background:#262A30;color:#E6E8EB">No</button></div>
+                <p>This view is terminal text, not pixels. It keeps working at 20 kbps.</p>
+              </div>
+              <div class="gesture onmedia"></div>
+            </section>
+
+            <!-- ================= Viewer ================= -->
+            <section class="scr viewer" data-screen="viewer" aria-label="mac-studio screen" hidden>
+              <div class="stage" data-rs-stage></div>
+              <div class="status onmedia"><span>9:41</span><span class="icons" data-status></span></div>
+              <div class="vtop">
+                <button class="ficon" type="button" data-back aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button>
+                <button class="fchip" type="button" data-act="conn" data-conn-chip aria-label="Connection details"><span class="dot"></span><b>mac-studio</b><small data-conn-text>Direct · 38 ms</small></button>
+                <div class="grow"></div>
+                <span class="zoomchip" data-zoom-label>Fit</span>
+              </div>
+              <div class="banner" data-weak-banner hidden><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 22 20H2z"/></svg><div class="grow">Weak connection<small>Detail reduced to keep up. Text stays sharp.</small></div><button class="btn-text" type="button" data-act="conn">Details</button></div>
+              <div class="mini" data-mini aria-label="Minimap"></div>
+              <div class="ftoolbar">
+                <div class="bar">
+                  <button class="tb" type="button" data-act="keyboard" aria-label="Keyboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></button>
+                  <button class="tb" type="button" data-act="pointer" aria-label="Pointer mode"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 11V5a2 2 0 0 1 4 0v5l4.5.9a2 2 0 0 1 1.6 2.3l-.9 5.1A2 2 0 0 1 16.2 20H11a2 2 0 0 1-1.6-.8L6 14.5a1.6 1.6 0 0 1 2.4-2.1z"/></svg></button>
+                  <button class="tb" type="button" data-act="displays" aria-label="Displays"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="4" width="13" height="9" rx="1.5"/><rect x="9" y="9" width="13" height="9" rx="1.5"/></svg></button>
+                </div>
+                <button class="ctl watch" type="button" data-act="control" aria-pressed="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5 6.5 12 13 4.5"/></svg><span data-control-label>Take control</span></button>
+              </div>
+              <div data-reconnect hidden>
+                <div class="progress" role="progressbar" aria-label="Reconnecting"></div>
+                <div class="snackbar"><div class="tx" data-reconnect-text>Reconnecting…</div><button type="button" data-act="terminals-only">Terminals</button></div>
+              </div>
+              <div class="keyboard">
+                <div class="extra">
+                  <button type="button" data-key="Escape">Esc</button><button type="button" data-key="Tab">Tab</button><button type="button" data-key="Control">Ctrl</button><button type="button" data-key="Alt">Alt</button><button type="button" data-key="ArrowLeft">←</button><button type="button" data-key="ArrowUp">↑</button><button type="button" data-key="ArrowDown">↓</button><button type="button" data-key="ArrowRight">→</button><button type="button" data-key="|">|</button>
+                  <div class="grow"></div><button type="button" class="hide" data-act="keyboard">Hide</button>
+                </div>
+                <div class="keys" data-keys></div>
+              </div>
+              <div class="gesture onmedia"></div>
+            </section>
+
+            <div class="scrim" data-scrim hidden></div>
+            <div class="sheet" data-sheet="conn" hidden>
+              <div class="handle"></div>
+              <h3>Connection <button class="btn-text" type="button" data-close-sheet>Close</button></h3>
+              <p>Delay, loss and bandwidth decide how the screen is sent. Terminal text is never reduced.</p>
+              <div class="stats">
+                <div><small>Delay</small><b data-stat="rtt">38 ms</b></div>
+                <div><small>Loss</small><b data-stat="loss">0.2 %</b></div>
+                <div><small>Route</small><b data-stat="route">Direct</b></div>
+                <div><small>Updates</small><b data-stat="ups" data-short="1">60 / s</b></div>
+              </div>
+              <div class="sparkbox"><small><span>Using <span data-stat="bandwidth">1.4 Mbps</span></span><span data-stat="pathname">Motion path</span></small><svg data-rs-spark aria-label="Bandwidth, last 40 seconds"></svg></div>
+              <ul class="steps" data-rs-ladder></ul>
+            </div>
+            <div class="sheet" data-sheet="displays" hidden>
+              <div class="handle"></div>
+              <h3>Displays <button class="btn-text" type="button" data-close-sheet>Close</button></h3>
+              <button class="radio" type="button" data-display-choice="all" aria-pressed="false"><span class="rb"></span><span class="tx">All displays<small>Studio Display and built-in, side by side</small></span></button>
+              <button class="radio" type="button" data-display-choice="studio" aria-pressed="true"><span class="rb"></span><span class="tx">Studio Display<small>5K · main display</small></span></button>
+              <button class="radio" type="button" data-display-choice="builtin" aria-pressed="false"><span class="rb"></span><span class="tx">Built-in Display<small>Messages is open here</small></span></button>
+            </div>
+            <div class="snackbar" data-toast hidden style="bottom:36px"><div class="tx" data-toast-text></div></div>
+            <div class="lock" data-lock hidden><small>Tue, 15 Sep</small><b>9:41</b><div class="note">Phone locked. The connection to mac-studio is closed to save battery.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="side">
+      <section class="card-p" aria-labelledby="sim-h">
+        <h2 id="sim-h">Network</h2>
+        <div class="btns">
+          <button class="pbtn" type="button" data-rs-net="good"><span class="sw" style="background:var(--done)"></span>Good Wi-Fi</button>
+          <button class="pbtn" type="button" data-rs-net="cafe"><span class="sw" style="background:var(--accent)"></span>Busy café</button>
+          <button class="pbtn" type="button" data-rs-net="weak"><span class="sw" style="background:var(--attention)"></span>Weak cellular</button>
+          <button class="pbtn" type="button" data-rs-net="barely"><span class="sw" style="background:var(--error)"></span>Barely there</button>
+          <button class="pbtn" type="button" data-rs-net="offline"><span class="sw" style="border:1.5px solid var(--page-muted)"></span>Offline</button>
+        </div>
+        <p>Delay, loss and bandwidth change the way the screen is sent. Watch the connection chip, open its details, and read the log below.</p>
+      </section>
+
+      <section class="card-p" aria-labelledby="dev-h">
+        <h2 id="dev-h">Phone and computer</h2>
+        <div class="btns">
+          <button class="pbtn" type="button" data-phone="zoomin">Pinch out</button>
+          <button class="pbtn" type="button" data-phone="zoomout">Pinch in</button>
+          <button class="pbtn" type="button" data-phone="rotate">Rotate</button>
+          <button class="pbtn" type="button" data-phone="lock">Lock for 4 s</button>
+          <button class="pbtn" type="button" data-rs-video>Video playing</button>
+          <button class="pbtn" type="button" data-rs-agent>Agent asks again</button>
+        </div>
+        <div class="btns">
+          <span style="font-size:12px;color:var(--page-muted);align-self:center">Jump to</span>
+          <button class="pbtn" type="button" data-jump="fleet">Devices</button>
+          <button class="pbtn" type="button" data-jump="detail">Computer</button>
+          <button class="pbtn" type="button" data-jump="viewer">Screen</button>
+          <button class="pbtn" type="button" data-jump="weak">Weak connection</button>
+          <button class="pbtn" type="button" data-jump="typing">Typing in landscape</button>
+        </div>
+        <p>In the screen: drag to move, double-click or scroll to zoom, drag the minimap to jump. A computer keyboard types into mac-studio once you have control.</p>
+      </section>
+
+      <section class="card-p" aria-labelledby="tour-h">
+        <h2 id="tour-h">Try this <small data-rs-tour-count>0 of 7</small></h2>
+        <ol class="tour" data-rs-tour></ol>
+      </section>
+
+      <section class="card-p" aria-labelledby="log-h">
+        <h2 id="log-h">What TermiRust is sending</h2>
+        <div class="legend"><span><i style="background:var(--accent)"></i>Tiles</span><span><i style="background:var(--done)"></i>Text or recovery</span><span><i style="background:var(--violet)"></i>Your input</span><span><i style="background:var(--attention)"></i>Adapting</span></div>
+        <ul class="log" data-rs-log aria-live="polite"></ul>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="shared/remote-sim.js"></script>
+<script src="shared/phone.js"></script>
+<script>
+(function () {
+  const statusIcons = '<svg viewBox="0 0 16 16" width="16" height="16"><path d="M8 13.5 1 5.8a10 10 0 0 1 14 0z" fill="currentColor"/></svg><svg viewBox="0 0 16 16" width="16" height="16"><path d="M15 2v12H1z" fill="currentColor"/></svg><svg viewBox="0 0 10 16" width="10" height="16"><rect x="1" y="2.5" width="8" height="12.5" rx="1.4" fill="currentColor"/><rect x="3.5" y="1" width="3" height="2" rx=".6" fill="currentColor"/></svg>';
+  document.querySelectorAll('[data-status]').forEach(e => e.innerHTML = statusIcons);
+  const navbar = '<div><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M12 15h5"/></svg></span>Connections</div><div class="on"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="14" height="10" rx="1.5"/><path d="M5 19h8"/><rect x="17" y="8" width="5" height="11" rx="1.2"/></svg></span>Devices</div>';
+  document.querySelectorAll('[data-navbar]').forEach(e => e.innerHTML = navbar);
+  const rows = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+  const btn = (k, label, cls) => '<button type="button" data-key="' + k + '"' + (cls ? ' class="' + cls + '"' : '') + '>' + label + '</button>';
+  document.querySelector('[data-keys]').innerHTML =
+    '<div class="r">' + [...rows[0]].map(c => btn(c, c)).join('') + '</div>' +
+    '<div class="r">' + [...rows[1]].map(c => btn(c, c)).join('') + '</div>' +
+    '<div class="r">' + btn('Shift', '⇧', 's') + [...rows[2]].map(c => btn(c, c)).join('') + btn('Backspace', '⌫', 's') + '</div>' +
+    '<div class="r">' + btn('Numbers', '?123', 's') + btn(',', ',', 's') + btn(' ', '', 'space') + btn('.', '.', 's') + btn('Enter', '↵', 'ent') + '</div>';
+
+  function refit() {
+    const f = document.getElementById('fit'), d = f.firstElementChild;
+    const land = d.classList.contains('land');
+    document.querySelector('.proto').classList.toggle('landscape', land);
+    const w = land ? 935 : 432, h = land ? 432 : 935;
+    const avail = Math.min(f.parentElement.clientWidth, w);
+    const s = Math.min(1, avail / w);
+    f.style.width = (w * s) + 'px';
+    d.style.transform = 'scale(' + s + ')';
+    f.style.height = (h * s) + 'px';
+  }
+  window.addEventListener('rs-refit', () => { refit(); requestAnimationFrame(refit); });
+  new ResizeObserver(refit).observe(document.querySelector('.review'));
+  refit();
+
+  RS.tour([
+    { id: 'open', text: 'Tap Open screen on mac-studio.' },
+    { id: 'zoom', text: 'Zoom and move around: double-click, scroll, or drag the minimap.' },
+    { id: 'control', text: 'Tap Take control.' },
+    { id: 'approve', text: 'Tap "1 Yes" in the agent\'s prompt on the right-hand terminal.' },
+    { id: 'type', text: 'Open the keyboard, type ls and press enter.' },
+    { id: 'network', text: 'Switch the network to Weak cellular and watch the steps in the log.' },
+    { id: 'lock', text: 'Lock the phone for 4 s and see it catch up without a full refresh.' }
+  ]);
+  RSPhone.init({ device: 'Pixel 9' });
+  RS.start();
+})();
+</script>

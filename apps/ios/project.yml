@@ -37,6 +37,7 @@ targets:
       - TermiRustMobile/Enrollment
       - TermiRustMobile/ReplicationTransport
       - TermiRustMobile/Generated/TermiRustControllerSecurity.swift
+      - TermiRustMobile/Generated/TermiRustRemoteScreens.swift
       - Replication/Sources/TermiRustReplicationSecurity.swift
       - TermiRustMobile/Security/ReplicationKeychainStore.swift
       - TermiRustMobile/Models/ControllerModels.swift
@@ -63,11 +64,14 @@ targets:
       - TermiRustMobile/Terminal/TerminalBuffer.swift
       - TermiRustMobile/Terminal/TerminalGrid.swift
       - TermiRustMobile/Terminal/TerminalInputEncoding.swift
+      - TermiRustMobile/ViewModels/ControllerScreenCoordinator.swift
       - TermiRustMobile/ViewModels/ControllerTerminalViewModel.swift
       - TermiRustMobile/ViewModels/ControllerViewModel.swift
       - TermiRustMobile/ViewModels/HostListViewModel.swift
+      - TermiRustMobile/ViewModels/RemoteScreenViewModel.swift
       - TermiRustMobile/Vault
       - TermiRustMobile/Views/ContentView.swift
+      - TermiRustMobile/Views/RemoteScreenView.swift
       - TermiRustMobile/Views/ControllerPresentation.swift
       - TermiRustMobile/Views/ControllerQRCodeScanner.swift
       - TermiRustMobile/Views/ControllerReadOnlyTerminalView.swift
@@ -90,6 +94,8 @@ targets:
       - framework: Frameworks/TermiRustMobileCrypto.xcframework
         embed: false
       - framework: Frameworks/TermiRustControllerSecurity.xcframework
+        embed: false
+      - framework: Frameworks/TermiRustRemoteScreens.xcframework
         embed: false
       - framework: Replication/TermiRustReplicationSecurity.xcframework
         embed: false
@@ -117,6 +123,8 @@ targets:
       - TermiRustMobileTests/AppleSSHControllerTransportLiveTests.swift
       - TermiRustMobileTests/AppleRelayControllerTransportLiveTests.swift
       - TermiRustMobileTests/ControllerBindingConformanceTests.swift
+      - TermiRustMobileTests/ControllerScreenSessionTests.swift
+      - TermiRustMobileTests/RemoteScreenViewModelTests.swift
       - TermiRustMobileTests/ReplicationCustodyTests.swift
       - TermiRustMobileTests/EnrollmentWorkflowTests.swift
       - TermiRustMobileTests/ReplicationDocumentReaderTests.swift

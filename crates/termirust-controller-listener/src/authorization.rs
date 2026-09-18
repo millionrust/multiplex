@@ -15,6 +15,8 @@ pub enum BridgeCommandKind {
     Resize,
     Approval,
     Detach,
+    OpenScreen,
+    CloseScreen,
 }
 
 impl BridgeCommandKind {
@@ -27,7 +29,18 @@ impl BridgeCommandKind {
             }
             Self::Resize => ControllerCapability::Resize,
             Self::Approval => ControllerCapability::RespondToApproval,
+            // Watching is what opening a screen session needs; pointer and keyboard are
+            // checked per screen frame, once the session carries input.
+            Self::OpenScreen | Self::CloseScreen => ControllerCapability::ObserveScreens,
         }
+    }
+
+    /// Whether the command names one terminal session and must present its occupant generation.
+    pub const fn addresses_a_session(self) -> bool {
+        !matches!(
+            self,
+            Self::ListSessions | Self::OpenScreen | Self::CloseScreen
+        )
     }
 
     pub const fn requires_writer_lease(self) -> bool {
@@ -72,7 +85,7 @@ impl<'a> BridgeAuthorization<'a> {
                 return Err(ListenerError::authorization(denial));
             }
         }
-        if command.kind != BridgeCommandKind::ListSessions {
+        if command.kind.addresses_a_session() {
             let presented = command
                 .occupant_generation
                 .ok_or_else(|| ListenerError::new(ListenerErrorCode::StaleGeneration))?;

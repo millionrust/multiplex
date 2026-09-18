@@ -260,9 +260,14 @@ fn main() {
         return;
     }
     if std::env::args().nth(1).as_deref() == Some(CONTROLLER_LISTENER_MODE) {
-        if let Err(error) = termirust_controller_listener::run_listener_worker(
+        if let Err(error) = termirust_controller_listener::run_listener_worker_with_screens(
             std::io::BufReader::new(std::io::stdin()),
             std::io::stdout(),
+            // Capture and input injection run in this process; the descriptor decides whether
+            // screens are served at all.
+            Some(std::sync::Arc::new(
+                crate::controller::screen_sharing::ScreenSharing::enabled(),
+            )),
         ) {
             eprintln!(
                 "{{\"schema_version\":1,\"lifecycle\":\"failed\",\"code\":\"{:?}\"}}",

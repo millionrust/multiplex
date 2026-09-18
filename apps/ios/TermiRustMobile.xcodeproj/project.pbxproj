@@ -59,11 +59,14 @@
 		7A740E922F044472CD76815E /* controller-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 26B5CDEA33B10C29FDE1E103 /* controller-v1.json */; };
 		7F3B1423EA45161ABAA62A33 /* TerminalInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E45128AD706AEC225C1F294 /* TerminalInteraction.swift */; };
 		842AE4985FCB208E1989689D /* ControllerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E63E0CD0058EC2B95291EA /* ControllerModels.swift */; };
+		84E47946BCBB1409D8437229 /* RemoteScreenViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07AE6F873072C7082558C3F0 /* RemoteScreenViewModel.swift */; };
 		86C24C98934FA85F83D98AAB /* TmuxBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA16ACD0D263656AC038DB1F /* TmuxBootstrap.swift */; };
 		8999D7D40482A28A2DC06AEE /* ControllerBindingConformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5EED30009CAECFDB014CB0F /* ControllerBindingConformanceTests.swift */; };
 		8AF002781B0FC922621AE40B /* ControllerRemoteRouteConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BB413BC50EEE5867C533DE8 /* ControllerRemoteRouteConfiguration.swift */; };
+		8C7740DB5D7DC133C92ADFD9 /* RemoteScreenViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D9402B2C27708A4B6ACF339 /* RemoteScreenViewModelTests.swift */; };
 		90B03BA0136A9B4E35151F23 /* BoundedTerminalBufferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E63D1988FD59BCF8486812 /* BoundedTerminalBufferTests.swift */; };
 		90D2386ADD12230937FDB5FB /* TermiRustReplicationSecurity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F8A73060A2F2CB2C2B9A13A /* TermiRustReplicationSecurity.swift */; };
+		92CB25F806424FBFA481AA9F /* ControllerScreenSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9F2B6A7B352267D6C7B5AAE /* ControllerScreenSession.swift */; };
 		9492F234F348A4D0F4E26CCC /* TerminalInputEncoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7132D479444ADF7486E77018 /* TerminalInputEncoding.swift */; };
 		95322AEB55F110F954149897 /* ControllerPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA63124BE85CD3F731534E4C /* ControllerPresentation.swift */; };
 		968B6E9F01DA1A92575E0A35 /* Crypto in Frameworks */ = {isa = PBXBuildFile; productRef = 003E451655DE70492275F55A /* Crypto */; };
@@ -79,6 +82,7 @@
 		ABE33A2A20FDCD0493C3344F /* ControllerRouteCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00196E38312C036FCD3CD034 /* ControllerRouteCredentialStore.swift */; };
 		ADB4199A0D6BD9F233718F1E /* KeychainSecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFF4D03BE0E942591F6EEC4A /* KeychainSecretStore.swift */; };
 		AE436BA7DDF91FD54C091DD6 /* PairedHostStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BFF20F68CB9FD0EEA4534F9 /* PairedHostStore.swift */; };
+		B4CADC4E0AC47B7449A99A80 /* TermiRustRemoteScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53249E4EEEE0C924FB483867 /* TermiRustRemoteScreens.swift */; };
 		B8FC3EC2C31B987320EE15B1 /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = F47930E681508B6A92D67201 /* NIOSSH */; };
 		BE4EBED45208D33F158CBC33 /* TerminalConformanceV1Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6613EB256CEB11627A9B8B66 /* TerminalConformanceV1Tests.swift */; };
 		C1B6B6C1DD5D52DCAC966DAB /* AppleSSHControllerTransportLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AD7FB361793CCA61A329A6E /* AppleSSHControllerTransportLiveTests.swift */; };
@@ -95,8 +99,11 @@
 		CF19CCC1721C06ACDE6305A0 /* BoundedTerminalBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 211167AA57A499461175EBFA /* BoundedTerminalBuffer.swift */; };
 		D056CFA9C2DD3AAA806615A8 /* ControllerPairingFleetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B61FB3E50D5A511492D5C02 /* ControllerPairingFleetTests.swift */; };
 		D1DA172736D59EED427F817E /* TerminalConformanceV2Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB1F176CEE7530958483AE9D /* TerminalConformanceV2Tests.swift */; };
+		D28BA9C1B4AD83BCCDFD862B /* RemoteScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47676B0112479679478962D6 /* RemoteScreenView.swift */; };
 		D6786F14C3494923A91388A9 /* terminal-interaction-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 9602C2DB16DA29C6C9736CE0 /* terminal-interaction-v1.json */; };
+		D78B4C80A123FDE47965A709 /* ControllerScreenSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A28F3A530292FF1F2E6317D /* ControllerScreenSessionTests.swift */; };
 		D97C57648D1861080ACD9C46 /* NativeControllerTerminal.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC7FD37EACD22090E5FB871 /* NativeControllerTerminal.swift */; };
+		D9B05A09464879B08DE808BD /* TermiRustRemoteScreens.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 91172E2BA51A0269F0A317C2 /* TermiRustRemoteScreens.xcframework */; };
 		DB66997E69758EFA7EADEA49 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = B8387375125313FDB8A0D114 /* Localizable.xcstrings */; };
 		DECE8DFF39961A8BF6C15795 /* route-selection-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 85A575F219252D9DC27053FD /* route-selection-v1.json */; };
 		DED7BE7953D0C47B99D16B98 /* ControllerConnectionActor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71E5A5A35F189CA5BC2F20B5 /* ControllerConnectionActor.swift */; };
@@ -104,6 +111,7 @@
 		E6B48065F3DFFAE60DF55301 /* TermiRustControllerSecurity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BE28279348591AEB341AE8D /* TermiRustControllerSecurity.swift */; };
 		E89E0397FB0D7FD81C595E09 /* ControllerFleetCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 961259E09EB8448FEC2BD91E /* ControllerFleetCacheTests.swift */; };
 		EC6A9535CFA6010A4109D33D /* ReplicationDocumentReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1898E822B7664B9F9183440D /* ReplicationDocumentReader.swift */; };
+		EF3F84BAFB1932ACD12DAE6F /* ControllerScreenCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D3C221D2F109B07FB45F36A /* ControllerScreenCoordinator.swift */; };
 		F0F6F22ED785C9BEA81E10F1 /* ControllerTerminalInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3E11BE5BC0BF55360124E4 /* ControllerTerminalInputView.swift */; };
 		F1044EA7B6FDD02A9EABAF7C /* TerminalBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C651FFCD87A3634799CA663F /* TerminalBuffer.swift */; };
 		F9170B64BB23CA3EF084EABF /* universal-session-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 0BB16F651E78CEA014BAC41F /* universal-session-v1.json */; };
@@ -132,7 +140,9 @@
 		000FB7B80D5C444D65B8A924 /* EnrollmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnrollmentView.swift; sourceTree = "<group>"; };
 		00196E38312C036FCD3CD034 /* ControllerRouteCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerRouteCredentialStore.swift; sourceTree = "<group>"; };
 		02192D208584BF947DEC5276 /* ControllerTerminalViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerTerminalViewModelTests.swift; sourceTree = "<group>"; };
+		07AE6F873072C7082558C3F0 /* RemoteScreenViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteScreenViewModel.swift; sourceTree = "<group>"; };
 		08E27FF0C2A5E569ED541A98 /* SSHControllerTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHControllerTransport.swift; sourceTree = "<group>"; };
+		0A28F3A530292FF1F2E6317D /* ControllerScreenSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerScreenSessionTests.swift; sourceTree = "<group>"; };
 		0BB16F651E78CEA014BAC41F /* universal-session-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "universal-session-v1.json"; sourceTree = "<group>"; };
 		0BCC208C6B390FC18F2DF609 /* AppleControllerRouteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleControllerRouteTests.swift; sourceTree = "<group>"; };
 		0BFF20F68CB9FD0EEA4534F9 /* PairedHostStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedHostStore.swift; sourceTree = "<group>"; };
@@ -158,11 +168,14 @@
 		3BB413BC50EEE5867C533DE8 /* ControllerRemoteRouteConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerRemoteRouteConfiguration.swift; sourceTree = "<group>"; };
 		3D3E11BE5BC0BF55360124E4 /* ControllerTerminalInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerTerminalInputView.swift; sourceTree = "<group>"; };
 		45ADAEE8F8C761105B93C634 /* ControllerTerminalViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerTerminalViewModel.swift; sourceTree = "<group>"; };
+		47676B0112479679478962D6 /* RemoteScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteScreenView.swift; sourceTree = "<group>"; };
 		4A401F88097A4050D1187C33 /* UnifiedRouteLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedRouteLifecycleTests.swift; sourceTree = "<group>"; };
 		4AD7FB361793CCA61A329A6E /* AppleSSHControllerTransportLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSSHControllerTransportLiveTests.swift; sourceTree = "<group>"; };
 		4B61FB3E50D5A511492D5C02 /* ControllerPairingFleetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerPairingFleetTests.swift; sourceTree = "<group>"; };
+		4D9402B2C27708A4B6ACF339 /* RemoteScreenViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteScreenViewModelTests.swift; sourceTree = "<group>"; };
 		503149A3DD61E9EB4C573024 /* TermiRustMobileUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TermiRustMobileUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		50FB13028C2D8BE39B1B6BEF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		53249E4EEEE0C924FB483867 /* TermiRustRemoteScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermiRustRemoteScreens.swift; sourceTree = "<group>"; };
 		5345E0FEC3299E45F394BA0C /* EnrollmentRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnrollmentRepository.swift; sourceTree = "<group>"; };
 		55B9F9D4A45EB9BC8D19AACC /* ReplicationDocumentReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplicationDocumentReaderTests.swift; sourceTree = "<group>"; };
 		57E4611CBFB4855809D086F6 /* MobileRouteContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileRouteContract.swift; sourceTree = "<group>"; };
@@ -185,7 +198,9 @@
 		88E38D4F5550D42D8E7BD818 /* SlateTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlateTokens.swift; sourceTree = "<group>"; };
 		88ED49DA30BE70BA0E0093B3 /* MobileCrossRouteAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileCrossRouteAcceptanceTests.swift; sourceTree = "<group>"; };
 		8AE2126D151AC4C903C6094B /* ControllerReadOnlyTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerReadOnlyTerminalView.swift; sourceTree = "<group>"; };
+		8D3C221D2F109B07FB45F36A /* ControllerScreenCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerScreenCoordinator.swift; sourceTree = "<group>"; };
 		8F8A73060A2F2CB2C2B9A13A /* TermiRustReplicationSecurity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermiRustReplicationSecurity.swift; sourceTree = "<group>"; };
+		91172E2BA51A0269F0A317C2 /* TermiRustRemoteScreens.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = TermiRustRemoteScreens.xcframework; path = Frameworks/TermiRustRemoteScreens.xcframework; sourceTree = "<group>"; };
 		92D39B67AFDC7D7C61741A03 /* HostListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostListView.swift; sourceTree = "<group>"; };
 		93124ABD5704C86D689C6B56 /* AppleControllerRouteCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleControllerRouteCoordinator.swift; sourceTree = "<group>"; };
 		938B1ACAB594425CA571469D /* EnrollmentWorkflowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnrollmentWorkflowTests.swift; sourceTree = "<group>"; };
@@ -213,6 +228,7 @@
 		C651FFCD87A3634799CA663F /* TerminalBuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalBuffer.swift; sourceTree = "<group>"; };
 		C71FF821F9BC71B9C9F14692 /* ControllerReadOnlyAttach.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerReadOnlyAttach.swift; sourceTree = "<group>"; };
 		C82BE73314E8B1CDAC19DF92 /* ControllerRetryPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerRetryPolicy.swift; sourceTree = "<group>"; };
+		C9F2B6A7B352267D6C7B5AAE /* ControllerScreenSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerScreenSession.swift; sourceTree = "<group>"; };
 		CE46284FAD736FCBADBE491A /* TermiRustReplicationSecurity.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = TermiRustReplicationSecurity.xcframework; path = Replication/TermiRustReplicationSecurity.xcframework; sourceTree = "<group>"; };
 		DA16ACD0D263656AC038DB1F /* TmuxBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxBootstrap.swift; sourceTree = "<group>"; };
 		DB3530D0D1EF49F4483F0D0C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -242,6 +258,7 @@
 				968B6E9F01DA1A92575E0A35 /* Crypto in Frameworks */,
 				0842825D1B1A44C19B1E4509 /* TermiRustMobileCrypto.xcframework in Frameworks */,
 				1496F409B977283CBB781841 /* TermiRustControllerSecurity.xcframework in Frameworks */,
+				D9B05A09464879B08DE808BD /* TermiRustRemoteScreens.xcframework in Frameworks */,
 				01E6CA77F435F2B6CE10DBD7 /* TermiRustReplicationSecurity.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -279,6 +296,7 @@
 			children = (
 				BFCBCA3644B906F6E55A4C86 /* TermiRustControllerSecurity.xcframework */,
 				6DD9DB903CBD0DE616F7B7E4 /* TermiRustMobileCrypto.xcframework */,
+				91172E2BA51A0269F0A317C2 /* TermiRustRemoteScreens.xcframework */,
 				CE46284FAD736FCBADBE491A /* TermiRustReplicationSecurity.xcframework */,
 			);
 			name = Frameworks;
@@ -303,6 +321,7 @@
 				DC34F0E3B404895E7409A163 /* ControllerFleetCache.swift */,
 				C71FF821F9BC71B9C9F14692 /* ControllerReadOnlyAttach.swift */,
 				C82BE73314E8B1CDAC19DF92 /* ControllerRetryPolicy.swift */,
+				C9F2B6A7B352267D6C7B5AAE /* ControllerScreenSession.swift */,
 				8836B5648A2FB0D8897C5F7D /* ControllerWriterControl.swift */,
 				0BFF20F68CB9FD0EEA4534F9 /* PairedHostStore.swift */,
 			);
@@ -336,9 +355,11 @@
 		8C6D014A573360C3C92A83B3 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
+				8D3C221D2F109B07FB45F36A /* ControllerScreenCoordinator.swift */,
 				45ADAEE8F8C761105B93C634 /* ControllerTerminalViewModel.swift */,
 				EA020905FCA3B0895422D575 /* ControllerViewModel.swift */,
 				BBB97A039F68CD753DB6852F /* HostListViewModel.swift */,
+				07AE6F873072C7082558C3F0 /* RemoteScreenViewModel.swift */,
 			);
 			name = ViewModels;
 			path = TermiRustMobile/ViewModels;
@@ -418,6 +439,7 @@
 				A4808B8FAD8D18B154844FEB /* ControllerRootView.swift */,
 				3D3E11BE5BC0BF55360124E4 /* ControllerTerminalInputView.swift */,
 				92D39B67AFDC7D7C61741A03 /* HostListView.swift */,
+				47676B0112479679478962D6 /* RemoteScreenView.swift */,
 				AE5C2C71C1D39ECA5CDD08FE /* SlateColors.swift */,
 				88E38D4F5550D42D8E7BD818 /* SlateTokens.swift */,
 				0D52C3569C68C273CCD11319 /* TerminalSessionView.swift */,
@@ -438,6 +460,7 @@
 				961259E09EB8448FEC2BD91E /* ControllerFleetCacheTests.swift */,
 				4B61FB3E50D5A511492D5C02 /* ControllerPairingFleetTests.swift */,
 				39F2ECD181B74FAB21D7A682 /* ControllerReadOnlyTerminalTests.swift */,
+				0A28F3A530292FF1F2E6317D /* ControllerScreenSessionTests.swift */,
 				02192D208584BF947DEC5276 /* ControllerTerminalViewModelTests.swift */,
 				1EB20052E78613D8BC81E141 /* ControllerWriterTests.swift */,
 				35651BFBF6D6A54BB8ECCD66 /* DirectSSHIntegrationTests.swift */,
@@ -445,6 +468,7 @@
 				88ED49DA30BE70BA0E0093B3 /* MobileCrossRouteAcceptanceTests.swift */,
 				EE77A14B5817F4A38B3F57F0 /* MobileRouteContractTests.swift */,
 				7EE76EC7D67CB1EAE446215D /* MobileVaultImporterTests.swift */,
+				4D9402B2C27708A4B6ACF339 /* RemoteScreenViewModelTests.swift */,
 				F9FE8A3B280B02C30AF0B071 /* ReplicationCustodyTests.swift */,
 				55B9F9D4A45EB9BC8D19AACC /* ReplicationDocumentReaderTests.swift */,
 				296A8C3A317C5ECF8CB3439A /* TerminalAcceptanceTests.swift */,
@@ -533,6 +557,7 @@
 			isa = PBXGroup;
 			children = (
 				2BE28279348591AEB341AE8D /* TermiRustControllerSecurity.swift */,
+				53249E4EEEE0C924FB483867 /* TermiRustRemoteScreens.swift */,
 			);
 			name = Generated;
 			path = TermiRustMobile/Generated;
@@ -695,6 +720,7 @@
 				E89E0397FB0D7FD81C595E09 /* ControllerFleetCacheTests.swift in Sources */,
 				D056CFA9C2DD3AAA806615A8 /* ControllerPairingFleetTests.swift in Sources */,
 				CA1638BF93C47BE16A206B13 /* ControllerReadOnlyTerminalTests.swift in Sources */,
+				D78B4C80A123FDE47965A709 /* ControllerScreenSessionTests.swift in Sources */,
 				A414E1BCA5235F102E33F6A8 /* ControllerTerminalViewModelTests.swift in Sources */,
 				9EA398E918762D8923338E08 /* ControllerWriterTests.swift in Sources */,
 				4F6A15013CC0F979AC488612 /* DirectSSHIntegrationTests.swift in Sources */,
@@ -702,6 +728,7 @@
 				2ECB54360A02B93EE52B2E24 /* MobileCrossRouteAcceptanceTests.swift in Sources */,
 				38C73FA0B03B285F469013E7 /* MobileRouteContractTests.swift in Sources */,
 				11B42406FC878DBE6DBDCD09 /* MobileVaultImporterTests.swift in Sources */,
+				8C7740DB5D7DC133C92ADFD9 /* RemoteScreenViewModelTests.swift in Sources */,
 				56ED0C248BE291FB0945CBA9 /* ReplicationCustodyTests.swift in Sources */,
 				5C3D5C9E44DD7CB4F15A203D /* ReplicationDocumentReaderTests.swift in Sources */,
 				0187101A4F70C33D4E063D20 /* TerminalAcceptanceTests.swift in Sources */,
@@ -735,6 +762,8 @@
 				68F2ADF8D554D3C7E8E43446 /* ControllerRootView.swift in Sources */,
 				9BA7FAAA9AC63FF773F0056E /* ControllerRouteConfigurationStore.swift in Sources */,
 				ABE33A2A20FDCD0493C3344F /* ControllerRouteCredentialStore.swift in Sources */,
+				EF3F84BAFB1932ACD12DAE6F /* ControllerScreenCoordinator.swift in Sources */,
+				92CB25F806424FBFA481AA9F /* ControllerScreenSession.swift in Sources */,
 				F0F6F22ED785C9BEA81E10F1 /* ControllerTerminalInputView.swift in Sources */,
 				3362D87D95C5128F748A796A /* ControllerTerminalViewModel.swift in Sources */,
 				4DE7BEE9BED018F20891B4B9 /* ControllerViewModel.swift in Sources */,
@@ -758,6 +787,8 @@
 				00DC68D847EAA6431EC2AF40 /* OpenSSHPrivateKeyParser.swift in Sources */,
 				AE436BA7DDF91FD54C091DD6 /* PairedHostStore.swift in Sources */,
 				35ED5FDC6E85CC897AB16B62 /* RelayControllerTransport.swift in Sources */,
+				D28BA9C1B4AD83BCCDFD862B /* RemoteScreenView.swift in Sources */,
+				84E47946BCBB1409D8437229 /* RemoteScreenViewModel.swift in Sources */,
 				EC6A9535CFA6010A4109D33D /* ReplicationDocumentReader.swift in Sources */,
 				034AD326A8BB2267989C9CFB /* ReplicationKeychainStore.swift in Sources */,
 				1942F8158A5733E3E4B2FD71 /* SSHControllerTransport.swift in Sources */,
@@ -765,6 +796,7 @@
 				F918DCD2C9B5D21545E74D22 /* SlateTokens.swift in Sources */,
 				E6B48065F3DFFAE60DF55301 /* TermiRustControllerSecurity.swift in Sources */,
 				2B24DEAFB6911BFC68CC526D /* TermiRustMobileApp.swift in Sources */,
+				B4CADC4E0AC47B7449A99A80 /* TermiRustRemoteScreens.swift in Sources */,
 				90D2386ADD12230937FDB5FB /* TermiRustReplicationSecurity.swift in Sources */,
 				C2A05DA308882B343BC98D3B /* TerminalAcceptance.swift in Sources */,
 				F1044EA7B6FDD02A9EABAF7C /* TerminalBuffer.swift in Sources */,

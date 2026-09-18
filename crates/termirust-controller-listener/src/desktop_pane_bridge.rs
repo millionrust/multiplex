@@ -747,7 +747,10 @@ fn execute_desktop_command(
     command: ControllerCommand,
 ) -> Vec<ControllerResponse> {
     match command {
-        ControllerCommand::ListSessions { .. } => vec![error_response(command_id)],
+        // The listener answers screen commands itself, so a pane bridge never sees one.
+        ControllerCommand::ListSessions { .. }
+        | ControllerCommand::OpenScreen
+        | ControllerCommand::CloseScreen => vec![error_response(command_id)],
         ControllerCommand::Attach {
             session_id,
             occupant_generation,

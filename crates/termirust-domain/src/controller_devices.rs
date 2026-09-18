@@ -74,6 +74,10 @@ macro_rules! uuid_id {
             pub const fn from_uuid(value: Uuid) -> Self {
                 Self(value)
             }
+
+            pub const fn as_uuid(self) -> Uuid {
+                self.0
+            }
         }
 
         impl Default for $name {
@@ -290,6 +294,9 @@ pub enum ControllerCapability {
     SendInput,
     Resize,
     RespondToApproval,
+    ObserveScreens,
+    ControlPointer,
+    ControlKeyboard,
 }
 
 impl ControllerCapability {
@@ -303,7 +310,8 @@ impl ControllerCapability {
 pub struct ControllerCapabilities(u16);
 
 impl ControllerCapabilities {
-    pub const KNOWN_MASK: u16 = 0x1f;
+    /// Bits 0 to 4 from Controller-v1, bits 5 to 7 from its Remote Screens amendment.
+    pub const KNOWN_MASK: u16 = 0xff;
 
     pub fn from_bits(bits: u16) -> Result<Self, ControllerDeviceError> {
         if bits & !Self::KNOWN_MASK == 0 {
@@ -323,6 +331,11 @@ impl ControllerCapabilities {
 
     pub const fn with(self, capability: ControllerCapability) -> Self {
         Self(self.0 | capability.bit())
+    }
+
+    #[must_use]
+    pub const fn without(self, capability: ControllerCapability) -> Self {
+        Self(self.0 & !capability.bit())
     }
 }
 

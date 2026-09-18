@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use rand::RngCore as _;
@@ -16,9 +17,10 @@ use crate::desktop_pane_bridge::DesktopPaneBridgeClient;
 use crate::tmux_sessions::{self, DiscoveredTmuxSession, TMUX_RUNTIME_ID, TmuxSessionSource};
 use crate::{
     ControllerBackendFactory, ControllerCommand, ControllerCommandEnvelope,
-    ControllerConnectionBackend, ControllerResponse, ControllerSessionCapability,
-    ControllerSessionOrigin, ControllerSessionSummary, HostCommandContext, ListenerError,
-    ListenerErrorCode, MAX_SESSION_PAGE_BYTES, MAX_SNAPSHOT_CHUNK_BYTES,
+    ControllerConnectionBackend, ControllerResponse, ControllerScreenSession,
+    ControllerSessionCapability, ControllerSessionOrigin, ControllerSessionSummary,
+    HostCommandContext, ListenerError, ListenerErrorCode, MAX_SESSION_PAGE_BYTES,
+    MAX_SNAPSHOT_CHUNK_BYTES, ScreenOutgoing, ScreenSessionFactory,
 };
 
 #[derive(Clone)]
@@ -28,6 +30,7 @@ pub struct HostBackendFactory {
     runtime_parent: PathBuf,
     desktop_pane_bridge: Option<DesktopPaneBridgeEndpoint>,
     tmux_sessions: Option<TmuxSessionSource>,
+    screens: Option<Arc<dyn ScreenSessionFactory>>,
 }
 
 impl std::fmt::Debug for HostBackendFactory {
@@ -55,6 +58,7 @@ impl HostBackendFactory {
             runtime_parent: runtime_parent.into(),
             desktop_pane_bridge: None,
             tmux_sessions: None,
+            screens: None,
         }
     }
 
@@ -66,6 +70,12 @@ impl HostBackendFactory {
     /// Lists and attaches tmux sessions the app did not create. Off unless given a source.
     pub fn with_tmux_sessions(mut self, source: Option<TmuxSessionSource>) -> Self {
         self.tmux_sessions = source;
+        self
+    }
+
+    /// Serves Remote Screens sessions. Off unless given a factory.
+    pub fn with_screens(mut self, screens: Option<Arc<dyn ScreenSessionFactory>>) -> Self {
+        self.screens = screens;
         self
     }
 }
@@ -89,6 +99,16 @@ impl ControllerBackendFactory for HostBackendFactory {
             live_attach: false,
             tmux: TmuxConnectionState::new(self.tmux_sessions.clone()),
         }))
+    }
+
+    fn open_screens(
+        &self,
+        peer: &AuthenticatedPeer,
+        outgoing: ScreenOutgoing,
+    ) -> Option<Box<dyn ControllerScreenSession>> {
+        self.screens
+            .as_ref()
+            .and_then(|screens| screens.open(peer, outgoing))
     }
 }
 
@@ -455,6 +475,14 @@ impl ControllerConnectionBackend for HostConnectionBackend {
                 code: "approval_unavailable".to_owned(),
                 completion_unknown: false,
             }]),
+            // The listener answers screen commands itself, so a backend never sees one.
+            ControllerCommand::OpenScreen | ControllerCommand::CloseScreen => {
+                Ok(vec![ControllerResponse::Error {
+                    command_id,
+                    code: "unexpected_command".to_owned(),
+                    completion_unknown: false,
+                }])
+            }
             ControllerCommand::Detach { session_id, .. } => {
                 if let Some(mut client) = self.clients.remove(&session_id) {
                     client.disconnect();

@@ -221,7 +221,9 @@ impl ServingListener for WorkerListener {
 
 #[cfg(unix)]
 fn start_worker() -> Result<Box<dyn ServingListener>, ServiceError> {
-    use termirust_controller_listener::{ListenerLaunchDescriptor, run_listener_worker};
+    use termirust_controller_listener::{
+        ListenerLaunchDescriptor, run_listener_worker_with_screens,
+    };
     use termirust_store::{ControllerDeviceRepository, ControllerNetworkRepository};
 
     let unavailable = ServiceError("service.storage_unavailable");
@@ -265,7 +267,22 @@ fn start_worker() -> Result<Box<dyn ServingListener>, ServiceError> {
         .map_err(|_| ServiceError("service.pipe_failed"))?;
     let thread = thread::Builder::new()
         .name("termirust-controller-service".to_owned())
-        .spawn(move || run_listener_worker(BufReader::new(reader), io::sink()))
+        .spawn(move || {
+            // The same screen provider the app's own worker gets. Without it a paired phone
+            // could watch this computer only while the app happened to be open, which is exactly
+            // the thing the background service exists to stop being true.
+            //
+            // Capture and injection then run inside this service process, and macOS records its
+            // permission grants against it rather than against the app: a LaunchAgent has no
+            // responsible parent to inherit from. `screen_permission` is what notices.
+            run_listener_worker_with_screens(
+                BufReader::new(reader),
+                io::sink(),
+                Some(std::sync::Arc::new(
+                    super::screen_sharing::ScreenSharing::enabled(),
+                )),
+            )
+        })
         .map_err(|_| ServiceError("service.worker_failed"))?;
     Ok(Box::new(WorkerListener {
         control: Some(control),
@@ -288,15 +305,23 @@ pub fn run_command(arguments: &[String]) -> Result<(), ServiceError> {
             Ok(())
         }
         Some("status") if arguments.len() == 1 => {
+            let state = status();
             println!(
                 "{}",
-                match status() {
+                match state {
                     ServiceStatus::NotInstalled => "not installed",
                     ServiceStatus::Installed => "installed, not running",
                     ServiceStatus::Running => "running",
                     ServiceStatus::Unsupported => "unsupported on this platform",
                 }
             );
+            // The grant the service needs and cannot ask for. Said here because the alternative
+            // is a phone showing a blank screen with nothing anywhere to explain why.
+            if matches!(state, ServiceStatus::Installed | ServiceStatus::Running)
+                && let Some(line) = screen_capture_line()
+            {
+                println!("{line}");
+            }
             Ok(())
         }
         _ => Err(ServiceError("service.usage")),
@@ -475,6 +500,34 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use super::*;
+
+    /// The service's screen recording grant is its own, not the app's.
+    ///
+    /// This does not assert which way the answer goes — that depends on what this machine has
+    /// been granted — but on what is said about it. A person who granted TermiRust Screen
+    /// Recording has every reason to believe that covered the background service too, so the
+    /// message has to name the service and say why the app's grant is not enough.
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn a_missing_grant_says_whose_grant_is_missing() {
+        let Some(line) = screen_capture_line() else {
+            // This machine has granted it, which is the other correct answer.
+            assert!(termirust_screen_capture::screen_capture_allowed());
+            return;
+        };
+        assert!(
+            line.contains(LAUNCH_AGENT_LABEL),
+            "the message must name the process to allow: {line}"
+        );
+        assert!(
+            line.contains("Screen Recording") || line.contains("Screen & System Audio Recording"),
+            "and where to allow it: {line}"
+        );
+        assert!(
+            line.contains("does not cover the service"),
+            "and why granting the app was not enough: {line}"
+        );
+    }
 
     /// Stands in for a listener worker: holds the route lock while serving, like the real one.
     struct FakeListener {
@@ -666,4 +719,29 @@ mod tests {
             assert!(lint.status.success(), "{lint:?}");
         }
     }
+}
+
+/// What to say about the service's own screen recording grant, if anything.
+///
+/// macOS records a grant against the responsible process. The desktop app is responsible for its
+/// own listener worker, so that one inherits the app's grant; the LaunchAgent has no responsible
+/// parent, so it is asked for separately and under its own name. A person who granted the app
+/// Screen Recording has every reason to think that settled it, which is why this says otherwise
+/// explicitly rather than leaving a blank screen to be puzzled over.
+#[cfg(target_os = "macos")]
+fn screen_capture_line() -> Option<String> {
+    if termirust_screen_capture::screen_capture_allowed() {
+        return None;
+    }
+    Some(format!(
+        "Screens are not shared yet: macOS has not granted this service Screen Recording. \
+         Open System Settings > Privacy & Security > Screen & System Audio Recording and allow \
+         {LAUNCH_AGENT_LABEL}. Granting it to TermiRust itself does not cover the service, \
+         because macOS records the grant against whichever process asked."
+    ))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn screen_capture_line() -> Option<String> {
+    None
 }

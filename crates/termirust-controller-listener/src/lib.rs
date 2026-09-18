@@ -25,6 +25,8 @@ mod protocol;
 mod queue;
 mod rate_limit;
 mod runtime;
+mod screen_session;
+mod screen_tickets;
 mod ssh_pairing_broker;
 mod tmux_sessions;
 
@@ -33,7 +35,7 @@ pub use bind::{
     BoundAddress, BoundControllerListeners, ControllerBinder, GeneratedPortSource, SystemBinder,
     SystemGeneratedPortSource, bind_address, bind_private_addresses,
 };
-pub use client_channel::ControllerClientChannel;
+pub use client_channel::{ControllerClientChannel, ControllerIncoming};
 pub use desktop_pane_bridge::{
     DesktopPaneBridgeEndpoint, DesktopPaneBridgeServer, DesktopPaneRegistration,
     DesktopPaneRegistry, DesktopPaneTransport,
@@ -57,7 +59,7 @@ pub use host_backend::HostBackendFactory;
 pub use interfaces::{InterfaceProvider, SystemInterfaceProvider};
 pub use launch::{
     LISTENER_OWNERSHIP_WAIT, ListenerLaunchDescriptor, RepositoryBridgeSources,
-    run_listener_worker, serve_repository_stdio_bridge,
+    run_listener_worker, run_listener_worker_with_screens, serve_repository_stdio_bridge,
 };
 pub use ownership::ListenerOwnership;
 pub use pairing::{
@@ -87,6 +89,11 @@ pub use runtime::{
     ControllerConnectionBackend, HostCommandContext, ListenerRuntime, ListenerRuntimeReport,
     ListenerServices, ListeningAddressObserver, serve_authenticated_stdio_stream,
 };
+pub use screen_session::{
+    ControllerScreenSession, MAX_SCREEN_PAYLOAD_BYTES, ScreenFrameCapability, ScreenOutgoing,
+    ScreenSessionFactory, ScreenWatcherReport,
+};
+pub use screen_tickets::{ScreenGrants, ScreenTicketStore};
 pub use ssh_pairing_broker::{
     SshHostPairingDecision, SshHostPairingDecisionValue, SshHostPairingPrompt,
     request_ssh_host_pairing_decision,

@@ -1,0 +1,728 @@
+<title>Remote Screens Desktop</title>
+<meta name="description" content="Interactive desktop prototype for TermiRust Remote Screens with a live network simulator.">
+<link rel="stylesheet" href="shared/remote-sim.css">
+<style>
+  :root {
+    --canvas: #17191D; --surface: #14161A; --elevated: #1B1E23; --chrome: #111316;
+    --hover: #1C1F24; --selected: #23272E; --control: #23262B; --control-hover: #2A2E34;
+    --b-subtle: #22262C; --b-default: #2A2E35; --b-strong: #363A41;
+    --t1: #E6E8EB; --t2: #B4B9C2; --t3: #8C929C; --t4: #838993;
+    --accent: #74A7F2; --on-accent: #0E1622; --done: #6CCB8F; --attention: #E9B061; --error: #E5787A; --offline: #838993; --violet: #B69CF0;
+    --accent-wash: #74A7F21F; --attention-wash: #E9B0611F; --done-wash: #6CCB8F1F;
+    --page: #0F1114; --page-panel: #15171B; --page-line: #23262C; --page-text: #E6E8EB; --page-muted: #8C929C; --page-control: #1D2025; --page-control-on: #2B3B52;
+    --shadow: 0 16px 40px #00000073;
+    --rs-spark: #74A7F2; --rs-spark-fill: #74A7F21F; --rs-spark-warn: #E9B061; --rs-spark-warn-fill: #E9B0611F; --rs-spark-grid: #2A2E35;
+    --ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, Cantarell, "Noto Sans", sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, monospace;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --canvas: #FAFBFC; --surface: #F1F3F6; --elevated: #FFFFFF; --chrome: #E9ECF0;
+      --hover: #EDF0F3; --selected: #E1E6ED; --control: #FFFFFF; --control-hover: #F1F3F6;
+      --b-subtle: #E3E6EA; --b-default: #D6DAE0; --b-strong: #C4CAD2;
+      --t1: #1A1D22; --t2: #3A404A; --t3: #4F5661; --t4: #626974;
+      --accent: #2A64C8; --on-accent: #FFFFFF; --done: #1A7A45; --attention: #8F5300; --error: #B8343A; --offline: #626974; --violet: #6B4FB8;
+      --accent-wash: #2A64C81A; --attention-wash: #8F53001A; --done-wash: #1A7A451A;
+      --page: #E7EAEE; --page-panel: #F4F6F8; --page-line: #D0D5DC; --page-text: #1A1D22; --page-muted: #4F5661; --page-control: #FFFFFF; --page-control-on: #D7E4FA;
+      --shadow: 0 16px 40px #1A1D2233;
+      --rs-spark: #2A64C8; --rs-spark-fill: #2A64C81A; --rs-spark-warn: #8F5300; --rs-spark-warn-fill: #8F53001A; --rs-spark-grid: #D6DAE0;
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="light"] {
+    --canvas: #FAFBFC; --surface: #F1F3F6; --elevated: #FFFFFF; --chrome: #E9ECF0;
+    --hover: #EDF0F3; --selected: #E1E6ED; --control: #FFFFFF; --control-hover: #F1F3F6;
+    --b-subtle: #E3E6EA; --b-default: #D6DAE0; --b-strong: #C4CAD2;
+    --t1: #1A1D22; --t2: #3A404A; --t3: #4F5661; --t4: #626974;
+    --accent: #2A64C8; --on-accent: #FFFFFF; --done: #1A7A45; --attention: #8F5300; --error: #B8343A; --offline: #626974; --violet: #6B4FB8;
+    --accent-wash: #2A64C81A; --attention-wash: #8F53001A; --done-wash: #1A7A451A;
+    --page: #E7EAEE; --page-panel: #F4F6F8; --page-line: #D0D5DC; --page-text: #1A1D22; --page-muted: #4F5661; --page-control: #FFFFFF; --page-control-on: #D7E4FA;
+    --shadow: 0 16px 40px #1A1D2233;
+    --rs-spark: #2A64C8; --rs-spark-fill: #2A64C81A; --rs-spark-warn: #8F5300; --rs-spark-warn-fill: #8F53001A; --rs-spark-grid: #D6DAE0;
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] { color-scheme: dark; }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--page); color: var(--page-text); font-family: var(--ui); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- review page ---------- */
+  .review { max-width: 1360px; margin: 0 auto; padding-block: 36px 80px; padding-inline: 24px; display: grid; gap: 18px; }
+  .review-head { display: grid; gap: 8px; max-width: 80ch; }
+  .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--page-muted); margin: 0; }
+  .review-head h1 { margin: 0; font-size: 30px; line-height: 1.2; font-weight: 650; letter-spacing: -0.02em; text-wrap: balance; }
+  .review-head p { margin: 0; color: var(--page-muted); font-size: 15px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; padding: 12px 14px; background: var(--page-panel); border: 1px solid var(--page-line); border-radius: 10px; }
+  .controls .grp { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .controls .lbl { font-size: 12px; font-weight: 600; color: var(--page-muted); margin-right: 4px; }
+  .pbtn { height: 30px; padding: 0 11px; border-radius: 6px; border: 1px solid var(--page-line); background: var(--page-control); cursor: pointer; font-size: 13px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .pbtn:hover { border-color: var(--accent); }
+  .pbtn[aria-pressed="true"] { background: var(--page-control-on); border-color: var(--accent); }
+  .pbtn .dotsw { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .fit { position: relative; width: 100%; max-width: 1280px; }
+  .fit > .win { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  .below { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr); gap: 16px; align-items: start; }
+  @media (max-width: 860px) { .below { grid-template-columns: minmax(0, 1fr); } }
+  .pcard { background: var(--page-panel); border: 1px solid var(--page-line); border-radius: 10px; padding: 16px; display: grid; gap: 12px; }
+  .pcard h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--page-muted); display: flex; justify-content: space-between; }
+  .pcard h2 small { text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+  .tour { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+  .tour li { display: grid; grid-template-columns: 22px 1fr; gap: 8px; font-size: 13.5px; }
+  .tour .tick { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--page-line); margin-top: 1px; display: grid; place-items: center; }
+  .tour li.done { color: var(--page-muted); }
+  .tour li.done .tick { background: var(--done); border-color: var(--done); }
+  .tour li.done .tick::after { content: ""; width: 8px; height: 4px; border: 2px solid var(--page); border-top: 0; border-right: 0; transform: rotate(-45deg) translate(1px, -1px); }
+  .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 330px; overflow-y: auto; font-size: 13px; }
+  .log li { display: grid; grid-template-columns: 64px 1fr; gap: 8px; padding: 6px 8px; border-radius: 6px; border-left: 3px solid var(--page-line); background: color-mix(in srgb, var(--page-panel) 60%, var(--page)); }
+  .log time { color: var(--page-muted); font-variant-numeric: tabular-nums; font-size: 12px; padding-top: 1px; }
+  .log .rs-log-text { border-left-color: var(--done); } .log .rs-log-tile { border-left-color: var(--accent); }
+  .log .rs-log-warn { border-left-color: var(--attention); } .log .rs-log-good { border-left-color: var(--done); }
+  .log .rs-log-input { border-left-color: var(--violet); }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--page-muted); }
+  .legend span { display: inline-flex; gap: 6px; align-items: center; }
+  .legend i { width: 10px; height: 10px; border-radius: 2px; display: block; }
+
+  /* ---------- app window ---------- */
+  .win { width: 1280px; height: 840px; background: var(--canvas); color: var(--t1); border: 1px solid var(--b-strong); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column; font-size: 13px; line-height: 18px; position: relative; }
+  .chrome { height: 38px; flex: none; display: flex; align-items: stretch; background: var(--chrome); border-bottom: 1px solid var(--b-default); }
+  .lights { display: flex; align-items: center; gap: 8px; padding: 0 16px 0 14px; }
+  .lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .lights i:nth-child(1) { background: #FF5F57; } .lights i:nth-child(2) { background: #FEBC2E; } .lights i:nth-child(3) { background: #28C840; }
+  .tabs { display: flex; align-items: stretch; min-width: 0; }
+  .tab { display: flex; align-items: center; gap: 8px; padding: 0 10px 0 14px; color: var(--t3); border: 0; border-right: 1px solid var(--b-subtle); white-space: nowrap; font-size: 12.5px; background: none; cursor: pointer; }
+  .tab:hover { color: var(--t1); }
+  .tab.on { background: var(--canvas); color: var(--t1); }
+  .tab svg { width: 14px; height: 14px; flex: none; }
+  .tab .x { width: 18px; height: 18px; border-radius: 4px; display: grid; place-items: center; color: var(--t4); margin-left: 2px; }
+  .tab .x:hover { background: var(--control-hover); color: var(--t1); }
+  .tab .x svg { width: 10px; height: 10px; }
+  .chrome .grow { flex: 1; }
+  .share-pill { align-self: center; margin-right: 10px; display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 4px 0 10px; border-radius: 999px; background: var(--attention-wash); border: 1px solid color-mix(in srgb, var(--attention) 45%, transparent); font-size: 12px; }
+  .share-pill .rec { width: 8px; height: 8px; border-radius: 50%; background: var(--attention); box-shadow: 0 0 0 3px color-mix(in srgb, var(--attention) 25%, transparent); }
+  .share-pill button { height: 20px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--b-strong); background: var(--control); font-size: 11.5px; cursor: pointer; }
+  .body { flex: 1; min-height: 0; display: flex; }
+  .statusbar { height: 26px; flex: none; display: flex; align-items: center; gap: 16px; padding: 0 12px; background: var(--chrome); border-top: 1px solid var(--b-default); color: var(--t3); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .statusbar .grow { flex: 1; }
+  .statusbar span { display: inline-flex; align-items: center; gap: 6px; }
+
+  .side { width: 232px; flex: none; background: var(--surface); border-right: 1px solid var(--b-default); padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
+  .side-search { height: 28px; border-radius: 4px; border: 1px solid var(--b-default); background: var(--canvas); color: var(--t4); display: flex; align-items: center; gap: 8px; padding: 0 8px; margin-bottom: 10px; font-size: 12.5px; }
+  .side-search kbd { margin-left: auto; font-family: var(--ui); font-size: 11px; }
+  .nav { height: 30px; display: flex; align-items: center; gap: 10px; padding: 0 8px; border-radius: 4px; color: var(--t2); }
+  .nav svg { width: 16px; height: 16px; color: var(--t3); }
+  .nav.on { background: var(--selected); color: var(--t1); } .nav.on svg { color: var(--accent); }
+  .nav .count { margin-left: auto; font-size: 11px; color: var(--t4); font-variant-numeric: tabular-nums; }
+  .side h5 { margin: 14px 8px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--t4); }
+
+  .content { flex: 1; min-width: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .page-head { display: flex; align-items: flex-start; gap: 16px; padding: 20px 28px 0; }
+  .page-head h3 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; }
+  .page-head p { margin: 2px 0 0; color: var(--t3); }
+  .page-head .grow { flex: 1; }
+  .filter { display: flex; gap: 2px; padding: 12px 28px 0; border-bottom: 1px solid var(--b-subtle); }
+  .filter button { padding: 6px 10px 9px; color: var(--t3); border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; display: flex; gap: 6px; align-items: center; background: none; cursor: pointer; }
+  .filter button:hover { color: var(--t1); }
+  .filter button.on { color: var(--t1); border-bottom-color: var(--accent); }
+  .filter .n { font-size: 11px; color: var(--t4); font-variant-numeric: tabular-nums; }
+
+  .btn { height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 4px; border: 1px solid var(--b-strong); background: var(--control); font-size: 12.5px; white-space: nowrap; cursor: pointer; }
+  .btn:hover { background: var(--control-hover); }
+  .btn svg { width: 14px; height: 14px; }
+  .btn.quiet { background: transparent; border-color: transparent; color: var(--t2); }
+  .btn.quiet:hover { background: var(--control-hover); }
+  .btn.prime { border-color: var(--accent); color: var(--accent); }
+  .btn.small { height: 24px; padding: 0 9px; font-size: 12px; }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+
+  .glyph { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--t2); white-space: nowrap; }
+  .glyph i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+  .glyph.live, .glyph.live i { color: var(--done); } .glyph.live i { background: var(--done); }
+  .glyph.warn { color: var(--attention); } .glyph.warn i { background: var(--attention); border-radius: 1px; transform: rotate(45deg); width: 7px; height: 7px; }
+  .glyph.off { color: var(--t3); } .glyph.off i { background: transparent; border: 1.5px solid var(--offline); }
+  .chip { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px; border-radius: 4px; background: var(--selected); color: var(--t2); font-size: 11.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .chip.is-warn, .chip .is-warn { color: var(--attention); }
+
+  .grid { padding: 16px 28px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .card { background: var(--elevated); border: 1px solid var(--b-subtle); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }
+  .thumb { position: relative; height: 188px; overflow: hidden; background: #0B0D10; border-bottom: 1px solid var(--b-subtle); border: 0; padding: 0; width: 100%; display: block; }
+  button.thumb { cursor: pointer; }
+  .thumb .tag { position: absolute; left: 10px; bottom: 10px; display: flex; gap: 6px; z-index: 2; }
+  .thumb .tag span { height: 20px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 4px; background: #111316D9; color: #E6E8EB; font-size: 11.5px; }
+  .thumb .tag i { width: 7px; height: 7px; border-radius: 50%; background: #6CCB8F; }
+  .thumb .hover { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; background: #0B0D1099; color: #fff; font-weight: 600; opacity: 0; transition: opacity 150ms; }
+  button.thumb:hover .hover { opacity: 1; }
+  .thumb.stale .rs-canvas { filter: grayscale(1) brightness(0.55); }
+  .thumb.empty { display: grid; place-items: center; background: var(--surface); }
+  .thumb.empty div { max-width: 36ch; text-align: center; color: var(--t3); display: grid; gap: 6px; justify-items: center; }
+  .thumb.empty svg { width: 22px; height: 22px; color: var(--t4); }
+  .card-body { padding: 12px 14px 14px; display: grid; gap: 10px; }
+  .card-title { display: flex; align-items: baseline; gap: 10px; }
+  .card-title b { font-size: 14px; font-weight: 600; }
+  .card-title span { color: var(--t3); font-size: 12px; }
+  .card-title .glyph { margin-left: auto; }
+  .card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 20px; }
+  .card-actions { display: flex; gap: 8px; align-items: center; }
+  .card-actions .grow { flex: 1; }
+  .attn { color: var(--attention); font-size: 12px; }
+  .attn.quiet { color: var(--t3); }
+
+  .toolbar { height: 44px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-bottom: 1px solid var(--b-subtle); background: var(--canvas); }
+  .toolbar .name { display: flex; align-items: center; gap: 8px; font-weight: 600; padding-right: 4px; }
+  .toolbar .grow { flex: 1; }
+  .vsep { width: 1px; height: 20px; background: var(--b-default); }
+  .seg { display: flex; padding: 2px; border-radius: 4px; background: var(--surface); border: 1px solid var(--b-default); }
+  .seg button { height: 22px; display: flex; align-items: center; padding: 0 9px; border-radius: 3px; color: var(--t3); font-size: 12px; white-space: nowrap; border: 0; background: none; cursor: pointer; font-variant-numeric: tabular-nums; }
+  .seg button:hover { color: var(--t1); }
+  .seg button[aria-pressed="true"] { background: var(--selected); color: var(--t1); }
+  .toggle { display: inline-flex; align-items: center; gap: 8px; color: var(--t2); font-size: 12px; white-space: nowrap; background: none; border: 0; cursor: pointer; padding: 0; }
+  .sw { width: 28px; height: 16px; border-radius: 999px; background: var(--b-strong); position: relative; flex: none; display: inline-block; }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #E6E8EB; transition: left 120ms; }
+  [aria-pressed="true"] > .sw, .sw.on { background: var(--accent); }
+  [aria-pressed="true"] > .sw::after, .sw.on::after { left: 14px; background: var(--on-accent); }
+  button.swbtn { background: none; border: 0; padding: 0; cursor: pointer; display: inline-flex; }
+  button.swbtn:disabled { opacity: 0.35; cursor: default; }
+  .stage-wrap { flex: 1; min-width: 0; position: relative; background: #07080A; overflow: hidden; }
+  .stage { position: absolute; inset: 0; outline: none; }
+  .banner { position: absolute; left: 16px; right: 230px; top: 12px; z-index: 12; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: 6px; background: color-mix(in srgb, var(--elevated) 94%, transparent); border: 1px solid color-mix(in srgb, var(--attention) 45%, var(--b-default)); box-shadow: 0 8px 24px #00000059; }
+  .banner svg { width: 16px; height: 16px; color: var(--attention); flex: none; }
+  .banner .grow { flex: 1; }
+  .banner small { color: var(--t3); font-size: 12px; }
+  .minimap { position: absolute; right: 14px; bottom: 14px; width: 200px; z-index: 11; border-radius: 6px; overflow: hidden; border: 1px solid var(--b-strong); background: #07080A; box-shadow: 0 8px 24px #00000059; }
+  .minimap .mm { position: relative; aspect-ratio: 1512 / 982; cursor: pointer; }
+  .minimap .mm-foot { display: flex; justify-content: space-between; padding: 4px 8px; font-size: 11px; color: var(--t3); background: var(--surface); border-top: 1px solid var(--b-default); font-variant-numeric: tabular-nums; }
+  .legend-o { position: absolute; left: 16px; bottom: 14px; z-index: 11; display: flex; gap: 12px; padding: 6px 10px; border-radius: 6px; background: #111316E6; border: 1px solid #2A2E35; color: #B4B9C2; font-size: 11.5px; }
+  .legend-o span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend-o i { width: 10px; height: 10px; border-radius: 2px; display: block; }
+  .reconnect { position: absolute; inset: 0; z-index: 14; display: grid; place-items: center; background: #07080A80; }
+  .reconnect .box { display: grid; justify-items: center; gap: 8px; padding: 18px 22px; border-radius: 10px; background: var(--elevated); border: 1px solid var(--b-default); box-shadow: var(--shadow); text-align: center; max-width: 320px; }
+  .spinner { width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid var(--b-strong); border-top-color: var(--accent); animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .reconnect small { color: var(--t3); }
+  .hint { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 11; padding: 6px 12px; border-radius: 999px; background: #111316E6; color: #B4B9C2; font-size: 12px; white-space: nowrap; pointer-events: none; }
+  .toast { position: absolute; left: 50%; top: 52px; transform: translateX(-50%); z-index: 50; padding: 8px 14px; border-radius: 6px; background: var(--elevated); border: 1px solid var(--b-strong); box-shadow: 0 8px 24px #00000059; font-size: 12.5px; white-space: nowrap; }
+
+  .inspector { width: 300px; flex: none; background: var(--surface); border-left: 1px solid var(--b-default); overflow-y: auto; display: flex; flex-direction: column; }
+  .insp-sec { padding: 14px 16px; border-bottom: 1px solid var(--b-subtle); display: grid; gap: 10px; }
+  .insp-sec h4 { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--t4); }
+  .kv { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 6px 10px; font-variant-numeric: tabular-nums; margin: 0; }
+  .kv dt { color: var(--t3); }
+  .kv dd { margin: 0; display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .kv dd small { color: var(--t3); font-size: 12px; }
+  .kv .is-warn { color: var(--attention); }
+  .spark { width: 100%; height: 38px; display: block; }
+  .path-pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 4px; font-size: 12px; font-weight: 500; background: var(--accent-wash); color: var(--accent); }
+  .path-pill.tile { background: var(--attention-wash); color: var(--attention); }
+  .insp-note { margin: 0; color: var(--t2); font-size: 12.5px; line-height: 17px; }
+  .ladder { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .rs-step { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; align-items: center; padding: 4px 6px; border-radius: 4px; color: var(--t2); font-size: 12.5px; }
+  .rs-step svg { width: 14px; height: 14px; color: var(--t3); }
+  .rs-step.now { background: var(--attention-wash); color: var(--t1); } .rs-step.now svg { color: var(--attention); }
+  .rs-step.next { color: var(--t4); }
+  .people { display: grid; gap: 8px; }
+  .person { display: flex; align-items: center; gap: 10px; }
+  .avatar { width: 26px; height: 26px; border-radius: 6px; background: var(--selected); display: grid; place-items: center; color: var(--t2); flex: none; }
+  .avatar svg { width: 15px; height: 15px; }
+  .person > div { display: grid; line-height: 16px; }
+  .person small { color: var(--t3); font-size: 12px; }
+  .person .glyph { margin-left: auto; }
+
+  .list { padding: 16px 28px; display: grid; gap: 10px; }
+  .settings { padding: 16px 28px; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; overflow-y: auto; }
+  .group { background: var(--elevated); border: 1px solid var(--b-subtle); border-radius: 6px; }
+  .group + .group { margin-top: 14px; }
+  .group-head { padding: 12px 16px 8px; display: grid; gap: 2px; }
+  .group-head b { font-size: 13px; font-weight: 600; }
+  .group-head span { color: var(--t3); font-size: 12px; }
+  .row { display: flex; align-items: center; gap: 14px; padding: 8px 16px; border-top: 1px solid var(--b-subtle); }
+  .row .txt { flex: 1; min-width: 0; display: grid; gap: 1px; }
+  .row .txt small { color: var(--t3); font-size: 12px; }
+  .ok { color: var(--done); display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; }
+  .no { color: var(--attention); display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; }
+  .ok svg, .no svg { width: 14px; height: 14px; }
+  .disabled-group { opacity: 0.5; pointer-events: none; }
+  table.grants { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .grants th { text-align: left; font-size: 11.5px; font-weight: 500; color: var(--t3); padding: 8px 16px; border-top: 1px solid var(--b-subtle); }
+  .grants td { padding: 8px 16px; border-top: 1px solid var(--b-subtle); vertical-align: middle; }
+  .grants td.dev { display: flex; align-items: center; gap: 10px; }
+  .grants td.dev div { display: grid; line-height: 16px; }
+  .grants td.dev small { color: var(--t3); font-size: 12px; }
+  .grants .c { width: 70px; }
+  .aside-card { background: var(--elevated); border: 1px solid var(--b-subtle); border-radius: 6px; padding: 14px 16px; display: grid; gap: 10px; }
+  .aside-card b { font-size: 13px; }
+  .aside-card p { margin: 0; color: var(--t2); font-size: 12.5px; }
+  .preview-mini { border-radius: 4px; overflow: hidden; border: 1px solid var(--b-default); position: relative; aspect-ratio: 1512 / 982; background: #0B0D10; }
+  .preview-mini .none { position: absolute; inset: 0; display: grid; place-items: center; color: var(--t3); background: var(--surface); z-index: 2; }
+</style>
+
+<div class="review">
+  <header class="review-head">
+    <p class="eyebrow">TermiRust · Interactive prototype · Desktop app</p>
+    <h1>Remote Screens on the desktop</h1>
+    <p>A working TermiRust window. Open mac-studio's screen, zoom around it, turn on Show updates to see exactly which parts travel, take control, and change the network below to watch it adapt. The log under the window explains every byte.</p>
+  </header>
+
+  <div class="controls" role="group" aria-label="Simulation">
+    <div class="grp"><span class="lbl">Network</span>
+      <button class="pbtn" type="button" data-rs-net="good"><span class="dotsw" style="background:var(--done)"></span>Good Wi-Fi</button>
+      <button class="pbtn" type="button" data-rs-net="cafe"><span class="dotsw" style="background:var(--accent)"></span>Busy café</button>
+      <button class="pbtn" type="button" data-rs-net="weak"><span class="dotsw" style="background:var(--attention)"></span>Weak cellular</button>
+      <button class="pbtn" type="button" data-rs-net="barely"><span class="dotsw" style="background:var(--error)"></span>Barely there</button>
+      <button class="pbtn" type="button" data-rs-net="offline"><span class="dotsw" style="border:1.5px solid var(--page-muted)"></span>Offline</button>
+    </div>
+    <div class="grp"><span class="lbl">On mac-studio</span>
+      <button class="pbtn" type="button" data-rs-video>Video playing</button>
+      <button class="pbtn" type="button" data-rs-agent>Agent asks again</button>
+    </div>
+    <div class="grp"><span class="lbl">Jump to</span>
+      <button class="pbtn" type="button" data-djump="computers">Computers</button>
+      <button class="pbtn" type="button" data-djump="viewer">Remote screen</button>
+      <button class="pbtn" type="button" data-djump="weak">Weak connection</button>
+      <button class="pbtn" type="button" data-djump="sharing">Sharing settings</button>
+    </div>
+  </div>
+
+  <div class="fit" id="fit"><div class="win" id="win">
+    <div class="chrome">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="tabs">
+        <button class="tab on" type="button" data-tab="devices"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="3" width="9" height="7" rx="1"/><rect x="11" y="6" width="3.5" height="7" rx="1"/><path d="M4 13h4"/></svg>Devices</button>
+        <button class="tab" type="button" data-tab="viewer" hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2.5" width="13" height="9" rx="1.2"/><path d="M5.5 14h5M8 11.5V14"/></svg><span class="glyph" data-tab-glyph><i></i></span>mac-studio<span class="x" data-close-viewer role="button" aria-label="Close tab"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m2 2 6 6M8 2 2 8"/></svg></span></button>
+        <button class="tab" type="button" data-tab="term"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="m4.5 6 2 2-2 2M8.5 10h3"/></svg>api-prod</button>
+      </div>
+      <div class="grow"></div>
+      <div class="share-pill" role="status" data-share-pill><span class="rec"></span><span data-share-text>iPhone 17 Pro is watching this screen</span><button type="button" data-stop-sharing>Stop sharing</button></div>
+    </div>
+
+    <!-- ================= Devices ================= -->
+    <div class="body" data-view="devices">
+      <nav class="side" aria-label="Sections">
+        <div class="side-search"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>Search or user@host<kbd>⌘K</kbd></div>
+        <div class="nav" data-icon="activity">Activity</div>
+        <div class="nav" data-icon="projects">Projects</div>
+        <div class="nav" data-icon="connections">Connections<span class="count">24</span></div>
+        <div class="nav" data-icon="sessions">Sessions<span class="count">9</span></div>
+        <div class="nav" data-icon="files">Files / Artifacts</div>
+        <div class="nav on" data-icon="devices">Devices<span class="count">6</span></div>
+        <div class="nav" data-icon="settings">Settings</div>
+        <h5>Tools</h5>
+        <div class="nav" data-icon="key">Keychain</div>
+        <div class="nav" data-icon="snippet">Snippets</div>
+      </nav>
+      <div class="content">
+        <div class="page-head">
+          <div><h3>Devices</h3><p>Computers, phones and tablets paired with this Mac.</p></div>
+          <div class="grow"></div>
+          <button class="btn" type="button" data-toast-msg="Pairing shows a six-digit code, as it does today."><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3v10M3 8h10"/></svg>Pair a device</button>
+        </div>
+        <div class="filter" role="tablist">
+          <button type="button" class="on" data-sub="computers">Computers <span class="n">4</span></button>
+          <button type="button" data-sub="phones">Phones and tablets <span class="n">2</span></button>
+          <button type="button" data-sub="this">This computer</button>
+        </div>
+
+        <div class="grid" data-subview="computers">
+          <article class="card">
+            <button class="thumb" type="button" data-open-viewer aria-label="Open mac-studio's screen"><div data-preview="mac"></div><div class="tag"><span data-live-tag><i></i>Live</span></div><div class="hover">Open screen</div></button>
+            <div class="card-body">
+              <div class="card-title"><b>mac-studio</b><span>macOS 26 · Mac Studio</span><span class="glyph live" data-link-glyph><i></i><span data-link-word>Online</span></span></div>
+              <div class="card-meta"><span class="chip"><span data-stat="route">Direct</span>&nbsp;·&nbsp;<span data-stat="medium">Wi-Fi 6</span></span><span class="chip" data-stat="rtt">38 ms</span><span class="attn" data-agent-text>1 agent waiting for approval</span></div>
+              <div class="card-actions"><button class="btn prime" type="button" data-open-viewer>Open screen</button><button class="btn" type="button" data-toast-msg="Terminals opens mac-studio's existing sessions list.">Terminals <span style="color:var(--t4)">3</span></button></div>
+            </div>
+          </article>
+          <article class="card">
+            <div class="thumb"><div data-preview="linux"></div><div class="tag"><span><i></i>Live</span></div></div>
+            <div class="card-body">
+              <div class="card-title"><b>build-box</b><span>Ubuntu 26.04 · GNOME</span><span class="glyph live"><i></i>Online</span></div>
+              <div class="card-meta"><span class="chip">Relay · relay.lab.internal</span><span class="chip">124 ms</span></div>
+              <div class="card-actions"><button class="btn prime" type="button" data-toast-msg="This prototype simulates mac-studio only.">Open screen</button><button class="btn" type="button" data-toast-msg="Terminals opens build-box's existing sessions list.">Terminals <span style="color:var(--t4)">6</span></button></div>
+            </div>
+          </article>
+          <article class="card">
+            <div class="thumb stale"><div data-preview="stale"></div><div class="tag"><span style="color:#B4B9C2">Last preview 2 h ago</span></div></div>
+            <div class="card-body">
+              <div class="card-title"><b>macbook-air</b><span>macOS 26 · MacBook Air</span><span class="glyph off"><i></i>Asleep</span></div>
+              <div class="card-meta"><span class="chip">Last seen 14:02 on Wi-Fi</span></div>
+              <div class="card-actions"><button class="btn" type="button" disabled>Open screen</button><button class="btn" type="button" data-toast-msg="Terminals on a sleeping computer open when it wakes.">Terminals</button></div>
+            </div>
+          </article>
+          <article class="card">
+            <div class="thumb empty"><div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M3 3l18 18"/></svg><span>Screen sharing is off on this computer. Its terminals are still available.</span></div></div>
+            <div class="card-body">
+              <div class="card-title"><b>office-imac</b><span>macOS 15 · iMac</span><span class="glyph live"><i></i>Online</span></div>
+              <div class="card-meta"><span class="chip">Direct · Ethernet</span><span class="chip">4 ms</span></div>
+              <div class="card-actions"><button class="btn" type="button" data-toast-msg="Terminals opens office-imac's existing sessions list.">Terminals <span style="color:var(--t4)">2</span></button></div>
+            </div>
+          </article>
+        </div>
+
+        <div class="list" data-subview="phones" hidden>
+          <div class="group">
+            <div class="group-head"><b>Phones and tablets</b><span>They see the Computers list on their Devices tab.</span></div>
+            <div class="row"><span class="avatar"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="4.5" y="1.5" width="7" height="13" rx="1.5"/></svg></span><div class="txt">iPhone 17 Pro<small>iOS 26 · paired 3 Sep · can view and control</small></div><span class="glyph" data-iphone-state><i></i>Watching this Mac</span></div>
+            <div class="row"><span class="avatar"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="4.5" y="1.5" width="7" height="13" rx="1.5"/></svg></span><div class="txt">Pixel 9<small>Android 16 · paired 11 Sep · can view</small></div><span class="glyph live"><i></i>Watching mac-studio with you</span></div>
+          </div>
+        </div>
+
+        <div class="settings" data-subview="this" hidden>
+          <div>
+            <div class="group">
+              <div class="group-head"><b>Screen sharing</b><span>Terminals stay available to paired devices either way.</span></div>
+              <div class="row"><div class="txt">Let paired devices see this screen<small>Only devices you allow below. Off until you turn it on.</small></div><button class="swbtn" type="button" data-setting="share" aria-pressed="true" aria-label="Let paired devices see this screen"><span class="sw"></span></button></div>
+              <div class="row" data-needs-share><div class="txt">Show a live preview in their Devices list<small>About one small image per second while their list is open.</small></div><button class="swbtn" type="button" data-setting="preview" aria-pressed="true" aria-label="Show a live preview"><span class="sw"></span></button></div>
+              <div class="row" data-needs-share><div class="txt">Displays to share</div><div class="seg"><button type="button" data-share-displays aria-pressed="true">All displays</button><button type="button" data-share-displays aria-pressed="false">Studio Display only</button></div></div>
+            </div>
+            <div class="group" data-needs-share>
+              <div class="group-head"><b>Who can see and control this screen</b><span>One device controls at a time. Others watch until control is given back.</span></div>
+              <table class="grants">
+                <thead><tr><th>Device</th><th class="c">View</th><th class="c">Control</th><th>Now</th></tr></thead>
+                <tbody>
+                  <tr><td class="dev"><span class="avatar"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="4.5" y="1.5" width="7" height="13" rx="1.5"/></svg></span><div>iPhone 17 Pro<small>iOS 26</small></div></td><td class="c"><button class="swbtn" type="button" data-grant="iphone-view" aria-pressed="true" aria-label="iPhone can view"><span class="sw"></span></button></td><td class="c"><button class="swbtn" type="button" data-grant="iphone-control" aria-pressed="true" aria-label="iPhone can control"><span class="sw"></span></button></td><td><span class="glyph warn" data-iphone-now><i></i>Controlling</span></td></tr>
+                  <tr><td class="dev"><span class="avatar"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="4.5" y="1.5" width="7" height="13" rx="1.5"/></svg></span><div>Pixel 9<small>Android 16</small></div></td><td class="c"><button class="swbtn" type="button" data-grant="pixel-view" aria-pressed="true" aria-label="Pixel can view"><span class="sw"></span></button></td><td class="c"><button class="swbtn" type="button" data-grant="pixel-control" aria-pressed="false" aria-label="Pixel can control"><span class="sw"></span></button></td><td style="color:var(--t3)">Not connected</td></tr>
+                  <tr><td class="dev"><span class="avatar"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="3" width="13" height="8.5" rx="1"/><path d="M5 14h6"/></svg></span><div>build-box<small>Linux desktop</small></div></td><td class="c"><button class="swbtn" type="button" data-grant="box-view" aria-pressed="false" aria-label="build-box can view"><span class="sw"></span></button></td><td class="c"><button class="swbtn" type="button" data-grant="box-control" aria-pressed="false" aria-label="build-box can control" disabled><span class="sw"></span></button></td><td style="color:var(--t3)">Yesterday</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="group">
+              <div class="group-head"><b>Permissions on this Mac</b><span>macOS asks for these once. TermiRust never captures or controls without them.</span></div>
+              <div class="row"><div class="txt">Screen Recording<small>Needed to show this screen.</small></div><span class="ok"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8.5 6.5 12 13 4.5"/></svg>Allowed</span></div>
+              <div class="row"><div class="txt">Accessibility<small>Needed before another device can move the pointer or type.</small></div><span data-ax-state class="no"><span class="glyph warn"><i></i></span>Not allowed</span><button class="btn small" type="button" data-ax-open>Open System Settings</button></div>
+            </div>
+          </div>
+          <div style="display:grid;gap:14px">
+            <div class="aside-card">
+              <b>Being watched now</b>
+              <div class="preview-mini"><div data-preview="this"></div><div class="none" data-nobody hidden>No one is watching</div></div>
+              <div class="person" data-watcher><span class="avatar"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="4.5" y="1.5" width="7" height="13" rx="1.5"/></svg></span><div>iPhone 17 Pro<small>Controlling · relay · <span data-watch-time>4 min</span></small></div></div>
+              <button class="btn" type="button" data-stop-sharing>Stop sharing</button>
+            </div>
+            <div class="aside-card">
+              <b>Reach from outside your network</b>
+              <p>Screens use the same routes as terminals. Your relay only passes encrypted data.</p>
+              <div class="row" style="padding:8px 0"><div class="txt">relay.lab.internal<small>Self-hosted relay</small></div><span class="ok"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8.5 6.5 12 13 4.5"/></svg>Connected</span></div>
+              <div class="row" style="padding:8px 0"><div class="txt">Public relays<small>Best effort, rate limited</small></div><button class="swbtn" type="button" data-setting="public" aria-pressed="false" aria-label="Public relays"><span class="sw"></span></button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= Remote screen ================= -->
+    <div class="body" data-view="viewer" hidden>
+      <div class="content">
+        <div class="toolbar">
+          <div class="name"><span class="glyph live" data-link-glyph><i></i></span>mac-studio</div>
+          <div class="seg" aria-label="Display"><button type="button" data-layout="all" aria-pressed="false">All displays</button><button type="button" data-layout="studio" aria-pressed="true">Studio Display</button><button type="button" data-layout="builtin" aria-pressed="false">Built-in</button></div>
+          <div class="seg" aria-label="Zoom"><button type="button" data-zoom="fit" aria-pressed="true">Fit</button><button type="button" data-zoom="1" aria-pressed="false">100 %</button><button type="button" data-zoom="2" aria-pressed="false">200 %</button></div>
+          <div class="vsep"></div>
+          <button class="toggle" type="button" data-overlay aria-pressed="false"><span class="sw"></span>Show updates</button>
+          <div class="grow"></div>
+          <span class="chip" data-control-chip>Watching</span>
+          <button class="btn small" type="button" data-control>Take control</button>
+          <button class="btn small quiet" type="button" data-close-viewer>Disconnect</button>
+        </div>
+        <div class="body" style="flex:1;min-height:0">
+          <div class="stage-wrap">
+            <div class="stage" data-stage tabindex="0" aria-label="mac-studio screen"></div>
+            <div class="banner" data-weak-banner hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2 1.5 13.5h13z"/><path d="M8 6.5v3.2M8 11.6v.1"/></svg><div class="grow">Weak connection. Detail is reduced so the screen keeps up. <small>Terminal text stays sharp.</small></div><button class="btn small quiet" type="button" data-hide-banner>Hide</button></div>
+            <div class="legend-o" data-overlay-legend hidden><span><i style="background:#74A7F24D;outline:1px solid #74A7F2"></i>Tiles sent</span><span><i style="background:#E9B06133;outline:1.5px solid #E9B061"></i>Video area</span><span><i style="background:#6CCB8F14;outline:1.5px solid #6CCB8F"></i>Sent as text</span></div>
+            <div class="hint" data-hint>Click inside to watch. Take control to click and type. Scroll with ⌘ or pinch to zoom.</div>
+            <div class="minimap"><div class="mm" data-mini></div><div class="mm-foot"><span data-mm-view>Whole screen</span><span>Drag to move</span></div></div>
+            <div class="reconnect" data-reconnect hidden><div class="box"><div class="spinner" role="progressbar" aria-label="Reconnecting"></div><b data-reconnect-title>Reconnecting to mac-studio</b><small data-reconnect-text>Showing the last picture.</small></div></div>
+          </div>
+          <aside class="inspector">
+            <div class="insp-sec">
+              <h4>Connection</h4>
+              <dl class="kv">
+                <dt>Route</dt><dd><span data-stat="route">Direct</span> <small data-stat="medium">Wi-Fi 6</small></dd>
+                <dt>Delay</dt><dd data-stat="rtt">38 ms</dd>
+                <dt>Loss</dt><dd data-stat="loss">0.2 %</dd>
+                <dt>Bandwidth</dt><dd><span data-stat="bandwidth">1.4 Mbps</span> <small data-stat="cap">of 42 Mbps</small></dd>
+              </dl>
+              <svg class="spark" data-rs-spark aria-label="Bandwidth, last 40 seconds"></svg>
+            </div>
+            <div class="insp-sec">
+              <h4>Screen</h4>
+              <div><span class="path-pill" data-path-pill><span data-stat="pathname">Motion path</span></span></div>
+              <p class="insp-note" data-path-note></p>
+              <dl class="kv">
+                <dt>Updates</dt><dd data-stat="ups">60 per second</dd>
+                <dt>Reused</dt><dd><span data-stat="reused">86 %</span> <small>of changes</small></dd>
+                <dt>As text</dt><dd>2 terminal panes</dd>
+              </dl>
+            </div>
+            <div class="insp-sec">
+              <h4>Keeping up</h4>
+              <p class="insp-note" data-ladder-note>Nothing is reduced. Full detail at 60 updates per second.</p>
+              <ol class="ladder" data-rs-ladder></ol>
+            </div>
+            <div class="insp-sec">
+              <h4>Connected</h4>
+              <div class="people">
+                <div class="person"><span class="avatar"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="3" width="13" height="8.5" rx="1"/><path d="M5 14h6"/></svg></span><div>This Mac<small data-me-role>Watching</small></div><span class="glyph live"><i></i></span></div>
+                <div class="person"><span class="avatar"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="4.5" y="1.5" width="7" height="13" rx="1.5"/></svg></span><div>Pixel 9<small>Watching</small></div><span class="glyph live"><i></i></span></div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= Plain terminal tab ================= -->
+    <div class="body" data-view="term" hidden style="background:#17191D;color:#C9CDD4;font:13px/19px var(--mono);white-space:pre;padding:16px">ops@api-prod:~$ uptime
+ 14:32:05 up 41 days,  3:12,  2 users,  load average: 0.21, 0.30, 0.28
+ops@api-prod:~$ <span style="background:#E6E8EB;color:#17191D"> </span></div>
+
+    <div class="statusbar">
+      <span><span class="glyph live" data-link-glyph><i></i></span><span data-status-left>Remote access on · 4 addresses</span></span>
+      <span data-status-mid>2 phones connected</span>
+      <div class="grow"></div>
+      <span data-status-right>Previews use about 18 KB/s</span>
+    </div>
+    <div class="toast" data-toast hidden></div>
+  </div></div>
+
+  <div class="below">
+    <section class="pcard" aria-labelledby="tour-h">
+      <h2 id="tour-h">Try this <small data-rs-tour-count>0 of 7</small></h2>
+      <ol class="tour" data-rs-tour></ol>
+    </section>
+    <section class="pcard" aria-labelledby="log-h">
+      <h2 id="log-h">What TermiRust is sending</h2>
+      <div class="legend"><span><i style="background:var(--accent)"></i>Tiles</span><span><i style="background:var(--done)"></i>Text or recovery</span><span><i style="background:var(--violet)"></i>Your input</span><span><i style="background:var(--attention)"></i>Adapting</span></div>
+      <ul class="log" data-rs-log aria-live="polite"></ul>
+    </section>
+  </div>
+</div>
+
+<script src="shared/remote-sim.js"></script>
+<script>
+(function () {
+  const $ = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+  const win = $('#win');
+
+  /* sidebar icons */
+  const ICONS = {
+    activity: '<path d="M1.5 8h3l2-4.5 3 9 2-4.5h3"/>', projects: '<path d="M1.5 4.5h5l1.5 1.5h6.5v7h-13z"/>',
+    connections: '<rect x="1.5" y="2.5" width="13" height="4" rx="1"/><rect x="1.5" y="9.5" width="13" height="4" rx="1"/>',
+    sessions: '<rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="m4.5 6 2 2-2 2M8.5 10h3"/>', files: '<path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M9.5 1.5v3h3"/>',
+    devices: '<rect x="1.5" y="3" width="9" height="7" rx="1"/><rect x="11" y="6" width="3.5" height="7" rx="1"/><path d="M4 13h4"/>',
+    settings: '<circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"/>',
+    key: '<circle cx="5" cy="10" r="3"/><path d="m7 8 6-6M11 4l2 2"/>', snippet: '<path d="m5.5 4-4 4 4 4M10.5 4l4 4-4 4"/>'
+  };
+  $$('.nav[data-icon]').forEach(n => n.insertAdjacentHTML('afterbegin', '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">' + ICONS[n.dataset.icon] + '</svg>'));
+
+  /* fit the 1280 × 840 window to the page */
+  function refit() {
+    const f = $('#fit'); const s = Math.min(1, f.clientWidth / 1280);
+    win.style.transform = 'scale(' + s + ')'; f.style.height = (840 * s) + 'px';
+  }
+  new ResizeObserver(refit).observe($('.review')); refit();
+
+  /* views */
+  $$('[data-preview]').forEach(el => {
+    const k = el.dataset.preview;
+    RS.mount(el, { layout: k === 'linux' ? 'linux' : 'studio', fit: 'cover', computer: k === 'mac' ? 'mac-studio' : 'this' });
+  });
+  const stage = RS.mount($('[data-stage]'), { layout: 'studio', fit: 'interactive', receiver: true, pointer: false });
+  RS.minimap($('[data-mini]'), stage);
+
+  let view = 'devices', controlling = false, viewerOpen = false, sharing = true, watcher = true, bannerHidden = false, connectedSecs = 0;
+  const toast = (msg, ms) => { const t = $('[data-toast]'); t.textContent = msg; t.hidden = false; clearTimeout(t._h); t._h = setTimeout(() => { t.hidden = true; }, ms || 2600); };
+
+  function show(v) {
+    view = v;
+    $$('[data-view]').forEach(b => { b.hidden = b.dataset.view !== v; });
+    $$('[data-tab]').forEach(t => t.classList.toggle('on', t.dataset.tab === v));
+    if (v === 'viewer') requestAnimationFrame(() => { stage.relayout(); syncZoom(); });
+    updateStatus();
+  }
+  function sub(name) {
+    $$('[data-sub]').forEach(b => b.classList.toggle('on', b.dataset.sub === name));
+    $$('[data-subview]').forEach(s => { s.hidden = s.dataset.subview !== name; });
+    if (name === 'this') RS.done('share-open');
+  }
+  function openViewer() {
+    if (!viewerOpen) {
+      viewerOpen = true; connectedSecs = 0;
+      $('[data-tab="viewer"]').hidden = false;
+      RS.log('Opened mac-studio\'s screen. First picture: 231 tiles, 164 of them lossless text and UI, 1.1 MB total, then only changes.', 'tile');
+    }
+    show('viewer'); RS.done('open');
+    requestAnimationFrame(() => { stage.setZoom('fit'); syncZoom(); });
+  }
+  function closeViewer() {
+    if (controlling) setControl(false);
+    viewerOpen = false; $('[data-tab="viewer"]').hidden = true; show('devices');
+    RS.log('Disconnected from mac-studio\'s screen. Its terminals stay connected.', 'info');
+  }
+  function setControl(on) {
+    controlling = on; stage.setPointer(on);
+    $('[data-control]').textContent = on ? 'Give back control' : 'Take control';
+    const chip = $('[data-control-chip]'); chip.textContent = on ? 'You have control' : 'Watching'; chip.style.color = on ? 'var(--done)' : '';
+    $('[data-me-role]').textContent = on ? 'Controlling' : 'Watching';
+    $('[data-hint]').textContent = on ? 'You have control. Click and type on mac-studio.' : 'Click inside to watch. Take control to click and type. Scroll with ⌘ or pinch to zoom.';
+    RS.log(on ? 'You took control of mac-studio. Pixel 9 keeps watching; it can\'t click or type while you hold control.' : 'You gave control back. Anyone allowed can take it now.', 'input');
+    if (on) { $('[data-stage]').focus(); }
+  }
+  function syncZoom() {
+    const s = stage.s;
+    $$('[data-zoom]').forEach(b => {
+      const z = b.dataset.zoom;
+      b.setAttribute('aria-pressed', String(z === 'fit' ? stage.fit : !stage.fit && Math.abs(s - Number(z)) < 0.02));
+    });
+    const v = stage.view(), L = RS.LAYOUTS[stage.layout];
+    const pct = Math.min(100, Math.round(Math.min(1, v.w / L.w) * Math.min(1, v.h / L.h) * 100));
+    $('[data-mm-view]').textContent = pct >= 99 ? 'Whole screen' : 'Viewing ' + pct + ' %';
+  }
+  stage.on('view', syncZoom);
+  stage.on('zoom', () => { if (!stage.fit) RS.done('zoom'); });
+  stage.on('panend', d => {
+    RS.done('zoom');
+    if (RS.model.step >= 2 && RS.model.link === 'up') {
+      const n = Math.max(6, Math.min(80, Math.round((Math.abs(d.dx || 0) + Math.abs(d.dy || 0)) / stage.s / 64 * 8)));
+      const cached = Math.round(n * 0.7);
+      RS.log('Brought ' + n + ' paused tiles into view: ' + cached + ' came from this Mac\'s cache (0 B), ' + (n - cached) + ' were sent (' + ((n - cached) * 1.1).toFixed(1) + ' KB).', 'tile', 'pan', 2500);
+    }
+  });
+  stage.on('click', ({ rx, ry, hit }) => {
+    $('[data-stage]').focus();
+    if (RS.model.link !== 'up') { toast('Not connected. Clicks are not queued.'); return; }
+    if (!controlling) { toast('You are watching. Take control to click and type on mac-studio.'); return; }
+    RS.ripple(stage, rx, ry);
+    if (hit === 'approve') { RS.approve('this Mac'); RS.done('approve'); }
+    else if (hit === 'deny') RS.deny('this Mac');
+    else if (hit === 'video') RS.setVideo(!RS.model.video);
+    else RS.remote('Click at ' + Math.round(rx) + ', ' + Math.round(ry), 14, () => {});
+  });
+  stage.on('dblclick', e => { stage.fit ? stage.setZoom(1, e.clientX, e.clientY) : stage.setZoom('fit'); syncZoom(); });
+  $('[data-stage]').addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key === 'Enter' || e.key === 'Backspace' ? e.key : e.key.length === 1 ? e.key : null;
+    if (!k) return;
+    e.preventDefault();
+    if (!controlling) { toast('You are watching. Take control to type on mac-studio.'); return; }
+    RS.typeKey(k);
+  });
+
+  /* sharing (this Mac shared with the iPhone) */
+  function setSharing(on, reason) {
+    sharing = on; if (!on) watcher = false;
+    $('[data-setting="share"]').setAttribute('aria-pressed', String(on));
+    $$('[data-needs-share]').forEach(e => e.classList.toggle('disabled-group', !on));
+    updateWatcher();
+    RS.log(reason || (on ? 'Screen sharing turned on. Paired devices you allow can see this Mac.' : 'Screen sharing turned off. Paired devices keep their terminal access.'), on ? 'good' : 'warn');
+  }
+  function updateWatcher() {
+    $('[data-share-pill]').hidden = !(sharing && watcher);
+    $('[data-nobody]').hidden = sharing && watcher;
+    $('[data-watcher]').hidden = !(sharing && watcher);
+    $$('[data-stop-sharing]').forEach(b => { if (b.closest('.aside-card')) b.hidden = !(sharing && watcher); });
+    const now = $('[data-iphone-now]');
+    now.className = 'glyph ' + (watcher ? 'warn' : 'off'); now.innerHTML = '<i></i>' + (watcher ? 'Controlling' : 'Not connected');
+    const ps = $('[data-iphone-state]'); ps.className = 'glyph ' + (watcher ? 'warn' : 'off'); ps.innerHTML = '<i></i>' + (watcher ? 'Watching this Mac' : 'Not watching');
+    updateStatus();
+  }
+
+  function updateStatus() {
+    const st = RS.state();
+    const glyphCls = st.connected ? (st.step >= 3 ? 'glyph warn' : 'glyph live') : 'glyph off';
+    $$('[data-link-glyph]').forEach(g => { g.className = glyphCls; });
+    $$('[data-link-word]').forEach(w => { w.textContent = st.connected ? 'Online' : st.link === 'reconnecting' ? 'Reconnecting' : 'Offline'; });
+    const tg = $('[data-tab-glyph]'); if (tg) tg.className = glyphCls;
+    if (view === 'viewer') {
+      $('[data-status-left]').textContent = st.connected ? 'Connected ' + Math.floor(connectedSecs / 60) + ' min ' + String(connectedSecs % 60).padStart(2, '0') + ' s' : st.link === 'reconnecting' ? 'Reconnecting' : 'Offline';
+      $('[data-status-mid]').textContent = 'End-to-end encrypted';
+      const L = RS.LAYOUTS[stage.layout];
+      $('[data-status-right]').textContent = L.w + ' × ' + L.h + ' · ' + st.ups + ' updates/s';
+    } else {
+      $('[data-status-left]').textContent = 'Remote access on · 4 addresses';
+      $('[data-status-mid]').textContent = sharing && watcher ? 'Sharing this screen with 1 device' : '2 phones paired';
+      $('[data-status-right]').textContent = 'Previews use about 18 KB/s';
+    }
+  }
+
+  RS.on('tick', st => {
+    if (viewerOpen && st.connected && Math.random() < 0.25) connectedSecs++;
+    updateStatus();
+    const a = RS.model.agent;
+    $$('[data-agent-text]').forEach(e => { e.textContent = a === 'waiting' ? '1 agent waiting for approval' : a === 'running' ? 'Agent running a benchmark' : 'No agents waiting'; e.classList.toggle('quiet', a !== 'waiting'); });
+    const weak = st.connected && st.step >= 3;
+    if (!weak) bannerHidden = false;
+    $('[data-weak-banner]').hidden = !weak || bannerHidden;
+    $('[data-reconnect]').hidden = st.connected;
+    $('[data-reconnect-title]').textContent = st.link === 'reconnecting' ? 'Reconnecting to mac-studio' : 'mac-studio is offline';
+    $('[data-reconnect-text]').textContent = st.link === 'reconnecting' ? 'Only what changed while away will be sent.' : 'Showing the last picture. Nothing is sent while offline.';
+    const pill = $('[data-path-pill]'); pill.classList.toggle('tile', st.path === 'tile');
+    $('[data-path-note]').textContent = !st.connected ? 'Paused while offline.'
+      : st.path === 'motion' ? 'A video is playing in the browser, so that area is sent as a motion stream. The rest of the screen stays pixel-exact.'
+      : RS.model.video ? 'The connection is too slow for a motion stream, so the video area is sent as lossy tiles. Text and UI stay lossless.'
+      : 'Only changed 64 × 64 tiles are sent. Text and UI are lossless; tiles seen before come from cache.';
+    $('[data-ladder-note]').hidden = st.step > 0;
+    $('[data-rs-ladder]').hidden = st.step === 0;
+  });
+  RS.on('caughtup', ({ tiles, fromCache }) => { if (view === 'viewer') toast('Caught up · ' + (tiles - fromCache) + ' tiles sent, ' + fromCache + ' from cache', 3200); });
+
+  /* clicks */
+  document.addEventListener('click', e => {
+    const t = e.target.closest('button, [data-close-viewer]');
+    if (!t) return;
+    if (t.matches('[data-close-viewer]') || t.closest('[data-close-viewer]')) { e.stopPropagation(); closeViewer(); return; }
+    if (t.dataset.tab) { if (t.dataset.tab === 'viewer' && !viewerOpen) return; show(t.dataset.tab); }
+    if (t.dataset.sub) sub(t.dataset.sub);
+    if (t.hasAttribute('data-open-viewer')) openViewer();
+    if (t.dataset.toastMsg) toast(t.dataset.toastMsg);
+    if (t.dataset.layout) {
+      stage.setLayout(t.dataset.layout); stage.setZoom('fit');
+      $$('[data-layout]').forEach(b => b.setAttribute('aria-pressed', String(b === t)));
+      RS.log('Switched to ' + t.textContent + '. ' + (t.dataset.layout === 'all' ? 'Both displays form one canvas; the minimap shows where you are.' : 'Tiles already on this Mac were reused; nothing was recaptured.'), 'info');
+    }
+    if (t.dataset.zoom) { stage.setZoom(t.dataset.zoom === 'fit' ? 'fit' : Number(t.dataset.zoom)); syncZoom(); if (t.dataset.zoom !== 'fit') RS.done('zoom'); }
+    if (t.hasAttribute('data-overlay')) {
+      const on = t.getAttribute('aria-pressed') !== 'true';
+      t.setAttribute('aria-pressed', String(on)); stage.setOverlay(on); $('[data-overlay-legend]').hidden = !on;
+      if (on) { RS.done('overlay'); RS.log('Show updates on: blue tiles are the only pixels sent. Green panes travel as text, amber is the video area.', 'info'); }
+    }
+    if (t.hasAttribute('data-control')) setControl(!controlling);
+    if (t.hasAttribute('data-hide-banner')) { bannerHidden = true; $('[data-weak-banner]').hidden = true; }
+    if (t.hasAttribute('data-stop-sharing')) { watcher = false; updateWatcher(); RS.done('share'); RS.log('Stopped sharing with iPhone 17 Pro. It was disconnected from the screen and can still use terminals.', 'warn'); toast('Stopped sharing. iPhone 17 Pro can still use terminals.'); }
+    if (t.dataset.setting === 'share') { setSharing(t.getAttribute('aria-pressed') !== 'true'); if (!sharing) RS.done('share'); }
+    else if (t.dataset.setting) { const on = t.getAttribute('aria-pressed') !== 'true'; t.setAttribute('aria-pressed', String(on)); RS.log((t.dataset.setting === 'preview' ? 'Live preview for paired devices ' : 'Public relays ') + (on ? 'turned on.' : 'turned off.'), 'info'); }
+    if (t.hasAttribute('data-share-displays')) { $$('[data-share-displays]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); RS.log('Sharing ' + t.textContent + '. Other displays are never captured.', 'info'); }
+    if (t.dataset.grant) {
+      const on = t.getAttribute('aria-pressed') !== 'true'; t.setAttribute('aria-pressed', String(on));
+      const [dev, what] = t.dataset.grant.split('-'); const name = { iphone: 'iPhone 17 Pro', pixel: 'Pixel 9', box: 'build-box' }[dev];
+      if (what === 'view') { const c = $('[data-grant="' + dev + '-control"]'); c.disabled = !on; if (!on) c.setAttribute('aria-pressed', 'false'); }
+      if (dev === 'iphone' && !on && watcher) { watcher = false; updateWatcher(); }
+      RS.log(name + (what === 'view' ? (on ? ' may now see this screen.' : ' can no longer see this screen.') : (on ? ' may now take control.' : ' can watch but not control.')), on ? 'good' : 'warn');
+    }
+    if (t.hasAttribute('data-ax-open')) {
+      toast('System Settings opens at Privacy & Security → Accessibility.');
+      setTimeout(() => { const s = $('[data-ax-state]'); s.className = 'ok'; s.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8.5 6.5 12 13 4.5"/></svg>Allowed'; t.hidden = true; RS.log('Accessibility allowed. Devices with Control can now move the pointer and type on this Mac.', 'good'); }, 1500);
+    }
+    if (t.dataset.djump) {
+      const j = t.dataset.djump;
+      if (j === 'computers') { show('devices'); sub('computers'); }
+      if (j === 'viewer') openViewer();
+      if (j === 'weak') { openViewer(); RS.setNet('weak'); RS.done('network'); }
+      if (j === 'sharing') { show('devices'); sub('this'); }
+    }
+  });
+
+  RS.tour([
+    { id: 'open', text: 'Open mac-studio\'s screen from Devices.' },
+    { id: 'zoom', text: 'Zoom to 100 % or 200 % and drag the minimap or the screen.' },
+    { id: 'overlay', text: 'Turn on Show updates and watch which parts are sent.' },
+    { id: 'approve', text: 'Take control, then click "1 Yes" in the agent\'s prompt.' },
+    { id: 'network', text: 'Switch the network to Weak cellular and watch the steps.' },
+    { id: 'offline', text: 'Go Offline, then back to Good Wi-Fi.' },
+    { id: 'share', text: 'Open This computer and stop sharing with the iPhone.' }
+  ]);
+  updateWatcher();
+  RS.start();
+})();
+</script>

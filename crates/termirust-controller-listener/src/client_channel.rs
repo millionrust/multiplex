@@ -2,17 +2,25 @@ use std::collections::HashMap;
 
 use termirust_controller_security::{
     AuthenticatedConnection, CapabilitySet, ControllerCapability as SecurityCapability,
-    ControllerFrameKind, HostStaticPublicKey, MAX_CONTROL_PAYLOAD_BYTES, MAX_TERMINAL_FRAME_BYTES,
-    RevocationEpoch, StaticPrivateKey,
+    ControllerFrameKind, HostStaticPublicKey, MAX_CONTROL_PAYLOAD_BYTES, MAX_SCREEN_FRAME_BYTES,
+    MAX_TERMINAL_FRAME_BYTES, RevocationEpoch, StaticPrivateKey,
 };
 use termirust_domain::{CommandId, ControllerCapability as DomainCapability};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::{
     ControllerCommand, ControllerCommandEnvelope, ControllerResponse, HandshakeEntropy,
-    ListenerError, ListenerErrorCode, decode_response, encode_command, initiate_controller,
-    read_bounded_frame, write_bounded_frame,
+    ListenerError, ListenerErrorCode, MAX_SCREEN_PAYLOAD_BYTES, ScreenFrameCapability,
+    decode_response, encode_command, initiate_controller, read_bounded_frame, write_bounded_frame,
 };
+
+/// What arrived from the host on a Controller connection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ControllerIncoming {
+    Response(ControllerResponse),
+    /// A chunk of the screen protocol's byte stream.
+    Screen(Vec<u8>),
+}
 
 pub struct ControllerClientChannel<S> {
     stream: S,
@@ -110,16 +118,60 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ControllerClientChannel<S> {
         Ok(command_id)
     }
 
+    /// Sends screen bytes under `capability`, split across frames when they do not fit in one.
+    /// The bytes are a chunk of the screen protocol's stream; the host reassembles them.
+    pub async fn send_screen(
+        &mut self,
+        capability: ScreenFrameCapability,
+        bytes: &[u8],
+    ) -> Result<(), ListenerError> {
+        let security = capability.security();
+        if !self.connection.capabilities.contains(security) {
+            return Err(ListenerError::new(ListenerErrorCode::Unauthorized));
+        }
+        for chunk in bytes.chunks(MAX_SCREEN_PAYLOAD_BYTES) {
+            let sealed = self
+                .connection
+                .transport
+                .seal(
+                    ControllerFrameKind::Screen,
+                    security,
+                    RevocationEpoch(self.revocation_epoch),
+                    chunk,
+                )
+                .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+            write_bounded_frame(&mut self.stream, sealed.as_bytes(), MAX_SCREEN_FRAME_BYTES)
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// The next response, refusing screen bytes. Callers that opened a screen session read with
+    /// [`Self::read_incoming`] instead.
     pub async fn read_response(&mut self) -> Result<ControllerResponse, ListenerError> {
+        match self.read_incoming().await? {
+            ControllerIncoming::Response(response) => Ok(response),
+            ControllerIncoming::Screen(_) => {
+                Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
+            }
+        }
+    }
+
+    /// The next frame from the host: a response, or screen bytes to feed the screen protocol.
+    pub async fn read_incoming(&mut self) -> Result<ControllerIncoming, ListenerError> {
         let sealed = read_bounded_frame(&mut self.stream, MAX_TERMINAL_FRAME_BYTES).await?;
         let opened = self
             .connection
             .transport
             .open(&sealed)
             .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        if opened.kind == ControllerFrameKind::Screen {
+            ScreenFrameCapability::from_security(opened.capability)?;
+            return Ok(ControllerIncoming::Screen(opened.payload.clone()));
+        }
         let maximum = match opened.kind {
             ControllerFrameKind::Control => MAX_CONTROL_PAYLOAD_BYTES,
-            ControllerFrameKind::Terminal => MAX_TERMINAL_FRAME_BYTES,
+            ControllerFrameKind::Terminal | ControllerFrameKind::Screen => MAX_TERMINAL_FRAME_BYTES,
         };
         let response = decode_response(&opened.payload, maximum)?;
         let (expected_kind, expected_capability, complete) = self.expected_response(&response)?;
@@ -129,7 +181,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ControllerClientChannel<S> {
         if complete && let Some(command_id) = response_command_id(&response) {
             self.pending.remove(&command_id);
         }
-        Ok(response)
+        Ok(ControllerIncoming::Response(response))
     }
 
     fn expected_response(
@@ -160,6 +212,11 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ControllerClientChannel<S> {
             ControllerResponse::Detached { command_id } => (
                 ControllerFrameKind::Control,
                 self.require_pending(*command_id, SecurityCapability::AttachOutput)?,
+                true,
+            ),
+            ControllerResponse::ScreenOpened { command_id, .. } => (
+                ControllerFrameKind::Control,
+                self.require_pending(*command_id, SecurityCapability::ObserveScreens)?,
                 true,
             ),
             ControllerResponse::Completed { command_id, .. }
@@ -195,6 +252,7 @@ fn response_command_id(response: &ControllerResponse) -> Option<CommandId> {
         | ControllerResponse::Snapshot { command_id, .. }
         | ControllerResponse::Completed { command_id, .. }
         | ControllerResponse::Detached { command_id }
+        | ControllerResponse::ScreenOpened { command_id, .. }
         | ControllerResponse::Error { command_id, .. } => Some(*command_id),
         ControllerResponse::Output { .. } => None,
     }
@@ -207,5 +265,8 @@ fn security_capability(capability: DomainCapability) -> SecurityCapability {
         DomainCapability::SendInput => SecurityCapability::SendInput,
         DomainCapability::Resize => SecurityCapability::Resize,
         DomainCapability::RespondToApproval => SecurityCapability::RespondToApproval,
+        DomainCapability::ObserveScreens => SecurityCapability::ObserveScreens,
+        DomainCapability::ControlPointer => SecurityCapability::ControlPointer,
+        DomainCapability::ControlKeyboard => SecurityCapability::ControlKeyboard,
     }
 }

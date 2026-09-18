@@ -1,3 +1,4 @@
+use russh::keys::agent::AgentIdentity;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -106,19 +107,44 @@ async fn authenticate_with_local_agent<H: client::Handler>(
         .context("Unable to negotiate an SSH-agent signature algorithm")?
         .flatten();
     for identity in identities {
-        let result = tokio::time::timeout(
-            AGENT_OPERATION_TIMEOUT,
-            handle.authenticate_publickey_with(
-                username.to_string(),
-                identity,
-                rsa_hash,
-                &mut agent,
-            ),
-        )
-        .await
-        .map_err(|_| anyhow::anyhow!("SSH-agent authentication timed out"))?
-        .map_err(|_| anyhow::anyhow!("The local SSH agent could not sign authentication"))?;
-        if result.success() {
+        // russh 0.60 splits the agent path by what the identity actually is. An agent may hold a
+        // bare public key or an OpenSSH certificate, and a certificate has to be offered as one —
+        // the server needs the principals and validity in it, which a plain public key does not
+        // carry. Earlier versions took the identity whole and decided internally.
+        let attempt = async {
+            match &identity {
+                AgentIdentity::PublicKey { key, .. } => {
+                    handle
+                        .authenticate_publickey_with(
+                            username.to_string(),
+                            key.clone(),
+                            rsa_hash,
+                            &mut agent,
+                        )
+                        .await
+                }
+                AgentIdentity::Certificate { certificate, .. } => {
+                    handle
+                        .authenticate_certificate_with(
+                            username.to_string(),
+                            certificate.clone(),
+                            rsa_hash,
+                            &mut agent,
+                        )
+                        .await
+                }
+                // A kind this build does not know how to offer. Skipped rather than guessed at:
+                // the next identity may well work, and an agent holding something unfamiliar is
+                // not a reason to fail the whole attempt.
+                _ => return Ok(None),
+            }
+            .map(Some)
+        };
+        let result = tokio::time::timeout(AGENT_OPERATION_TIMEOUT, attempt)
+            .await
+            .map_err(|_| anyhow::anyhow!("SSH-agent authentication timed out"))?
+            .map_err(|_| anyhow::anyhow!("The local SSH agent could not sign authentication"))?;
+        if result.is_some_and(|result| result.success()) {
             return Ok(true);
         }
     }
@@ -257,7 +283,7 @@ mod tests {
         principals: &[&str],
     ) -> String {
         let mut builder = Builder::new_with_random_nonce(
-            &mut rand::rngs::OsRng,
+            &mut ssh_rand::rng(),
             subject.public_key().key_data().clone(),
             valid_after,
             valid_before,
@@ -302,11 +328,9 @@ mod tests {
     fn certificate_validation_rejects_wrong_type_time_principal_and_key() {
         let directory = TempDir::new().unwrap();
         let key = test_key();
-        let other = russh::keys::PrivateKey::random(
-            &mut rand::rngs::OsRng,
-            russh::keys::Algorithm::Ed25519,
-        )
-        .unwrap();
+        let other =
+            russh::keys::PrivateKey::random(&mut ssh_rand::rng(), russh::keys::Algorithm::Ed25519)
+                .unwrap();
         let current = now();
 
         let host = write_certificate(

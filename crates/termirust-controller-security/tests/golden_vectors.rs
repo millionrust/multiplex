@@ -34,6 +34,34 @@ struct Vector {
     adr_sha256: String,
     cargo_lock_sha256: String,
     normative_sas_anchor: SasAnchor,
+    screen_amendment: ScreenAmendment,
+}
+
+/// Amendment 1: the Remote Screens capabilities and the screen frame kind.
+#[derive(Deserialize)]
+struct ScreenAmendment {
+    known_capability_mask: u16,
+    capability_bits: ScreenCapabilityBits,
+    offer_capability_bits: u16,
+    offer_hex: String,
+    prologue_hex: String,
+    screen_frame_payload: String,
+    screen_frame_hex: String,
+    mutation_errors: ScreenMutationErrors,
+}
+
+#[derive(Deserialize)]
+struct ScreenCapabilityBits {
+    observe_screens: u8,
+    control_pointer: u8,
+    control_keyboard: u8,
+}
+
+#[derive(Deserialize)]
+struct ScreenMutationErrors {
+    capability_value_8: String,
+    frame_kind_4: String,
+    oversized_screen_frame: String,
 }
 
 #[derive(Deserialize)]
@@ -212,6 +240,123 @@ fn normative_anchor_locks_salt_info_hkdf_and_display() {
     )
     .unwrap_or_else(|error| panic!("anchor SAS failed: {error}"));
     assert_eq!(sas.as_str(), anchor.sas_display);
+}
+
+#[test]
+fn amendment_one_locks_the_screen_capabilities_and_the_screen_frame() {
+    let expected = vector().screen_amendment;
+    assert_eq!(
+        termirust_controller_security::CapabilitySet::KNOWN_MASK,
+        expected.known_capability_mask
+    );
+    for (capability, bit) in [
+        (
+            ControllerCapability::ObserveScreens,
+            expected.capability_bits.observe_screens,
+        ),
+        (
+            ControllerCapability::ControlPointer,
+            expected.capability_bits.control_pointer,
+        ),
+        (
+            ControllerCapability::ControlKeyboard,
+            expected.capability_bits.control_keyboard,
+        ),
+    ] {
+        assert_eq!(capability as u8, bit);
+    }
+
+    let offer = common::screen_offer();
+    assert_eq!(offer.capabilities.bits(), expected.offer_capability_bits);
+    assert_eq!(
+        hex::encode(encode_offer(&offer).unwrap_or_else(|error| panic!("screen offer: {error}"))),
+        expected.offer_hex
+    );
+    assert_eq!(
+        hex::encode(
+            pairing_prologue(&offer).unwrap_or_else(|error| panic!("screen prologue: {error}"))
+        ),
+        expected.prologue_hex
+    );
+
+    let payload = expected.screen_frame_payload.as_bytes();
+    let (mut device, mut host) = confirmed_screen_pairing();
+    let frame = device
+        .transport
+        .seal(
+            ControllerFrameKind::Screen,
+            ControllerCapability::ObserveScreens,
+            RevocationEpoch(4),
+            payload,
+        )
+        .unwrap_or_else(|error| panic!("screen seal: {error}"));
+    assert_eq!(hex::encode(frame.as_bytes()), expected.screen_frame_hex);
+    let opened = host
+        .transport
+        .open(frame.as_bytes())
+        .unwrap_or_else(|error| panic!("screen open: {error}"));
+    assert_eq!(opened.kind, ControllerFrameKind::Screen);
+    assert_eq!(opened.capability, ControllerCapability::ObserveScreens);
+    assert_eq!(opened.payload, payload);
+
+    // The closed sets still fail on the first value each amendment did not define.
+    for (offset, value, expected_error) in [
+        (9, 8, &expected.mutation_errors.capability_value_8),
+        (8, 4, &expected.mutation_errors.frame_kind_4),
+    ] {
+        let (mut device, mut host) = confirmed_screen_pairing();
+        let mut bytes = device
+            .transport
+            .seal(
+                ControllerFrameKind::Screen,
+                ControllerCapability::ObserveScreens,
+                RevocationEpoch(4),
+                payload,
+            )
+            .unwrap_or_else(|error| panic!("screen seal: {error}"))
+            .as_bytes()
+            .to_vec();
+        bytes[offset] = value;
+        let error = host
+            .transport
+            .open(&bytes)
+            .expect_err("a value outside the closed set must fail");
+        assert_eq!(error.code().localization_id(), expected_error);
+    }
+
+    let (mut device, _) = confirmed_screen_pairing();
+    let error = device
+        .transport
+        .seal(
+            ControllerFrameKind::Screen,
+            ControllerCapability::ObserveScreens,
+            RevocationEpoch(4),
+            &vec![0; termirust_controller_security::MAX_SCREEN_FRAME_BYTES],
+        )
+        .expect_err("a screen frame past the limit must fail");
+    assert_eq!(
+        error.code().localization_id(),
+        expected.mutation_errors.oversized_screen_frame
+    );
+}
+
+/// A device and Host that completed the screen-capability pairing and confirmed at epoch 4.
+fn confirmed_screen_pairing() -> (
+    termirust_controller_security::ConfirmedPairing,
+    termirust_controller_security::ConfirmedPairing,
+) {
+    let (device, host, _) = common::complete_handshake_for(common::screen_offer());
+    let sas = device
+        .sas()
+        .cloned()
+        .unwrap_or_else(|| panic!("SAS missing"));
+    (
+        device
+            .confirm(&sas, RevocationEpoch(4))
+            .unwrap_or_else(|error| panic!("device confirm: {error}")),
+        host.confirm(&sas, RevocationEpoch(4))
+            .unwrap_or_else(|error| panic!("host confirm: {error}")),
+    )
 }
 
 fn array32(value: &str) -> [u8; 32] {

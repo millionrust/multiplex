@@ -93,23 +93,110 @@ final class ControllerPairingFleetTests: XCTestCase {
             }
             try await waitUntil(attempts: 750) { terminal.writerLease == .held }
 
+            stage = "grant_screens"
+            let screenGrant = try await control.command("grant_screens")
+            XCTAssertEqual(screenGrant.value, "granted")
+            stage = "refresh_screen_capabilities"
+            let screenSnapshot = try await waitForCapabilities(
+                connection: connection,
+                host: writableHost,
+                required: LiveScreenStage.screenCapabilities
+            )
+            let screenHost = try writableHost.replacingCapabilities(screenSnapshot.capabilityBits)
+            pairedHost = screenHost
+
+            stage = "watch_screen"
+            // One Controller connection at a time: the screen session replaces the terminal's.
+            terminal.detach()
+            let observer = LiveScreenObserver()
+            let watcher = Task {
+                try await connection.watchScreen(
+                    host: screenHost,
+                    surface: LiveScreenStage.surface,
+                    preview: false,
+                    onOpened: { _, viewer in await observer.opened(viewer) },
+                    onEvent: { events in try await observer.handle(events) }
+                )
+            }
+            try await waitUntil(attempts: 750) { await observer.welcomedSurface != nil }
+            let welcomed = await observer.welcomedSurface
+            XCTAssertEqual(welcomed?.id, LiveScreenStage.surface)
+            XCTAssertEqual(welcomed?.width, LiveScreenStage.width)
+            XCTAssertEqual(welcomed?.height, LiveScreenStage.height)
+
+            stage = "screen_pixels"
+            // The caret moves every frame, so distinct pixels prove real capture reached the phone.
+            try await waitUntil(attempts: 750) { await observer.distinctFrames >= 3 }
+
+            stage = "screen_control"
+            await observer.requestControl()
+            try await waitUntil(attempts: 750) {
+                (try? await control.command("give_screen_control").value) == "given"
+            }
+            try await waitUntil(attempts: 750) { await observer.hasControl }
+            let controlTrace = await observer.trace
+            let controlStats = try await control.command("screen_stats").value ?? ""
+            let controlArrived = await observer.hasControl
+            XCTAssertTrue(
+                controlArrived,
+                "control never reached the phone; events \(controlTrace); host \(controlStats)"
+            )
+
+            stage = "screen_input"
+            await observer.sendInput()
+            try await waitUntil(attempts: 750) {
+                let stats = (try? await control.command("screen_stats").value) ?? ""
+                return stats.contains("pointer=") && !stats.contains("pointer=0")
+                    && !stats.contains("keyboard=0")
+            }
+            let stats = try await control.command("screen_stats").value ?? ""
+            XCTAssertTrue(stats.contains("opened=1"), "screen stats were \(stats)")
+            XCTAssertTrue(stats.contains("control_requests=1"), "screen stats were \(stats)")
+
+            watcher.cancel()
+            _ = try? await watcher.value
+
+            stage = "reattach_for_revocation"
+            let finalTerminal = try ControllerTerminalViewModel(
+                host: screenHost,
+                session: screenSnapshot.sessions[0],
+                connection: connection,
+                viewport: TerminalViewportState(columns: 80, rows: 24)
+            )
+            finalTerminal.start()
+            try await waitUntil(attempts: 750) { finalTerminal.attachState == .live }
+            finalTerminal.requestControl()
+            try await waitUntil(attempts: 750) { finalTerminal.writerLease == .held }
+
             stage = "revoke"
             let revokeResponse = try await control.command("revoke")
             XCTAssertEqual(revokeResponse.value, "revoked")
-            terminal.sendKeyboardBytes(Data("REVOKED-MUTATION-MUST-FAIL\n".utf8))
+            finalTerminal.sendKeyboardBytes(Data("REVOKED-MUTATION-MUST-FAIL\n".utf8))
             try await waitUntil(attempts: 750) {
-                terminal.writerLease == .lost || terminal.attachState == .offline
+                finalTerminal.writerLease == .lost || finalTerminal.attachState == .offline
             }
             do {
-                _ = try await connection.fetchSessions(host: writableHost) { _ in }
+                _ = try await connection.fetchSessions(host: screenHost) { _ in }
                 XCTFail("A revoked Controller device authenticated again")
             } catch {
                 // Any closed or rejected authenticated path is fail-closed after revocation.
             }
-            terminal.detach()
+            do {
+                try await connection.watchScreen(
+                    host: screenHost,
+                    surface: LiveScreenStage.surface,
+                    preview: false,
+                    onOpened: { _, _ in },
+                    onEvent: { _ in }
+                )
+                XCTFail("A revoked Controller device watched a screen")
+            } catch {
+                // Screens are fail-closed after revocation too.
+            }
+            finalTerminal.detach()
 
-            try await connection.forgetDeviceSecret(host: writableHost)
-            XCTAssertNil(try blobStore.load(keyId: writableHost.deviceStaticKeyId))
+            try await connection.forgetDeviceSecret(host: screenHost)
+            XCTAssertNil(try blobStore.load(keyId: screenHost.deviceStaticKeyId))
             pairedHost = nil
         } catch {
             XCTFail("Live Rust Controller stage \(stage) failed: \(error)")
@@ -445,13 +532,100 @@ final class ControllerPairingFleetTests: XCTestCase {
 
     private func waitUntil(
         attempts: Int = 100,
+        file: StaticString = #filePath,
+        line: UInt = #line,
         condition: @MainActor () -> Bool
     ) async throws {
         for _ in 0..<attempts {
             if condition() { return }
             try await Task.sleep(for: .milliseconds(20))
         }
-        XCTFail("Condition did not become true before timeout")
+        XCTFail("Condition did not become true before timeout", file: file, line: line)
+    }
+
+    private func waitUntil(
+        attempts: Int = 100,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        condition: @MainActor () async -> Bool
+    ) async throws {
+        for _ in 0..<attempts {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTFail("Condition did not become true before timeout", file: file, line: line)
+    }
+}
+
+/// What the live fixture shares, mirrored from its `screens.rs`.
+private enum LiveScreenStage {
+    static let surface: UInt32 = 1
+    static let width: UInt32 = 320
+    static let height: UInt32 = 200
+    /// Observe screens, control pointer, control keyboard.
+    static let screenCapabilities: UInt16 = 0b1110_0000
+}
+
+/// Collects what the phone saw of the fixture's screen, off the main actor.
+private actor LiveScreenObserver {
+    private var viewer: ScreenViewer?
+    private var frameHashes: Set<Int> = []
+    private(set) var welcomedSurface: ScreenSurface?
+    private(set) var hasControl = false
+    /// Every event kind the phone saw, so a failure says what did arrive.
+    private(set) var trace: [String] = []
+
+    var distinctFrames: Int { frameHashes.count }
+
+    func opened(_ viewer: ScreenViewer) {
+        self.viewer = viewer
+    }
+
+    func requestControl() {
+        viewer?.requestControl()
+    }
+
+    func sendInput() {
+        guard let viewer else { return }
+        viewer.sendPointerMove(surface: LiveScreenStage.surface, x: 48, y: 64)
+        viewer.sendText(surface: LiveScreenStage.surface, text: "RS3-LIVE")
+    }
+
+    func handle(_ events: [ScreenEvent]) throws {
+        for event in events {
+            switch event {
+            case .welcomed(let surfaces, _):
+                trace.append("welcomed(\(surfaces.count))")
+                welcomedSurface = surfaces.first
+            case .updated(let surface, let preview, _, _) where !preview:
+                recordFrame(surface: surface)
+            case .control(let holder):
+                trace.append("control(\(holder))")
+                hasControl = holder == .you
+            case .closed(let reason):
+                trace.append("closed(\(reason))")
+                throw LiveControllerControlError.rejected("screen closed: \(reason)")
+            default:
+                break
+            }
+        }
+    }
+
+    /// Hashes the whole surface, so a moved caret counts as a distinct frame.
+    private func recordFrame(surface: UInt32) {
+        guard let viewer,
+              let pixels = try? viewer.copyPixels(
+                  surface: surface,
+                  preview: false,
+                  rect: ScreenRect(
+                      x: 0,
+                      y: 0,
+                      width: LiveScreenStage.width,
+                      height: LiveScreenStage.height
+                  )
+              )
+        else { return }
+        frameHashes.insert(pixels.bgra.hashValue)
     }
 }
 

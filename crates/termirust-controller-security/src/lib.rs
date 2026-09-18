@@ -32,7 +32,7 @@ pub use types::{
     CONTROLLER_V1, CapabilitySet, ControllerCapability, ControllerFrame, ControllerFrameKind,
     ControllerProtocolVersion, DeviceStaticPublicKey, HANDSHAKE_TIMEOUT_MILLIS, HandshakeHash,
     HandshakeMessage, HostStaticPublicKey, MAX_CONTROL_PAYLOAD_BYTES,
-    MAX_PAIRING_OFFER_LIFETIME_SECONDS, MAX_TERMINAL_FRAME_BYTES, NOISE_PROTOCOL_NAME,
-    PairingNonce, PairingOfferCore, PairingRole, PairingState, PairingStep, RevocationEpoch,
-    SasCode, SealedControllerFrame, StaticPrivateKey,
+    MAX_PAIRING_OFFER_LIFETIME_SECONDS, MAX_SCREEN_FRAME_BYTES, MAX_TERMINAL_FRAME_BYTES,
+    NOISE_PROTOCOL_NAME, PairingNonce, PairingOfferCore, PairingRole, PairingState, PairingStep,
+    RevocationEpoch, SasCode, SealedControllerFrame, StaticPrivateKey,
 };

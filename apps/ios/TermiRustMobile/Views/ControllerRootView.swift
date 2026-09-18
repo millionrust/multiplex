@@ -18,7 +18,8 @@ struct ControllerRootView: View {
                     ForEach(viewModel.state.hosts) { host in
                         ControllerHostRow(
                             host: host,
-                            selected: host.id == viewModel.state.selectedHostID
+                            selected: host.id == viewModel.state.selectedHostID,
+                            picture: viewModel.screens.lastPictures[host.id]
                         )
                         .tag(Optional(host.id))
                     }
@@ -62,7 +63,12 @@ struct ControllerRootView: View {
                 onOpenSession: viewModel.openReadOnlyTerminal,
                 onSelectRoute: { pendingRoute = $0 },
                 onConfigureSSH: { showingSSHConfiguration = true },
-                onConfigureRelay: { showingRelayConfiguration = true }
+                onConfigureRelay: { showingRelayConfiguration = true },
+                screens: viewModel.screens,
+                canWatch: viewModel.canWatchSelectedHost,
+                onStartPreview: viewModel.startScreenPreview,
+                onStopPreview: viewModel.stopScreenPreview,
+                onOpenScreen: viewModel.openScreen
             )
         }
         .navigationSplitViewStyle(.balanced)
@@ -168,6 +174,17 @@ struct ControllerRootView: View {
                 )
             }
         }
+        .fullScreenCover(isPresented: screenPresented) {
+            if let screen = viewModel.screens.viewer {
+                ControllerScreenViewerSheet(
+                    model: screen,
+                    screens: viewModel.screens,
+                    title: viewModel.selectedHost?.displayName ?? "Screen",
+                    routeName: viewModel.selectedRoute.map(ControllerPresentation.routeTitle),
+                    onClose: viewModel.closeScreen
+                )
+            }
+        }
     }
 
     private var hostSelection: Binding<String?> {
@@ -183,18 +200,68 @@ struct ControllerRootView: View {
             set: { if !$0 { viewModel.closeReadOnlyTerminal() } }
         )
     }
+
+    private var screenPresented: Binding<Bool> {
+        Binding(
+            get: { viewModel.screens.viewer != nil },
+            set: { if !$0 { viewModel.closeScreen() } }
+        )
+    }
+}
+
+/// The full screen, with a way back to the computer's page.
+private struct ControllerScreenViewerSheet: View {
+    @ObservedObject var model: RemoteScreenViewModel
+    @ObservedObject var screens: ControllerScreenCoordinator
+    let title: String
+    let routeName: String?
+    let onClose: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            RemoteScreenView(
+                model: model,
+                onRequestControl: model.requestControl,
+                onReleaseControl: model.releaseControl,
+                reconnecting: screens.reconnecting,
+                routeName: routeName
+            )
+            .navigationTitle(ControllerPresentation.isolated(title))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done", action: onClose)
+                }
+            }
+        }
+    }
 }
 
 private struct ControllerHostRow: View {
     let host: HostSummary
     let selected: Bool
+    /// The last picture this phone saw of the computer, when it has watched it.
+    var picture: CGImage?
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "desktopcomputer")
-                .font(.title3)
-                .foregroundStyle(selected ? Color.accentColor : .secondary)
-                .frame(width: 28, height: 28)
+            if let picture {
+                Image(decorative: picture, scale: 1)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 44, height: 28)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(Color.secondary.opacity(0.3))
+                    )
+                    .accessibilityLabel("Last picture of this computer")
+            } else {
+                Image(systemName: "desktopcomputer")
+                    .font(.title3)
+                    .foregroundStyle(selected ? Color.accentColor : .secondary)
+                    .frame(width: 28, height: 28)
+            }
             VStack(alignment: .leading, spacing: 3) {
                 Text(ControllerPresentation.isolated(host.title))
                     .font(.body.weight(.semibold))
@@ -215,6 +282,115 @@ private struct ControllerHostRow: View {
     }
 }
 
+/// The computer's screen on its own page: a picture about once a second, and the way in.
+private struct ControllerScreenPreviewCard: View {
+    let preview: RemoteScreenViewModel?
+    let lastPicture: CGImage?
+    let unavailable: ControllerScreenUnavailable?
+    let onOpenScreen: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let preview {
+                // The live preview redraws itself; a plain `let` would not be observed, so the
+                // picture and the line naming its display are rendered by an observing view.
+                ControllerScreenPreviewPicture(model: preview, lastPicture: lastPicture)
+            } else {
+                ControllerScreenPlaceholder(
+                    lastPicture: lastPicture,
+                    waiting: unavailable == nil
+                )
+                if let caption {
+                    Text(caption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Button(action: onOpenScreen) {
+                Label("Open Screen", systemImage: "display")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(unavailable != nil)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var caption: String? {
+        switch unavailable {
+        case .notGranted:
+            return "This computer has not given this phone screen access."
+        case let .failed(reason):
+            return reason
+        case nil:
+            return "Waiting for the first picture."
+        }
+    }
+}
+
+/// Redraws as the preview session applies each picture.
+private struct ControllerScreenPreviewPicture: View {
+    @ObservedObject var model: RemoteScreenViewModel
+    let lastPicture: CGImage?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let image = model.image ?? lastPicture {
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityLabel("Preview of this computer's screen")
+            } else {
+                ControllerScreenPlaceholder(lastPicture: nil, waiting: true)
+            }
+            Text(caption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var caption: String {
+        if case let .closed(reason) = model.state {
+            return reason
+        }
+        guard let name = model.displayName else { return "About one picture a second." }
+        return "\(ControllerPresentation.isolated(name)) · about one picture a second"
+    }
+}
+
+private struct ControllerScreenPlaceholder: View {
+    let lastPicture: CGImage?
+    let waiting: Bool
+
+    var body: some View {
+        if let lastPicture {
+            Image(decorative: lastPicture, scale: 1)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .opacity(0.6)
+                .accessibilityLabel("The last picture of this computer's screen")
+        } else {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.secondary.opacity(0.12))
+                .aspectRatio(16.0 / 10.0, contentMode: .fit)
+                .overlay {
+                    if waiting {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "display.trianglebadge.exclamationmark")
+                            .font(.title)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityHidden(true)
+        }
+    }
+}
+
 private struct ControllerSessionFleetView: View {
     let state: ControllerViewState
     let routes: [AppleControllerRouteProjection]
@@ -226,6 +402,11 @@ private struct ControllerSessionFleetView: View {
     let onSelectRoute: (ControllerRemoteRouteKind) -> Void
     let onConfigureSSH: () -> Void
     let onConfigureRelay: () -> Void
+    @ObservedObject var screens: ControllerScreenCoordinator
+    let canWatch: Bool
+    let onStartPreview: () -> Void
+    let onStopPreview: () -> Void
+    let onOpenScreen: () -> Void
 
     var body: some View {
         Group {
@@ -235,6 +416,17 @@ private struct ControllerSessionFleetView: View {
                 List {
                     Section {
                         ControllerStatusBanner(state: state, onRetry: onRetry)
+                    }
+                    if canWatch {
+                        Section("This Computer's Screen") {
+                            ControllerScreenPreviewCard(
+                                preview: screens.preview,
+                                lastPicture: state.selectedHostID
+                                    .flatMap { screens.lastPictures[$0] },
+                                unavailable: screens.unavailable,
+                                onOpenScreen: onOpenScreen
+                            )
+                        }
                     }
                     if state.sessions.isEmpty {
                         Section {
@@ -309,6 +501,16 @@ private struct ControllerSessionFleetView: View {
                     }
                 }
                 .refreshable { onRetry() }
+                // The connection carries one session at a time, so the preview runs only while
+                // this page is on screen, and only once the fleet has finished loading.
+                .onAppear { if canWatch { onStartPreview() } }
+                .onDisappear(perform: onStopPreview)
+                .onChange(of: state.connection) { _, _ in
+                    if canWatch { onStartPreview() }
+                }
+                .onChange(of: state.selectedHostID) { _, _ in
+                    onStopPreview()
+                }
             }
         }
     }

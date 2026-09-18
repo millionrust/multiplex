@@ -25,6 +25,15 @@ members = [
     "crates/termirust-relay-server",
     "crates/termirust-replication-bindings",
     "crates/termirust-replication-security",
+    "crates/termirust-screen-bindings",
+    "crates/termirust-screen-capture",
+    "crates/termirust-screen-codec",
+    "crates/termirust-screen-host",
+    "crates/termirust-screen-input",
+    "crates/termirust-screen-protocol",
+    "crates/termirust-screen-session",
+    "crates/termirust-screen-transport",
+    "crates/termirust-screen-video",
     "crates/termirust-session-host",
     "crates/termirust-slate",
     "crates/termirust-store",
@@ -36,7 +45,9 @@ members = [
 # Standalone spike workspaces with their own lockfiles and policy files.
 exclude = [
     "tools/browser-engine-spike",
+    "tools/iroh-transport-spike",
     "tools/relay-spike",
+    "tools/videotoolbox-spike",
 ]
 
 [workspace.package]

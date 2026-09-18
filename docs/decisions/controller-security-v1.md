@@ -16,7 +16,7 @@ The protocol follows revision 34 of the [Noise Protocol Framework](https://noise
 
 Controller-v1 uses exactly `Noise_XX_25519_ChaChaPoly_BLAKE2s`. The device/Controller is always the Noise initiator and the Host is always the responder. There is no role negotiation and no protocol or cipher downgrade. Controller-v1 accepts only version `1.0`; every other major or minor is incompatible before mutation.
 
-The implementation is `clatter = 2.2.0`, pinned exactly in the crate manifest and `Cargo.lock`, with default features disabled and only `alloc`, `use-25519`, `use-chacha20poly1305`, and `use-blake2` enabled. Application SAS derivation additionally pins `hkdf 0.12.4`, `sha2 0.10.9`, `subtle 2.6.1`, and `zeroize 1.8.2`.
+The implementation is `clatter = 2.2.0`, pinned exactly in the crate manifest and `Cargo.lock`, with default features disabled and only `alloc`, `use-25519`, `use-chacha20poly1305`, and `use-blake2` enabled. Application SAS derivation additionally pins `hkdf 0.12.4`, `sha2 0.10.9`, `subtle 2.6.1`, and `zeroize 1.9.0` (1.8.2 until 2026-09-18; see the amendment below).
 
 ## Dependency review
 
@@ -89,6 +89,110 @@ On 2026-09-15 the desktop app added `alacritty_terminal 0.26.0` (default feature
 emulation, with its new dependencies `cursor-icon 1.2.0`, `miow 0.6.1`, `rustix-openpty 0.2.0`, and
 `signal-hook 0.4.4`. None enters the controller-security dependency closure, and every Controller
 vector is unchanged; the workspace lock and ADR checksums were reviewed and repinned.
+
+On 2026-09-15 the new `termirust-screen-codec` workspace crate added `xxhash-rust 0.8.18` (default
+features off, `xxh3` only) for tile hashing, and uses the already-locked `miniz_oxide 0.8.9` and
+`proptest 1.11.0`. Neither enters the controller-security dependency closure, and every Controller
+vector is unchanged; the workspace lock and ADR checksums were reviewed and repinned.
+
+On 2026-09-15 the new `termirust-screen-capture` workspace crate added `screencapturekit 10.0.3`
+(macOS only, default features off) with its new dependencies `apple-cf 0.10.0`, `apple-metal 0.9.0`,
+and `doom-fish-utils 0.4.0`, all MIT OR Apache-2.0. The older `screencapturekit 0.2.8` that GPUI
+pulls in is unchanged. None enters the controller-security dependency closure, and every Controller
+vector is unchanged; the workspace lock and ADR checksums were reviewed and repinned.
+
+On 2026-09-15 the new `termirust-screen-protocol` workspace crate was added. It adds no external
+package, uses only the already-locked `termirust-screen-codec` and `proptest 1.11.0`, stays outside
+the controller-security dependency closure, and changes no Controller vector; the workspace lock
+and ADR checksums were reviewed and repinned.
+
+On 2026-09-15 the new `termirust-screen-session` workspace crate was added. It adds no external
+package, depends only on the screen codec and protocol crates, stays outside the controller-security
+dependency closure, and changes no Controller vector; the workspace lock and ADR checksums were
+reviewed and repinned.
+
+On 2026-09-16 `termirust-screen-bindings` took the already-locked `hex 0.4.3`, `serde_json 1.0.149`
+and `sha2 0.10.9` as dev-dependencies, for the recorded session its tests and the Swift
+conformance runner replay. They are test-only, add no package, and stay outside the
+controller-security dependency closure; every Controller vector is unchanged, and the workspace
+lock and ADR checksums were reviewed and repinned.
+
+On 2026-09-16 the mobile Controller fixture was taught to serve a synthetic screen, so a phone can
+be tested against a real host. That adds `termirust-screen-codec`, `-host`, `-protocol` and
+`-session` to `termirust-controller-listener`'s **dev**-dependencies only. It adds no external
+package, changes no selected version or feature, and nothing reaches a published artifact or the
+controller-security dependency closure; every Controller vector is unchanged, and the workspace
+lock and ADR checksums were reviewed and repinned.
+
+On 2026-09-16 the new `termirust-screen-bindings` workspace crate was added so phones can watch
+and drive a screen. It mirrors `termirust-controller-bindings`: the same pinned `uniffi 0.32.0`,
+no other external package, and the screen workspace crates. It never touches Controller-v1 keys or
+frames, so the controller-security dependency closure is unchanged and every Controller vector
+still matches; the workspace lock and ADR checksums were reviewed and repinned.
+
+On 2026-09-16 the desktop app was connected to the screen crates it needs to share this
+computer's displays: `termirust-screen-capture`, `-codec`, `-host`, `-input`, `-protocol`, and
+`-session`. The lockfile change adds only those existing workspace package names to the app's
+dependency list; it adds no external package and changes no selected version or feature. None
+enters the controller-security dependency closure, and every Controller vector is unchanged; the
+workspace lock and ADR checksums were reviewed and repinned.
+
+On 2026-09-16 the new `termirust-screen-host` workspace crate was added to serve screens over the
+Controller channel. It adds no external package: it uses the already-locked `async-trait 0.1`,
+`tokio`, and `tokio-util`, plus the screen and Controller workspace crates. It depends on
+`termirust-controller-listener`, not on the controller-security crate's internals, so the
+controller-security dependency closure is unchanged and every Controller vector still matches; the
+workspace lock and ADR checksums were reviewed and repinned.
+
+On 2026-09-15 the new `termirust-screen-input` workspace crate was added. It adds no external
+package: on macOS it uses the already-locked `core-graphics 0.24.0` (MIT OR Apache-2.0) with the
+dependency-free `highsierra` feature for scroll events. It stays outside the controller-security
+dependency closure and changes no Controller vector; the workspace lock and ADR checksums were
+reviewed and repinned.
+
+On 2026-09-16 the new `termirust-screen-video` workspace crate was added to encode the Remote
+Screens motion region with hardware HEVC. It adds **no package at all**: it declares no
+dependencies, and reaches VideoToolbox, Core Media, Core Video and Core Foundation through
+hand-declared `extern "C"` items and framework link flags in its build script, exactly as the
+spike in `tools/videotoolbox-spike` did. That is a deliberate choice over `objc2-video-toolbox`,
+which would have brought an objc runtime and a large lockfile change for about two dozen symbols.
+The crate is the one place in this path that contains `unsafe`; `termirust-screen-host`, which
+consumes it behind a trait, keeps `#![forbid(unsafe_code)]`. It carries no key material, speaks no
+protocol, and stays outside the controller-security dependency closure; every Controller vector is
+unchanged, and the workspace lock and ADR checksums were reviewed and repinned.
+
+On 2026-09-16 `termirust-screen-session` gained a dependency on `termirust-screen-video`, so a
+viewer decodes the motion region itself and draws it into the same framebuffer the tiles go into.
+The lockfile change adds only that existing workspace package name to the session crate's
+dependency list; it adds no external package and changes no selected version or feature. The
+session crate keeps `#![forbid(unsafe_code)]` — the unsafe stays inside the video crate — and the
+video crate carries no key material and speaks no protocol, so the controller-security dependency
+closure is unchanged and every Controller vector still matches; the workspace lock and ADR
+checksums were reviewed and repinned.
+
+On 2026-09-17 the new `termirust-screen-transport` workspace crate was added: the seam a QUIC
+transport will fit into, holding which delivery each class of screen message needs. It adds **no
+external package** — it depends only on `termirust-screen-protocol` — and keeps
+`#![forbid(unsafe_code)]`. It carries no key material and performs no I/O of its own; the one
+implementation today gathers bytes for the Controller channel to send, exactly as the host did
+inline before. The controller-security dependency closure is unchanged and every Controller
+vector still matches; the workspace lock and ADR checksums were reviewed and repinned.
+
+On 2026-09-17 `termirust-screen-capture` gained a macOS dependency on `core-graphics 0.24.0`, so
+a process can ask whether it holds Screen Recording before trying to capture. That package is
+already in the workspace lock through `termirust-screen-input`, at the same version, and the
+lockfile change adds only the edge. The call used is `CGPreflightScreenCaptureAccess`, which asks
+and never prompts; it carries no key material and stays outside the controller-security
+dependency closure, so every Controller vector is unchanged. The workspace lock and ADR checksums
+were reviewed and repinned.
+
+On 2026-09-17 `termirust-screen-input` gained a Linux dependency on `libc 0.2`, for the `ioctl`
+and `write` calls that drive a `uinput` virtual device. That package is already in the workspace
+lock at the same version through Tokio and others, so the lockfile change adds only the edge. The
+calls used are `ioctl` and `write` on a file descriptor the crate opened itself; the module
+carries `allow(unsafe_code)` while the rest of the crate keeps `deny`. It holds no key material
+and stays outside the controller-security dependency closure, so every Controller vector is
+unchanged. The workspace lock and ADR checksums were reviewed and repinned.
 
 ## Key and offer lifecycle
 
@@ -202,8 +306,13 @@ Capabilities are a closed bit set:
 | 2 | `SendInput` |
 | 3 | `Resize` |
 | 4 | `RespondToApproval` |
+| 5 | `ObserveScreens` |
+| 6 | `ControlPointer` |
+| 7 | `ControlKeyboard` |
 
-Unknown bits fail. Every opened or sealed frame must match both a granted capability and the exact current revocation epoch. A stale or future epoch is denied. Later Host code must validate the same policy again at the command boundary; this crate is not sole authorization merely because decryption succeeded.
+Bits 5 to 7 were added by the Remote Screens amendment below. `ObserveScreens` allows watching a
+screen; the two control bits are separate from it and from each other, and separate from
+`SendInput`, which stays a terminal capability. Unknown bits fail. Every opened or sealed frame must match both a granted capability and the exact current revocation epoch. A stale or future epoch is denied. Later Host code must validate the same policy again at the command boundary; this crate is not sole authorization merely because decryption succeeded.
 
 ## Transport framing
 
@@ -216,7 +325,7 @@ The authenticated 32-byte frame header is:
 | 0 | 4 | ASCII `TCF1` |
 | 4 | 2 | major `1` |
 | 6 | 2 | minor `0` |
-| 8 | 1 | kind: control `1`, terminal `2` |
+| 8 | 1 | kind: control `1`, terminal `2`, screen `3` |
 | 9 | 1 | one closed capability value |
 | 10 | 2 | reserved zero |
 | 12 | 8 | revocation epoch |
@@ -225,12 +334,193 @@ The authenticated 32-byte frame header is:
 
 The complete header is ChaCha20-Poly1305 associated data. Sequence starts at zero, must equal the receiver's next sequence, and may not exceed `2^64 - 3`. A lower value is duplicate; a higher value is out of order. Directional cipher state rekeys immediately before each sequence divisible by `2^20` except zero. Rekey failure closes the channel. Frames are never retried under the same nonce.
 
-Control plaintext is at most 65,536 bytes. A complete terminal frame, including the 32-byte header and 16-byte tag, is at most 1,048,576 bytes. Length is validated with checked arithmetic before allocation or crypto. Ciphertext, plaintext payload, and transport `Debug` are redacted.
+Control plaintext is at most 65,536 bytes. A complete terminal frame, including the 32-byte header and 16-byte tag, is at most 1,048,576 bytes; a complete screen frame has the same limit, which is the tile codec's largest batch. Length is validated with checked arithmetic before allocation or crypto. Ciphertext, plaintext payload, and transport `Debug` are redacted.
 
 ## Compatibility
 
 Controller-v1 has exact-version compatibility only. Unknown major or minor versions return `incompatible_version` before interpreting mutable fields. Unknown capabilities, kinds, suites, flags, or nonzero reserved bytes fail closed. A future compatible minor requires an ADR amendment and new immutable vectors; silent downgrade and best-effort parsing are forbidden.
 
+## Amendment 1: Remote Screens capabilities and frame kind (2026-09-16)
+
+Remote Screens lets a paired device watch a computer's screen and drive its pointer and keyboard.
+That permission belongs inside this channel, not in application settings, so it is enforced on the
+LAN, SSH, and relay routes alike and is revoked by the existing epoch.
+
+The amendment adds exactly three capability bits — `ObserveScreens` (5), `ControlPointer` (6), and
+`ControlKeyboard` (7), widening the closed mask from `0x001f` to `0x00ff` — and one frame kind,
+screen `3`, whose complete frame is at most 1,048,576 bytes, the tile codec's largest batch.
+Watching and driving stay separate permissions, and both stay separate from `SendInput`, so a
+device may watch without being able to touch anything.
+
+The version stays `1.0`. No field, offset, size, or previously defined value changes; the new
+values appear only where a Host offers them. An implementation that predates this amendment meets
+a new capability or kind as an unknown value and fails closed with `unknown_capability` or
+`invalid_encoding`, which is this ADR's specified behaviour rather than an exception to it.
+Discovery is the offer's capability template, which a Host that cannot serve screens simply never
+sets, so nothing negotiates or downgrades.
+
+Every offer, handshake, SAS, key, and frame vector published before this amendment is unchanged
+byte for byte; the fixture's primary offer still requests bits 0 to 2 only. New immutable vectors
+pin an offer and prologue that request the screen bits, the first screen frame on a confirmed
+transport, and the rejection of the first unused capability bit and frame kind.
+
+Acceptance of this amendment is the release gate "Capability ADR amendment accepted"; the
+implementation ships behind it.
+
+### Lockfile note: Windows and Linux screen capture (2026-09-18)
+
+The M6 capture backends changed the workspace `Cargo.lock`, so the checksum below was repinned.
+Nothing in `termirust-controller-security` changed, and no vector byte changed; only the pinned
+lockfile hash did.
+
+Windows added no package: `windows 0.61.3` was already in the lock file, and the capture crate now
+names it. Linux added `pipewire 0.8.0` and with it `libspa`, `pipewire-sys`, `libspa-sys`,
+`cookie-factory`, and `nix` (all MIT), plus the build-time `system-deps` (MIT/Apache) and
+`bindgen` (BSD-3-Clause). `ashpd 0.13.13` and `async-io 2` were already locked and gained a
+`screencast` feature. All are permissive and none is reachable from this crate: every addition sits
+behind `cfg(target_os)` in `termirust-screen-capture`, which does not depend on
+`termirust-controller-security`. `pipewire-sys` links the system `libpipewire-0.3` rather than
+vendoring it, so a Linux build needs `libpipewire-0.3-dev` present.
+
+`windows-capture` was considered and rejected: it wraps Windows.Graphics.Capture, which delivers a
+whole texture per frame and reports no damage, and Desktop Duplication's dirty and move rectangles
+are what the tile codec is built around.
+
+`cargo deny check` is green on advisories, bans, licences, and sources after the change.
+
+### Amendment: zeroize 1.8.2 to 1.9.0, and russh 0.57 to 0.63 (2026-09-18)
+
+Remote Screens Stage B carries pictures over QUIC, and the transport chosen for it in section 5.3
+of the plan is iroh. iroh 1.2 could not be resolved alongside this workspace as it stood, for two
+separate reasons, and one of them is named in this ADR — so this amendment is what the change
+control section below asks for.
+
+**The zeroize pin.** `iroh-base` requires `zeroize ^1.9` against the exact `=1.8.2` pinned here and
+in seven other manifests. It moved to `=1.9.0`, still pinned exactly.
+
+The *contract* this ADR relies on is unchanged: a `Zeroizing` value is still overwritten on drop.
+The **machinery enforcing it is not**. 1.9.0 replaces the atomic fence with an `optimization_barrier`
+in a new architecture-dependent implementation that includes inline assembly, and also changes some
+type layouts. "A minor release from the same authors" is not an argument that erasure still happens
+on every target, and the golden vectors cannot speak to it either — they pin ciphertext, and
+erasure leaves no trace in ciphertext. What can be said honestly is that the API contract is the
+same and that this is the version iroh requires; whether the new barrier erases as reliably as the
+old fence on every platform this ships to is a question for the independent review, and is listed
+as such below.
+
+**The russh pin, which took two attempts and is the part worth reading.** russh through 0.59 pins
+`rand_core = "=0.10.0-rc-3"` exactly, against the released `^0.10` that `ed25519-dalek 3.0.0`
+requires. Moving to 0.60 cleared that and looked sufficient: the workspace compiled and the whole
+Docker-backed SSH and SFTP suite passed.
+
+It was not sufficient, and the way it failed is the lesson. Adding iroh to the lockfile made the
+desktop crate stop compiling, inside a dependency neither of them names: `rsa 0.10.0-rc.16`, which
+russh 0.60.1 carries. iroh's `ed25519 3.0.0` needs the *released* `pkcs8 0.11.0`; that rsa release
+candidate was written against `pkcs8 0.11.0-rc.11`, in which `Error::KeyMalformed` is a unit
+variant rather than one with fields. Cargo unifies both to a single `0.11.x` and rsa loses. The
+same collision sits behind russh 0.60's elliptic-curve stack, where `p256/p384/p521 0.14.0-rc.7`
+pin `primefield 0.14.0-rc.7` against a `crypto-bigint` that the newer rsa cannot use.
+
+In other words: **iroh needs the released RustCrypto crates and russh 0.60 is still on their release
+candidates.** This is a *source* incompatibility, not an unsatisfiable version constraint — rsa
+rc.16 asks for `pkcs8 0.11.0-rc.10`, which permits the release, so resolution succeeds and
+compilation is what fails. Cargo allows a prerelease requirement to advance to a compatible
+released version, which is why the break appears late and somewhere neither crate names.
+
+russh 0.63 moved to the released stack — `primefield 0.14.0`, `pkcs8 0.11.0`, `rsa 0.10.0-rc.18` —
+and is the upstream answer rather than the only conceivable one. Two alternatives exist and were
+not taken: a `[patch]` against a forked rsa, which carries a maintenance cost on a cryptographic
+dependency and is the last thing this workspace should own; and dropping russh's optional `rsa`
+feature, which removes this particular compilation path at the cost of RSA key support and does
+not on its own settle the elliptic-curve side, whose requirements are ranges rather than exact
+pins. Upgrading is the choice that keeps every key type working and leaves the crypto to upstream.
+
+Worth recording because it will recur: this workspace now depends on two independent projects
+tracking the same pre-release ecosystem, and they will fall out of step again.
+
+**What changed and what did not.** No code in `termirust-controller-security` changed, no handshake
+or SAS derivation changed, and **no vector byte changed** — all four golden vectors pass untouched.
+Only the pinned lockfile checksum and this document's own moved.
+
+**What russh 0.63 changed at the call sites**, all in the desktop crate:
+
+- *SSH-agent identities* are an `AgentIdentity` enum rather than a bare public key, so a
+  certificate held by an agent is offered through `authenticate_certificate_with` and a plain key
+  through `authenticate_publickey_with`. The split is an improvement: a certificate carries
+  principals and validity that a public key does not, and the server needs them.
+- *Key generation* takes an RNG through rand_core 0.10's traits, which `rand 0.8`'s `OsRng` does
+  not implement, so three call sites use `rand` 0.10 under an alias. Both are the operating
+  system's source; only the trait shape differs.
+- *Host key verification* — `check_server_key` — now receives a `PublicKeyOrCertificate` rather
+  than a `PublicKey`. **This is a signature change, not a behaviour change, because this app does
+  not negotiate host certificates.** `Preferred::DEFAULT` sets `host_key_certificates` to an empty
+  list (`russh-0.63.1/src/negotiation.rs:212`), certificate algorithms are opt-in, and every SSH
+  and SFTP path here builds `client::Config::default()` and overrides only the keepalive. Nothing
+  in `crates/` sets `host_key_certificates`. A server therefore cannot present a certificate to
+  this client, and the `Certificate` arm is unreachable in the shipped configuration.
+
+  Both call sites nevertheless take `public_key()` and pin that, so the arm is correct if the
+  preference list is ever populated. For a certificate that accessor returns the **subject** key —
+  the server's own key, which the CA signed — and not the CA's key, which is a separate
+  `signature_key()` accessor (`ssh-key`'s `certificate.rs`). Two hosts signed by one CA therefore
+  do not collide on one pinned entry, which is the mistake that would have made this a real
+  downgrade.
+
+  **It is deliberately not certificate validation**: no CA trust store, no principal match, no
+  validity window, no critical options. Were the preference list ever populated, this code would
+  accept an expired or wrong-principal certificate whose subject key satisfies trust on first use
+  and whose holder proves possession — no weaker than the bare-key TOFU already offered, but not
+  what the word "certificate" implies to a reader. Leaving the list empty is the safer policy and
+  the code already does that. Host-certificate validation, if it is ever wanted, is its own feature
+  with its own decision record.
+
+  *(An earlier draft of this amendment stated that 0.63 advertises the certificate algorithms and
+  that a server may answer with one. That was wrong, and it is recorded here rather than quietly
+  edited because the error ran in the direction that overstates what the code does.)*
+- *Channel-open callbacks* for reverse forwards and agent forwarding are handed a handle that must
+  be accepted, and which rejects with `AdministrativelyProhibited` when dropped. This is a trap
+  worth naming: the parameter can be ignored with an underscore, the code compiles, and every
+  forwarded connection is then silently refused at runtime. Both sites accept explicitly. It also
+  improves the refusal path — an unapproved agent-forward request or an unrecognised forwarded
+  connection now costs that channel alone, where before it failed the handler and took the whole
+  SSH session with it.
+
+**iroh is now in the lockfile**, as an optional dependency of `termirust-screen-transport` behind
+an `iroh` feature that is off by default. A default build of this workspace — which is every build
+that ships today — resolves no QUIC stack, no relay client and no Tokio runtime from it, and
+`cargo tree -p termirust-screen-transport` shows only the screen protocol beneath it. It is named
+here because the lockfile checksum this ADR pins is what would otherwise let a dependency of that
+size arrive without anyone saying so.
+
+**What this does not settle.** Adopting iroh is still gated on the 0.4 device spike. This
+amendment makes it *possible* to adopt, and the owner directed it on 2026-09-18 ahead of that
+spike; if 0.4 says no, the feature stays off, these pins stay where they are, and nothing has to
+be undone.
+
+**Nor does it settle the release gate.** The independent cryptographic review named at the top of
+this document is still outstanding, and this amendment does not touch it.
+
+What can be claimed is narrower than "nothing changed", and the distinction matters. The handshake
+*construction* and the SAS derivation are unchanged, and every golden vector is byte-for-byte
+unchanged. That is not the same as saying the reviewable surface has not moved:
+
+- Remote Screens adds capability bits and frame kinds, so a screen-enabled offer puts different
+  capability bytes in the prologue. The construction is identical; the transcripts are not.
+- The screen work adds authorization boundaries that are security responsibilities in their own
+  right — per-frame device and capability checks, connection-scoped one-use screen tickets, and
+  the watch-versus-control separation — even though the cipher construction beneath them is
+  untouched.
+- The zeroize erasure machinery changed, as recorded above, and no vector can detect that.
+- The optional iroh transport, when it is ever enabled, brings identity binding, resumption and
+  replay questions that this ADR has never covered. Its `connect` waits for
+  `handshake_completed()` before returning a route, so no application data is sent early today;
+  the replay reasoning in that function's documentation has to be demonstrated, not asserted,
+  before the 0-RTT typestate is taken.
+
+So this amendment supplies evidence for a review, not a substitute for one, and it does not shorten
+the reviewer's list.
+
+**Accepted by the decision owner on 2026-09-18.**
 ## Golden vectors and change control
 
 `crates/termirust-controller-security/tests/vectors/controller-v1.json` stores fixture-only private/public static and ephemeral keys, exact offer/prologue, all three messages, final `h`, SAS, both split transport keys, and first/last legal frames. A conformance run consumes those bytes; it never regenerates missing fields. The verification script checks the fixture plus ADR and lockfile checksums. Any deliberate protocol or dependency change must update this ADR first, regenerate every vector in review, and demonstrate that prior vectors fail under the declared compatibility policy.

@@ -58,6 +58,21 @@ interface ControllerConnecting : AutoCloseable {
         viewport: TerminalViewport,
     )
 
+    /**
+     * Watches a computer's screen until [onEvent] throws or the coroutine is cancelled. A null
+     * [surface] means the first display the computer offers, which is all a phone can ask for
+     * before the welcome: a computer names its displays by their own ids.
+     *
+     * A transport that cannot carry screens says so, rather than every one of them having to.
+     */
+    suspend fun watchScreen(
+        host: PairedHostRecord,
+        surface: UInt?,
+        preview: Boolean,
+        onOpened: suspend (ControllerScreenTicket, com.termirust.screens.ScreenViewer) -> Unit,
+        onEvent: suspend (List<com.termirust.screens.ScreenEvent>) -> Unit,
+    ): Unit = throw ControllerConnectionException.CapabilityDenied
+
     suspend fun cancel()
 }
 

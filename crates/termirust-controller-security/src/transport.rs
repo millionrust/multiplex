@@ -8,7 +8,8 @@ use crate::authorization::AuthorizationPolicy;
 use crate::error::{ErrorCode, Result};
 use crate::types::{
     CONTROLLER_V1, ControllerCapability, ControllerFrame, ControllerFrameKind,
-    MAX_CONTROL_PAYLOAD_BYTES, MAX_TERMINAL_FRAME_BYTES, RevocationEpoch, SealedControllerFrame,
+    MAX_CONTROL_PAYLOAD_BYTES, MAX_SCREEN_FRAME_BYTES, MAX_TERMINAL_FRAME_BYTES, RevocationEpoch,
+    SealedControllerFrame,
 };
 
 const FRAME_MAGIC: [u8; 4] = *b"TCF1";
@@ -84,7 +85,7 @@ impl ControllerTransport {
         let frame_len = FRAME_HEADER_BYTES
             .checked_add(ciphertext_len)
             .ok_or(ErrorCode::FrameTooLarge)?;
-        if kind == ControllerFrameKind::Terminal && frame_len > MAX_TERMINAL_FRAME_BYTES {
+        if frame_len > frame_limit(kind) {
             return Err(ErrorCode::FrameTooLarge.into());
         }
         let mut frame = vec![0_u8; frame_len];
@@ -235,7 +236,7 @@ fn decode_header(bytes: &[u8]) -> Result<Header> {
     if bytes.len() != expected_len {
         return Err(ErrorCode::InvalidEncoding.into());
     }
-    if kind == ControllerFrameKind::Terminal && expected_len > MAX_TERMINAL_FRAME_BYTES {
+    if expected_len > frame_limit(kind) {
         return Err(ErrorCode::FrameTooLarge.into());
     }
     Ok(Header {
@@ -247,15 +248,24 @@ fn decode_header(bytes: &[u8]) -> Result<Header> {
     })
 }
 
+/// The largest complete frame of `kind`, header and tag included.
+const fn frame_limit(kind: ControllerFrameKind) -> usize {
+    match kind {
+        ControllerFrameKind::Control => usize::MAX,
+        ControllerFrameKind::Terminal => MAX_TERMINAL_FRAME_BYTES,
+        ControllerFrameKind::Screen => MAX_SCREEN_FRAME_BYTES,
+    }
+}
+
 fn validate_payload_limit(kind: ControllerFrameKind, payload_len: usize) -> Result<()> {
     match kind {
         ControllerFrameKind::Control if payload_len > MAX_CONTROL_PAYLOAD_BYTES => {
             Err(ErrorCode::FrameTooLarge.into())
         }
-        ControllerFrameKind::Terminal
+        ControllerFrameKind::Terminal | ControllerFrameKind::Screen
             if payload_len
                 .checked_add(FRAME_HEADER_BYTES + AEAD_TAG_BYTES)
-                .is_none_or(|length| length > MAX_TERMINAL_FRAME_BYTES) =>
+                .is_none_or(|length| length > frame_limit(kind)) =>
         {
             Err(ErrorCode::FrameTooLarge.into())
         }

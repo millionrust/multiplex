@@ -39,6 +39,8 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     private val discovery = ControllerHostDiscovery(application)
     private val random = SecureRandom()
     private val deviceId = loadDeviceId(application)
+    /** The phone's one screen session: the preview on a computer's page and the viewer. */
+    val screens = ControllerScreenCoordinator(viewModelScope)
     private val _state = MutableStateFlow(ControllerUiState())
     val state: StateFlow<ControllerUiState> = _state.asStateFlow()
     val discoveredComputers: StateFlow<List<DiscoveredController>> = discovery.computers
@@ -1011,6 +1013,47 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun selectedHost(): PairedHostRecord? =
         hosts.firstOrNull { it.id == _state.value.selectedHostId }
+
+    /** Whether the selected computer has given this phone screen access. */
+    fun canWatchSelectedHost(): Boolean =
+        selectedHost()?.let(ControllerScreenCoordinator::mayWatch) ?: false
+
+    /**
+     * Starts the preview on a computer's page. The Controller connection carries one session at
+     * a time, so this waits until the fleet has loaded rather than pre-empting it: the list of
+     * terminals is what the page is mostly for.
+     */
+    fun startScreenPreview() {
+        if (screens.isWatching) return
+        if (_state.value.connection != ControllerConnectionState.ReadyReadOnly) return
+        if (_state.value.cachedReadOnly || _state.value.activeTerminal != null) return
+        val host = selectedHost() ?: return
+        val connection = runCatching { connectionFor(selectedRoute()) }.getOrNull() ?: return
+        operation?.cancel()
+        screens.startPreview(host, connection)
+    }
+
+    /**
+     * Ends the preview. Opening the full screen can take the page off screen, so this leaves a
+     * viewer alone: it is the same session, and stopping it would close what was just opened.
+     */
+    fun stopScreenPreview() {
+        if (!screens.isWatching || screens.viewer != null) return
+        screens.stop()
+        retry()
+    }
+
+    fun openScreen() {
+        val host = selectedHost() ?: return
+        val connection = runCatching { connectionFor(selectedRoute()) }.getOrNull() ?: return
+        operation?.cancel()
+        screens.openViewer(host, connection)
+    }
+
+    fun closeScreen() {
+        screens.stop()
+        retry()
+    }
 
     private fun installSshRoute(hostId: String) {
         val configuration = routeConfigurationStore.load(hostId, ControllerRemoteRouteKind.SSH)

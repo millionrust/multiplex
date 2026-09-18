@@ -730,6 +730,146 @@ class ControllerConnection internal constructor(
         )
     }
 
+    /**
+     * Watches a computer's screen until [onEvent] throws or the coroutine is cancelled.
+     *
+     * The session starts with an `open_screen` command, whose one-time ticket the screen
+     * protocol's hello proves. After that every frame is a screen frame claiming the capability
+     * its contents need, which the computer checks again before acting on it.
+     */
+    override suspend fun watchScreen(
+        host: PairedHostRecord,
+        surface: UInt?,
+        preview: Boolean,
+        onOpened: suspend (ControllerScreenTicket, com.termirust.screens.ScreenViewer) -> Unit,
+        onEvent: suspend (List<com.termirust.screens.ScreenEvent>) -> Unit,
+    ) = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            cancelUnlocked(deleteCreatedKey = true)
+            host.validate()
+            if (host.capabilityBits and OBSERVE_SCREENS_CAPABILITY != OBSERVE_SCREENS_CAPABILITY) {
+                throw ControllerConnectionException.CapabilityDenied
+            }
+            val socket = openHost(host)
+            activeTransport = socket
+            try {
+                val input = DataInputStream(socket.input)
+                val output = DataOutputStream(socket.output)
+                val hostKey = Base64.getDecoder().decode(host.hostStaticPublicKey)
+                val requested = host.capabilityBits and ALL_SUPPORTED_CAPABILITIES
+                val request = ConnectionStartRequest(
+                    staticKeyId = host.deviceStaticKeyId,
+                    ephemeralPrivateKey = randomBytes(32),
+                    hostStaticPublicKey = hostKey,
+                    identityGeneration = host.identityGeneration.toULong(),
+                    revocationEpoch = host.revocationEpoch.toULong(),
+                    requestedCapabilityBits = requested.toUShort(),
+                    clientNonce = randomBytes(32),
+                    nowMillis = uptimeMillis().toULong(),
+                )
+                output.write(AUTH_PREFACE)
+                output.write(engine.connectionPrelude(request))
+                output.flush()
+                val challenge = ByteArray(36).also(input::readFully)
+                val session = engine.connectionStart(request, challenge)
+                try {
+                    writeFrame(output, session.handshakeOutbound(uptimeMillis().toULong()), MAX_HANDSHAKE_BYTES)
+                    val publicResult = session.handshakeReceiveAccept(
+                        readFrame(input, MAX_HANDSHAKE_BYTES),
+                        uptimeMillis().toULong(),
+                    )
+                    require(publicResult.hostStaticPublicKey.contentEquals(hostKey))
+                    require(publicResult.identityGeneration.toLong() == host.identityGeneration)
+                    require(publicResult.revocationEpoch.toLong() == host.revocationEpoch)
+                    val granted = publicResult.grantedCapabilityBits.toInt()
+                    require(granted and OBSERVE_SCREENS_CAPABILITY == OBSERVE_SCREENS_CAPABILITY)
+                    require(granted and ALL_SUPPORTED_CAPABILITIES.inv() == 0)
+
+                    val ticket = openScreenSession(host, session, input, output)
+                    // This app decodes the motion region itself, with MediaCodec, so it asks the
+                    // computer for it. A preview is one small picture a second and never worth a
+                    // video stream.
+                    val viewer = com.termirust.screens.ScreenViewer.withMotion(
+                        SCREEN_CACHE_BYTES,
+                        !preview,
+                    )
+                    try {
+                        viewer.connect(ticket.ticket)
+                        var watching = surface
+                        watching?.let { viewer.subscribe(it, preview) }
+                        onOpened(ticket, viewer)
+                        val pump = ControllerScreenPump(ticket)
+                        while (true) {
+                            for ((capability, bytes) in pump.drain(viewer)) {
+                                val sealed = session.sealFrame(
+                                    ControllerFrameKind.SCREEN,
+                                    capability,
+                                    host.revocationEpoch.toULong(),
+                                    bytes,
+                                )
+                                writeFrame(output, sealed, MAX_TERMINAL_FRAME_BYTES)
+                            }
+                            val opened = session.openFrame(readFrame(input, MAX_TERMINAL_FRAME_BYTES))
+                            require(opened.kind == ControllerFrameKind.SCREEN)
+                            require(opened.capability == ControllerCapability.OBSERVE_SCREENS)
+                            require(opened.revocationEpoch.toLong() == host.revocationEpoch)
+                            val events = viewer.receive(opened.payload)
+                            // The welcome is the first thing that names what this computer
+                            // shares, so a phone that asked for "whatever you have" subscribes
+                            // here rather than guessing an id.
+                            if (watching == null) {
+                                val first = events.filterIsInstance<com.termirust.screens.ScreenEvent.Welcomed>()
+                                    .firstOrNull()?.surfaces?.firstOrNull()
+                                if (first != null) {
+                                    watching = first.id
+                                    viewer.subscribe(first.id, preview)
+                                }
+                            }
+                            onEvent(events)
+                        }
+                    } finally {
+                        viewer.close()
+                    }
+                } finally {
+                    runCatching { session.finish() }
+                    session.close()
+                }
+            } finally {
+                socket.close()
+                if (activeTransport === socket) activeTransport = null
+            }
+        }
+    }
+
+    /** Asks for a screen session and reads the one-time ticket it answers with. */
+    private fun openScreenSession(
+        host: PairedHostRecord,
+        session: ControllerConnectionSession,
+        input: DataInputStream,
+        output: DataOutputStream,
+    ): ControllerScreenTicket {
+        val commandId = UUID.randomUUID()
+        val envelope = OpenScreenEnvelope(
+            commandId = commandId.toString(),
+            sessionGeneration = host.sessionGeneration,
+            deadlineMillis = clockMillis() + READ_TIMEOUT_MILLIS,
+            command = ScreenCommand(ControllerScreenCommands.OPEN),
+        )
+        val sealed = session.sealFrame(
+            ControllerFrameKind.CONTROL,
+            ControllerCapability.OBSERVE_SCREENS,
+            host.revocationEpoch.toULong(),
+            json.encodeToString(envelope).encodeToByteArray(),
+        )
+        writeFrame(output, sealed, MAX_SECURE_FRAME_BYTES)
+        val opened = session.openFrame(readFrame(input, MAX_SECURE_FRAME_BYTES))
+        require(opened.kind == ControllerFrameKind.CONTROL)
+        require(opened.capability == ControllerCapability.OBSERVE_SCREENS)
+        require(opened.revocationEpoch.toLong() == host.revocationEpoch)
+        val response = json.decodeFromString<ScreenOpenedResponse>(opened.payload.decodeToString())
+        return ControllerScreenCommands.ticket(response, commandId)
+    }
+
     override suspend fun cancel() {
         // Socket.close is thread-safe and unblocks a pending read before the operation
         // coroutine can reacquire the serialization mutex.
@@ -971,6 +1111,7 @@ class ControllerConnection internal constructor(
         const val MAX_SECURE_FRAME_BYTES = 64 * 1_024
         const val MAX_TERMINAL_FRAME_BYTES = 1 * 1_024 * 1_024
         const val READ_TIMEOUT_MILLIS = 30_000
+        val SCREEN_CACHE_BYTES: ULong = 32UL * 1_024UL * 1_024UL
         const val OBSERVE_CAPABILITY = 1
         const val ATTACH_CAPABILITY = 1 shl 1
         const val INPUT_CAPABILITY = 1 shl 2
@@ -978,7 +1119,15 @@ class ControllerConnection internal constructor(
         const val APPROVAL_CAPABILITY = 1 shl 4
         const val ALL_INTERACTIVE_CAPABILITIES = ATTACH_CAPABILITY or INPUT_CAPABILITY or
             RESIZE_CAPABILITY or APPROVAL_CAPABILITY
-        const val ALL_SUPPORTED_CAPABILITIES = OBSERVE_CAPABILITY or ALL_INTERACTIVE_CAPABILITIES
+        const val OBSERVE_SCREENS_CAPABILITY = 1 shl 5
+        const val CONTROL_POINTER_CAPABILITY = 1 shl 6
+        const val CONTROL_KEYBOARD_CAPABILITY = 1 shl 7
+        const val ALL_SCREEN_CAPABILITIES = OBSERVE_SCREENS_CAPABILITY or
+            CONTROL_POINTER_CAPABILITY or CONTROL_KEYBOARD_CAPABILITY
+        // Every bit this build understands. A computer may grant a screen capability at any time,
+        // and a phone that refused to recognise one would break its own terminal connection.
+        const val ALL_SUPPORTED_CAPABILITIES = OBSERVE_CAPABILITY or ALL_INTERACTIVE_CAPABILITIES or
+            ALL_SCREEN_CAPABILITIES
         const val OFFER_CORE_BYTES = 84
         const val CODE_SHARE_BYTES = 32
         const val CODE_PAIRING_TIMEOUT_MILLIS = 60_000L
@@ -1155,6 +1304,9 @@ sealed class ControllerConnectionException : Exception() {
     data object CodeRejected : ControllerConnectionException()
     data object AcknowledgementUncertain : ControllerConnectionException()
     data object SequenceGap : ControllerConnectionException()
+
+    /** This device may not do what it asked for, or the transport cannot carry it. */
+    data object CapabilityDenied : ControllerConnectionException()
     data class HostError(val code: String) : ControllerConnectionException()
 }
 

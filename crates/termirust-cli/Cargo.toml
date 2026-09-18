@@ -29,7 +29,7 @@ tokio = { version = "1", features = ["io-util", "rt", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 unicode-width = "0.2"
 uuid = "1.22"
-zeroize = "=1.8.2"
+zeroize = "=1.9.0"
 
 [dev-dependencies]
 portable-pty = "=0.9.0"

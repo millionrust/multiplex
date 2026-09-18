@@ -27,7 +27,8 @@ use crate::controller::lan::ControllerListenerProcess;
 use crate::controller::ssh_pairing::SshPairingBroker;
 
 use super::controller_coordinator::{
-    ControllerListenerEventProjection, ControllerPairingFailureKind,
+    ControllerDeviceMutationError, ControllerListenerEventProjection, ControllerPairingFailureKind,
+    controls_screens,
 };
 
 use super::*;
@@ -74,6 +75,12 @@ pub(super) struct RemoteDevicesState {
     listener_process: Option<ControllerListenerProcess>,
     desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
     tmux_sessions: bool,
+    screen_sharing: bool,
+    /// What the portal gave the listener for reopening its screen grant. Saved so a person
+    /// answers that dialog once for this machine rather than once for every listener run.
+    screen_restore_token: Option<String>,
+    /// Who is watching this computer's screens, as the listener last reported.
+    screen_watchers: Vec<termirust_controller_listener::ScreenWatcherReport>,
     listener_last_polled: Instant,
     host_private: Option<StaticPrivateKey>,
     pairing_state: PairingUiState,
@@ -92,6 +99,17 @@ pub(super) struct RemoteDevicesState {
     ssh_pairing_expires_at: Option<u64>,
     ssh_pairing_device_count: usize,
     editing_device_id: Option<ControllerDeviceId>,
+    /// Computers this Mac paired with as their device, and the form that adds one.
+    watched: Vec<crate::controller::watched::WatchedComputer>,
+    watched_store: Option<crate::controller::watched::WatchedComputers>,
+    watched_address: String,
+    watched_code: String,
+    watched_name: String,
+    watched_pairing: bool,
+    watched_failure: Option<String>,
+    /// A one-picture-a-second preview per computer, while Devices is on screen.
+    watched_previews:
+        std::collections::HashMap<String, crate::controller::watch_session::WatchSession>,
 }
 
 impl RemoteDevicesState {
@@ -100,6 +118,8 @@ impl RemoteDevicesState {
         controller_coordinator: &ControllerCoordinator,
         desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
         tmux_sessions: bool,
+        screen_sharing: bool,
+        screen_restore_token: Option<String>,
     ) -> Self {
         let root = match crate::storage::controller_store_dir() {
             Ok(root) => root,
@@ -128,6 +148,7 @@ impl RemoteDevicesState {
         let ssh_pairing_broker =
             SshPairingBroker::bind(durable_runtime_parent(&root).join("controller-pairing.sock"))
                 .ok();
+        let watched_store = crate::controller::watched::WatchedComputers::new(&root);
         match repository.load() {
             Ok(snapshot) => {
                 let devices = deduplicated_devices(snapshot.authority.devices);
@@ -147,6 +168,9 @@ impl RemoteDevicesState {
                     listener_process: None,
                     desktop_pane_bridge,
                     tmux_sessions,
+                    screen_sharing,
+                    screen_restore_token,
+                    screen_watchers: Vec::new(),
                     listener_last_polled: Instant::now(),
                     host_private,
                     pairing_state: PairingUiState::Idle,
@@ -163,6 +187,14 @@ impl RemoteDevicesState {
                     ssh_pairing_expires_at: None,
                     ssh_pairing_device_count: device_count,
                     editing_device_id: None,
+                    watched: watched_store.load(),
+                    watched_store: Some(watched_store),
+                    watched_address: String::new(),
+                    watched_code: String::new(),
+                    watched_name: String::new(),
+                    watched_pairing: false,
+                    watched_failure: None,
+                    watched_previews: std::collections::HashMap::new(),
                 };
                 if state.network_policy.enabled {
                     let _ = state.start_listener_process(controller_coordinator);
@@ -190,9 +222,12 @@ impl RemoteDevicesState {
         _controller_coordinator: &ControllerCoordinator,
         _desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
         tmux_sessions: bool,
+        screen_sharing: bool,
+        screen_restore_token: Option<String>,
     ) -> Self {
         Self {
             repository: None,
+            screen_restore_token,
             identity_state: HostIdentityState::Ready,
             identity: Some(HostIdentityPublic::new(
                 termirust_domain::HostIdentityGeneration::INITIAL,
@@ -209,6 +244,8 @@ impl RemoteDevicesState {
             listener_process: None,
             desktop_pane_bridge: None,
             tmux_sessions,
+            screen_sharing,
+            screen_watchers: Vec::new(),
             listener_last_polled: Instant::now(),
             host_private: Some(StaticPrivateKey::from_fixture_bytes([3; 32])),
             pairing_state: PairingUiState::Idle,
@@ -225,6 +262,14 @@ impl RemoteDevicesState {
             ssh_pairing_expires_at: None,
             ssh_pairing_device_count: 0,
             editing_device_id: None,
+            watched: Vec::new(),
+            watched_store: None,
+            watched_address: String::new(),
+            watched_code: String::new(),
+            watched_name: String::new(),
+            watched_pairing: false,
+            watched_failure: None,
+            watched_previews: std::collections::HashMap::new(),
         }
     }
 
@@ -245,6 +290,9 @@ impl RemoteDevicesState {
             listener_process: None,
             desktop_pane_bridge: None,
             tmux_sessions: false,
+            screen_sharing: false,
+            screen_restore_token: None,
+            screen_watchers: Vec::new(),
             listener_last_polled: Instant::now(),
             host_private: None,
             pairing_state: PairingUiState::StorageFailure,
@@ -261,7 +309,160 @@ impl RemoteDevicesState {
             ssh_pairing_expires_at: None,
             ssh_pairing_device_count: 0,
             editing_device_id: None,
+            watched: Vec::new(),
+            watched_store: None,
+            watched_address: String::new(),
+            watched_code: String::new(),
+            watched_name: String::new(),
+            watched_pairing: false,
+            watched_failure: None,
+            watched_previews: std::collections::HashMap::new(),
         }
+    }
+
+    /// Computers this Mac paired with as their device.
+    pub(super) fn watched(&self) -> &[crate::controller::watched::WatchedComputer] {
+        &self.watched
+    }
+
+    pub(super) fn watched_form(&self) -> (&str, &str, &str, bool, Option<&str>) {
+        (
+            &self.watched_address,
+            &self.watched_code,
+            &self.watched_name,
+            self.watched_pairing,
+            self.watched_failure.as_deref(),
+        )
+    }
+
+    pub(super) fn set_watched_address(&mut self, value: String) {
+        self.watched_address = value;
+    }
+
+    pub(super) fn set_watched_code(&mut self, value: String) {
+        self.watched_code = value;
+    }
+
+    pub(super) fn set_watched_name(&mut self, value: String) {
+        self.watched_name = value;
+    }
+
+    /// Pairs with the computer the form names. Blocking, so the caller runs it off the
+    /// interface thread and hands the result back.
+    pub(super) fn pair_with_computer(
+        &mut self,
+    ) -> Option<(
+        crate::controller::watched::WatchedComputers,
+        String,
+        String,
+        String,
+    )> {
+        let store = self.watched_store.clone()?;
+        if self.watched_pairing {
+            return None;
+        }
+        self.watched_pairing = true;
+        self.watched_failure = None;
+        Some((
+            store,
+            self.watched_address.clone(),
+            self.watched_code.clone(),
+            self.watched_name.clone(),
+        ))
+    }
+
+    pub(super) fn finish_pairing_with_computer(&mut self, failure: Option<String>) {
+        self.watched_pairing = false;
+        self.watched_failure = failure;
+        if self.watched_failure.is_none() {
+            self.watched_address.clear();
+            self.watched_code.clear();
+            self.watched_name.clear();
+        }
+        if let Some(store) = &self.watched_store {
+            self.watched = store.load();
+        }
+    }
+
+    /// One computer and the store it came from, for opening a session to it.
+    pub(super) fn watched_computer(
+        &self,
+        address: &str,
+    ) -> Option<(
+        crate::controller::watched::WatchedComputer,
+        crate::controller::watched::WatchedComputers,
+    )> {
+        let computer = self
+            .watched
+            .iter()
+            .find(|computer| computer.address == address)?
+            .clone();
+        Some((computer, self.watched_store.clone()?))
+    }
+
+    pub(super) fn forget_watched_computer(&mut self, address: &str) {
+        self.watched_previews.remove(address);
+        if let Some(store) = &self.watched_store {
+            store.forget(address);
+            self.watched = store.load();
+        }
+    }
+
+    /// Opens a one-picture-a-second preview for every computer that granted screen access.
+    ///
+    /// Each is its own connection, which the computer serves as any other device. A computer that
+    /// is asleep or refusing simply never produces a picture, and the row says so.
+    pub(super) fn start_watched_previews(&mut self) {
+        let Some(store) = self.watched_store.clone() else {
+            return;
+        };
+        for computer in &self.watched {
+            if !computer.may_watch_screen() {
+                continue;
+            }
+            let ended = self
+                .watched_previews
+                .get(&computer.address)
+                .is_some_and(|session| {
+                    matches!(
+                        session.state(),
+                        crate::controller::watch_session::WatchState::Ended(_)
+                    )
+                });
+            if ended {
+                self.watched_previews.remove(&computer.address);
+            }
+            if self.watched_previews.contains_key(&computer.address) {
+                continue;
+            }
+            if let Some(session) =
+                crate::controller::watch_session::WatchSession::start(computer, &store, true)
+            {
+                self.watched_previews
+                    .insert(computer.address.clone(), session);
+            }
+        }
+    }
+
+    /// Ends every preview. Leaving Devices should not keep connections to other computers open.
+    pub(super) fn stop_watched_previews(&mut self) {
+        self.watched_previews.clear();
+    }
+
+    pub(super) fn watched_preview(
+        &self,
+        address: &str,
+    ) -> Option<&crate::controller::watch_session::WatchSession> {
+        self.watched_previews.get(address)
+    }
+
+    /// How many pictures every preview has drawn between them, so the interface repaints only
+    /// when something actually arrived.
+    pub(super) fn watched_preview_pictures(&self) -> u64 {
+        self.watched_previews
+            .values()
+            .map(|session| session.pictures())
+            .sum()
     }
 
     fn refresh(&mut self) -> Result<(), ()> {
@@ -347,7 +548,12 @@ impl RemoteDevicesState {
         .and_then(|descriptor| {
             descriptor
                 .with_desktop_pane_bridge(self.desktop_pane_bridge.clone())
-                .map(|descriptor| descriptor.with_tmux_sessions(self.tmux_sessions))
+                .map(|descriptor| {
+                    descriptor
+                        .with_tmux_sessions(self.tmux_sessions)
+                        .with_screen_sharing(self.screen_sharing)
+                        .with_screen_restore_token(self.screen_restore_token.clone())
+                })
         })
         .map_err(|_| ())?;
         match controller_coordinator.start_listener(&descriptor) {
@@ -405,6 +611,56 @@ impl RemoteDevicesState {
             return Ok(());
         }
         self.tmux_sessions = enabled;
+        self.restart_listener(controller_coordinator)
+    }
+
+    #[cfg(test)]
+    pub(super) fn screen_sharing(&self) -> bool {
+        self.screen_sharing
+    }
+
+    /// Who is watching this computer's screens, as the listener last reported.
+    /// The grant token the listener has reported, if any. The app persists it; this state cannot,
+    /// because saved settings belong to the app.
+    pub(super) fn screen_restore_token(&self) -> Option<&str> {
+        self.screen_restore_token.as_deref()
+    }
+
+    pub(super) fn screen_watchers(&self) -> &[termirust_controller_listener::ScreenWatcherReport] {
+        &self.screen_watchers
+    }
+
+    /// The saved name of a paired device, or a short form of its id when it is not saved yet.
+    pub(super) fn device_name(&self, device_id: ControllerDeviceId) -> String {
+        self.devices
+            .iter()
+            .find(|device| device.device_id == device_id)
+            .map(|device| device.display_name.clone())
+            .unwrap_or_else(|| {
+                let id = device_id.to_string();
+                id.split('-').next().unwrap_or(&id).to_owned()
+            })
+    }
+
+    /// Changes whether devices with screen access see this computer's displays. A running
+    /// listener restarts, because capture lives in that process.
+    pub(super) fn set_screen_sharing(
+        &mut self,
+        enabled: bool,
+        controller_coordinator: &ControllerCoordinator,
+    ) -> Result<(), ()> {
+        if self.screen_sharing == enabled {
+            return Ok(());
+        }
+        self.screen_sharing = enabled;
+        self.restart_listener(controller_coordinator)
+    }
+
+    /// Restarts a running listener so a sharing change applies; does nothing when it is off.
+    fn restart_listener(
+        &mut self,
+        controller_coordinator: &ControllerCoordinator,
+    ) -> Result<(), ()> {
         let Some(mut process) = self.listener_process.take() else {
             return Ok(());
         };
@@ -658,6 +914,12 @@ impl RemoteDevicesState {
                     .filter(|address| address.validate().is_ok())
                     .collect();
             }
+            ControllerListenerEventProjection::ScreenWatchers { watchers } => {
+                self.screen_watchers = watchers;
+            }
+            ControllerListenerEventProjection::ScreenRestoreToken { token } => {
+                self.screen_restore_token = Some(token);
+            }
         }
         Ok(())
     }
@@ -734,12 +996,340 @@ fn unix_seconds() -> u64 {
 }
 
 impl TermiRustApp {
+    /// Saves the screen-sharing choice and applies it to the listener.
+    pub(super) fn update_remote_screen_sharing(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.saved.settings.remote_screen_sharing = enabled;
+        self.save_settings();
+        if self
+            .remote_devices
+            .set_screen_sharing(enabled, &self.controller_coordinator)
+            .is_ok()
+        {
+            self.status_message = localization::remote_screens_sharing_saved();
+            self.error_message.clear();
+        } else {
+            self.error_message = localization::remote_devices_operation_failed();
+        }
+        cx.notify();
+    }
+
+    /// Sharing this computer's screen: who may watch, and what macOS will ask for.
+    fn render_remote_screens_section(&self, cx: &Context<Self>) -> AnyElement {
+        let sharing = self.saved.settings.remote_screen_sharing;
+        v_flex()
+            .id("remote-screens")
+            .debug_selector(|| "remote-screens".to_string())
+            .w_full()
+            .min_w_0()
+            .gap_3()
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                            .font_medium()
+                            .text_color(theme::text_main())
+                            .child(localization::remote_screens_title()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(localization::remote_screens_description()),
+                    ),
+            )
+            .child(self.settings_choice_row(
+                localization::remote_screens_sharing_label(),
+                localization::remote_screens_sharing_description(),
+                self.segmented_control(
+                    "remote-screens-sharing",
+                    [
+                        (true, localization::remote_screens_sharing_share()),
+                        (false, localization::remote_screens_sharing_hide()),
+                    ],
+                    sharing,
+                    false,
+                    cx,
+                    |this, enabled, _, cx| this.update_remote_screen_sharing(enabled, cx),
+                ),
+            ))
+            .when(sharing, |this| this.child(self.render_screen_watchers(cx)))
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                    .text_color(theme::text_muted())
+                    .child(localization::remote_screens_permission_hint()),
+            )
+            .into_any_element()
+    }
+
+    /// The other half of pairing: computers this Mac may connect to, as their device.
+    ///
+    /// Everything above this is TermiRust as a host. Without this section the desktop can only be
+    /// watched, never watch.
+    fn render_watched_computers_section(&self, cx: &Context<Self>) -> AnyElement {
+        let (_, _, _, pairing, failure) = self.remote_devices.watched_form();
+        let computers = self.remote_devices.watched();
+        v_flex()
+            .id("watched-computers")
+            .debug_selector(|| "watched-computers".to_string())
+            .w_full()
+            .min_w_0()
+            .gap_3()
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                            .font_medium()
+                            .text_color(theme::text_main())
+                            .child(localization::watched_computers_title()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(localization::watched_computers_description()),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .items_end()
+                    .flex_wrap()
+                    .gap_2()
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(localization::watched_computers_address_label()),
+                            )
+                            .child(Input::new(&self.settings_inputs.watched_computer_address)),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(localization::watched_computers_code_label()),
+                            )
+                            .child(Input::new(&self.settings_inputs.watched_computer_code)),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(localization::watched_computers_name_label()),
+                            )
+                            .child(Input::new(&self.settings_inputs.watched_computer_name)),
+                    )
+                    .child(
+                        Button::new("watched-computers-pair")
+                            .debug_selector(|| "watched-computers-pair".to_string())
+                            .xsmall()
+                            .primary()
+                            .label(if pairing {
+                                localization::watched_computers_pairing()
+                            } else {
+                                localization::watched_computers_pair_action()
+                            })
+                            .disabled(pairing)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.pair_with_watched_computer(window, cx);
+                            })),
+                    ),
+            )
+            .when_some(failure.map(str::to_owned), |this, message| {
+                this.child(
+                    div()
+                        .text_size(px(theme::TYPE_MICRO_SIZE))
+                        .text_color(theme::danger())
+                        .child(message),
+                )
+            })
+            .when(computers.is_empty(), |this| {
+                this.child(
+                    div()
+                        .text_size(px(theme::TYPE_MICRO_SIZE))
+                        .text_color(theme::text_muted())
+                        .child(localization::watched_computers_none()),
+                )
+            })
+            .children(
+                computers
+                    .iter()
+                    .map(|computer| self.render_watched_computer_row(computer, cx)),
+            )
+            .into_any_element()
+    }
+
+    fn render_watched_computer_row(
+        &self,
+        computer: &crate::controller::watched::WatchedComputer,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let address = computer.address.clone();
+        let forget_address = address.clone();
+        let preview = self.remote_devices.watched_preview(&address);
+        let picture = preview.and_then(|session| session.picture());
+        let watching_state = preview.map(|session| session.state());
+        h_flex()
+            .items_center()
+            .justify_between()
+            .gap_2()
+            .p_2()
+            .rounded(px(theme::CONTROL_RADIUS))
+            .border_1()
+            .border_color(theme::soft_border())
+            .bg(theme::library_card())
+            .when_some(picture, |this, picture| {
+                this.child(
+                    img(picture)
+                        .object_fit(ObjectFit::Contain)
+                        .w(px(96.0))
+                        .h(px(60.0)),
+                )
+            })
+            .child(
+                v_flex()
+                    .min_w_0()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                            .text_color(theme::text_main())
+                            .child(computer.display_name.clone()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(address),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(match watching_state {
+                                Some(crate::controller::watch_session::WatchState::Ended(
+                                    reason,
+                                )) => reason,
+                                _ if !computer.may_watch_screen() => {
+                                    localization::watched_computers_no_screen()
+                                }
+                                _ => localization::watched_computers_may_watch(),
+                            }),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .gap_2()
+                    .when(computer.may_watch_screen(), |this| {
+                        let watch_address = forget_address.clone();
+                        this.child(
+                            Button::new(SharedString::from(format!(
+                                "watched-computers-watch-{watch_address}"
+                            )))
+                            .xsmall()
+                            .primary()
+                            .label(localization::watched_computers_watch_action())
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.open_remote_screen(&watch_address, window, cx);
+                                },
+                            )),
+                        )
+                    })
+                    .child(
+                        Button::new(SharedString::from(format!(
+                            "watched-computers-forget-{forget_address}"
+                        )))
+                        .xsmall()
+                        .ghost()
+                        .label(localization::watched_computers_forget_action())
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.remote_devices.forget_watched_computer(&forget_address);
+                            cx.notify();
+                        })),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    /// Who is watching right now, and the way to stop it.
+    fn render_screen_watchers(&self, cx: &Context<Self>) -> AnyElement {
+        let watchers = self.remote_devices.screen_watchers();
+        let names: Vec<String> = watchers
+            .iter()
+            .map(|watcher| self.remote_devices.device_name(watcher.device_id))
+            .collect();
+        let controlling = watchers
+            .iter()
+            .position(|watcher| watcher.controlling)
+            .map(|index| names[index].clone());
+        v_flex()
+            .id("remote-screens-watchers")
+            .debug_selector(|| "remote-screens-watchers".to_string())
+            .gap_1()
+            .child(
+                h_flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                            .text_color(if names.is_empty() {
+                                theme::text_muted()
+                            } else {
+                                theme::text_main()
+                            })
+                            .child(if names.is_empty() {
+                                localization::remote_screens_watching_none()
+                            } else {
+                                localization::remote_screens_watching_now(&names.join(", "))
+                            }),
+                    )
+                    .child(
+                        Button::new("remote-screens-stop")
+                            .debug_selector(|| "remote-screens-stop".to_string())
+                            .small()
+                            .label(localization::remote_screens_stop_action())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.update_remote_screen_sharing(false, cx);
+                            })),
+                    ),
+            )
+            .when_some(controlling, |this, device| {
+                this.child(
+                    div()
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                        .text_color(theme::warning())
+                        .child(localization::remote_screens_controlling_now(&device)),
+                )
+            })
+            .into_any_element()
+    }
+
     fn render_remote_devices_content(&self, cx: &Context<Self>) -> AnyElement {
         v_flex()
             .gap_3()
             .child(self.render_remote_route_section(cx))
             .child(self.settings_divider())
             .child(self.render_remote_terminals_section(cx))
+            .child(self.settings_divider())
+            .child(self.render_remote_screens_section(cx))
+            .child(self.settings_divider())
+            .child(self.render_watched_computers_section(cx))
             .child(self.settings_divider())
             .child(self.render_remote_identity_section(cx))
             .child(self.settings_divider())
@@ -1326,6 +1916,10 @@ impl TermiRustApp {
         let input_allowed = device
             .capabilities
             .contains(ControllerCapability::SendInput);
+        let watching_allowed = device
+            .capabilities
+            .contains(ControllerCapability::ObserveScreens);
+        let screen_control_allowed = controls_screens(device.capabilities);
         let status = remote_device_status(device.status);
         let last_seen = device
             .last_seen_at
@@ -1386,6 +1980,33 @@ impl TermiRustApp {
                                     .disabled(revoked)
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.toggle_remote_device_input(device_id, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new(("remote-device-watching", index))
+                                    .small()
+                                    .label(if watching_allowed {
+                                        localization::remote_devices_restrict_watching_action()
+                                    } else {
+                                        localization::remote_devices_allow_watching_action()
+                                    })
+                                    .disabled(revoked)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.toggle_remote_device_watching(device_id, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new(("remote-device-screen-control", index))
+                                    .small()
+                                    .label(if screen_control_allowed {
+                                        localization::remote_devices_restrict_screen_control_action(
+                                        )
+                                    } else {
+                                        localization::remote_devices_allow_screen_control_action()
+                                    })
+                                    .disabled(revoked)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.toggle_remote_device_screen_control(device_id, cx);
                                     })),
                             )
                             .child(
@@ -1530,6 +2151,70 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    /// Pairs this Mac with another computer, as its device.
+    ///
+    /// Pairing talks to the other computer, so it runs on its own thread and the answer comes
+    /// back to the interface; the form stays disabled meanwhile so a second attempt cannot race
+    /// the first.
+    fn pair_with_watched_computer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let address = self
+            .settings_inputs
+            .watched_computer_address
+            .read(cx)
+            .value()
+            .to_string();
+        let code = self
+            .settings_inputs
+            .watched_computer_code
+            .read(cx)
+            .value()
+            .to_string();
+        let name = self
+            .settings_inputs
+            .watched_computer_name
+            .read(cx)
+            .value()
+            .to_string();
+        self.remote_devices.set_watched_address(address);
+        self.remote_devices.set_watched_code(code);
+        self.remote_devices.set_watched_name(name);
+        let Some((store, address, code, name)) = self.remote_devices.pair_with_computer() else {
+            return;
+        };
+        let device_name = self.this_computer_name();
+        cx.notify();
+        let task = cx.background_executor().spawn(async move {
+            store
+                .pair(&address, &code, &name, &device_name)
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let outcome = task.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                let failure = outcome.err();
+                if failure.is_none() {
+                    this.settings_inputs
+                        .watched_computer_code
+                        .update(cx, |state, cx| state.set_value("", window, cx));
+                }
+                this.remote_devices.finish_pairing_with_computer(failure);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// What another computer calls this one in its own device list.
+    fn this_computer_name(&self) -> String {
+        // The other computer shows this in its own device list, so it names the machine, not
+        // the person: a hostname is the closest thing this app already knows.
+        std::env::var("HOSTNAME")
+            .ok()
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| "TermiRust desktop".to_owned())
+    }
+
     fn begin_controller_pairing(&mut self, cx: &mut Context<Self>) {
         if self
             .remote_devices
@@ -1561,16 +2246,63 @@ impl TermiRustApp {
     }
 
     pub(super) fn refresh_remote_listener_process(&mut self, cx: &mut Context<Self>) {
+        self.refresh_watched_previews(cx);
         match self
             .remote_devices
             .refresh_listener_process(&self.controller_coordinator)
         {
-            Ok(true) => cx.notify(),
+            Ok(true) => {
+                // A grant token the listener has just been given. Saved here rather than in the
+                // listener state, because settings are the app's to write, and saved now rather
+                // than at shutdown: the whole point is that it survives a crash as well as a quit.
+                let reported = self.remote_devices.screen_restore_token();
+                if reported.is_some()
+                    && reported != self.saved.settings.remote_screen_restore_token.as_deref()
+                {
+                    self.saved.settings.remote_screen_restore_token = reported.map(str::to_owned);
+                    self.save_settings();
+                }
+                cx.notify();
+            }
             Ok(false) => {}
             Err(()) => {
                 self.error_message = localization::remote_devices_listener_start_failed();
                 cx.notify();
             }
+        }
+    }
+
+    /// Keeps a preview open for each watched computer while Devices is on screen, and repaints
+    /// when a new picture has arrived.
+    ///
+    /// Leaving the view ends them: a preview is a connection to someone else's computer, and it
+    /// should last no longer than the page that shows it.
+    fn refresh_watched_previews(&mut self, cx: &mut Context<Self>) {
+        // A tab watching a computer repaints as its own pictures arrive, wherever the app is.
+        if let Some(drawn) = self
+            .active_workspace()
+            .and_then(|workspace| workspace.screen.as_ref())
+            .map(|screen| screen.session.pictures())
+        {
+            if drawn != self.watched_screen_pictures {
+                self.watched_screen_pictures = drawn;
+                cx.notify();
+            }
+        }
+        let showing = matches!(self.nav_section, NavSection::Devices);
+        if !showing {
+            if self.watched_preview_pictures != 0 {
+                self.watched_preview_pictures = 0;
+                self.remote_devices.stop_watched_previews();
+                cx.notify();
+            }
+            return;
+        }
+        self.remote_devices.start_watched_previews();
+        let drawn = self.remote_devices.watched_preview_pictures();
+        if drawn != self.watched_preview_pictures {
+            self.watched_preview_pictures = drawn;
+            cx.notify();
         }
     }
 
@@ -1651,6 +2383,66 @@ impl TermiRustApp {
             .and_then(|()| self.remote_devices.refresh());
         if result.is_ok() {
             self.status_message = localization::remote_devices_capabilities_saved();
+        } else {
+            self.error_message = localization::remote_devices_operation_failed();
+        }
+        cx.notify();
+    }
+
+    /// Lets one device watch this computer's screens, or stops it watching.
+    fn toggle_remote_device_watching(
+        &mut self,
+        device_id: ControllerDeviceId,
+        cx: &mut Context<Self>,
+    ) {
+        self.change_device_capabilities(device_id, cx, |coordinator, repository, capabilities| {
+            coordinator.toggle_screen_watching(repository, device_id, capabilities)
+        });
+    }
+
+    /// Lets one device point and type on this computer's screens, or stops it.
+    fn toggle_remote_device_screen_control(
+        &mut self,
+        device_id: ControllerDeviceId,
+        cx: &mut Context<Self>,
+    ) {
+        self.change_device_capabilities(device_id, cx, |coordinator, repository, capabilities| {
+            coordinator.toggle_screen_control(repository, device_id, capabilities)
+        });
+    }
+
+    /// Applies one capability change to a paired device and reports what happened.
+    fn change_device_capabilities(
+        &mut self,
+        device_id: ControllerDeviceId,
+        cx: &mut Context<Self>,
+        change: impl FnOnce(
+            &ControllerCoordinator,
+            ControllerDeviceRepository,
+            termirust_domain::ControllerCapabilities,
+        ) -> Result<(), ControllerDeviceMutationError>,
+    ) {
+        let result = self
+            .remote_devices
+            .devices
+            .iter()
+            .find(|device| device.device_id == device_id)
+            .map(|device| device.capabilities)
+            .ok_or(())
+            .and_then(|capabilities| {
+                self.remote_devices
+                    .repository
+                    .clone()
+                    .ok_or(())
+                    .map(|repository| (repository, capabilities))
+            })
+            .and_then(|(repository, capabilities)| {
+                change(&self.controller_coordinator, repository, capabilities).map_err(|_| ())
+            })
+            .and_then(|()| self.remote_devices.refresh());
+        if result.is_ok() {
+            self.status_message = localization::remote_devices_capabilities_saved();
+            self.error_message.clear();
         } else {
             self.error_message = localization::remote_devices_operation_failed();
         }
@@ -1855,7 +2647,8 @@ fn pairing_ui_status(state: PairingUiState) -> String {
 mod network_tests {
     use termirust_controller_listener::ListenerProcessEvent;
     use termirust_domain::{
-        HostIdentityState, ListenerFailureCode, ListenerState, PairedDeviceStatus, PairingOfferId,
+        ControllerDeviceId, HostIdentityState, ListenerFailureCode, ListenerState,
+        PairedDeviceRecord, PairedDeviceStatus, PairingOfferId,
     };
 
     use crate::ui::localization;
@@ -1868,14 +2661,120 @@ mod network_tests {
 
     #[test]
     fn remote_devices_add_controller_is_disabled_without_route() {
-        let state =
-            RemoteDevicesState::open_default(&ControllerCoordinator::default(), None, false);
+        let state = RemoteDevicesState::open_default(
+            &ControllerCoordinator::default(),
+            None,
+            false,
+            false,
+            None,
+        );
         assert!(!state.route_available);
         assert!(state.devices.is_empty());
         assert_eq!(
             localization::remote_devices_route_required(),
             "Turn on remote access to pair a phone."
         );
+    }
+
+    /// The portal is answered once for this machine, not once per listener run.
+    ///
+    /// Wayland's grant comes back as an opaque token, and it is only worth anything if it outlives
+    /// the process that was given it. The listener reports it; this state keeps it and hands it to
+    /// the next descriptor; the app writes it to settings. This covers the middle link, which is
+    /// the one where a token could be received and quietly dropped.
+    #[test]
+    fn a_reported_screen_grant_is_kept_and_handed_to_the_next_listener() {
+        let coordinator = ControllerCoordinator::default();
+        let mut state = RemoteDevicesState::open_default(&coordinator, None, false, true, None);
+        assert_eq!(state.screen_restore_token(), None);
+
+        state
+            .apply_listener_event(
+                ListenerProcessEvent::screen_restore_token("grant-abc".to_owned()),
+                &coordinator,
+            )
+            .expect("the event is accepted");
+        assert_eq!(state.screen_restore_token(), Some("grant-abc"));
+
+        // A newer grant replaces the old one: the portal reissues on revoke-and-regrant, and
+        // handing back a token the compositor has forgotten means being asked again.
+        state
+            .apply_listener_event(
+                ListenerProcessEvent::screen_restore_token("grant-def".to_owned()),
+                &coordinator,
+            )
+            .expect("the event is accepted");
+        assert_eq!(state.screen_restore_token(), Some("grant-def"));
+
+        // A run that was started with a token already knows it before any event arrives.
+        let restored = RemoteDevicesState::open_default(
+            &coordinator,
+            None,
+            false,
+            true,
+            Some("grant-ghi".to_owned()),
+        );
+        assert_eq!(restored.screen_restore_token(), Some("grant-ghi"));
+    }
+
+    #[test]
+    fn reported_watchers_reach_the_indicator_with_the_names_the_user_gave_them() {
+        let coordinator = ControllerCoordinator::default();
+        let mut state = RemoteDevicesState::open_default(&coordinator, None, false, true, None);
+        assert!(state.screen_watchers().is_empty());
+
+        let phone = ControllerDeviceId::new();
+        let unsaved = ControllerDeviceId::new();
+        state
+            .apply_listener_event(
+                ListenerProcessEvent::screen_watchers(vec![
+                    termirust_controller_listener::ScreenWatcherReport {
+                        device_id: phone,
+                        controlling: false,
+                    },
+                    termirust_controller_listener::ScreenWatcherReport {
+                        device_id: unsaved,
+                        controlling: true,
+                    },
+                ]),
+                &coordinator,
+            )
+            .expect("watcher reports are applied");
+        assert_eq!(state.screen_watchers().len(), 2);
+        assert!(state.screen_watchers()[1].controlling);
+
+        state.devices = vec![paired_device(phone, "Jacob's phone")];
+        assert_eq!(state.device_name(phone), "Jacob's phone");
+        assert_eq!(
+            state.device_name(unsaved),
+            unsaved.to_string().split('-').next().unwrap(),
+            "a device that is not saved yet still has something to show"
+        );
+
+        // A device that left stops being shown.
+        state
+            .apply_listener_event(
+                ListenerProcessEvent::screen_watchers(Vec::new()),
+                &coordinator,
+            )
+            .expect("an empty listing is applied");
+        assert!(state.screen_watchers().is_empty());
+    }
+
+    fn paired_device(device_id: ControllerDeviceId, name: &str) -> PairedDeviceRecord {
+        PairedDeviceRecord {
+            device_id,
+            public_key: termirust_domain::DevicePublicKey([9; 32]),
+            display_name: name.to_owned(),
+            capabilities: termirust_domain::ControllerCapabilities::default(),
+            protocol_range: termirust_domain::ControllerProtocolRange::V1,
+            created_at: 1,
+            last_seen_at: None,
+            revocation_epoch: 1,
+            identity_generation: termirust_domain::HostIdentityGeneration::INITIAL,
+            status: termirust_domain::PairedDeviceStatus::Online,
+            source_offer_id: PairingOfferId::new(),
+        }
     }
 
     #[test]
@@ -1924,8 +2823,13 @@ mod network_tests {
         assert_eq!(super::grouped_pairing_code("305917"), "305 917");
         assert_eq!(super::grouped_pairing_code("12345"), "12345");
 
-        let mut state =
-            RemoteDevicesState::open_default(&ControllerCoordinator::default(), None, false);
+        let mut state = RemoteDevicesState::open_default(
+            &ControllerCoordinator::default(),
+            None,
+            false,
+            false,
+            None,
+        );
         let address = |label: &str, kind, value: &str| termirust_domain::ListeningAddress {
             interface_id: termirust_domain::NetworkInterfaceId::new(format!("1:{label}")).unwrap(),
             label: label.into(),
@@ -1989,7 +2893,7 @@ mod network_tests {
     #[test]
     fn pairing_events_require_one_matching_offer_and_fail_closed() {
         let coordinator = ControllerCoordinator::default();
-        let mut state = RemoteDevicesState::open_default(&coordinator, None, false);
+        let mut state = RemoteDevicesState::open_default(&coordinator, None, false, false, None);
         let offer_id = PairingOfferId::new();
         state
             .apply_listener_event(

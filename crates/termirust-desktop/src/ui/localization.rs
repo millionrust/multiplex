@@ -755,6 +755,106 @@ static_message!(
     remote_terminals_service_unsupported,
     RemoteTerminalsServiceUnsupportedArgs
 );
+static_message!(remote_screens_title, RemoteScreensTitleArgs);
+static_message!(remote_screens_description, RemoteScreensDescriptionArgs);
+static_message!(remote_screens_sharing_label, RemoteScreensSharingLabelArgs);
+static_message!(
+    remote_screens_sharing_description,
+    RemoteScreensSharingDescriptionArgs
+);
+static_message!(remote_screens_sharing_share, RemoteScreensSharingShareArgs);
+static_message!(remote_screens_sharing_hide, RemoteScreensSharingHideArgs);
+static_message!(remote_screens_sharing_saved, RemoteScreensSharingSavedArgs);
+static_message!(
+    remote_screens_permission_hint,
+    RemoteScreensPermissionHintArgs
+);
+static_message!(remote_screens_watching_none, RemoteScreensWatchingNoneArgs);
+static_message!(remote_screens_stop_action, RemoteScreensStopActionArgs);
+static_message!(watched_computers_title, WatchedComputersTitleArgs);
+static_message!(
+    watched_computers_description,
+    WatchedComputersDescriptionArgs
+);
+static_message!(
+    watched_computers_address_label,
+    WatchedComputersAddressLabelArgs
+);
+static_message!(watched_computers_code_label, WatchedComputersCodeLabelArgs);
+static_message!(watched_computers_name_label, WatchedComputersNameLabelArgs);
+static_message!(
+    watched_computers_pair_action,
+    WatchedComputersPairActionArgs
+);
+static_message!(watched_computers_pairing, WatchedComputersPairingArgs);
+static_message!(watched_computers_none, WatchedComputersNoneArgs);
+static_message!(
+    watched_computers_forget_action,
+    WatchedComputersForgetActionArgs
+);
+static_message!(
+    watched_computers_watch_action,
+    WatchedComputersWatchActionArgs
+);
+static_message!(
+    watched_computers_watch_failed,
+    WatchedComputersWatchFailedArgs
+);
+static_message!(
+    remote_screen_inspector_state,
+    RemoteScreenInspectorStateArgs
+);
+static_message!(remote_screen_inspector_zoom, RemoteScreenInspectorZoomArgs);
+static_message!(remote_screen_inspector_size, RemoteScreenInspectorSizeArgs);
+static_message!(
+    remote_screen_inspector_pictures,
+    RemoteScreenInspectorPicturesArgs
+);
+static_message!(
+    remote_screen_inspector_displays,
+    RemoteScreenInspectorDisplaysArgs
+);
+static_message!(
+    remote_screen_inspector_control,
+    RemoteScreenInspectorControlArgs
+);
+static_message!(remote_screen_fit_action, RemoteScreenFitActionArgs);
+static_message!(remote_screen_take_control, RemoteScreenTakeControlArgs);
+static_message!(
+    remote_screen_give_back_control,
+    RemoteScreenGiveBackControlArgs
+);
+static_message!(remote_screen_control_this, RemoteScreenControlThisArgs);
+static_message!(
+    remote_screen_control_another,
+    RemoteScreenControlAnotherArgs
+);
+static_message!(remote_screen_control_nobody, RemoteScreenControlNobodyArgs);
+static_message!(remote_screen_connecting, RemoteScreenConnectingArgs);
+static_message!(remote_screen_watching, RemoteScreenWatchingArgs);
+static_message!(remote_screen_stage_a_note, RemoteScreenStageANoteArgs);
+static_message!(watched_computers_may_watch, WatchedComputersMayWatchArgs);
+static_message!(watched_computers_no_screen, WatchedComputersNoScreenArgs);
+static_message!(
+    watched_computers_address_placeholder,
+    WatchedComputersAddressPlaceholderArgs
+);
+static_message!(
+    watched_computers_code_placeholder,
+    WatchedComputersCodePlaceholderArgs
+);
+static_message!(
+    watched_computers_name_placeholder,
+    WatchedComputersNamePlaceholderArgs
+);
+
+pub fn remote_screens_watching_now(devices: &str) -> String {
+    text(&RemoteScreensWatchingNowArgs::new(UserData::new(devices)))
+}
+
+pub fn remote_screens_controlling_now(device: &str) -> String {
+    text(&RemoteScreensControllingNowArgs::new(UserData::new(device)))
+}
 pub fn remote_terminals_diff_skipped(count: usize) -> String {
     text(&RemoteTerminalsDiffSkippedArgs::new(Count(count as u64)))
 }
@@ -962,6 +1062,22 @@ static_message!(
 static_message!(
     remote_devices_restrict_input_action,
     RemoteDevicesRestrictInputActionArgs
+);
+static_message!(
+    remote_devices_allow_watching_action,
+    RemoteDevicesAllowWatchingActionArgs
+);
+static_message!(
+    remote_devices_restrict_watching_action,
+    RemoteDevicesRestrictWatchingActionArgs
+);
+static_message!(
+    remote_devices_allow_screen_control_action,
+    RemoteDevicesAllowScreenControlActionArgs
+);
+static_message!(
+    remote_devices_restrict_screen_control_action,
+    RemoteDevicesRestrictScreenControlActionArgs
 );
 static_message!(remote_devices_revoke_action, RemoteDevicesRevokeActionArgs);
 static_message!(

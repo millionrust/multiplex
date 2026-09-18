@@ -2586,6 +2586,9 @@ public enum ControllerCapability: Equatable, Hashable {
     case sendInput
     case resize
     case respondToApproval
+    case observeScreens
+    case controlPointer
+    case controlKeyboard
 
 
 
@@ -2617,6 +2620,12 @@ public struct FfiConverterTypeControllerCapability: FfiConverterRustBuffer {
 
         case 5: return .respondToApproval
 
+        case 6: return .observeScreens
+
+        case 7: return .controlPointer
+
+        case 8: return .controlKeyboard
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -2644,6 +2653,18 @@ public struct FfiConverterTypeControllerCapability: FfiConverterRustBuffer {
         case .respondToApproval:
             writeInt(&buf, Int32(5))
 
+
+        case .observeScreens:
+            writeInt(&buf, Int32(6))
+
+
+        case .controlPointer:
+            writeInt(&buf, Int32(7))
+
+
+        case .controlKeyboard:
+            writeInt(&buf, Int32(8))
+
         }
     }
 }
@@ -2670,6 +2691,7 @@ public enum ControllerFrameKind: Equatable, Hashable {
 
     case control
     case terminal
+    case screen
 
 
 
@@ -2695,6 +2717,8 @@ public struct FfiConverterTypeControllerFrameKind: FfiConverterRustBuffer {
 
         case 2: return .terminal
 
+        case 3: return .screen
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -2709,6 +2733,10 @@ public struct FfiConverterTypeControllerFrameKind: FfiConverterRustBuffer {
 
         case .terminal:
             writeInt(&buf, Int32(2))
+
+
+        case .screen:
+            writeInt(&buf, Int32(3))
 
         }
     }

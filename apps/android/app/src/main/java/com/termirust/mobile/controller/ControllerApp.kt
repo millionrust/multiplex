@@ -132,6 +132,28 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
 
     BackHandler(enabled = activeTerminal != null) { viewModel.detachTerminal() }
 
+    val screenViewer = viewModel.screens.viewer
+    BackHandler(enabled = screenViewer != null) { viewModel.closeScreen() }
+    if (screenViewer != null) {
+        RemoteScreenView(
+            model = screenViewer,
+            reconnecting = viewModel.screens.reconnecting,
+            onClose = viewModel::closeScreen,
+            modifier = modifier,
+        )
+        return
+    }
+    // The connection carries one session at a time, so the preview runs only while a computer's
+    // page is on screen, and only once the fleet has finished loading.
+    LaunchedEffect(state.selectedHostId, state.connection, activeTerminal != null) {
+        if (activeTerminal == null && viewModel.canWatchSelectedHost()) {
+            viewModel.startScreenPreview()
+        } else {
+            viewModel.stopScreenPreview()
+        }
+    }
+    DisposableEffect(Unit) { onDispose { viewModel.stopScreenPreview() } }
+
     MaterialTheme {
         Scaffold(
             modifier = modifier.fillMaxSize(),
@@ -217,6 +239,9 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                             onConfigureSsh = { showSshConfiguration = true },
                             onConfigureRelay = { showRelayConfiguration = true },
                             modifier = Modifier.weight(1f),
+                            screens = viewModel.screens,
+                            canWatch = viewModel.canWatchSelectedHost(),
+                            onOpenScreen = viewModel::openScreen,
                         )
                     }
                 } else {
@@ -231,6 +256,9 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                             onConfigureSsh = { showSshConfiguration = true },
                             onConfigureRelay = { showRelayConfiguration = true },
                             modifier = Modifier.weight(1f),
+                            screens = viewModel.screens,
+                            canWatch = viewModel.canWatchSelectedHost(),
+                            onOpenScreen = viewModel::openScreen,
                         )
                     }
                 }
@@ -518,6 +546,9 @@ private fun FleetDetail(
     onConfigureSsh: () -> Unit,
     onConfigureRelay: () -> Unit,
     modifier: Modifier = Modifier,
+    screens: ControllerScreenCoordinator? = null,
+    canWatch: Boolean = false,
+    onOpenScreen: () -> Unit = {},
 ) {
     val openTerminals = state.sessions.filter(ControllerSessionSummary::isOpenTerminal)
     val previousSessions = state.sessions.filterNot(ControllerSessionSummary::isOpenTerminal)
@@ -528,6 +559,16 @@ private fun FleetDetail(
             Modifier.fillMaxSize().padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (canWatch && screens != null) {
+                item(key = "this-computers-screen") {
+                    ControllerScreenPreviewCard(
+                        preview = screens.preview,
+                        lastPicture = state.selectedHostId?.let { screens.lastPictures[it] },
+                        unavailable = screens.unavailable,
+                        onOpenScreen = onOpenScreen,
+                    )
+                }
+            }
             if (openTerminals.isEmpty()) {
                 item(key = "no-open-terminals") {
                     Box(
