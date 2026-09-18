@@ -34,6 +34,7 @@
 		3362D87D95C5128F748A796A /* ControllerTerminalViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45ADAEE8F8C761105B93C634 /* ControllerTerminalViewModel.swift */; };
 		35ED5FDC6E85CC897AB16B62 /* RelayControllerTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99F06B966AD6B19BF477A024 /* RelayControllerTransport.swift */; };
 		38C73FA0B03B285F469013E7 /* MobileRouteContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE77A14B5817F4A38B3F57F0 /* MobileRouteContractTests.swift */; };
+		38DD6E5381D438CC43D476A0 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 53C965CBA5470D9ECD6481D9 /* CoreVideo.framework */; };
 		3CBC437CC8FD2A7CAFE1CCDA /* EncryptedVaultStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 277131147B3185EC9831827E /* EncryptedVaultStore.swift */; };
 		3EFF07897B04FDA7E0BB9B82 /* MobileVaultModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FD0C7D7FEBD3CB7E9E482B /* MobileVaultModels.swift */; };
 		441B16E03D4863C9CDE18415 /* EnrollmentViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC277EA4805C5A5D45284C24 /* EnrollmentViewModel.swift */; };
@@ -44,6 +45,7 @@
 		4F6A15013CC0F979AC488612 /* DirectSSHIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35651BFBF6D6A54BB8ECCD66 /* DirectSSHIntegrationTests.swift */; };
 		55746CDCCC86711B59D27FF8 /* terminal-interactive-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 1C1E7DCEBF6D425DCE83CEEA /* terminal-interactive-v1.json */; };
 		56ED0C248BE291FB0945CBA9 /* ReplicationCustodyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9FE8A3B280B02C30AF0B071 /* ReplicationCustodyTests.swift */; };
+		5919DE05ED8AFDEF4774D21D /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9857584ACBF54CFE3EF52439 /* CoreMedia.framework */; };
 		5B6E6EF3C90E8AD989362F7D /* TerminalInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 340634489256C66C5BA35498 /* TerminalInteractionTests.swift */; };
 		5C3D5C9E44DD7CB4F15A203D /* ReplicationDocumentReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55B9F9D4A45EB9BC8D19AACC /* ReplicationDocumentReaderTests.swift */; };
 		5FDD3AC5075BF49968505C12 /* MobileSSHSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8080B6D16BFE0ADEE7114B0B /* MobileSSHSession.swift */; };
@@ -57,6 +59,7 @@
 		775848E92C529BF6B8B02838 /* AppleControllerRouteViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E1408239ECD857465267C7 /* AppleControllerRouteViewModelTests.swift */; };
 		79A6A8B2381FB2C9319EFD99 /* ControllerReadOnlyAttach.swift in Sources */ = {isa = PBXBuildFile; fileRef = C71FF821F9BC71B9C9F14692 /* ControllerReadOnlyAttach.swift */; };
 		7A740E922F044472CD76815E /* controller-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 26B5CDEA33B10C29FDE1E103 /* controller-v1.json */; };
+		7BC12CEB77638F96894844C8 /* VideoToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B16B406E13B7FD59FC3352E3 /* VideoToolbox.framework */; };
 		7F3B1423EA45161ABAA62A33 /* TerminalInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E45128AD706AEC225C1F294 /* TerminalInteraction.swift */; };
 		842AE4985FCB208E1989689D /* ControllerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E63E0CD0058EC2B95291EA /* ControllerModels.swift */; };
 		84E47946BCBB1409D8437229 /* RemoteScreenViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07AE6F873072C7082558C3F0 /* RemoteScreenViewModel.swift */; };
@@ -177,6 +180,7 @@
 		50FB13028C2D8BE39B1B6BEF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		53249E4EEEE0C924FB483867 /* TermiRustRemoteScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermiRustRemoteScreens.swift; sourceTree = "<group>"; };
 		5345E0FEC3299E45F394BA0C /* EnrollmentRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnrollmentRepository.swift; sourceTree = "<group>"; };
+		53C965CBA5470D9ECD6481D9 /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = System/Library/Frameworks/CoreVideo.framework; sourceTree = SDKROOT; };
 		55B9F9D4A45EB9BC8D19AACC /* ReplicationDocumentReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplicationDocumentReaderTests.swift; sourceTree = "<group>"; };
 		57E4611CBFB4855809D086F6 /* MobileRouteContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileRouteContract.swift; sourceTree = "<group>"; };
 		59FF87EDAB4C4C33227940A4 /* terminal-acceptance-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "terminal-acceptance-v1.json"; sourceTree = "<group>"; };
@@ -206,6 +210,7 @@
 		938B1ACAB594425CA571469D /* EnrollmentWorkflowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnrollmentWorkflowTests.swift; sourceTree = "<group>"; };
 		9602C2DB16DA29C6C9736CE0 /* terminal-interaction-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "terminal-interaction-v1.json"; sourceTree = "<group>"; };
 		961259E09EB8448FEC2BD91E /* ControllerFleetCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerFleetCacheTests.swift; sourceTree = "<group>"; };
+		9857584ACBF54CFE3EF52439 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
 		99F06B966AD6B19BF477A024 /* RelayControllerTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayControllerTransport.swift; sourceTree = "<group>"; };
 		9D5283F9C9C5C0322F38E46C /* ControllerQRCodeScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerQRCodeScanner.swift; sourceTree = "<group>"; };
 		A01D81A3386AE96F20F17AB5 /* TermiRustMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TermiRustMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -217,6 +222,7 @@
 		AB27C662BBB0427BE57EAD95 /* NativeMobileVaultDecryptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMobileVaultDecryptor.swift; sourceTree = "<group>"; };
 		AC21F9172941D89CFE3131A7 /* MobileVaultImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileVaultImporter.swift; sourceTree = "<group>"; };
 		AE5C2C71C1D39ECA5CDD08FE /* SlateColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlateColors.swift; sourceTree = "<group>"; };
+		B16B406E13B7FD59FC3352E3 /* VideoToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = VideoToolbox.framework; path = System/Library/Frameworks/VideoToolbox.framework; sourceTree = SDKROOT; };
 		B820A5D658D609799EC6CC7C /* mobile-route-contract-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "mobile-route-contract-v1.json"; sourceTree = "<group>"; };
 		B8387375125313FDB8A0D114 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		B93220992F2C832439502E21 /* TerminalGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalGrid.swift; sourceTree = "<group>"; };
@@ -259,6 +265,9 @@
 				0842825D1B1A44C19B1E4509 /* TermiRustMobileCrypto.xcframework in Frameworks */,
 				1496F409B977283CBB781841 /* TermiRustControllerSecurity.xcframework in Frameworks */,
 				D9B05A09464879B08DE808BD /* TermiRustRemoteScreens.xcframework in Frameworks */,
+				7BC12CEB77638F96894844C8 /* VideoToolbox.framework in Frameworks */,
+				5919DE05ED8AFDEF4774D21D /* CoreMedia.framework in Frameworks */,
+				38DD6E5381D438CC43D476A0 /* CoreVideo.framework in Frameworks */,
 				01E6CA77F435F2B6CE10DBD7 /* TermiRustReplicationSecurity.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -294,10 +303,13 @@
 		379150458C4431587D1D3C6C /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				9857584ACBF54CFE3EF52439 /* CoreMedia.framework */,
+				53C965CBA5470D9ECD6481D9 /* CoreVideo.framework */,
 				BFCBCA3644B906F6E55A4C86 /* TermiRustControllerSecurity.xcframework */,
 				6DD9DB903CBD0DE616F7B7E4 /* TermiRustMobileCrypto.xcframework */,
 				91172E2BA51A0269F0A317C2 /* TermiRustRemoteScreens.xcframework */,
 				CE46284FAD736FCBADBE491A /* TermiRustReplicationSecurity.xcframework */,
+				B16B406E13B7FD59FC3352E3 /* VideoToolbox.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";

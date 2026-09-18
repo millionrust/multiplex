@@ -97,6 +97,12 @@ targets:
         embed: false
       - framework: Frameworks/TermiRustRemoteScreens.xcframework
         embed: false
+      # The Remote Screens library decodes and encodes video through VideoToolbox, which reaches
+      # the linker as undefined symbols unless the frameworks behind them are named here: a static
+      # library carries no record of what it expects to be linked against.
+      - sdk: VideoToolbox.framework
+      - sdk: CoreMedia.framework
+      - sdk: CoreVideo.framework
       - framework: Replication/TermiRustReplicationSecurity.xcframework
         embed: false
     settings:
