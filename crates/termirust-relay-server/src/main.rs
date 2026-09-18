@@ -330,10 +330,23 @@ fn remove_if_exists(path: &Path) {
     }
 }
 
+/// Commits a directory's entries to disk. Asking for this means opening the directory as a file,
+/// which Windows refuses: what was written there still stands, only its durability across a power
+/// cut is weaker.
 fn sync_directory(path: &Path) -> Result<(), String> {
-    File::open(path)
-        .and_then(|directory| directory.sync_all())
-        .map_err(redacted_io)
+    match File::open(path).and_then(|directory| directory.sync_all()) {
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::Unsupported
+                    | std::io::ErrorKind::InvalidInput
+                    | std::io::ErrorKind::PermissionDenied
+            ) =>
+        {
+            Ok(())
+        }
+        other => other.map_err(redacted_io),
+    }
 }
 
 #[cfg(unix)]

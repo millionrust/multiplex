@@ -43,9 +43,14 @@ impl LeaseError {
     }
 
     fn io(error: io::Error) -> Self {
+        // A lease another process holds reads as "would block" where locks queue, and as a lock
+        // violation on Windows, which has no kind of its own; fs2 names that error per platform.
+        let contended = error.raw_os_error().is_some()
+            && error.raw_os_error() == fs2::lock_contended_error().raw_os_error();
         let code = match error.kind() {
             io::ErrorKind::PermissionDenied => LeaseErrorCode::PermissionDenied,
             io::ErrorKind::WouldBlock => LeaseErrorCode::Busy,
+            _ if contended => LeaseErrorCode::Busy,
             _ => LeaseErrorCode::Io,
         };
         Self {

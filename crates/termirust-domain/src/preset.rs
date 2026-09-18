@@ -537,7 +537,13 @@ mod tests {
 
     #[test]
     fn sensitive_values_are_redacted_from_debug() {
-        let executable = ExecutableSpec::parse("/Users/private/customer-cli").unwrap();
+        // Windows calls a path absolute only with a drive behind it.
+        let executable = ExecutableSpec::parse(if cfg!(windows) {
+            r"C:\Users\private\customer-cli"
+        } else {
+            "/Users/private/customer-cli"
+        })
+        .unwrap();
         let argument = OsStringValue::new("--token=secret").unwrap();
         assert!(!format!("{executable:?}").contains("customer-cli"));
         assert!(!format!("{argument:?}").contains("secret"));

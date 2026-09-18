@@ -411,7 +411,13 @@ mod tests {
 
     #[test]
     fn managed_paths_and_debug_are_content_free() {
-        let path = ManagedPath::new(PathBuf::from("/private/canary-secret")).unwrap();
+        // Windows calls a path absolute only with a drive behind it.
+        let path = ManagedPath::new(PathBuf::from(if cfg!(windows) {
+            r"C:\private\canary-secret"
+        } else {
+            "/private/canary-secret"
+        }))
+        .unwrap();
         assert!(!format!("{path:?}").contains("canary-secret"));
         assert_eq!(
             ManagedPath::new(PathBuf::from("relative")),

@@ -1526,14 +1526,31 @@ fn write_profile_atomically(
             .and_then(|()| file.sync_all())
             .map_err(|_| profile_storage_denied())?;
         fs::rename(&temporary, path).map_err(|_| profile_storage_denied())?;
-        fs::File::open(directory)
-            .and_then(|directory| directory.sync_all())
-            .map_err(|_| profile_storage_denied())
+        sync_directory(directory).map_err(|_| profile_storage_denied())
     })();
     if result.is_err() {
         let _ = fs::remove_file(&temporary);
     }
     result
+}
+
+/// Commits a rename to the directory holding it. Asking for this means opening the directory as a
+/// file, which Windows refuses: the rename itself stands there, only its durability across a
+/// power cut is weaker, and that is not a reason to refuse to store the profile.
+fn sync_directory(directory: &Path) -> std::io::Result<()> {
+    match fs::File::open(directory).and_then(|directory| directory.sync_all()) {
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::Unsupported
+                    | std::io::ErrorKind::InvalidInput
+                    | std::io::ErrorKind::PermissionDenied
+            ) =>
+        {
+            Ok(())
+        }
+        other => other,
+    }
 }
 
 #[cfg(unix)]

@@ -173,13 +173,26 @@ fn map_state_io(error: std::io::Error) -> RelayServerError {
     RelayServerError::with_source(code, error)
 }
 
+/// Commits a rename to the directory holding it. Asking for this means opening the directory as
+/// a file, which Windows refuses: the rename itself stands there, only its durability across a
+/// power cut is weaker.
 fn sync_parent(path: &Path) -> Result<(), RelayServerError> {
     let parent = path
         .parent()
         .ok_or_else(|| RelayServerError::new(RelayDiagnosticCode::InvalidConfig))?;
-    File::open(parent)
-        .and_then(|directory| directory.sync_all())
-        .map_err(map_state_io)
+    match File::open(parent).and_then(|directory| directory.sync_all()) {
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::Unsupported
+                    | std::io::ErrorKind::InvalidInput
+                    | std::io::ErrorKind::PermissionDenied
+            ) =>
+        {
+            Ok(())
+        }
+        other => other.map_err(map_state_io),
+    }
 }
 
 #[cfg(unix)]

@@ -977,8 +977,23 @@ fn reject_unsafe_target(path: &Path) -> Result<(), HealthError> {
     }
 }
 
+/// Commits a directory's entries to disk. Asking for this means opening the directory as a file,
+/// which Windows refuses: what was written there still stands, only its durability across a power
+/// cut is weaker. `transcript::sync_directory` reads the same way.
 fn sync_directory(path: &Path) -> io::Result<()> {
-    File::open(path)?.sync_all()
+    match File::open(path).and_then(|directory| directory.sync_all()) {
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::Unsupported
+                    | io::ErrorKind::InvalidInput
+                    | io::ErrorKind::PermissionDenied
+            ) =>
+        {
+            Ok(())
+        }
+        other => other,
+    }
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {

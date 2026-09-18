@@ -20,14 +20,21 @@ pub(crate) fn exclusive_with_timeout(
     loop {
         match fs2::FileExt::try_lock_exclusive(file) {
             Ok(()) => return Ok(()),
-            Err(error)
-                if error.kind() == io::ErrorKind::WouldBlock && Instant::now() < deadline =>
-            {
+            Err(error) if contended(&error) && Instant::now() < deadline => {
                 thread::sleep(retry_interval);
             }
             Err(error) => return Err(error),
         }
     }
+}
+
+/// Whether someone else holds this lock, which is worth waiting for rather than failing on. Locks
+/// that queue report "would block"; Windows reports a lock violation, which has no kind of its
+/// own, so fs2 names that error per platform.
+fn contended(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::WouldBlock
+        || (error.raw_os_error().is_some()
+            && error.raw_os_error() == fs2::lock_contended_error().raw_os_error())
 }
 
 pub(crate) fn release(file: &File) {

@@ -334,10 +334,13 @@ mod tests {
     fn canonical_path_resolves_directory_and_stable_identity() {
         let fixture = tempfile::tempdir().unwrap();
         let canonical = CanonicalPath::resolve(fixture.path()).unwrap();
+        // The same directory, written the way every tool can use: Windows canonical paths carry
+        // a `\\?\` prefix that Git refuses and that no other spelling compares equal to.
         assert_eq!(
-            canonical.as_path(),
+            fs::canonicalize(canonical.as_path()).unwrap(),
             fs::canonicalize(fixture.path()).unwrap()
         );
+        assert!(!canonical.as_path().to_string_lossy().starts_with(r"\\?\"));
         assert_eq!(canonical.status(), ProjectStatus::Available);
     }
 

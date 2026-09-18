@@ -262,9 +262,19 @@ impl TrustStateStore for FileTrustStateStore {
         temporary
             .persist(&self.path)
             .map_err(|_| TrustError::new(TrustErrorCode::StateIo))?;
-        File::open(parent)
-            .and_then(|directory| directory.sync_all())
-            .map_err(|_| TrustError::new(TrustErrorCode::StateIo))?;
+        // Committing the rename means opening the directory as a file, which Windows refuses:
+        // the rename itself stands there, only its durability across a power cut is weaker.
+        match File::open(parent).and_then(|directory| directory.sync_all()) {
+            Ok(()) => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::Unsupported
+                        | std::io::ErrorKind::InvalidInput
+                        | std::io::ErrorKind::PermissionDenied
+                ) => {}
+            Err(_) => return Err(TrustError::new(TrustErrorCode::StateIo)),
+        }
         Ok(())
     }
 }

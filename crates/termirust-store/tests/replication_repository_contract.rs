@@ -50,6 +50,16 @@ struct RepositoryTransportFixture {
     max_conflict_artifacts: usize,
 }
 
+/// What a write can promise on this platform. Committing a rename means opening the directory
+/// holding it as a file, which Windows refuses, so a rename is as durable as a write gets there.
+fn written_durability() -> Durability {
+    if cfg!(windows) {
+        Durability::RenameOnly
+    } else {
+        Durability::Full
+    }
+}
+
 fn fixture() -> MergeFixture {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/fixtures/replication/merge-contract-v1.json");
@@ -493,7 +503,7 @@ fn interrupted_activation_keeps_old_primary_and_abandons_retirement_without_dele
             .unwrap(),
         ReplicationRetirementOutcome::AbandonedUncommitted {
             reference_count: 1,
-            durability: Durability::Full,
+            durability: written_durability(),
         }
     );
     assert!(backend.contains(&retired));
@@ -546,7 +556,7 @@ fn committed_retirement_survives_locked_backend_and_retries_idempotently() {
         ReplicationRetirementOutcome::Completed {
             deleted: 1,
             already_missing: 0,
-            durability: Durability::Full,
+            durability: written_durability(),
         }
     );
     assert!(!backend.contains(&retired));
@@ -674,7 +684,11 @@ fn shared_folder_transport_uses_exact_cas_and_preserves_concurrent_candidates() 
             .iter()
             .any(|entry| entry.candidates.len() == 2)
     );
-    assert_eq!(first.pull(&policy).unwrap().unwrap(), merged_snapshot);
+    // A pull performs no write, so the durability it reports describes nothing; compare what
+    // the transport actually carried.
+    let pulled = first.pull(&policy).unwrap().unwrap();
+    assert_eq!(pulled.revision, merged_snapshot.revision);
+    assert_eq!(pulled.document, merged_snapshot.document);
 }
 
 #[test]

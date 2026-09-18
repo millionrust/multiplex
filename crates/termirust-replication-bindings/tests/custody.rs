@@ -1,4 +1,10 @@
+// The enrollment lock this facade takes is opened with a private mode and a refusal to follow
+// symlinks, which are Unix flags; `product.rs` answers `Unavailable` rather than open that file
+// without them, so on Windows there is no behaviour here to exercise.
+#![cfg(unix)]
+
 use std::collections::{HashMap, hash_map::Entry};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use termirust_replication_bindings::{
@@ -9,6 +15,18 @@ use termirust_replication_security::{
     ReplicationSecretBackend, ReplicationSecretKind, ReplicationSecretRef,
     ReplicationSecretStoreError,
 };
+
+/// Resolves a path the way the rest of the workspace does. `std::fs::canonicalize` answers with
+/// the `\\?\` verbatim form on Windows, which these interfaces do not accept as a name.
+trait CanonicalizeForTest {
+    fn canonicalize_for_test(&self) -> PathBuf;
+}
+
+impl CanonicalizeForTest for Path {
+    fn canonicalize_for_test(&self) -> PathBuf {
+        termirust_domain::canonical_path(self).unwrap()
+    }
+}
 
 #[derive(Default)]
 struct MemoryStore {
@@ -25,7 +43,7 @@ fn mobile_explicit_recovery_rolls_back_only_the_journaled_epoch() {
     let exchange = tempfile::tempdir().unwrap();
     let store = Arc::new(MemoryStore::default());
     let facade = MobileReplicationProduct::new(
-        dir.path().canonicalize().unwrap().to_str().unwrap().into(),
+        dir.path().canonicalize_for_test().to_str().unwrap().into(),
         store.clone(),
     )
     .unwrap();
@@ -35,8 +53,7 @@ fn mobile_explicit_recovery_rolls_back_only_the_journaled_epoch() {
         .prepare_enrollment(
             exchange
                 .path()
-                .canonicalize()
-                .unwrap()
+                .canonicalize_for_test()
                 .to_str()
                 .unwrap()
                 .into(),
@@ -102,8 +119,7 @@ fn mobile_enrollment_review_and_accept_preserve_exact_request_and_custody() {
     let store = Arc::new(MemoryStore::default());
     let path = member
         .path()
-        .canonicalize()
-        .unwrap()
+        .canonicalize_for_test()
         .to_str()
         .unwrap()
         .to_owned();
@@ -112,8 +128,7 @@ fn mobile_enrollment_review_and_accept_preserve_exact_request_and_custody() {
         .prepare_enrollment(
             exchange
                 .path()
-                .canonicalize()
-                .unwrap()
+                .canonicalize_for_test()
                 .to_str()
                 .unwrap()
                 .to_owned(),
@@ -137,8 +152,7 @@ fn mobile_enrollment_review_and_accept_preserve_exact_request_and_custody() {
     let other_facade = MobileReplicationProduct::new(
         other
             .path()
-            .canonicalize()
-            .unwrap()
+            .canonicalize_for_test()
             .to_str()
             .unwrap()
             .to_owned(),
@@ -149,8 +163,7 @@ fn mobile_enrollment_review_and_accept_preserve_exact_request_and_custody() {
         .prepare_enrollment(
             exchange
                 .path()
-                .canonicalize()
-                .unwrap()
+                .canonicalize_for_test()
                 .to_str()
                 .unwrap()
                 .to_owned(),
@@ -379,8 +392,7 @@ fn host_discovery_is_authenticated_inert_and_reopens_after_import() {
     let store = Arc::new(MemoryStore::default());
     let path = member
         .path()
-        .canonicalize()
-        .unwrap()
+        .canonicalize_for_test()
         .to_str()
         .unwrap()
         .to_owned();
@@ -389,8 +401,7 @@ fn host_discovery_is_authenticated_inert_and_reopens_after_import() {
         .prepare_enrollment(
             exchange
                 .path()
-                .canonicalize()
-                .unwrap()
+                .canonicalize_for_test()
                 .to_str()
                 .unwrap()
                 .to_owned(),
@@ -553,16 +564,14 @@ fn mobile_enrollment_reopens_and_cancels_only_its_identity() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir
         .path()
-        .canonicalize()
-        .unwrap()
+        .canonicalize_for_test()
         .to_str()
         .unwrap()
         .to_owned();
     let exchange = tempfile::tempdir().unwrap();
     let exchange_path = exchange
         .path()
-        .canonicalize()
-        .unwrap()
+        .canonicalize_for_test()
         .to_str()
         .unwrap()
         .to_owned();
@@ -613,8 +622,7 @@ fn mobile_enrollment_reopens_and_cancels_only_its_identity() {
     let next = reopened
         .prepare_enrollment(
             dir.path()
-                .canonicalize()
-                .unwrap()
+                .canonicalize_for_test()
                 .to_str()
                 .unwrap()
                 .to_owned(),
@@ -644,8 +652,7 @@ fn mobile_failed_cancellation_is_visible_and_resumes() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir
         .path()
-        .canonicalize()
-        .unwrap()
+        .canonicalize_for_test()
         .to_str()
         .unwrap()
         .to_owned();
@@ -676,8 +683,7 @@ fn mobile_busy_lock_and_invalid_provider_paths_do_not_create_secrets() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir
         .path()
-        .canonicalize()
-        .unwrap()
+        .canonicalize_for_test()
         .to_str()
         .unwrap()
         .to_owned();
@@ -720,8 +726,7 @@ fn mobile_corrupt_pending_is_not_absent_and_is_preserved() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir
         .path()
-        .canonicalize()
-        .unwrap()
+        .canonicalize_for_test()
         .to_str()
         .unwrap()
         .to_owned();
@@ -747,8 +752,7 @@ fn mobile_concurrent_prepare_allocates_one_identity() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir
         .path()
-        .canonicalize()
-        .unwrap()
+        .canonicalize_for_test()
         .to_str()
         .unwrap()
         .to_owned();

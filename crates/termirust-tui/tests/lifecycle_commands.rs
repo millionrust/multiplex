@@ -35,7 +35,14 @@ fn management_lifecycle_commands_use_typed_revisions_and_preserve_metadata() {
             PresetDraft {
                 id: preset_id,
                 label: "Safe shell".into(),
-                executable: "/bin/sh".into(),
+                // Windows calls a path absolute only with a drive behind it, and the preset
+                // refuses a relative executable.
+                executable: if cfg!(windows) {
+                    r"C:\Windows\System32\cmd.exe"
+                } else {
+                    "/bin/sh"
+                }
+                .into(),
                 args: vec!["-c".into(), "printf ready".into()],
                 working_directory: WorkingDirectoryRule::ProjectRoot,
                 runtime: None,

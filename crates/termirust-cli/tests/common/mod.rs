@@ -61,6 +61,32 @@ impl SeededStore {
     }
 }
 
+/// The program these fixtures record as a preset's executable. Windows calls a path absolute only
+/// with a drive behind it, so `/bin/sh` is refused there; the POSIX shell that comes with Git
+/// understands the arguments these fixtures use, and the command interpreter is always present.
+pub fn fixture_executable() -> String {
+    #[cfg(not(windows))]
+    {
+        "/bin/sh".to_owned()
+    }
+
+    #[cfg(windows)]
+    {
+        const CANDIDATES: [&str; 3] = [
+            r"C:\Program Files\Git\usr\bin\sh.exe",
+            r"C:\Program Files\Git\bin\sh.exe",
+            r"C:\Windows\System32\cmd.exe",
+        ];
+        CANDIDATES
+            .iter()
+            .find(|candidate| std::path::Path::new(candidate).is_file())
+            .map_or_else(
+                || r"C:\Windows\System32\cmd.exe".to_owned(),
+                |candidate| (*candidate).to_owned(),
+            )
+    }
+}
+
 pub fn seed_store() -> SeededStore {
     let temp = tempfile::tempdir().unwrap();
     let config_root = temp.path().join("config");
@@ -82,7 +108,7 @@ pub fn seed_store() -> SeededStore {
             PresetDraft {
                 id: PRESET_ID,
                 label: "Counter".into(),
-                executable: "/bin/sh".into(),
+                executable: fixture_executable().into(),
                 args: vec!["-c".into(), "sleep 30".into()],
                 working_directory: WorkingDirectoryRule::ProjectRoot,
                 runtime: None,

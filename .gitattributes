@@ -1,0 +1,4 @@
+# Keep every text file's line endings the same on every machine. Sources are embedded and
+# compared byte for byte (`include_str!` against fixture text), and shell scripts must keep their
+# newlines, so a checkout that rewrites them to CRLF breaks builds and tests on Windows only.
+* text=auto eol=lf
