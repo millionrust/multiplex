@@ -148,12 +148,16 @@ impl WrappedSessionAppearance {
         //
         // A dropped path arrives bracketed, which tmux reads as a single key it has no name for,
         // so a catch-all is the only binding that can answer it; the path itself follows as
-        // ordinary bytes and arrives whole. tmux only offers that key to a binding from 3.6:
-        // 3.4 and 3.5a consume the paste in copy mode and the tab keeps the file dropped on it. tmux answers this binding before any binding for the
-        // key itself and tells it nothing about which key ran it, so a character typed by hand
-        // to a scrolled-back tab still ends copy mode without reaching the program. Binding every
-        // printable key to send itself does not work around that: tmux runs the catch-all
-        // instead, and a key sent from the binding that is leaving copy mode is swallowed.
+        // ordinary bytes. Whether that works depends on the tmux underneath: 3.6 and newer offer
+        // the key to this binding and deliver the path whole, 3.4 and 3.5a consume the paste in
+        // copy mode so the tab keeps the file, and 3.2a and 3.3a run the binding but let the
+        // paste's closing ESC[201~ through as text after the path.
+        //
+        // tmux answers this binding before any binding for the key itself and tells it nothing
+        // about which key ran it, so a character typed by hand to a scrolled-back tab still ends
+        // copy mode without reaching the program. Binding every printable key to send itself does
+        // not work around that: tmux runs the catch-all instead, and a key sent from the binding
+        // that is leaving copy mode is swallowed.
         bindings.push(Binding {
             key: "Any".to_owned(),
             wrapped: command_string(&["if-shell", "-F", TYPED_KEY_FORMAT, "copy-mode -q"]),

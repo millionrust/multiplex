@@ -741,25 +741,39 @@ fn a_file_dropped_on_a_scrolled_back_tab_reaches_the_program() {
     let dropped = "'/tmp/a b.txt'";
     client.type_bytes(format!("\x1b[200~{dropped} \x1b[201~").as_bytes());
 
-    // A paste only reaches a binding on tmux 3.6 and newer. Before that copy mode consumes the
-    // whole thing and the catch-all never runs, so the tab keeps a file dropped on it. Measured
-    // against 3.4, 3.5a, 3.6 and 3.7c with these very bindings; the older half is held to what it
-    // does today so that a tmux which starts answering is noticed rather than assumed.
-    let answers_a_paste = termirust_tmux::parse_version(server.tmux.version())
-        .is_none_or(|version| version >= (3, 6));
+    // Three behaviours, each measured with these very bindings against 3.2a, 3.3a, 3.4, 3.5a,
+    // 3.6 and 3.7c:
+    //   3.6 and newer  offer the paste to the catch-all, leave copy mode, and deliver the path
+    //                  whole.
+    //   3.4 and 3.5a   consume the whole paste in copy mode, so the catch-all never runs and the
+    //                  tab keeps the file dropped on it.
+    //   before 3.4     leave copy mode as well, but the paste's closing ESC[201~ reaches the
+    //                  program as text, so the path arrives with that sequence echoed after it.
+    // The middle band is held to what it does today so that a tmux which starts answering is
+    // noticed rather than assumed, and so is the clean delivery above it.
+    let version = termirust_tmux::parse_version(server.tmux.version());
+    let answers_a_paste = version.is_none_or(|version| !((3, 4)..(3, 6)).contains(&version));
+    let delivers_it_whole = version.is_none_or(|version| version >= (3, 6));
     if answers_a_paste {
         wait_for("#{pane_in_mode}", "0");
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        loop {
+        let screen = loop {
             let screen = server.output(&["capture-pane", "-p", "-t", session]);
             if screen.contains(dropped) {
-                break;
+                break screen;
             }
             assert!(
                 std::time::Instant::now() < deadline,
                 "the dropped path never reached the program, screen was {screen:?}"
             );
             std::thread::sleep(std::time::Duration::from_millis(50));
+        };
+        if delivers_it_whole {
+            assert!(
+                !screen.contains("201~"),
+                "tmux {} let the paste's closing sequence through as text: {screen:?}",
+                server.tmux.version()
+            );
         }
     } else {
         std::thread::sleep(std::time::Duration::from_secs(2));
