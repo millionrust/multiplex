@@ -193,6 +193,9 @@ cargo test --workspace --all-targets --locked --no-fail-fast   # everything, as 
 TERMIRUST_TUI_PROBE="bun run app.ts" cargo test -p termirust --bin termirust -- \
   a_terminal_interface_program_renders --ignored --nocapture   # drive a real TUI program
                                                                # through the emulator
+TERMIRUST_CLIPPY_BASE=<sha> python3 scripts/dev/clippy-changed.py  # the changed-line Clippy
+  # policy as CI runs it. Its base defaults to HEAD, so running it with a clean working tree
+  # reads no changed lines and always passes; CI passes the sha the push started from.
 cargo run -p termirust-slate --example gallery  # Slate component gallery
 cargo run -p termirust-ui-contract --bin generate-tokens  # after editing design/tokens.toml; also writes the mobile SlateTokens.swift and SlateTokens.kt
 ```
