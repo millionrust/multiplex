@@ -48,6 +48,23 @@ impl Default for EncoderConfig {
     }
 }
 
+/// How long a region must be carried by tiles before its cost is worth comparing against video.
+pub const REGION_COST_WINDOW_MS: u64 = 1_000;
+
+/// Roughly what an op costs on the wire, for the region cost measurement.
+///
+/// The payload plus its header, which is what `Batch::encode` writes. Close enough to compare two
+/// paths by; the exact figure is only known once a whole batch is framed, and waiting for that
+/// would mean threading byte counts back from the host.
+fn op_payload_bytes(op: &TileOp) -> usize {
+    const HEADER: usize = 17;
+    HEADER
+        + match op {
+            TileOp::Lossless { payload, .. } | TileOp::Lossy { payload, .. } => payload.len(),
+            TileOp::Solid { .. } | TileOp::Cached { .. } | TileOp::Move { .. } => 0,
+        }
+}
+
 /// What the viewer is believed to show in one tile.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ViewerTile {
@@ -71,6 +88,11 @@ pub struct Encoder {
     pub(crate) viewer: Vec<ViewerTile>,
     shadow: CacheShadow,
     next_sequence: u64,
+    /// Bytes the tile path has spent inside the motion region since it was promoted, and when that
+    /// was. Reset whenever the region changes, because a different rectangle is a different cost.
+    region_bytes: u64,
+    region_since_ms: Option<u64>,
+    region_now_ms: u64,
     /// Batch that last changed each tile's viewer state.
     sent_at: Vec<u64>,
     moves: VecDeque<(u64, Rect)>,
@@ -109,6 +131,9 @@ impl Encoder {
             viewer: vec![ViewerTile::Unknown; grid.len()],
             shadow: CacheShadow::new(config.cache_bytes),
             next_sequence: 1,
+            region_bytes: 0,
+            region_since_ms: None,
+            region_now_ms: 0,
             sent_at: vec![0; grid.len()],
             moves: VecDeque::new(),
             inserted: VecDeque::new(),
@@ -289,6 +314,22 @@ impl Encoder {
         self.next_sequence
     }
 
+    /// What the motion region has been costing the tile path, in bytes a second.
+    ///
+    /// `None` until the region has been carried by tiles for a full window, because a rate
+    /// measured over a fraction of a second is mostly noise, and the first moments after promotion
+    /// are the unthrottled cost rather than the settled one.
+    ///
+    /// This exists so the motion path can decline a region it would make more expensive. The tile
+    /// path throttles a promoted region to `tile_path_max_hz`, and for a modest region of smooth
+    /// content that can easily cost less than a video stream of it — measured in RS7 as 713 kbps
+    /// of tiles against 3,082 kbps of video for the same rectangle.
+    pub fn motion_region_bytes_per_second(&self) -> Option<u64> {
+        let since = self.region_since_ms?;
+        let elapsed = self.region_now_ms.saturating_sub(since);
+        (elapsed >= REGION_COST_WINDOW_MS).then(|| self.region_bytes * 1_000 / elapsed.max(1))
+    }
+
     /// Changes the lossy detail used for new picture tiles, for the degradation steps.
     pub fn set_lossy_detail(&mut self, detail: LossyDetail) {
         self.config.lossy_detail = detail;
@@ -368,6 +409,19 @@ impl Encoder {
                 }
             }
             self.motion_event = self.motion.observe(&still_different, now);
+            // A new or changed region is a new cost to measure; a demoted one has none.
+            self.region_now_ms = now;
+            match self.motion_event {
+                Some(MotionEvent::Promoted(_)) => {
+                    self.region_bytes = 0;
+                    self.region_since_ms = Some(now);
+                }
+                Some(MotionEvent::Demoted(_)) => {
+                    self.region_bytes = 0;
+                    self.region_since_ms = None;
+                }
+                None => {}
+            }
             if let Some(MotionEvent::Demoted(rect)) = self.motion_event {
                 for tile in self.grid.tiles_covering(rect).iter() {
                     self.viewer[tile.0 as usize] = ViewerTile::Unknown;
@@ -447,6 +501,14 @@ impl Encoder {
                     )
                 }
             };
+            // What this region costs the tile path, for whoever has to decide whether carrying it
+            // as video would be cheaper. Counted here because this is the only place that knows
+            // both which tile an op is for and how many bytes it came to.
+            if self.motion.contains(tile) {
+                self.region_bytes = self
+                    .region_bytes
+                    .saturating_add(op_payload_bytes(&op) as u64);
+            }
             self.viewer[tile.0 as usize] = state;
             self.sent_at[tile.0 as usize] = self.next_sequence;
             payload.clear();

@@ -31,7 +31,9 @@ pub use classify::{
     EDGE_CHANNEL_DELTA, MAX_PALETTE_COLORS, TEXT_EDGE_DENSITY_MILLI, TileClass, classify,
 };
 pub use decoder::{Applied, Decoder};
-pub use encoder::{Encoder, EncoderConfig, MAX_RESUME_HISTORY, REFINE_IDLE_MS, Resume};
+pub use encoder::{
+    Encoder, EncoderConfig, MAX_RESUME_HISTORY, REFINE_IDLE_MS, REGION_COST_WINDOW_MS, Resume,
+};
 pub use error::CodecError;
 pub use frame::{BYTES_PER_PIXEL, Frame, FrameBuffer};
 pub use geometry::{MAX_SURFACE_DIMENSION, Rect, Size, TILE_SIZE, TileGrid, TileIndex, TileSet};

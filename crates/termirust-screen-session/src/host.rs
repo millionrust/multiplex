@@ -635,6 +635,16 @@ impl<V: TicketVerifier> HostSession<V> {
             .and_then(|subscription| subscription.encoder.motion_region())
     }
 
+    /// What the motion region of `surface` has been costing the tile path, in bytes a second.
+    ///
+    /// `None` until it has been carried by tiles long enough to measure. See
+    /// [`termirust_screen_codec::Encoder::motion_region_bytes_per_second`].
+    pub fn motion_region_bytes_per_second(&self, surface: u32) -> Option<u64> {
+        self.subscriptions
+            .get(&key_for(surface, Profile::Interactive))
+            .and_then(|subscription| subscription.encoder.motion_region_bytes_per_second())
+    }
+
     /// Sends the decoder configuration for a surface's motion region.
     ///
     /// Dropped unless the viewer negotiated the motion path, so a caller that keeps an encoder

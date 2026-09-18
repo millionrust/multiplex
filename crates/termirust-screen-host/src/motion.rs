@@ -13,11 +13,18 @@
 //! negotiated video: in each case nothing is sent and the tile path, which is already running,
 //! carries the region on its own.
 
-use termirust_screen_codec::{Frame, Rect};
+use termirust_screen_codec::{Frame, REGION_COST_WINDOW_MS, Rect};
 use termirust_screen_protocol::{FeatureSet, MotionCodec, VideoConfig, VideoFrame};
 use termirust_screen_session::{HostSession, TicketVerifier};
 
 use crate::parity::{ParityPolicy, parity_for};
+
+/// Assumed gap between captured frames, for turning a frame count into a window.
+///
+/// The sender is not given a clock — it is called once per captured frame and nothing more — and a
+/// rate only has to be good enough to set two paths against each other, so 30 a second is close
+/// enough. A wrong assumption here biases both sides of the comparison the same way.
+const FRAME_INTERVAL_MS: u64 = 33;
 
 /// What the motion encoder spends on a link nothing is known about yet.
 pub const DEFAULT_VIDEO_BITRATE: u32 = 8_000_000;
@@ -78,6 +85,11 @@ pub struct MotionSender {
     bitrate: u32,
     /// The viewer has acknowledged at least one frame, so the video is really arriving.
     confirmed: bool,
+    /// This region was measured and the tile path was cheaper, so it is being left there. Cleared
+    /// when the region ends, which is the only honest moment to ask again.
+    declined: bool,
+    /// Whether the choice between the two paths has been made for this region.
+    decided: bool,
 }
 
 impl std::fmt::Debug for MotionSender {
@@ -113,6 +125,10 @@ struct Active {
     /// time — so an identical region is not encoded again. A viewer holding the last frame of a
     /// frozen picture is already showing the right thing.
     last: Vec<u8>,
+    /// What this stream has produced, and over how long, so it can be set against what the tile
+    /// path is spending on the same rectangle. Only needed until the choice is made.
+    video_bytes: u64,
+    video_window_ms: u64,
 }
 
 impl MotionSender {
@@ -125,6 +141,8 @@ impl MotionSender {
             policy: ParityPolicy::default(),
             bitrate: DEFAULT_VIDEO_BITRATE,
             confirmed: false,
+            declined: false,
+            decided: false,
         }
     }
 
@@ -135,6 +153,13 @@ impl MotionSender {
     }
 
     /// The rectangle currently being streamed, if any. For tests and for the session header.
+    /// Whether a promoted region was measured and left on the tile path because tiles were
+    /// cheaper. Worth reporting: a motion path that quietly declines looks identical to one that
+    /// is broken.
+    pub const fn declined(&self) -> bool {
+        self.declined
+    }
+
     pub fn region(&self) -> Option<Rect> {
         self.state.as_ref().map(|active| active.region)
     }
@@ -146,7 +171,12 @@ impl MotionSender {
         self.acknowledged.extend_from_slice(tokens);
         // The first acknowledgement is proof the viewer's decoder started. Until one arrives the
         // tile path keeps covering the region, so nothing is ever blank.
-        self.confirmed = !self.acknowledged.is_empty();
+        //
+        // Never for a region that has been declined. Acknowledgements for frames sent before the
+        // decision keep arriving afterwards, and letting them set this again told the tile path to
+        // stand down for a stream that no longer exists — nothing sent the region at all, which
+        // the matrix caught as a 3.7 second freeze on a link with bandwidth to spare.
+        self.confirmed = !self.declined && !self.acknowledged.is_empty();
     }
 
     /// Whether the viewer has confirmed it is decoding the motion region.
@@ -184,7 +214,12 @@ impl MotionSender {
         }
         // Tell the tile path whether it still has to cover the region. This is the whole saving
         // of the motion path: without it the region goes twice, once as video and once as tiles.
-        session.set_motion_carried(surface, self.confirmed);
+        // The tile path keeps covering the region until the choice below has been made, even once
+        // the viewer has confirmed the video. It costs about a second of sending the rectangle
+        // twice — RS5 puts that at roughly 180 kbps — and it is the only way both paths can be
+        // measured under the same conditions: the moment tiles stop, their cost decays to nothing
+        // and video would always look like the cheaper one.
+        session.set_motion_carried(surface, self.confirmed && self.decided && !self.declined);
         // The region is clipped to the frame: a surface can be resized between the tile encoder
         // choosing a rectangle and this frame arriving.
         let region = session
@@ -195,8 +230,14 @@ impl MotionSender {
             // Demoted, or never promoted. The tile path has the rectangle back.
             self.state = None;
             self.confirmed = false;
+            self.declined = false;
+            self.decided = false;
             return;
         };
+        // A region already judged not worth encoding stays on the tile path until it ends.
+        if self.declined {
+            return;
+        }
         // A new region needs a new encoder; so does a new bitrate, because the rate controller
         // has decided the old one is spending more than the link has. That costs a keyframe, but
         // rung changes are rare by construction, and a stream at the wrong bitrate costs more.
@@ -222,7 +263,44 @@ impl MotionSender {
                 group: Vec::new(),
                 groups: 0,
                 last: Vec::new(),
+                video_bytes: 0,
+                video_window_ms: 0,
             });
+        }
+        // Is this region actually worth encoding?
+        //
+        // A promoted region does not automatically deserve a video stream. The tile path throttles
+        // it to `tile_path_max_hz` and sends lossy tiles, and for a modest rectangle of smooth
+        // content that can cost far less than encoding it: RS7 measured 713 kbps of tiles against
+        // 3,082 kbps of video for the same rectangle on a link with room to spare. RS5 measured the
+        // opposite on a larger window of harsher content, which is what the motion path exists for.
+        // Both are true, so this is decided by measuring rather than by assuming.
+        //
+        // Both paths are measured over the same window, which is possible because they overlap:
+        // until the viewer acknowledges a video frame the tile path keeps covering the region, so
+        // for that period the real cost of each is observable. Comparing against the encoder's
+        // configured bitrate instead would be comparing a measurement to a ceiling the encoder
+        // rarely reaches, and declined almost everything.
+        if !self.decided
+            && let Some(tiles) = session.motion_region_bytes_per_second(surface)
+            && let Some(active) = self.state.as_ref()
+            && active.video_window_ms >= REGION_COST_WINDOW_MS
+        {
+            let video = active.video_bytes * 1_000 / active.video_window_ms.max(1);
+            self.decided = true;
+            if tiles < video {
+                // Tiles are cheaper. Give the rectangle back and stop paying twice for it.
+                //
+                // `confirmed` has to go with it: it means "video is arriving", and it is what tells
+                // the tile path to stand down. Leaving it set while the encoder is gone left
+                // nothing at all sending the region, which the matrix caught as a 3.7 second stall
+                // on a link with bandwidth to spare -- the worst possible outcome of a change meant
+                // to save bytes.
+                self.state = None;
+                self.confirmed = false;
+                self.declined = true;
+                return;
+            }
         }
         let Some(active) = self.state.as_mut() else {
             return;
@@ -250,6 +328,14 @@ impl MotionSender {
             self.refresh = false;
             active.first = false;
         }
+        active.video_bytes = active.video_bytes.saturating_add(
+            produced
+                .iter()
+                .map(|frame| frame.payload.len() as u64)
+                .sum::<u64>(),
+        );
+        // Frames arrive at the capture rate, which is what the tile path is measured against too.
+        active.video_window_ms = active.video_window_ms.saturating_add(FRAME_INTERVAL_MS);
         for encoded in produced {
             if !active.sent_config {
                 let sets = active.encoder.parameter_sets();

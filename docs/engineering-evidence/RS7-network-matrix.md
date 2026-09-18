@@ -36,19 +36,19 @@ by the end of the run.
 | 20 ms, 0%, uncapped | scrolling | A | 28 | Full | 66 | 33 | 99 |
 | 20 ms, 0%, uncapped | scrolling | B | 30 | Full | 66 | 33 | 99 |
 | 20 ms, 0%, uncapped | video | A | 713 | Full | 166 | 99 | 633 |
-| 20 ms, 0%, uncapped | video | B | 3,073 | NoRefinement | 99 | 99 | 633 |
+| 20 ms, 0%, uncapped | video | B | 906 | Full | 166 | 99 | 633 |
 | 100 ms, 1%, 5 Mbps | typing | A | 18 | Full | 166 | 33 | 199 |
 | 100 ms, 1%, 5 Mbps | typing | B | 19 | Full | 166 | 33 | 233 |
 | 100 ms, 1%, 5 Mbps | scrolling | A | 28 | Full | 99 | 33 | 199 |
 | 100 ms, 1%, 5 Mbps | scrolling | B | 25 | NoRefinement | 99 | 233 | 233 |
 | 100 ms, 1%, 5 Mbps | video | A | 675 | Full | 166 | 199 | 833 |
-| 100 ms, 1%, 5 Mbps | video | B | 1,884 | SlowerFrames | 133 | 266 | 1,133 |
+| 100 ms, 1%, 5 Mbps | video | B | 2,582 | Full | 133 | 266 | 1,133 |
 | 300 ms, 5%, 1 Mbps | typing | A | 17 | NoRefinement | 266 | 33 | 433 |
 | 300 ms, 5%, 1 Mbps | typing | B | 15 | SlowerFrames | 299 | 33 | 566 |
 | 300 ms, 5%, 1 Mbps | scrolling | A | 25 | ViewportOnly | 199 | 433 | 433 |
 | 300 ms, 5%, 1 Mbps | scrolling | B | 22 | ViewportOnly | 299 | 33 | 566 |
 | 300 ms, 5%, 1 Mbps | video | A | 512 | SlowerFrames | 366 | 33 | 3,266 |
-| 300 ms, 5%, 1 Mbps | video | B | 507 | NoRefinement | 499 | 33 | 4,199 |
+| 300 ms, 5%, 1 Mbps | video | B | 418 | NoRefinement | 499 | 33 | 4,199 |
 | 500 ms, 10%, 200 kbps | typing | A | 14 | SlowerFrames | 366 | 33 | 799 |
 | 500 ms, 10%, 200 kbps | typing | B | 13 | LowerQuality | 499 | 33 | 1,066 |
 | 500 ms, 10%, 200 kbps | scrolling | A | 23 | SlowerFrames | 299 | 33 | 799 |
@@ -63,14 +63,23 @@ one frame. That is a pass and it should not be read as comfort: any change that 
 latency to the motion path fails this cell, and a real network is less tidy than this one. It is the
 number to watch in the device runs.
 
-**Stage B is not always cheaper, and on a fast link it is much more expensive.** On the uncapped
-profile it costs 3,073 kbps against the tile path's 713 for the same region. That is not a defect:
-with bandwidth to spare the ladder has no reason to degrade, so the motion encoder runs at its
-default bitrate, and for a 640 × 384 region of smooth content the tile path is simply cheaper.
-[RS5](RS5-motion-path.md) measured Stage B 2.3× cheaper on a 896 × 512 window of harsher content, and
-both are true: the motion path wins when the tile path is expensive, and loses when it is not.
-Worth a decision the plan has not made — whether to promote a region to video only when it is
-actually winning, rather than whenever it looks like video.
+**Stage B was not always cheaper, and now declines the regions it would make worse.** On the
+uncapped profile it cost 3,073 kbps against the tile path's 713 for the same region: with bandwidth
+to spare the ladder has no reason to degrade, so the encoder runs at its default bitrate, and for a
+640 × 384 region of smooth content the tile path is simply cheaper. [RS5](RS5-motion-path.md)
+measured Stage B 2.3× cheaper on a 896 × 512 window of harsher content. Both are true — the motion
+path wins when the tile path is expensive and loses when it is not — so the owner chose
+(2026-09-18) to decide it by measurement.
+
+Both paths are now measured over the same second and the cheaper one keeps the region. That is
+possible because they overlap: the tile path keeps covering a promoted region until the choice is
+made, which costs about a second of sending the rectangle twice and is the only way to compare
+like with like. Comparing the tile cost against the encoder's *configured bitrate* instead was
+tried first and declined almost everything, because an encoder rarely spends its ceiling.
+
+The uncapped cell now settles at 906 kbps rather than 3,073. **It does not fire everywhere yet**:
+the 5 Mbps cell still runs video at 2,582 kbps against a tile path that would cost 675, so the
+measurement is not yet catching every case it should. That is the next thing to look at here.
 
 **Stage A had no rate control at all, and now it does.** Every Stage A cell used to stay at `Full`,
 including 200 kbps where the session offered 251 kbps into the link and simply queued: bandwidth

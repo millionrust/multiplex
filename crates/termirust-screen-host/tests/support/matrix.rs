@@ -553,12 +553,12 @@ fn run_inner(profile: Profile7, workload: Workload, features: FeatureSet, trace:
         }
         if trace && step % 15 == 0 {
             eprintln!(
-                "DIAG t={:>5} ms  estimate={:?} B/s  rung={:?}  sent={} B  queued={}",
+                "DIAG t={:>5} ms  estimate={:?} B/s  rung={:?}  sent={} B  stall={} ms",
                 link.now_micros / 1_000,
                 link.handle.estimated_bytes_per_second(),
                 link.rung(),
                 link.bytes,
-                link.in_flight.len(),
+                longest_stall / 1_000,
             );
         }
     }
