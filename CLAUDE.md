@@ -241,8 +241,9 @@ bounded rotation and retention. See [docs/diagnostics.md](docs/diagnostics.md).
   3.6 and newer. A drop arrives bracketed, which tmux reads as one key, and what happens next
   splits three ways: 3.4 and 3.5a consume it in copy mode without offering it to a binding, so
   the catch-all never runs and the tab keeps the file; 3.2a and 3.3a do run the catch-all and
-  leave copy mode, but let the paste's closing `ESC[201~` through as text, so the path arrives
-  with that sequence echoed after it; 3.6 and newer deliver it clean. Measured against 3.2a,
+  leave copy mode, but do not consume the paste's closing `ESC[201~`, so its bytes reach the
+  program after the path and show up as `^[[201~` or a bare `~` depending on how the shell
+  echoes them; 3.6 and newer deliver the path alone. Measured against 3.2a,
   3.3a, 3.4, 3.5a, 3.6 and 3.7c;
   `a_file_dropped_on_a_scrolled_back_tab_reaches_the_program` holds all three bands.
 - Typing by hand into a wrapped tab that is scrolled back returns it to the prompt but loses

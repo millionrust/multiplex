@@ -747,8 +747,9 @@ fn a_file_dropped_on_a_scrolled_back_tab_reaches_the_program() {
     //                  whole.
     //   3.4 and 3.5a   consume the whole paste in copy mode, so the catch-all never runs and the
     //                  tab keeps the file dropped on it.
-    //   before 3.4     leave copy mode as well, but the paste's closing ESC[201~ reaches the
-    //                  program as text, so the path arrives with that sequence echoed after it.
+    //   before 3.4     leave copy mode as well, but do not consume the paste's closing ESC[201~,
+    //                  so its bytes reach the program after the path. How they render depends on
+    //                  the shell: sh echoes ^[[201~, bash swallows the escape and leaves a ~.
     // The middle band is held to what it does today so that a tmux which starts answering is
     // noticed rather than assumed, and so is the clean delivery above it.
     let version = termirust_tmux::parse_version(server.tmux.version());
@@ -757,8 +758,11 @@ fn a_file_dropped_on_a_scrolled_back_tab_reaches_the_program() {
     if answers_a_paste {
         wait_for("#{pane_in_mode}", "0");
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        // -J joins wrapped lines. Without it the shell's prompt plus this path is wider than the
+        // pane on a runner whose hostname and checkout path are long, and the capture splits the
+        // path down the middle, so looking for it finds nothing though it arrived intact.
         let screen = loop {
-            let screen = server.output(&["capture-pane", "-p", "-t", session]);
+            let screen = server.output(&["capture-pane", "-p", "-J", "-t", session]);
             if screen.contains(dropped) {
                 break screen;
             }
@@ -783,7 +787,7 @@ fn a_file_dropped_on_a_scrolled_back_tab_reaches_the_program() {
             "tmux {} answered a paste in copy mode; the version this is gated on can move",
             server.tmux.version()
         );
-        let screen = server.output(&["capture-pane", "-p", "-t", session]);
+        let screen = server.output(&["capture-pane", "-p", "-J", "-t", session]);
         assert!(
             !screen.contains(dropped),
             "tmux {} delivered the drop after all: {screen:?}",

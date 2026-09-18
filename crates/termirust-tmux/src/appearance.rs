@@ -150,8 +150,8 @@ impl WrappedSessionAppearance {
         // so a catch-all is the only binding that can answer it; the path itself follows as
         // ordinary bytes. Whether that works depends on the tmux underneath: 3.6 and newer offer
         // the key to this binding and deliver the path whole, 3.4 and 3.5a consume the paste in
-        // copy mode so the tab keeps the file, and 3.2a and 3.3a run the binding but let the
-        // paste's closing ESC[201~ through as text after the path.
+        // copy mode so the tab keeps the file, and 3.2a and 3.3a run the binding but do not
+        // consume the paste's closing ESC[201~, so its bytes follow the path into the program.
         //
         // tmux answers this binding before any binding for the key itself and tells it nothing
         // about which key ran it, so a character typed by hand to a scrolled-back tab still ends
