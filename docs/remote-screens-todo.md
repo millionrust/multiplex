@@ -365,10 +365,15 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   nothing reconciles that; 0.63 moved to the released stack, which is the only reason the two share
   a lockfile. Expect this to recur — the workspace now tracks two projects following the same
   pre-release ecosystem.
-  0.63 also changed `check_server_key` to take a `PublicKeyOrCertificate`. Both call sites pin
-  `public_key()`, which for a certificate is the key the CA vouched for, and deliberately do **not**
-  validate the certificate: there is no CA trust store, and accepting one as verified would be a
-  weaker guarantee wearing a stronger name. And its channel-open callbacks now hand over a handle
+  0.63 also changed `check_server_key` to take a `PublicKeyOrCertificate`. That is a signature
+  change, not a behaviour change: certificate algorithms are opt-in, `Preferred::DEFAULT` leaves
+  `host_key_certificates` empty, and this crate never overrides it, so the certificate arm is
+  unreachable as shipped. It is written correctly anyway — `public_key()` returns the certificate's
+  **subject** key, the server's own, not the CA's, so two hosts under one CA do not collide on one
+  pin — and it deliberately does **not** validate the certificate. A Codex review caught an earlier
+  draft of this claiming 0.63 advertises those algorithms, which it does not; the error ran in the
+  direction that overstates what the code does, so it is recorded rather than quietly fixed.
+  And its channel-open callbacks now hand over a handle
   that refuses on drop — ignore the parameter and every reverse-forwarded connection is silently
   rejected at runtime while compiling clean. Both sites accept explicitly.
   The ADR is amended with all of it.

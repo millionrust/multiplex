@@ -1976,7 +1976,8 @@ impl client::Handler for SftpHandler {
     type Error = anyhow::Error;
 
     /// The same trust-on-first-use decision as `ssh.rs`, over the same store. See the note there
-    /// for why a host certificate is reduced to the key it carries rather than validated.
+    /// for why the certificate arm is unreachable as shipped, and why it reduces a certificate to
+    /// its subject key rather than validating it.
     async fn check_server_key(
         &mut self,
         server_public_key: &PublicKeyOrCertificate,

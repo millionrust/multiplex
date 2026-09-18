@@ -396,10 +396,17 @@ separate reasons, and one of them is named in this ADR — so this amendment is 
 control section below asks for.
 
 **The zeroize pin.** `iroh-base` requires `zeroize ^1.9` against the exact `=1.8.2` pinned here and
-in seven other manifests. It moved to `=1.9.0`, still pinned exactly. This is not a security
-change: 1.9.0 is a minor release of the same crate under the same authors and licence, and the
-guarantee this ADR relies on — that a `Zeroizing` value is overwritten on drop — is unchanged. What
-the pin is for is reproducibility and deliberate review, not immunity from upstream.
+in seven other manifests. It moved to `=1.9.0`, still pinned exactly.
+
+The *contract* this ADR relies on is unchanged: a `Zeroizing` value is still overwritten on drop.
+The **machinery enforcing it is not**. 1.9.0 replaces the atomic fence with an `optimization_barrier`
+in a new architecture-dependent implementation that includes inline assembly, and also changes some
+type layouts. "A minor release from the same authors" is not an argument that erasure still happens
+on every target, and the golden vectors cannot speak to it either — they pin ciphertext, and
+erasure leaves no trace in ciphertext. What can be said honestly is that the API contract is the
+same and that this is the version iroh requires; whether the new barrier erases as reliably as the
+old fence on every platform this ships to is a question for the independent review, and is listed
+as such below.
 
 **The russh pin, which took two attempts and is the part worth reading.** russh through 0.59 pins
 `rand_core = "=0.10.0-rc-3"` exactly, against the released `^0.10` that `ed25519-dalek 3.0.0`
@@ -414,12 +421,22 @@ variant rather than one with fields. Cargo unifies both to a single `0.11.x` and
 same collision sits behind russh 0.60's elliptic-curve stack, where `p256/p384/p521 0.14.0-rc.7`
 pin `primefield 0.14.0-rc.7` against a `crypto-bigint` that the newer rsa cannot use.
 
-In other words: **iroh needs the released RustCrypto crates and russh 0.60 is still on their
-release candidates**, and no amount of pinning reconciles them. russh 0.63 moved to the released
-stack — `primefield 0.14.0`, `pkcs8 0.11.0`, `rsa 0.10.0-rc.18` — and that is the only reason the
-two can share a lockfile at all. This is worth recording because it will recur: this workspace now
-depends on two independent projects tracking the same pre-release ecosystem, and they will fall out
-of step again.
+In other words: **iroh needs the released RustCrypto crates and russh 0.60 is still on their release
+candidates.** This is a *source* incompatibility, not an unsatisfiable version constraint — rsa
+rc.16 asks for `pkcs8 0.11.0-rc.10`, which permits the release, so resolution succeeds and
+compilation is what fails. Cargo allows a prerelease requirement to advance to a compatible
+released version, which is why the break appears late and somewhere neither crate names.
+
+russh 0.63 moved to the released stack — `primefield 0.14.0`, `pkcs8 0.11.0`, `rsa 0.10.0-rc.18` —
+and is the upstream answer rather than the only conceivable one. Two alternatives exist and were
+not taken: a `[patch]` against a forked rsa, which carries a maintenance cost on a cryptographic
+dependency and is the last thing this workspace should own; and dropping russh's optional `rsa`
+feature, which removes this particular compilation path at the cost of RSA key support and does
+not on its own settle the elliptic-curve side, whose requirements are ranges rather than exact
+pins. Upgrading is the choice that keeps every key type working and leaves the crypto to upstream.
+
+Worth recording because it will recur: this workspace now depends on two independent projects
+tracking the same pre-release ecosystem, and they will fall out of step again.
 
 **What changed and what did not.** No code in `termirust-controller-security` changed, no handshake
 or SAS derivation changed, and **no vector byte changed** — all four golden vectors pass untouched.
@@ -434,15 +451,32 @@ Only the pinned lockfile checksum and this document's own moved.
 - *Key generation* takes an RNG through rand_core 0.10's traits, which `rand 0.8`'s `OsRng` does
   not implement, so three call sites use `rand` 0.10 under an alias. Both are the operating
   system's source; only the trait shape differs.
-- *Host key verification* — `check_server_key` — now receives a `PublicKeyOrCertificate`, because
-  russh 0.63 advertises the certificate host-key algorithms and a server may answer with a
-  certificate. Both call sites take `public_key()`, which for a certificate is the key the CA
-  vouched for rather than the CA's own, and pin that. **This is deliberately not certificate
-  validation**: there is no CA trust store, no principal match and no validity window, and
-  accepting a certificate as though it had been verified would be a weaker guarantee wearing a
-  stronger name. The practical effect is nil — a server that upgrades from a bare key to a
-  certificate over the same key still matches its existing pinned entry — and host-certificate
-  validation, if it is ever wanted, is its own feature with its own decision record.
+- *Host key verification* — `check_server_key` — now receives a `PublicKeyOrCertificate` rather
+  than a `PublicKey`. **This is a signature change, not a behaviour change, because this app does
+  not negotiate host certificates.** `Preferred::DEFAULT` sets `host_key_certificates` to an empty
+  list (`russh-0.63.1/src/negotiation.rs:212`), certificate algorithms are opt-in, and every SSH
+  and SFTP path here builds `client::Config::default()` and overrides only the keepalive. Nothing
+  in `crates/` sets `host_key_certificates`. A server therefore cannot present a certificate to
+  this client, and the `Certificate` arm is unreachable in the shipped configuration.
+
+  Both call sites nevertheless take `public_key()` and pin that, so the arm is correct if the
+  preference list is ever populated. For a certificate that accessor returns the **subject** key —
+  the server's own key, which the CA signed — and not the CA's key, which is a separate
+  `signature_key()` accessor (`ssh-key`'s `certificate.rs`). Two hosts signed by one CA therefore
+  do not collide on one pinned entry, which is the mistake that would have made this a real
+  downgrade.
+
+  **It is deliberately not certificate validation**: no CA trust store, no principal match, no
+  validity window, no critical options. Were the preference list ever populated, this code would
+  accept an expired or wrong-principal certificate whose subject key satisfies trust on first use
+  and whose holder proves possession — no weaker than the bare-key TOFU already offered, but not
+  what the word "certificate" implies to a reader. Leaving the list empty is the safer policy and
+  the code already does that. Host-certificate validation, if it is ever wanted, is its own feature
+  with its own decision record.
+
+  *(An earlier draft of this amendment stated that 0.63 advertises the certificate algorithms and
+  that a server may answer with one. That was wrong, and it is recorded here rather than quietly
+  edited because the error ran in the direction that overstates what the code does.)*
 - *Channel-open callbacks* for reverse forwards and agent forwarding are handed a handle that must
   be accepted, and which rejects with `AdministrativelyProhibited` when dropped. This is a trap
   worth naming: the parameter can be ignored with an underscore, the code compiles, and every
@@ -464,11 +498,27 @@ spike; if 0.4 says no, the feature stays off, these pins stay where they are, an
 be undone.
 
 **Nor does it settle the release gate.** The independent cryptographic review named at the top of
-this document is still outstanding, and this amendment does not touch it. What the amendment can
-claim is narrower and checkable: the handshake, the SAS derivation and every golden vector are
-byte-for-byte unchanged, so the surface that review would examine has not moved. The one security
-relevant *code* change is the host-key certificate handling above, which is in the desktop SSH
-client rather than in this crate, and is the part of this amendment most worth a second opinion.
+this document is still outstanding, and this amendment does not touch it.
+
+What can be claimed is narrower than "nothing changed", and the distinction matters. The handshake
+*construction* and the SAS derivation are unchanged, and every golden vector is byte-for-byte
+unchanged. That is not the same as saying the reviewable surface has not moved:
+
+- Remote Screens adds capability bits and frame kinds, so a screen-enabled offer puts different
+  capability bytes in the prologue. The construction is identical; the transcripts are not.
+- The screen work adds authorization boundaries that are security responsibilities in their own
+  right — per-frame device and capability checks, connection-scoped one-use screen tickets, and
+  the watch-versus-control separation — even though the cipher construction beneath them is
+  untouched.
+- The zeroize erasure machinery changed, as recorded above, and no vector can detect that.
+- The optional iroh transport, when it is ever enabled, brings identity binding, resumption and
+  replay questions that this ADR has never covered. Its `connect` waits for
+  `handshake_completed()` before returning a route, so no application data is sent early today;
+  the replay reasoning in that function's documentation has to be demonstrated, not asserted,
+  before the 0-RTT typestate is taken.
+
+So this amendment supplies evidence for a review, not a substitute for one, and it does not shorten
+the reviewer's list.
 
 **Accepted by the decision owner on 2026-09-18.**
 ## Golden vectors and change control

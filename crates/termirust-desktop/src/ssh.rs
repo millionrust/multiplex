@@ -1479,18 +1479,23 @@ impl client::Handler for SessionHandler {
 
     /// Trust on first use, against the key the server actually proved it holds.
     ///
-    /// russh 0.63 offers a host *certificate* here as well as a bare key, because it now
-    /// advertises the certificate host-key algorithms. `public_key()` reduces both to the same
-    /// thing: the key the server signed the handshake with, which for a certificate is the key the
-    /// CA vouched for rather than the CA's own. Pinning that is exactly the trust decision this
-    /// store has always made, and a server that upgrades from a bare key to a certificate over the
-    /// same key still matches its existing entry.
+    /// russh 0.63 widened this parameter from a `PublicKey` to a `PublicKeyOrCertificate`. That is
+    /// a signature change and not a behaviour change here, because **this client does not
+    /// negotiate host certificates**: certificate algorithms are opt-in, `Preferred::DEFAULT`
+    /// leaves `host_key_certificates` empty, and every config built in this crate is
+    /// `client::Config::default()` with only the keepalive changed. The `Certificate` arm is
+    /// unreachable as shipped.
+    ///
+    /// It is still written correctly, so that populating that preference list is a decision rather
+    /// than an accident. `public_key()` on a certificate returns the **subject** key — the
+    /// server's own, which the CA signed — and not the CA's key, which is a separate accessor. Two
+    /// hosts signed by one CA therefore do not collide on one pinned entry.
     ///
     /// What this deliberately does **not** do is validate the certificate — no CA trust store, no
-    /// principal match, no validity window. This app's promise is trust on first use, and
-    /// accepting a certificate as if it had been verified would be a weaker guarantee wearing a
-    /// stronger name. Host-certificate validation would be its own feature with its own decision
-    /// record.
+    /// principal match, no validity window, no critical options. This app's promise is trust on
+    /// first use, and accepting a certificate as if it had been verified would be a weaker
+    /// guarantee wearing a stronger name. Host-certificate validation would be its own feature
+    /// with its own decision record; until then the empty preference list is the policy.
     async fn check_server_key(
         &mut self,
         server_public_key: &PublicKeyOrCertificate,
