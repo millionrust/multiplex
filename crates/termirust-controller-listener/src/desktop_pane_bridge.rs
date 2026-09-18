@@ -1105,12 +1105,21 @@ impl DesktopPaneBridgeClient {
 mod tests {
     use super::*;
 
+    /// A socket path is about a hundred bytes on Unix, so the fixture stays out of the long
+    /// temporary directory a test runner hands out. Windows has neither that limit nor a `/tmp`,
+    /// where a bare `/tmp` resolves against the current drive and is not there.
+    fn fixture_directory() -> tempfile::TempDir {
+        let mut builder = tempfile::Builder::new();
+        builder.prefix("tr-dpb-");
+        #[cfg(unix)]
+        return builder.tempdir_in("/tmp").unwrap();
+        #[cfg(not(unix))]
+        return builder.tempdir().unwrap();
+    }
+
     #[test]
     fn published_endpoint_is_discovered_by_another_process_and_removed_on_stop() {
-        let fixture = tempfile::Builder::new()
-            .prefix("tr-dpb-")
-            .tempdir_in("/tmp")
-            .unwrap();
+        let fixture = fixture_directory();
         let runtime_root = fixture.path().join("desktop-pane-bridge");
         assert!(DesktopPaneBridgeEndpoint::discover(&runtime_root).is_none());
         let mut server =

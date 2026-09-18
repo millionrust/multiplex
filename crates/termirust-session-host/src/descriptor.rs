@@ -274,6 +274,15 @@ pub fn stdin_is_pipe() -> Result<bool, HostError> {
 mod tests {
     use super::*;
 
+    /// A program every platform really has. A descriptor records a resolved path, and Windows
+    /// has no `/bin/sh` to resolve.
+    fn fixture_executable() -> PathBuf {
+        #[cfg(unix)]
+        return PathBuf::from("/bin/sh");
+        #[cfg(windows)]
+        return PathBuf::from(r"C:\Windows\System32\cmd.exe");
+    }
+
     /// The runtime root lives under a per-user directory in the temporary directory, which the
     /// first durable session on a machine has to create. A descriptor naming one is valid; a
     /// parent that exists but is a symlink or a file is not.
@@ -287,7 +296,7 @@ mod tests {
             expected_occupant_generation: None,
             runtime_root,
             session_dir: fixture.path().join("session"),
-            executable: std::fs::canonicalize("/bin/sh").unwrap(),
+            executable: std::fs::canonicalize(fixture_executable()).unwrap(),
             runtime_detection: None,
             arguments: Vec::new(),
             environment: BTreeMap::new(),
@@ -336,7 +345,7 @@ mod tests {
             expected_occupant_generation: None,
             runtime_root: fixture.path().join("runtime"),
             session_dir: fixture.path().join("session"),
-            executable: PathBuf::from("/bin/sh"),
+            executable: fixture_executable(),
             runtime_detection: None,
             arguments: vec!["canary-argument".to_string()],
             environment: BTreeMap::from([("TOKEN".to_string(), "canary-secret".to_string())]),
