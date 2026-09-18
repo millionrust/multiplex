@@ -1,0 +1,15 @@
+[package]
+name = "termirust-iroh-transport-spike"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Spike 5.3b: the QUIC route for Stage B over iroh, proved outside the workspace because iroh's crypto stack cannot resolve alongside it"
+
+[workspace]
+
+[dependencies]
+bytes = "1"
+iroh = "1.2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
