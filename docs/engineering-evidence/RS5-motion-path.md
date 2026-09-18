@@ -66,6 +66,23 @@ largest hot component anywhere on screen let a clock ticking in the far corner b
 region stretched across the screen to reach it never went quiet enough to demote. Only tiles
 touching the region may join it.
 
+## A test that had never passed on this machine
+
+`tests/decode.rs` compares the decoded region against the last frame shown, and measured 63 against
+a tolerance of 20 — deterministically, at every commit back to the one that introduced it. It looked
+like a regression and bisected to a commit that touches only Kotlin and Swift, which is the clue
+that it was not one.
+
+The decoded region matched frame **55** with a difference of 6, and got steadily worse in both
+directions from there. The picture was right; the question was wrong. A hardware encoder runs
+several frames behind — it takes frames in and hands back the one it was working on — and on this
+Mac that is four frames. The test compared against a screen the decoder had not been given yet.
+
+It now holds the last frame still until the pipeline drains, which is also what a viewer sees
+whenever anyone stops moving. Worth recording because the failure mode is general: any assertion
+about what the video path has produced has to say *when*, and a tolerance is not the place to
+absorb a latency.
+
 ## What this does not answer
 
 - Real captured pixels. The content is synthetic, so the byte counts are indicative.

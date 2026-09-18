@@ -147,6 +147,44 @@ fn a_moving_region_arrives_as_video_and_ends_up_in_the_viewers_framebuffer() {
         eprintln!("no hardware encoder on this machine; skipping the pixel comparison");
         return;
     }
+
+    // Let the video pipeline drain before comparing, by holding the last frame still.
+    //
+    // A hardware encoder runs several frames behind: it takes frames in, and the picture that
+    // comes out the far end is the one it was working on, not the one just handed over. On this
+    // Mac that is four frames, so comparing the decoded region against the last frame shown was
+    // comparing it against a screen the decoder had not been given yet -- it measured 63 against
+    // frame 59 and 6 against frame 55, which is the picture being right and the question being
+    // wrong. Holding the screen still is also what a viewer sees whenever anyone stops moving.
+    let still = last.as_frame();
+    for _ in 0..30 {
+        host.frame(SURFACE, &still, None, now_ms).unwrap();
+        sender.frame(&mut host, SURFACE, &still);
+        now_ms += 33;
+        loop {
+            let mut moved = false;
+            while let Some(message) = viewer.poll_outgoing() {
+                moved = true;
+                for event in host.receive(message, &mut store).expect("host accepts") {
+                    match event {
+                        HostEvent::VideoAcknowledged { tokens, .. } => {
+                            acknowledged = tokens.clone();
+                            sender.acknowledged(&tokens);
+                        }
+                        HostEvent::VideoLost { .. } => sender.lost(),
+                        _ => {}
+                    }
+                }
+            }
+            while let Some(message) = host.poll_outgoing() {
+                moved = true;
+                viewer.receive(message).expect("viewer accepts");
+            }
+            if !moved {
+                break;
+            }
+        }
+    }
     assert!(video_frames > 4, "only {video_frames} frames were streamed");
     assert!(
         !acknowledged.is_empty(),
