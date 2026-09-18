@@ -36,25 +36,26 @@ by the end of the run.
 | 20 ms, 0%, uncapped | scrolling | A | 28 | Full | 66 | 33 | 99 |
 | 20 ms, 0%, uncapped | scrolling | B | 30 | Full | 66 | 33 | 99 |
 | 20 ms, 0%, uncapped | video | A | 713 | Full | 166 | 99 | 633 |
-| 20 ms, 0%, uncapped | video | B | 906 | Full | 166 | 99 | 633 |
+| 20 ms, 0%, uncapped | video | B | 1087 | Full | 166 | 99 | 633 |
 | 100 ms, 1%, 5 Mbps | typing | A | 18 | Full | 166 | 33 | 199 |
 | 100 ms, 1%, 5 Mbps | typing | B | 19 | Full | 166 | 33 | 233 |
 | 100 ms, 1%, 5 Mbps | scrolling | A | 28 | Full | 99 | 33 | 199 |
-| 100 ms, 1%, 5 Mbps | scrolling | B | 25 | NoRefinement | 99 | 233 | 233 |
+| 100 ms, 1%, 5 Mbps | scrolling | B | 26 | NoRefinement | 99 | 233 | 233 |
 | 100 ms, 1%, 5 Mbps | video | A | 675 | Full | 166 | 199 | 833 |
-| 100 ms, 1%, 5 Mbps | video | B | 2,582 | Full | 133 | 266 | 1,133 |
+| 100 ms, 1%, 5 Mbps | video | B | 703 | NoRefinement | 133 | 266 | 1133 |
 | 300 ms, 5%, 1 Mbps | typing | A | 17 | NoRefinement | 266 | 33 | 433 |
 | 300 ms, 5%, 1 Mbps | typing | B | 15 | SlowerFrames | 299 | 33 | 566 |
-| 300 ms, 5%, 1 Mbps | scrolling | A | 25 | ViewportOnly | 199 | 433 | 433 |
-| 300 ms, 5%, 1 Mbps | scrolling | B | 22 | ViewportOnly | 299 | 33 | 566 |
-| 300 ms, 5%, 1 Mbps | video | A | 512 | SlowerFrames | 366 | 33 | 3,266 |
-| 300 ms, 5%, 1 Mbps | video | B | 418 | NoRefinement | 499 | 33 | 4,199 |
+| 300 ms, 5%, 1 Mbps | scrolling | A | 25 | NoRefinement | 199 | 433 | 433 |
+| 300 ms, 5%, 1 Mbps | scrolling | B | 23 | ViewportOnly | 299 | 566 | 566 |
+| 300 ms, 5%, 1 Mbps | video | A | 510 | NoRefinement | 399 | 33 | 3266 |
+| 300 ms, 5%, 1 Mbps | video | B | 507 | NoRefinement | 499 | 33 | 4199 |
 | 500 ms, 10%, 200 kbps | typing | A | 14 | SlowerFrames | 366 | 33 | 799 |
-| 500 ms, 10%, 200 kbps | typing | B | 13 | LowerQuality | 499 | 33 | 1,066 |
-| 500 ms, 10%, 200 kbps | scrolling | A | 23 | SlowerFrames | 299 | 33 | 799 |
-| 500 ms, 10%, 200 kbps | scrolling | B | 20 | LowerQuality | 533 | 1,066 | 1,066 |
-| 500 ms, 10%, 200 kbps | video | A | 251 | NoRefinement | 733 | 1,766 | 6,433 |
-| 500 ms, 10%, 200 kbps | video | B | 233 | ViewportOnly | 999 | 1,999 | 7,599 |
+| 500 ms, 10%, 200 kbps | typing | B | 13 | LowerQuality | 499 | 33 | 1066 |
+| 500 ms, 10%, 200 kbps | scrolling | A | 23 | SlowerFrames | 299 | 799 | 799 |
+| 500 ms, 10%, 200 kbps | scrolling | B | 20 | LowerQuality | 533 | 1066 | 1066 |
+| 500 ms, 10%, 200 kbps | video | A | 251 | NoRefinement | 733 | 1766 | 5466 |
+| 500 ms, 10%, 200 kbps | video | B | 233 | ViewportOnly | 999 | 1999 | 6999 |
+Worst: stall 999 ms (bound 1000), caught up 1999 ms (bound 3000), exact 6999 ms (no bound; refinement is link-bound).
 
 ### Three things this says that are worth acting on
 
@@ -77,9 +78,30 @@ made, which costs about a second of sending the rectangle twice and is the only 
 like with like. Comparing the tile cost against the encoder's *configured bitrate* instead was
 tried first and declined almost everything, because an encoder rarely spends its ceiling.
 
-The uncapped cell now settles at 906 kbps rather than 3,073. **It does not fire everywhere yet**:
-the 5 Mbps cell still runs video at 2,582 kbps against a tile path that would cost 675, so the
-measurement is not yet catching every case it should. That is the next thing to look at here.
+**It fires everywhere now, and getting it to took one more second.** The first version compared at
+the earliest moment both numbers existed — one second after promotion — and latched on that
+answer. One second is not long enough: the video average is still dominated by the keyframe and the
+ramp before the encoder reaches the rate it settles at, so video looks cheap, the comparison keeps
+it, and nothing asks again. The 5 Mbps cell ran video at **2,582 kbps against a tile path worth
+675** for exactly that reason.
+
+Comparing from the second window instead, and again each window until a deadline, gives:
+
+| Cell | Tile path | Video, deciding at 1 s | Video, deciding at 2 s |
+|---|---:|---:|---:|
+| 20 ms, uncapped | 713 | 906 | 1,087 |
+| 100 ms, 5 Mbps | 675 | 2,582 | **703** |
+
+The uncapped cell costing 181 kbps more is not a worse decision — it is the same decision taken a
+second later, and that second is spent sending the rectangle twice, which is the only way to
+observe both costs. In a five-second matrix cell that overlap is a fifth of the measurement; in a
+session of any real length it amortises to nothing. Keeping video that costs four times the tile
+path does not amortise, because it lasts as long as the region does.
+
+The deadline that stops it asking turns out not to matter here: every cell that declines does so at
+the first comparison, and three windows produces a table identical to four. It is kept for the case
+this matrix does not contain — a region that starts cheap and becomes expensive — where the
+asymmetry favours the later latch.
 
 **Stage A had no rate control at all, and now it does.** Every Stage A cell used to stay at `Full`,
 including 200 kbps where the session offered 251 kbps into the link and simply queued: bandwidth

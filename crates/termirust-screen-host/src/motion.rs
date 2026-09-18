@@ -90,7 +90,38 @@ pub struct MotionSender {
     declined: bool,
     /// Whether the choice between the two paths has been made for this region.
     decided: bool,
+    /// Comparisons made for the current region.
+    ///
+    /// The choice is deliberately not taken at the first opportunity. Both figures are cumulative
+    /// averages over the same period, so they are like for like whenever they are read — but at
+    /// one second the video average is dominated by the keyframe and the ramp before the encoder
+    /// reaches the rate it settles at, and the answer there is not the answer a few seconds later.
+    /// RS7 caught exactly that: the 5 Mbps cell kept video that went on to cost 2,582 kbps against
+    /// a tile path worth 675, because at one second video still looked like the cheaper of the two.
+    compared: u32,
 }
+
+/// How many windows pass before the first comparison, so the encoder has settled.
+///
+/// This is the constant that matters. At one window the 5 Mbps cell kept video that went on to
+/// cost 2,582 kbps against a tile path worth 675, because a second is not long enough for the
+/// encoder to get past its keyframe and reach the rate it settles at. At two it declines, and the
+/// cell costs 703. The extra second is paid as overlap — one more window of sending the rectangle
+/// twice — which in a five-second matrix cell reads as the uncapped cell going from 906 to 1,087.
+/// That is a fixed cost that amortises over a session of any length; getting the choice wrong does
+/// not, because it lasts as long as the region does.
+const FIRST_COMPARISON_WINDOWS: u64 = 2;
+/// The window the choice is made on and stops being revisited.
+///
+/// While it is open the tile path is still covering the region, so every extra window is one paid
+/// for twice — that overlap is the only way to observe both costs, and it is not free.
+///
+/// Measured, this changes nothing: every matrix cell that declines does so at the first
+/// comparison, and 3 produces a table identical to 4. It is here for the case the matrix does not
+/// contain — a region that starts cheap and becomes expensive — and the asymmetry is what picks
+/// the larger value. A wrong "keep video" lasts the life of the region; an extra window of overlap
+/// is bounded and paid once.
+const LAST_COMPARISON_WINDOWS: u64 = 4;
 
 impl std::fmt::Debug for MotionSender {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -143,6 +174,7 @@ impl MotionSender {
             confirmed: false,
             declined: false,
             decided: false,
+            compared: 0,
         }
     }
 
@@ -232,6 +264,7 @@ impl MotionSender {
             self.confirmed = false;
             self.declined = false;
             self.decided = false;
+            self.compared = 0;
             return;
         };
         // A region already judged not worth encoding stays on the tile path until it ends.
@@ -281,13 +314,19 @@ impl MotionSender {
         // for that period the real cost of each is observable. Comparing against the encoder's
         // configured bitrate instead would be comparing a measurement to a ceiling the encoder
         // rarely reaches, and declined almost everything.
+        let due = (FIRST_COMPARISON_WINDOWS + u64::from(self.compared)) * REGION_COST_WINDOW_MS;
         if !self.decided
             && let Some(tiles) = session.motion_region_bytes_per_second(surface)
             && let Some(active) = self.state.as_ref()
-            && active.video_window_ms >= REGION_COST_WINDOW_MS
+            && active.video_window_ms >= due
         {
             let video = active.video_bytes * 1_000 / active.video_window_ms.max(1);
-            self.decided = true;
+            self.compared = self.compared.saturating_add(1);
+            // Asked again each window until the deadline, because the averages only get more
+            // representative as the period grows and the first answer is the least trustworthy.
+            if FIRST_COMPARISON_WINDOWS + u64::from(self.compared) > LAST_COMPARISON_WINDOWS {
+                self.decided = true;
+            }
             if tiles < video {
                 // Tiles are cheaper. Give the rectangle back and stop paying twice for it.
                 //
