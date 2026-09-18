@@ -39,6 +39,12 @@ jobs:
       - name: Shell on the runner, from the start
         id: shell
         if: inputs.debug
+        # The session only exists once tmate reaches its relay, and a runner that cannot get there
+        # waits for it silently: every job on the last attempt sat in this step until it was
+        # cancelled, holding a runner for a shell that never opened. Bounded, and never the reason
+        # a job fails, so an unreachable relay costs three minutes rather than the whole run.
+        timeout-minutes: 3
+        continue-on-error: true
         uses: mxschmitt/action-tmate@v3
         with:
           limit-access-to-actor: true
@@ -223,6 +229,12 @@ jobs:
       - name: Shell on the runner, from the start
         id: shell
         if: inputs.debug
+        # The session only exists once tmate reaches its relay, and a runner that cannot get there
+        # waits for it silently: every job on the last attempt sat in this step until it was
+        # cancelled, holding a runner for a shell that never opened. Bounded, and never the reason
+        # a job fails, so an unreachable relay costs three minutes rather than the whole run.
+        timeout-minutes: 3
+        continue-on-error: true
         uses: mxschmitt/action-tmate@v3
         with:
           limit-access-to-actor: true
@@ -286,6 +298,12 @@ jobs:
       - name: Shell on the runner, from the start
         id: shell
         if: inputs.debug
+        # The session only exists once tmate reaches its relay, and a runner that cannot get there
+        # waits for it silently: every job on the last attempt sat in this step until it was
+        # cancelled, holding a runner for a shell that never opened. Bounded, and never the reason
+        # a job fails, so an unreachable relay costs three minutes rather than the whole run.
+        timeout-minutes: 3
+        continue-on-error: true
         uses: mxschmitt/action-tmate@v3
         with:
           limit-access-to-actor: true
