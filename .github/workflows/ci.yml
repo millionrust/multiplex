@@ -31,6 +31,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Detached, and before anything is built: the connection string is only readable in a live
+      # log, so opening the session at the end of a failing job means racing it. This one is there
+      # from the start and the job carries on around it, so the build can be watched as it runs.
+      - name: Shell on the runner, from the start
+        if: inputs.debug
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
+          detached: true
+
       - uses: dtolnay/rust-toolchain@1.97.1
         with:
           components: rustfmt, clippy
@@ -207,6 +217,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Shell on the runner, from the start
+        if: inputs.debug
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
+          detached: true
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -261,6 +278,13 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+
+      - name: Shell on the runner, from the start
+        if: inputs.debug
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
+          detached: true
 
       - name: Install XcodeGen
         run: brew install xcodegen
