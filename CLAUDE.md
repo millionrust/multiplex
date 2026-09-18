@@ -144,12 +144,24 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 - [crates/termirust-desktop/src/terminal.rs](crates/termirust-desktop/src/terminal.rs)
   - Terminal emulation over `alacritty_terminal`: a theme-resolved snapshot of the visible cells and cursor, scrollback, selection text, mode inspection, replies owed to the program (cursor position and device attribute reports), and a controller snapshot byte stream.
   - It re-wraps lines on resize and keeps the cursor on entering the alternate screen, as xterm does. The shared conformance fixtures follow vt100 there; `terminal.rs` tests pin those three cases to the xterm behavior.
+  - It answers what a program asks about the terminal, because tmux waits for some of these
+    before it finishes attaching and a terminal interface library (OpenTUI, which Codex and
+    Claude Code draw with) asks the same questions directly: device attributes, `DECRQM` for
+    synchronized updates, bracketed paste and focus (declining 2027, 2031 and 1016 honestly),
+    the foreground and background colours, the terminal's name and version (`CSI > q`), and
+    whether it is light or dark (`CSI ? 996 n`). The last two are recognised in
+    `answer_name_and_version` because `alacritty_terminal` ignores them. `the_terminal_answers_*`
+    tests cover every one of these.
 - [crates/termirust-desktop/src/ui/app/terminal_grid.rs](crates/termirust-desktop/src/ui/app/terminal_grid.rs)
   - Per-pane grid entity that paints the snapshot the way Zed's terminal does: same-style cells batched into runs shaped with a forced cell-width advance, merged background rectangles, and a separately painted cursor. Session output wakes the app's event loop (`SshEventSender`) and is drawn immediately, then gathered in `motion.terminal_output_batch` windows.
 - [crates/termirust-desktop/src/ssh.rs](crates/termirust-desktop/src/ssh.rs)
   - SSH runtime thread and Tokio event loop: shell open, PTY allocation, raw input/output, and remote resize.
 - [crates/termirust-desktop/src/local.rs](crates/termirust-desktop/src/local.rs)
   - Local PTY shell sessions (started in the user's home directory).
+  - Panes are given `TERM`, `TERM_PROGRAM`, `TERM_PROGRAM_VERSION` and `COLORTERM=truecolor`.
+    The last one matters: `xterm-256color` cannot say that this terminal draws 24-bit colour,
+    and a tmux the user starts themselves reads `COLORTERM` to turn its own RGB support on. It
+    is also in `termirust-tmux`'s `FORWARDED_ENVIRONMENT` so app-started clients carry it.
 - [crates/termirust-desktop/src/sftp.rs](crates/termirust-desktop/src/sftp.rs)
   - SFTP runtime backing the remote-files view.
 - [crates/termirust-desktop/src/credentials.rs](crates/termirust-desktop/src/credentials.rs)
@@ -177,7 +189,10 @@ cargo fmt
 cargo check
 cargo run            # debug build; use --release for performance testing
 TERMIRUST_TRACE_FOCUS=1 cargo run   # log every keyboard focus change to stderr
-cargo test --workspace --all-targets --locked   # everything, as CI runs it
+cargo test --workspace --all-targets --locked --no-fail-fast   # everything, as CI runs it
+TERMIRUST_TUI_PROBE="bun run app.ts" cargo test -p termirust --bin termirust -- \
+  a_terminal_interface_program_renders --ignored --nocapture   # drive a real TUI program
+                                                               # through the emulator
 cargo run -p termirust-slate --example gallery  # Slate component gallery
 cargo run -p termirust-ui-contract --bin generate-tokens  # after editing design/tokens.toml; also writes the mobile SlateTokens.swift and SlateTokens.kt
 ```
@@ -214,3 +229,16 @@ bounded rotation and retention. See [docs/diagnostics.md](docs/diagnostics.md).
 - SSH config hosts are imported at startup (shown with an `SSH Config` badge) and runtime-synced, not written back into the app state file.
 - Quick connect uses the first available SSH key; for password-only auth, use the host editor form.
 - Durable hosted sessions still poll their Host for output every `motion.hosted_live_poll` (40 ms); SSH and local panes are drawn as output arrives.
+- A tmux session the app did not configure cannot discover synchronized updates up to tmux
+  3.7c: that build has the `Sync` output capability but no `[?2026$p` probe, so answering the
+  query changes nothing and a full-screen program inside such a session tears while it
+  redraws. Colour is fine there (`COLORTERM` reaches tmux), and the app's own wrapped tabs pass
+  `-T RGB,sync` explicitly. Terminal.app (488) sets `COLORTERM=truecolor` itself, so colour
+  works in its tabs too, but it has no synchronized updates at all and is deliberately absent
+  from `SYNCHRONIZED_UPDATE_PROGRAMS`.
+- Windows notes, all of which have bitten this workspace: keep text files LF (`.gitattributes`
+  enforces it, and the signed update fixtures fail verification if Git rewrites them); a path
+  is absolute there only with a drive behind it, so fixtures cannot use `/bin/sh` or
+  `/usr/...`; committing a rename by opening its directory as a file is refused, so treat that
+  as reduced durability rather than failure; and a held lock reports a lock violation rather
+  than `WouldBlock`, which `fs2::lock_contended_error()` names per platform.
