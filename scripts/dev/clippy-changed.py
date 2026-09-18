@@ -27,7 +27,12 @@ def run(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
 
 
 def changed_lines() -> dict[str, set[int] | None]:
-    base = os.environ.get("TERMIRUST_CLIPPY_BASE", "HEAD")
+    # A run started by hand has neither a pull request to compare against nor a commit it
+    # followed, and a push that creates a branch reports all zeros for the latter. Neither names
+    # a commit, so compare against the checkout itself and hold the push to nothing.
+    base = os.environ.get("TERMIRUST_CLIPPY_BASE", "").strip()
+    if not base or set(base) == {"0"}:
+        base = "HEAD"
     diff = run("git", "diff", "--unified=0", base, "--", "*.rs").stdout
     changed: dict[str, set[int] | None] = {}
     current: str | None = None
