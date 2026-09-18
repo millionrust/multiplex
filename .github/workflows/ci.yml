@@ -22,6 +22,7 @@ jobs:
   test:
     name: rust baseline (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -141,6 +142,7 @@ jobs:
   msrv:
     name: Rust 1.88 MSRV
     runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
@@ -175,6 +177,7 @@ jobs:
   windows:
     name: windows runtime and sidecars
     runs-on: windows-2022
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
@@ -223,6 +226,7 @@ jobs:
   android:
     name: native Android application
     runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -292,6 +296,7 @@ jobs:
   ios:
     name: native iOS and iPadOS application
     runs-on: macos-26
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
