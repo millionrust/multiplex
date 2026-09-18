@@ -494,26 +494,19 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   Recorded in the plan's gate 5, including what the M6 capture backends took and what
   `windows-capture` was rejected for. `cargo deny check` is green on advisories, bans, licences
   and sources.
-- [ ] `cargo test --workspace --all-targets --locked` and `cargo deny check` green
-  `cargo deny check` is green on advisories, bans, licences and sources, and the lockfile is
-  current so `--locked` does not have to change it.
-  The suite reaches **1,004 passed** with `TERMIRUST_DOCKER_FIXTURE_HOST` set. It was 657/72 until
-  this branch merged `dev`: the Docker fixtures gained image-carried keys and remote-daemon support
-  there, and a stale branch fails them with bind-mount and port-timeout errors that read exactly
-  like a broken Docker environment. Merge `dev` before investigating any of them.
-  What is left is flakiness rather than failure, and it is worth describing precisely so nobody
-  reads it as a regression. Three consecutive full runs each failed exactly one test, and a
-  different one each time: the phone-pairing handshake, the background service handing its port
-  back, and SSH auto-reconnect after a server restart. All three are timing-sensitive tests that
-  bind real sockets, all three pass when run alone, and none is touched by this branch. Under
-  `--all-targets` the desktop crate runs hundreds of them in parallel on one machine. The first
-  failure also stops cargo before the later crates run, which is why a flake makes the total look
-  like 731 rather than 1,004.
-  One test, `worker_pairs_a_phone_over_tcp_with_the_code_it_shows`, is intermittent on macOS and
-  not a defect. The listener announces private addresses and never loopback, so the test pairs over
-  this machine's LAN address, where macOS Local Network privacy applies to the test binary. When it
-  fails, `connect` succeeds, no packet reaches the listener, both sides sample as healthy and parked
-  on I/O, and the client times out at 60 s. It failed consistently for one build of this branch and
-  passes for the next, so the trigger is the binary and the grant rather than anything in the code
-  — but the exact mechanism is not pinned down, and it should not be described as though it were.
-  Treat a failure here as "run it again and check the Local Network list", not as a regression.
+- [x] `cargo test --workspace --all-targets --locked` and `cargo deny check` green
+  **Green: 2,003 passed, 0 failed**, with `TERMIRUST_DOCKER_FIXTURE_HOST` set. `cargo deny check`
+  is green on advisories, bans, licences and sources, and the lockfile is current so `--locked`
+  does not have to change it.
+  Getting there took three fixes that were each a test being wrong rather than the product.
+  It read 657/72 until this branch merged `dev`, where the Docker fixtures had gained
+  image-carried keys and remote-daemon support; a stale branch fails them with bind-mount and
+  port-timeout errors that read exactly like a broken Docker environment, so merge `dev` before
+  investigating any of them. The controller-security vector then failed on a lockfile checksum the
+  capture backends had changed. `tests/decode.rs` had never passed on this machine, comparing the
+  decoded video region against a frame the hardware encoder had not reached yet. And
+  `golden_session` compared serialised JSON text, so it passed alone and failed under
+  `--workspace`, where feature unification flips `serde_json`'s key order.
+  Two tests on this machine remain timing-sensitive under a full parallel run — the phone-pairing
+  handshake and the background service handing its port back. Both bind real sockets and both pass
+  when run alone. Re-run before treating either as a regression.
