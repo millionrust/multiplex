@@ -190,7 +190,9 @@ pub fn generate_ed25519_key_pair(
     ensure_destination_absent(destination)?;
     ensure_destination_absent(&public_destination)?;
 
-    let mut rng = rand::rngs::OsRng;
+    // `ssh_rand` rather than `rand`: russh 0.60's key types take an RNG through rand_core 0.10's
+    // traits, which rand 0.8's `OsRng` does not implement. Still the operating system's source.
+    let mut rng = ssh_rand::rng();
     let generated = PrivateKey::random(&mut rng, Algorithm::Ed25519)
         .map_err(|_| anyhow::anyhow!("Unable to generate an Ed25519 key"))?;
     let generated = PrivateKey::new(generated.key_data().clone(), comment)

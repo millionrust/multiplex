@@ -16,7 +16,7 @@ The protocol follows revision 34 of the [Noise Protocol Framework](https://noise
 
 Controller-v1 uses exactly `Noise_XX_25519_ChaChaPoly_BLAKE2s`. The device/Controller is always the Noise initiator and the Host is always the responder. There is no role negotiation and no protocol or cipher downgrade. Controller-v1 accepts only version `1.0`; every other major or minor is incompatible before mutation.
 
-The implementation is `clatter = 2.2.0`, pinned exactly in the crate manifest and `Cargo.lock`, with default features disabled and only `alloc`, `use-25519`, `use-chacha20poly1305`, and `use-blake2` enabled. Application SAS derivation additionally pins `hkdf 0.12.4`, `sha2 0.10.9`, `subtle 2.6.1`, and `zeroize 1.8.2`.
+The implementation is `clatter = 2.2.0`, pinned exactly in the crate manifest and `Cargo.lock`, with default features disabled and only `alloc`, `use-25519`, `use-chacha20poly1305`, and `use-blake2` enabled. Application SAS derivation additionally pins `hkdf 0.12.4`, `sha2 0.10.9`, `subtle 2.6.1`, and `zeroize 1.9.0` (1.8.2 until 2026-09-18; see the amendment below).
 
 ## Dependency review
 
@@ -387,6 +387,39 @@ whole texture per frame and reports no damage, and Desktop Duplication's dirty a
 are what the tile codec is built around.
 
 `cargo deny check` is green on advisories, bans, licences, and sources after the change.
+
+### Amendment: zeroize 1.8.2 to 1.9.0, and russh 0.57 to 0.60 (2026-09-18)
+
+Remote Screens Stage B carries pictures over QUIC, and the transport chosen for it in section 5.3
+of the plan is iroh. iroh 1.2 cannot be resolved alongside this workspace as it stood: `iroh-base`
+requires `zeroize ^1.9` against the exact `=1.8.2` pinned here and in seven other crates, and
+`ed25519-dalek 3.0.0-rc` requires a released `rand_core ^0.10` against the exact `=0.10.0-rc-3`
+that `russh` pins up to and including 0.59. Both pins had to move, and one of them is named in this
+ADR, so this amendment is what the change-control section below asks for.
+
+**What changed and what did not.** `zeroize` moved from `=1.8.2` to `=1.9.0` across the workspace,
+still pinned exactly. `russh` moved from 0.57 to 0.60 in the desktop crate. No code in
+`termirust-controller-security` changed, no handshake or SAS derivation changed, and **no vector
+byte changed** — only the pinned lockfile checksum and this document's own.
+
+**Why zeroize 1.9.0 is not a security change.** 1.9.0 is a minor release of the same crate under
+the same authors and licence, and the guarantee this ADR relies on — that a `Zeroizing` value is
+overwritten on drop — is unchanged. What the pin is for is reproducibility and review, not
+immunity from upstream: an exact pin means a version moves only deliberately, which is what is
+happening here.
+
+**What russh 0.60 changed at the call sites**, all in the desktop crate and none of it
+cryptographic: SSH-agent identities are now an `AgentIdentity` enum rather than a bare public key,
+so a certificate held by an agent is offered through `authenticate_certificate_with` and a plain
+key through `authenticate_publickey_with`. Earlier versions took the identity whole and decided
+internally; the split is an improvement, because a certificate carries principals and validity that
+a public key does not and the server needs them. Key generation takes an RNG through rand_core
+0.10's traits, which `rand 0.8`'s `OsRng` does not implement, so those three call sites use `rand`
+0.10 under an alias. Both are the operating system's source; only the trait shape differs.
+
+**What this does not settle.** Adopting iroh is still gated on the 0.4 device spike. This
+amendment makes it *possible* to adopt, and the owner directed it on 2026-09-18 ahead of that
+spike; if 0.4 says no, these pins stay where they are and nothing has to be undone.
 
 ## Golden vectors and change control
 
