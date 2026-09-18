@@ -530,9 +530,12 @@ mod tests {
     use std::fs;
     use std::process::{Command, Stdio};
 
-    /// `ssh-keygen` reading a key it cannot parse asks for a passphrase, and a test that inherits
-    /// a console waits for one that never comes. Nothing here has anything to type, so give it
-    /// nothing to read: a prompt then fails at once and says so, instead of hanging the suite.
+    /// `ssh-keygen`, given nothing to read. Every call here reads a key that needs no passphrase,
+    /// and closing standard input keeps a prompt from waiting on a person on the platforms that
+    /// read it. Windows OpenSSH asks the console directly, which no redirection reaches, so this
+    /// only ever runs it with arguments that cannot prompt: reading a key that has no passphrase,
+    /// and printing a public key's fingerprint. Whether the tool is there at all is answered by
+    /// the first of those failing to start, never by a flag whose argument was left out.
     fn openssh_tool(arguments: &[&str]) -> Command {
         let mut command = Command::new("ssh-keygen");
         command.args(arguments).stdin(Stdio::null());
@@ -576,20 +579,18 @@ mod tests {
 
     #[test]
     fn generated_unencrypted_key_is_accepted_by_openssh_tooling() {
-        if openssh_tool(&["-V"]).output().is_err() {
-            eprintln!("skipping OpenSSH compatibility check: ssh-keygen is unavailable");
-            return;
-        }
         let directory = TempDir::new().unwrap();
         let private_path = directory.path().join("openssh-compatible");
         let generated = generate_ed25519_key_pair(&private_path, "openssh-check", None).unwrap();
         let public_path = generated.public_key_path.clone();
         let expected_fingerprint = generated.fingerprint.clone();
 
-        let derived = openssh_tool(&["-y", "-f"])
-            .arg(&private_path)
-            .output()
-            .expect("ssh-keygen should inspect the generated private key");
+        // Reading back the key this test just wrote is also how it finds out whether OpenSSH is
+        // installed: the call fails to start when it is not.
+        let Ok(derived) = openssh_tool(&["-y", "-f"]).arg(&private_path).output() else {
+            eprintln!("skipping OpenSSH compatibility check: ssh-keygen is unavailable");
+            return;
+        };
         assert!(derived.status.success());
         let derived =
             PublicKeyMaterial::parse(&String::from_utf8(derived.stdout).unwrap()).unwrap();

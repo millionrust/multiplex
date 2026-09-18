@@ -7,6 +7,16 @@ on:
   push:
     branches: [main, dev, test]
   pull_request:
+  # Run by hand with `debug` on to be handed a shell on the runner when a job fails. Meant for a
+  # failure that cannot be read from a log: a linker that cannot say which symbol it wanted, a
+  # build script that panics inside a dependency, a toolchain that differs from every machine
+  # here. Never on an ordinary push, where a waiting session would hold a runner for nothing.
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: "Open a tmate shell on the runner if a job fails"
+        type: boolean
+        default: false
 
 jobs:
   test:
@@ -15,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-22.04, macos-14]
+        runner: [ubuntu-24.04, macos-14]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,28 +74,44 @@ jobs:
           TERMIRUST_CLIPPY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: ./scripts/verify/rust.sh workspace
 
-      # Ubuntu 22.04 ships tmux 3.2a, which has no copy-mode position counter and rewrites `:`
-      # and `.` in session names, so the wrapped-tab setup is checked against both it and a
-      # current tmux.
-      - name: Build a second tmux to test against
+      # tmux changes what it accepts between releases: 3.2a has no copy-mode position counter and
+      # rewrites `:` and `.` in session names, so a setup that works on the newest tmux can still
+      # break the one an LTS ships. Both ends are built here rather than taken from the image,
+      # which ships neither: 22.04 gave us 3.2a for free, and this runner had to move to 24.04
+      # because PipeWire 0.3.48 declares a format modifier signed where libspa expects it
+      # unsigned, so the Linux capture backend cannot compile there at all.
+      - name: Build the tmux versions to test against
         if: runner.os == 'Linux'
         run: |
           sudo apt-get install -y libevent-dev libncurses-dev bison
-          curl -fsSL -o /tmp/tmux.tar.gz \
-            https://github.com/tmux/tmux/releases/download/3.5a/tmux-3.5a.tar.gz
-          tar -xzf /tmp/tmux.tar.gz -C /tmp
-          cd /tmp/tmux-3.5a
-          ./configure --prefix=/opt/tmux-3.5a >/dev/null
-          make -j"$(nproc)" >/dev/null
-          sudo make install >/dev/null
+          for version in 3.2a 3.5a; do
+            curl -fsSL -o "/tmp/tmux-$version.tar.gz" \
+              "https://github.com/tmux/tmux/releases/download/$version/tmux-$version.tar.gz"
+            tar -xzf "/tmp/tmux-$version.tar.gz" -C /tmp
+            (cd "/tmp/tmux-$version" \
+              && ./configure --prefix="/opt/tmux-$version" >/dev/null \
+              && make -j"$(nproc)" >/dev/null \
+              && sudo make install >/dev/null)
+          done
 
       - name: Behaviour across tmux versions
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
-            ./scripts/test/tmux-matrix.sh /usr/bin/tmux /opt/tmux-3.5a/bin/tmux
+            ./scripts/test/tmux-matrix.sh \
+              /opt/tmux-3.2a/bin/tmux /usr/bin/tmux /opt/tmux-3.5a/bin/tmux
           else
             ./scripts/test/tmux-matrix.sh
           fi
+
+      # Only when asked for, and only to the person who asked: the connection string appears in a
+      # log, and this runner holds a private checkout. GitHub authorises the public keys on the
+      # actor's profile, so an account with none cannot open a session at all.
+      - name: Shell on the runner
+        if: failure() && inputs.debug
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
+          connect-timeout-seconds: 900
 
       - name: Repeat local tmux regression
         run: ./scripts/test/repeat.sh 25 local::tests::local_tmux_session_survives_disconnect_and_reattaches
@@ -95,7 +121,7 @@ jobs:
 
   msrv:
     name: Rust 1.88 MSRV
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -177,7 +203,7 @@ jobs:
 
   android:
     name: native Android application
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -223,6 +249,13 @@ jobs:
           apps/android/scripts/verify-android-unified-routes.sh
           apps/android/gradlew -p apps/android lintDebug --console=plain
 
+      - name: Shell on the runner
+        if: failure() && inputs.debug
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
+          connect-timeout-seconds: 900
+
   ios:
     name: native iOS and iPadOS application
     runs-on: macos-26
@@ -253,3 +286,10 @@ jobs:
 
       - name: Verify Swift 6 contracts and generic application build
         run: apps/ios/scripts/verify-ios-unified-routes.sh
+
+      - name: Shell on the runner
+        if: failure() && inputs.debug
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
+          connect-timeout-seconds: 900
