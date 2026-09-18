@@ -367,6 +367,27 @@ transport, and the rejection of the first unused capability bit and frame kind.
 Acceptance of this amendment is the release gate "Capability ADR amendment accepted"; the
 implementation ships behind it.
 
+### Lockfile note: Windows and Linux screen capture (2026-09-18)
+
+The M6 capture backends changed the workspace `Cargo.lock`, so the checksum below was repinned.
+Nothing in `termirust-controller-security` changed, and no vector byte changed; only the pinned
+lockfile hash did.
+
+Windows added no package: `windows 0.61.3` was already in the lock file, and the capture crate now
+names it. Linux added `pipewire 0.8.0` and with it `libspa`, `pipewire-sys`, `libspa-sys`,
+`cookie-factory`, and `nix` (all MIT), plus the build-time `system-deps` (MIT/Apache) and
+`bindgen` (BSD-3-Clause). `ashpd 0.13.13` and `async-io 2` were already locked and gained a
+`screencast` feature. All are permissive and none is reachable from this crate: every addition sits
+behind `cfg(target_os)` in `termirust-screen-capture`, which does not depend on
+`termirust-controller-security`. `pipewire-sys` links the system `libpipewire-0.3` rather than
+vendoring it, so a Linux build needs `libpipewire-0.3-dev` present.
+
+`windows-capture` was considered and rejected: it wraps Windows.Graphics.Capture, which delivers a
+whole texture per frame and reports no damage, and Desktop Duplication's dirty and move rectangles
+are what the tile codec is built around.
+
+`cargo deny check` is green on advisories, bans, licences, and sources after the change.
+
 ## Golden vectors and change control
 
 `crates/termirust-controller-security/tests/vectors/controller-v1.json` stores fixture-only private/public static and ephemeral keys, exact offer/prologue, all three messages, final `h`, SAS, both split transport keys, and first/last legal frames. A conformance run consumes those bytes; it never regenerates missing fields. The verification script checks the fixture plus ADR and lockfile checksums. Any deliberate protocol or dependency change must update this ADR first, regenerate every vector in review, and demonstrate that prior vectors fail under the declared compatibility policy.
