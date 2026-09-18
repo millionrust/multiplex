@@ -16,15 +16,18 @@ fn main() {
         "{} x {} pixels, {:.1} s of screen per cell, then a 10 s outage.\n",
         1280, 800, seconds
     );
-    println!("| Profile | Workload | Stage | kbps | Longest stall ms | Caught up ms | Exact ms |");
-    println!("|---|---|---|---:|---:|---:|---:|");
+    println!(
+        "| Profile | Workload | Stage | kbps | Rung | Longest stall ms | Caught up ms | Exact ms |"
+    );
+    println!("|---|---|---|---:|---|---:|---:|---:|");
     for cell in &cells {
         println!(
-            "| {} | {} | {} | {:.0} | {} | {} | {} |",
+            "| {} | {} | {} | {:.0} | {:?} | {} | {} | {} |",
             cell.profile,
             cell.workload.name(),
             if cell.stage_b { "B" } else { "A" },
             cell.kbps(seconds),
+            cell.rung,
             cell.longest_stall_millis,
             cell.caught_up_after_millis,
             cell.exact_after_millis,

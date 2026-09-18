@@ -348,12 +348,16 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   over a second (worst 733 ms) and a screen caught up within three seconds of a ten-second outage
   (worst 1,099 ms). [RS7](engineering-evidence/RS7-network-matrix.md) has the table and three
   definitions the criteria turned out to need.
-  Two things it deliberately does not settle. The stage comparison is not trustworthy from that
-  harness, because it drives `HostSession` directly and so runs without the ladder or the rate
-  estimator; putting it on `ScreenHost` is the next step and would make the video rows mean
-  something. And "converged" is ambiguous in the plan: a video screen on the worst profile catches
-  up in 1.1 s and becomes pixel-exact at 3.8 s, so the strict reading fails the 3 s bound — a
-  decision about the criterion rather than a defect, since refinement is bounded by the link.
+  It runs against a real `ScreenHost`, so the rate estimator and the ladder are in the loop and each
+  cell reports the rung the session settled on. Three results are worth acting on before the device
+  runs, and RS7 has them: the worst stall is **999 ms against a 1,000 ms bound**, so Stage B video
+  on the worst profile passes by one frame; **Stage B is not always cheaper** — 3,073 kbps against
+  the tile path's 713 on an uncapped link, because with room to spare the ladder never degrades and
+  a modest smooth region is cheaper as tiles; and **the ladder stays at `Full` on the 200 kbps
+  profile**, where it is most needed, probably because the host is already throttled by
+  unacknowledged batches before demand can crowd the estimate.
+  "Converged" was settled by the owner on 2026-09-18 as "showing the current screen, lossy first
+  pass allowed"; section 7 now says so.
   What still needs the device: input-to-glass P95, and a real iPhone and Android phone.
 
 ## M6 — Windows and Linux hosts, background hosting [4.2, 4.7]

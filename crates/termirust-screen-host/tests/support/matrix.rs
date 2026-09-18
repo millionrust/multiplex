@@ -20,13 +20,19 @@
 #![allow(dead_code)]
 
 use std::collections::VecDeque;
+use std::sync::Arc;
 
-use termirust_screen_codec::{FrameBuffer, Rect, Size};
-use termirust_screen_host::{MotionSender, platform_encoders};
-use termirust_screen_protocol::{Class, FeatureSet, Message, Profile, SurfaceInfo, encode_frame};
-use termirust_screen_session::{
-    Grants, HostConfig, HostEvent, HostSession, ResumeStore, TicketVerifier, ViewerSession,
+use termirust_controller_listener::{
+    ControllerScreenSession, ScreenFrameCapability, ScreenGrants, ScreenTicketStore,
+    SystemHandshakeEntropy,
 };
+use termirust_domain::ControllerDeviceId;
+use termirust_screen_codec::{FrameBuffer, Rect, Size};
+use termirust_screen_host::{Rung, ScreenHost, ScreenHostHandle};
+use termirust_screen_protocol::{
+    Class, FeatureSet, FrameReader, Message, Profile, SurfaceInfo, encode_frame,
+};
+use termirust_screen_session::{HostConfig, ViewerSession};
 
 const TICKET: [u8; 32] = [7; 32];
 const SURFACE: u32 = 1;
@@ -121,23 +127,14 @@ pub struct Cell {
     /// exact is refinement, and refinement is bounded by the link.
     pub exact_after_millis: u64,
     pub bytes: usize,
+    /// What the ladder had given up by the end of the run, which only means anything because the
+    /// host here is the one that owns a ladder.
+    pub rung: Rung,
 }
 
 impl Cell {
     pub fn kbps(self, seconds: f64) -> f64 {
         self.bytes as f64 * 8.0 / seconds / 1_000.0
-    }
-}
-
-struct Tickets;
-
-impl TicketVerifier for Tickets {
-    fn verify(&mut self, proof: &[u8; 32]) -> Option<Grants> {
-        (*proof == TICKET).then_some(Grants {
-            device: 1,
-            can_view: true,
-            can_control: false,
-        })
     }
 }
 
@@ -201,66 +198,93 @@ struct InFlight {
     message: Message,
 }
 
-/// A host and a viewer with a conditioned link between them.
+/// A real host and a real viewer with a conditioned link between them.
+///
+/// The host is a [`ScreenHost`], not a bare `HostSession`, and that is the point: `ScreenHost` owns
+/// the rate estimator and the degradation ladder, so what this measures is the adaptive system the
+/// product ships rather than the codec with its governor removed. An earlier version drove the
+/// session directly, and its video rows said Stage B cost four times Stage A on an uncapped link —
+/// which was true of an encoder nobody regulates and true of nothing else.
 struct Link {
-    host: HostSession<Tickets>,
+    runtime: tokio::runtime::Runtime,
+    host: ScreenHost,
+    handle: ScreenHostHandle,
+    outgoing: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
+    reader: FrameReader,
     viewer: ViewerSession,
-    store: ResumeStore,
+    tickets: ScreenTicketStore,
     profile: Profile7,
     now_micros: u64,
     /// When the link is next free to put a byte on the wire, for the bandwidth cap.
     wire_free_micros: u64,
     in_flight: VecDeque<InFlight>,
-    burst: u64,
     bytes: usize,
     /// Advances on every dropped datagram, so loss is deterministic rather than random: a matrix
     /// that reports a different number every run cannot be a gate.
     loss_counter: u32,
     /// Bytes held back while the link is cut.
     severed: bool,
-    /// Drives the motion path on Stage B. Without one, advertising the video feature changes
-    /// nothing and the two stages measure the same thing — which is how the first version of this
-    /// harness reported Stage B and Stage A as byte-for-byte identical.
-    motion: Option<MotionSender>,
     features: FeatureSet,
     /// A cheap digest of the viewer's last picture, for spotting that it moved at all.
     last_picture: Option<u64>,
 }
 
+fn surfaces() -> Vec<SurfaceInfo> {
+    vec![SurfaceInfo {
+        id: SURFACE,
+        size: size(),
+        scale_milli: 1000,
+        name: "Built-in Display".to_owned(),
+    }]
+}
+
 impl Link {
     fn new(profile: Profile7, features: FeatureSet) -> Self {
-        let host = HostSession::new(
-            vec![SurfaceInfo {
-                id: SURFACE,
-                size: size(),
-                scale_milli: 1000,
-                name: "Built-in Display".to_owned(),
-            }],
-            Tickets,
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("a runtime");
+        let (sender, outgoing) = tokio::sync::mpsc::unbounded_channel();
+        let (host, handle) = ScreenHost::new(
+            surfaces(),
             HostConfig {
                 features,
                 ..HostConfig::default()
             },
+            sender,
+            Arc::new(|_| {}),
         );
+        let mut tickets = ScreenTicketStore::default();
+        let ticket = tickets
+            .issue(
+                ScreenGrants {
+                    device_id: ControllerDeviceId::new(),
+                    can_view: true,
+                    can_control_pointer: false,
+                    can_control_keyboard: false,
+                },
+                &mut SystemHandshakeEntropy,
+            )
+            .expect("a ticket for a device allowed to watch");
         let mut viewer = ViewerSession::with_features(64 << 20, features);
-        let store = ResumeStore::default();
-        viewer.connect(TICKET);
+        viewer.connect(ticket);
         viewer.subscribe(SURFACE, Profile::Interactive);
+
         let mut link = Self {
+            runtime,
             host,
+            handle,
+            outgoing,
+            reader: FrameReader::new(),
             viewer,
-            store,
+            tickets,
             profile,
             now_micros: 0,
             wire_free_micros: 0,
             in_flight: VecDeque::new(),
-            burst: 0,
             bytes: 0,
             loss_counter: 0,
             severed: false,
-            motion: features
-                .has(FeatureSet::MOTION_VIDEO)
-                .then(|| MotionSender::new(platform_encoders())),
             features,
             last_picture: None,
         };
@@ -285,10 +309,6 @@ impl Link {
     }
 
     /// How long `bytes` take to get across, including what retransmission costs.
-    ///
-    /// Reliable classes pay for loss in time: a lost segment is noticed and resent, which on a link
-    /// with this round trip costs about one of them per loss event. That is the honest way to put
-    /// 10% loss on an ordered stream.
     fn transit_micros(&mut self, bytes: usize, class: Class) -> u64 {
         let serialisation = if self.profile.bytes_per_second == u64::MAX {
             0
@@ -305,38 +325,34 @@ impl Link {
         micros
     }
 
-    /// Puts everything the host wants to send onto the wire.
+    /// Takes everything the host has flushed and puts it on the wire.
     fn send(&mut self) {
-        let mut burst_bytes = 0;
-        while let Some(message) = self.host.poll_outgoing() {
-            let class = message.class();
-            let encoded = encode_frame(&message).expect("encodable");
-            self.bytes += encoded.len();
-            burst_bytes += encoded.len();
-            if self.severed || self.drops(class) {
+        while let Ok(bytes) = self.outgoing.try_recv() {
+            self.bytes += bytes.len();
+            if self.severed {
                 continue;
             }
-            // The cap is a queue, not a per-message delay: two messages sent at once do not both
-            // arrive at one message's worth of serialisation time.
-            let start = self.wire_free_micros.max(self.now_micros);
-            let transit = self.transit_micros(encoded.len(), class);
-            self.wire_free_micros = start + transit.min(u64::MAX / 4);
-            self.in_flight.push_back(InFlight {
-                at_micros: self.wire_free_micros,
-                message,
-            });
-        }
-        if burst_bytes > 0
-            && self
-                .host
-                .agreed_features()
-                .has(FeatureSet::BANDWIDTH_REPORTS)
-        {
-            self.burst += 1;
+            self.reader.push(&bytes);
+            while let Ok(Some(message)) = self.reader.next_message() {
+                let class = message.class();
+                let encoded = encode_frame(&message).expect("encodable").len();
+                if self.drops(class) {
+                    continue;
+                }
+                // The cap is a queue, not a per-message delay: two messages sent at once do not
+                // both arrive at one message's worth of serialisation time.
+                let start = self.wire_free_micros.max(self.now_micros);
+                let transit = self.transit_micros(encoded, class);
+                self.wire_free_micros = start + transit.min(u64::MAX / 4);
+                self.in_flight.push_back(InFlight {
+                    at_micros: self.wire_free_micros,
+                    message,
+                });
+            }
         }
     }
 
-    /// Delivers everything that has arrived by `self.now_micros`, and answers the host.
+    /// Delivers everything that has arrived by now, and answers the host.
     fn receive(&mut self) {
         while self
             .in_flight
@@ -352,21 +368,13 @@ impl Link {
             if self.severed {
                 continue;
             }
-            // The viewer's answers are small; they cost a one-way trip and nothing else.
-            let Ok(events) = self.host.receive(message, &mut self.store) else {
-                continue;
-            };
-            for event in events {
-                // Without these the sender never learns the decoder started, and the tile path
-                // keeps paying for a region the video is already carrying.
-                match (event, self.motion.as_mut()) {
-                    (HostEvent::VideoAcknowledged { tokens, .. }, Some(motion)) => {
-                        motion.acknowledged(&tokens);
-                    }
-                    (HostEvent::VideoLost { .. }, Some(motion)) => motion.lost(),
-                    _ => {}
-                }
-            }
+            let bytes = encode_frame(&message).expect("encodable");
+            let host = &mut self.host;
+            let tickets = &mut self.tickets;
+            let _ = self.runtime.block_on(async move {
+                host.receive(ScreenFrameCapability::Observe, &bytes, tickets)
+                    .await
+            });
         }
     }
 
@@ -406,8 +414,8 @@ impl Link {
 
     /// Whether the viewer is showing the current screen, allowing the lossy first pass.
     ///
-    /// Mean absolute error per channel, against a threshold the lossy pass stays well inside and a
-    /// stale screen does not: a picture region that has not arrived at all is nowhere near.
+    /// This is what the plan means by converged (owner, 2026-09-18). Mean absolute error per
+    /// channel against a threshold the lossy pass stays well inside and a stale screen does not.
     fn caught_up(&mut self, shown: &FrameBuffer) -> bool {
         let Some(drawn) = self.viewer.framebuffer(SURFACE) else {
             return false;
@@ -440,49 +448,56 @@ impl Link {
     }
 
     fn draw(&mut self, buffer: &FrameBuffer) {
-        let frame = buffer.as_frame();
+        // One call, and the host does the rest: encode, steer the ladder on this clock, drive the
+        // motion path, flush. That is the whole reason for using it rather than the session.
         let _ = self
-            .host
-            .frame(SURFACE, &frame, None, self.now_micros / 1_000);
-        if let Some(motion) = self.motion.as_mut() {
-            motion.frame(&mut self.host, SURFACE, &frame);
-        }
+            .handle
+            .frame(SURFACE, &buffer.as_frame(), None, self.now_micros / 1_000);
     }
 
     /// The outage the plan asks about: the connection drops, and the viewer comes back and resumes.
-    ///
-    /// Not a severed wire with the session left running. A tile batch is a difference from the last
-    /// picture, so bytes dropped on the floor mid-session leave the screen wrong forever — that is
-    /// the whole reason the resume store exists, and modelling an outage without it would measure a
-    /// transport nobody ships and call the codec broken for it.
     fn reconnect(&mut self) {
-        self.host.close("connection_lost", &mut self.store);
+        self.handle.stop("connection_lost");
         self.viewer.disconnected();
         self.in_flight.clear();
+        self.reader = FrameReader::new();
         self.severed = false;
         self.wire_free_micros = self.now_micros;
+        while self.outgoing.try_recv().is_ok() {}
 
-        let mut host = HostSession::new(
-            vec![SurfaceInfo {
-                id: SURFACE,
-                size: size(),
-                scale_milli: 1000,
-                name: "Built-in Display".to_owned(),
-            }],
-            Tickets,
+        let (sender, outgoing) = tokio::sync::mpsc::unbounded_channel();
+        let (host, handle) = ScreenHost::new(
+            surfaces(),
             HostConfig {
                 features: self.features,
                 ..HostConfig::default()
             },
+            sender,
+            Arc::new(|_| {}),
         );
-        std::mem::swap(&mut self.host, &mut host);
-        self.viewer.connect(TICKET);
+        self.host = host;
+        self.handle = handle;
+        self.outgoing = outgoing;
+        self.tickets = ScreenTicketStore::default();
+        let ticket = self
+            .tickets
+            .issue(
+                ScreenGrants {
+                    device_id: ControllerDeviceId::new(),
+                    can_view: true,
+                    can_control_pointer: false,
+                    can_control_keyboard: false,
+                },
+                &mut SystemHandshakeEntropy,
+            )
+            .expect("a ticket");
+        self.viewer.connect(ticket);
         self.viewer.subscribe(SURFACE, Profile::Interactive);
-        // A reopened session has a new encoder, so the motion path starts again with it.
-        self.motion = self
-            .features
-            .has(FeatureSet::MOTION_VIDEO)
-            .then(|| MotionSender::new(platform_encoders()));
+    }
+
+    /// What the ladder has given up, for the report.
+    fn rung(&self) -> Rung {
+        self.handle.rung()
     }
 }
 
@@ -511,6 +526,7 @@ pub fn run(profile: Profile7, workload: Workload, features: FeatureSet) -> Cell 
             longest_stall = longest_stall.max(link.now_micros.saturating_sub(last_moved));
         }
     }
+    let settled_rung = link.rung();
 
     // Ten seconds with the link cut, then let it come back.
     link.severed = true;
@@ -552,6 +568,7 @@ pub fn run(profile: Profile7, workload: Workload, features: FeatureSet) -> Cell 
         caught_up_after_millis: caught_up_after.saturating_div(1_000),
         exact_after_millis: exact_after.saturating_div(1_000),
         bytes: link.bytes,
+        rung: settled_rung,
     }
 }
 

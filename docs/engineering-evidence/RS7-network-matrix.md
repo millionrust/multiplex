@@ -23,29 +23,59 @@ Run it with `cargo run -p termirust-screen-host --release --example network_matr
 
 ## The answer
 
-All 24 cells pass both criteria. Worst stall **733 ms** against a 1,000 ms bound; worst catch-up
-**1,099 ms** against a 3,000 ms bound.
+All 24 cells pass both criteria. The host here is a real `ScreenHost`, so the rate estimator and the
+degradation ladder are in the loop and the `Rung` column is what the session had actually given up
+by the end of the run.
 
-| Profile | Workload | Stage | kbps | Longest stall ms | Caught up ms | Exact ms |
-|---|---|---|---:|---:|---:|---:|
-| 20 ms, 0%, uncapped | typing | A/B | 9 | 133 | 33 | 99 |
-| 20 ms, 0%, uncapped | scrolling | A/B | 25 | 66 | 33 | 99 |
-| 20 ms, 0%, uncapped | video | A | 707 | 166 | 99 | 633 |
-| 20 ms, 0%, uncapped | video | B | 3,339 | 99 | 133 | 866 |
-| 100 ms, 1%, 5 Mbps | typing | A/B | 9 | 166 | 33 | 199 |
-| 100 ms, 1%, 5 Mbps | scrolling | A/B | 25 | 99 | 33 | 199 |
-| 100 ms, 1%, 5 Mbps | video | A | 669 | 166 | 266 | 833 |
-| 100 ms, 1%, 5 Mbps | video | B | 695 | 99 | 199 | 833 |
-| 300 ms, 5%, 1 Mbps | typing | A/B | 8 | 266 | 33 | 399 |
-| 300 ms, 5%, 1 Mbps | scrolling | A/B | 22 | 199 | 399 | 399 |
-| 300 ms, 5%, 1 Mbps | video | A | 505 | 366 | 33 | 2,033 |
-| 300 ms, 5%, 1 Mbps | video | B | 609 | 366 | 499 | 1,899 |
-| 500 ms, 10%, 200 kbps | typing | A/B | 5 | 366 | 33 | 599 |
-| 500 ms, 10%, 200 kbps | scrolling | A/B | 20 | 299 | 33 | 733 |
-| 500 ms, 10%, 200 kbps | video | A/B | 245 | 733 | 1,099 | 3,833 |
+| Profile | Workload | Stage | kbps | Rung | Longest stall ms | Caught up ms | Exact ms |
+|---|---|---|---:|---|---:|---:|---:|
+| 20 ms, 0%, uncapped | typing | A | 18 | Full | 133 | 33 | 99 |
+| 20 ms, 0%, uncapped | typing | B | 19 | Full | 133 | 33 | 99 |
+| 20 ms, 0%, uncapped | scrolling | A | 28 | Full | 66 | 33 | 99 |
+| 20 ms, 0%, uncapped | scrolling | B | 30 | Full | 66 | 33 | 99 |
+| 20 ms, 0%, uncapped | video | A | 713 | Full | 166 | 99 | 633 |
+| 20 ms, 0%, uncapped | video | B | 3,073 | NoRefinement | 99 | 99 | 633 |
+| 100 ms, 1%, 5 Mbps | typing | A | 18 | Full | 166 | 33 | 199 |
+| 100 ms, 1%, 5 Mbps | typing | B | 19 | Full | 166 | 33 | 233 |
+| 100 ms, 1%, 5 Mbps | scrolling | A | 28 | Full | 99 | 33 | 199 |
+| 100 ms, 1%, 5 Mbps | scrolling | B | 25 | Full | 99 | 233 | 233 |
+| 100 ms, 1%, 5 Mbps | video | A | 675 | Full | 166 | 199 | 833 |
+| 100 ms, 1%, 5 Mbps | video | B | 1,884 | SlowerFrames | 133 | 266 | 1,133 |
+| 300 ms, 5%, 1 Mbps | typing | A | 17 | Full | 266 | 33 | 433 |
+| 300 ms, 5%, 1 Mbps | typing | B | 15 | Full | 299 | 33 | 566 |
+| 300 ms, 5%, 1 Mbps | scrolling | A | 25 | Full | 199 | 433 | 433 |
+| 300 ms, 5%, 1 Mbps | scrolling | B | 22 | Full | 299 | 33 | 566 |
+| 300 ms, 5%, 1 Mbps | video | A | 512 | Full | 366 | 33 | 1,933 |
+| 300 ms, 5%, 1 Mbps | video | B | 507 | Full | 499 | 33 | 3,199 |
+| 500 ms, 10%, 200 kbps | typing | A | 14 | Full | 366 | 33 | 799 |
+| 500 ms, 10%, 200 kbps | typing | B | 13 | Full | 499 | 33 | 1,066 |
+| 500 ms, 10%, 200 kbps | scrolling | A | 23 | Full | 299 | 33 | 799 |
+| 500 ms, 10%, 200 kbps | scrolling | B | 20 | Full | 533 | 1,066 | 1,066 |
+| 500 ms, 10%, 200 kbps | video | A | 251 | Full | 733 | 1,766 | 4,499 |
+| 500 ms, 10%, 200 kbps | video | B | 233 | Full | 999 | 1,999 | 6,699 |
 
-Typing and scrolling measure identically on both stages, which is right: neither promotes a motion
-region, so there is no video path to differ on.
+### Three things this says that are worth acting on
+
+**The worst stall is 999 ms against a 1,000 ms bound.** Stage B video on the worst profile passes by
+one frame. That is a pass and it should not be read as comfort: any change that adds a frame of
+latency to the motion path fails this cell, and a real network is less tidy than this one. It is the
+number to watch in the device runs.
+
+**Stage B is not always cheaper, and on a fast link it is much more expensive.** On the uncapped
+profile it costs 3,073 kbps against the tile path's 713 for the same region. That is not a defect:
+with bandwidth to spare the ladder has no reason to degrade, so the motion encoder runs at its
+default bitrate, and for a 640 × 384 region of smooth content the tile path is simply cheaper.
+[RS5](RS5-motion-path.md) measured Stage B 2.3× cheaper on a 896 × 512 window of harsher content, and
+both are true: the motion path wins when the tile path is expensive, and loses when it is not.
+Worth a decision the plan has not made — whether to promote a region to video only when it is
+actually winning, rather than whenever it looks like video.
+
+**The ladder does not engage on the slowest profile.** It reaches `NoRefinement` and `SlowerFrames`
+on the uncapped and 5 Mbps Stage B video cells, and stays at `Full` on 200 kbps where it is most
+needed. The likely cause is that the host is already throttled by unacknowledged batches on a link
+that slow, so demand never crowds the estimate — the session is bandwidth-limited before the ladder
+has an opinion. That needs looking at before the device runs, because a ladder that only acts when
+there is room to spare is backwards.
 
 ## Three definitions the criteria needed, and why
 
@@ -77,16 +107,11 @@ first version's other mistake, and it made convergence never happen at all.
 
 ## What this does not establish
 
-- **The stage comparison is not trustworthy from this harness, and the video rows should not be
-  read as a Stage B verdict.** The harness drives `HostSession` directly, so the ladder and the
-  rate estimator are not in the loop: nothing here adapts to the link. Stage B's 3,339 kbps on an
-  uncapped link is the motion encoder's unregulated default, not what a real session sends — a real
-  one runs under `ScreenHost`, which owns both. What Stage B costs when it is being governed is
-  [RS5](RS5-motion-path.md), and what the ladder is worth is [RS6](RS6-ladder.md). Putting this
-  matrix on `ScreenHost` is the obvious next step and would make the video rows mean something.
-- On the slowest profile both stages measure identically, which suggests the motion region never
-  promoted there. That may be real — at 200 kbps the send queue backs up and the host encodes fewer
-  frames, so the tracker never sees sustained change — or an artefact of this queue model. It is
-  not worth a conclusion until the harness is on `ScreenHost`.
+- **Why the ladder is quiet at 200 kbps** — the explanation above is the likely one, not a measured
+  one. Confirming it means instrumenting the estimate and the demand per window, which is the next
+  thing to do here.
+- **Whether the link model is fair to a real transport.** Serialisation, one-way delay and a
+  retransmission penalty per lost segment is a reasonable first order, but it has no congestion
+  control, no queue limit and no reordering. A real path is worse in ways this cannot predict.
 - Input-to-glass P95 and real phones: device work, unchanged.
 - Synthetic content, as everywhere else in this plan.
