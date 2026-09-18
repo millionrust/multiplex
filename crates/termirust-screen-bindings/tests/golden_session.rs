@@ -179,8 +179,19 @@ fn the_recorded_session_is_the_one_the_fixture_pins() {
     }
     let committed = std::fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("{FIXTURE} is missing ({error}); regenerate it"));
+    // Compared as values rather than as text, because the text is not stable across builds.
+    //
+    // `serde_json` orders a map's keys by insertion when its `preserve_order` feature is on and
+    // alphabetically when it is off, and whether it is on here depends on what else is in the
+    // build: another workspace crate enables it, so `cargo test -p termirust-screen-bindings`
+    // and `cargo test --workspace` render this fixture with different key orders. Comparing the
+    // rendered strings made the test pass alone and fail in a full run, with a diff in which
+    // every byte of every frame was identical. Every hex string here is still pinned exactly;
+    // only the order the keys are written in stops mattering.
+    let committed: serde_json::Value = serde_json::from_str(&committed)
+        .unwrap_or_else(|error| panic!("{FIXTURE} is not JSON ({error}); regenerate it"));
     assert_eq!(
-        committed, rendered,
+        committed, fixture,
         "the host now sends different bytes than {FIXTURE} pins"
     );
 }
