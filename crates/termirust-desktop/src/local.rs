@@ -288,6 +288,10 @@ pub const TERMINAL_PROGRAM: &str = "TermiRust";
 fn identify_terminal_program(command: &mut CommandBuilder) {
     command.env("TERM_PROGRAM", TERMINAL_PROGRAM);
     command.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
+    // This terminal draws 24-bit colour, which `xterm-256color` cannot say. A tmux the user
+    // starts themselves reads this and turns its own RGB support on, so a program inside it
+    // keeps the colours it asked for instead of the nearest of 256.
+    command.env("COLORTERM", "truecolor");
 }
 
 fn local_pty_terminal_type(inherited: Option<&OsStr>) -> OsString {

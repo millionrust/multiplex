@@ -52,7 +52,10 @@ const WELL_KNOWN_LOCATIONS: [&str; 3] = [
     "/usr/bin/tmux",
 ];
 // Variables a tmux client needs to reach the same server and render the same text.
-const FORWARDED_ENVIRONMENT: [&str; 9] = [
+const FORWARDED_ENVIRONMENT: [&str; 10] = [
+    // A tmux client reads `COLORTERM` and turns its own RGB support on, which keeps 24-bit
+    // colour intact for programs inside a session this app did not configure itself.
+    "COLORTERM",
     "HOME",
     "LANG",
     "LC_ALL",

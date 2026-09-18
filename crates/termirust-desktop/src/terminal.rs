@@ -169,11 +169,48 @@ struct TerminalEvents {
 
 impl EventListener for TerminalEvents {
     fn send_event(&self, event: TermEvent) {
-        if let TermEvent::PtyWrite(text) = event
-            && let Ok(mut replies) = self.replies.lock()
-        {
-            replies.extend_from_slice(text.as_bytes());
+        let reply = match event {
+            TermEvent::PtyWrite(text) => text,
+            // Which colours this terminal is using. tmux asks for the foreground and background
+            // when a client attaches and waits for both answers, and a program reads the
+            // background to decide whether to draw itself for a light or a dark terminal, so
+            // leaving these unanswered makes both behave as though they were somewhere else.
+            TermEvent::ColorRequest(index, format) => format(queried_color(index)),
+            _ => return,
+        };
+        if let Ok(mut replies) = self.replies.lock() {
+            replies.extend_from_slice(reply.as_bytes());
         }
+    }
+}
+
+/// Whether this terminal's background is dark, which a program asks about to pick its palette.
+fn dark_background() -> bool {
+    let background = gpui::Rgba::from(theme::terminal_default_bg());
+    // Rec. 709 luma: the eye weighs green most and blue least.
+    let luma = 0.2126 * background.r + 0.7152 * background.g + 0.0722 * background.b;
+    luma < 0.5
+}
+
+/// The colour this terminal draws one palette entry with, for a program that asked.
+fn queried_color(index: usize) -> Rgb {
+    let color = if index == NamedColor::Foreground as usize {
+        theme::terminal_default_fg()
+    } else if index == NamedColor::Background as usize {
+        theme::terminal_default_bg()
+    } else if index == NamedColor::Cursor as usize {
+        theme::terminal_cursor()
+    } else if let Ok(index) = u8::try_from(index) {
+        palette_color(index)
+    } else {
+        theme::terminal_default_fg()
+    };
+    let rgba = gpui::Rgba::from(color);
+    let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
+    Rgb {
+        r: channel(rgba.r),
+        g: channel(rgba.g),
+        b: channel(rgba.b),
     }
 }
 
@@ -183,6 +220,8 @@ pub struct TerminalState {
     events: TerminalEvents,
     size: TerminalSize,
     revision: u64,
+    /// Tail of the last read, so a name-and-version query split across reads is still seen.
+    name_query_tail: Vec<u8>,
     snapshot_cache: RefCell<TerminalSnapshotCache>,
     render_metrics: Cell<TerminalRenderMetrics>,
 }
@@ -200,6 +239,7 @@ impl TerminalState {
             events,
             size,
             revision: 0,
+            name_query_tail: Vec::new(),
             snapshot_cache: RefCell::new(TerminalSnapshotCache::default()),
             render_metrics: Cell::new(TerminalRenderMetrics::default()),
         }
@@ -209,11 +249,51 @@ impl TerminalState {
         self.size
     }
 
+    /// Answers the two questions the emulator underneath does not: which terminal this is
+    /// (XTVERSION), and whether it is light or dark.
+    ///
+    /// tmux asks both when a client attaches, and keeps asking while they go unanswered. A
+    /// terminal interface program reads the second through tmux to choose a palette, and draws
+    /// itself for the wrong background without it.
+    fn answer_name_and_version(&mut self, data: &[u8]) {
+        const NAME: &[u8] = b"\x1b[>q";
+        const SCHEME: &[u8] = b"\x1b[?996n";
+        // A query split across two reads still has to be recognised, so the tail of the previous
+        // read is carried over.
+        self.name_query_tail.extend_from_slice(data);
+        let window = std::mem::take(&mut self.name_query_tail);
+        let count = |query: &[u8]| window.windows(query.len()).filter(|w| *w == query).count();
+        let names = count(NAME);
+        let schemes = count(SCHEME);
+        let longest = NAME.len().max(SCHEME.len());
+        let keep = window.len().saturating_sub(longest - 1);
+        self.name_query_tail = window[keep..].to_vec();
+        if names == 0 && schemes == 0 {
+            return;
+        }
+        let name = format!("\x1bP>|TermiRust {}\x1b\\", env!("CARGO_PKG_VERSION"));
+        // 1 is a dark background, 2 a light one.
+        let scheme = if dark_background() {
+            "\x1b[?997;1n"
+        } else {
+            "\x1b[?997;2n"
+        };
+        if let Ok(mut replies) = self.events.replies.lock() {
+            for _ in 0..names {
+                replies.extend_from_slice(name.as_bytes());
+            }
+            for _ in 0..schemes {
+                replies.extend_from_slice(scheme.as_bytes());
+            }
+        }
+    }
+
     pub fn process_bytes(&mut self, data: &[u8]) {
         if data.is_empty() {
             return;
         }
 
+        self.answer_name_and_version(data);
         self.parser.advance(&mut self.term, data);
         self.mark_dirty();
         let mut metrics = self.render_metrics.get();
@@ -851,6 +931,187 @@ mod tests {
         terminal.process_bytes(b"ab\x1b[6n");
         assert_eq!(terminal.take_pty_replies(), b"\x1b[1;3R");
         assert!(terminal.take_pty_replies().is_empty());
+    }
+
+    fn reply_to(query: &[u8]) -> String {
+        let mut terminal = TerminalState::new(TerminalSize::new(80, 24, 0, 0), 0);
+        terminal.process_bytes(query);
+        String::from_utf8(terminal.take_pty_replies()).expect("replies are text")
+    }
+
+    /// What this terminal tells a program about itself. tmux asks all of this when a client
+    /// attaches and decides which features to offer the programs inside from the answers, and a
+    /// terminal interface library asks the same questions directly.
+    #[test]
+    fn the_terminal_answers_what_it_can_and_cannot_do() {
+        // Answered, so a program knows it can draw a frame between a begin and an end.
+        assert_eq!(reply_to(b"\x1b[?2026$p"), "\x1b[?2026;2$y");
+        // Answered, so a paste arrives bracketed rather than as typing.
+        assert_eq!(reply_to(b"\x1b[?2004$p"), "\x1b[?2004;2$y");
+        // Answered, so a program learns when the window takes and loses focus.
+        assert_eq!(reply_to(b"\x1b[?1004$p"), "\x1b[?1004;2$y");
+        // Declined honestly: a program that asked keeps its own fallback instead of drawing
+        // through a mode this terminal does not implement.
+        for unsupported in [b"\x1b[?2027$p", b"\x1b[?2031$p", b"\x1b[?1016$p"] {
+            assert!(
+                reply_to(unsupported).ends_with(";0$y"),
+                "{} should be declined, not ignored",
+                String::from_utf8_lossy(unsupported)
+            );
+        }
+        // Identified, which is how tmux recognises a terminal at all.
+        assert!(reply_to(b"\x1b[c").starts_with("\x1b[?"));
+        assert!(reply_to(b"\x1b[>c").starts_with("\x1b[>"));
+        // Named, so tmux stops asking who this is every few seconds.
+        assert!(reply_to(b"\x1b[>q").starts_with("\x1bP>|TermiRust "));
+        // Light or dark, which a program picks its palette from.
+        let scheme = reply_to(b"\x1b[?996n");
+        assert!(
+            scheme == "\x1b[?997;1n" || scheme == "\x1b[?997;2n",
+            "expected a light or dark answer, got {scheme:?}"
+        );
+        // Asked the way tmux asks them, in one stream, every answer still comes back.
+        let together = reply_to(b"\x1b[c\x1b[>c\x1b[>q\x1b[?2026$p\x1b]10;?\x1b\\\x1b]11;?\x1b\\");
+        for expected in [
+            "\x1b[?",
+            "\x1b[>0",
+            "TermiRust ",
+            "?2026;2$y",
+            "]10;rgb:",
+            "]11;rgb:",
+        ] {
+            assert!(
+                together.contains(expected),
+                "{expected:?} missing from {together:?}"
+            );
+        }
+    }
+
+    /// A query that arrives in pieces, as it does from a pseudoterminal, is still answered.
+    #[test]
+    fn a_query_split_across_reads_is_still_answered() {
+        let mut terminal = TerminalState::new(TerminalSize::new(80, 24, 0, 0), 0);
+        terminal.process_bytes(b"\x1b[>");
+        terminal.process_bytes(b"q");
+        let reply = String::from_utf8(terminal.take_pty_replies()).expect("replies are text");
+        assert!(
+            reply.starts_with("\x1bP>|TermiRust "),
+            "expected a name, got {reply:?}"
+        );
+    }
+
+    /// Runs a real terminal interface program against this emulator through a pseudoterminal,
+    /// answering its questions the way a pane does, and checks it drew what it was asked to.
+    ///
+    /// Ignored by default because it needs a program to drive: set `TERMIRUST_TUI_PROBE` to a
+    /// command, such as `bun run /path/to/app.ts`, and run with `--ignored`.
+    #[test]
+    #[ignore = "requires TERMIRUST_TUI_PROBE to name a terminal interface program to run"]
+    fn a_terminal_interface_program_renders_against_this_emulator() {
+        use std::io::{Read as _, Write as _};
+
+        let Ok(probe) = std::env::var("TERMIRUST_TUI_PROBE") else {
+            return;
+        };
+        let mut words = probe.split_whitespace();
+        let program = words.next().expect("a program to run");
+        let size = TerminalSize::new(100, 30, 800, 480);
+        let pty = portable_pty::native_pty_system()
+            .openpty(portable_pty::PtySize {
+                rows: size.rows,
+                cols: size.cols,
+                pixel_width: size.pixel_width,
+                pixel_height: size.pixel_height,
+            })
+            .expect("a pseudoterminal");
+        let mut command = portable_pty::CommandBuilder::new(program);
+        for word in words {
+            command.arg(word);
+        }
+        // What a pane tells a program about itself.
+        command.env("TERM", "xterm-256color");
+        command.env("COLORTERM", "truecolor");
+        command.env("TERM_PROGRAM", "TermiRust");
+        command.env_remove("TMUX");
+        let mut child = pty
+            .slave
+            .spawn_command(command)
+            .expect("the program starts");
+        drop(pty.slave);
+
+        let mut writer = pty.master.take_writer().expect("a writer");
+        let mut reader = pty.master.try_clone_reader().expect("a reader");
+        let (output_tx, output_rx) = std::sync::mpsc::channel::<Vec<u8>>();
+        std::thread::spawn(move || {
+            let mut buffer = [0_u8; 8192];
+            while let Ok(read) = reader.read(&mut buffer) {
+                if read == 0 || output_tx.send(buffer[..read].to_vec()).is_err() {
+                    break;
+                }
+            }
+        });
+
+        let mut terminal = TerminalState::new(size, 2_000);
+        let mut answered = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while Instant::now() < deadline {
+            match output_rx.recv_timeout(Duration::from_millis(200)) {
+                Ok(bytes) => {
+                    if std::env::var_os("TERMIRUST_TUI_PROBE_TRACE").is_some() {
+                        println!("read: {}", String::from_utf8_lossy(&bytes).escape_debug());
+                    }
+                    terminal.process_bytes(&bytes);
+                    let replies = terminal.take_pty_replies();
+                    if !replies.is_empty() {
+                        answered.extend_from_slice(&replies);
+                        let _ = writer.write_all(&replies);
+                        let _ = writer.flush();
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    if child.try_wait().ok().flatten().is_some() {
+                        break;
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        let _ = child.kill();
+
+        let drawn = terminal.all_rows_text().join("\n");
+        println!(
+            "answered: {}",
+            String::from_utf8_lossy(&answered).escape_debug()
+        );
+        println!("drawn:\n{drawn}");
+        assert!(
+            !drawn.trim().is_empty(),
+            "the program drew nothing; it answered {} bytes of questions",
+            answered.len()
+        );
+    }
+
+    /// tmux waits for the foreground and background before it finishes attaching, and a program
+    /// reads the background to choose a light or a dark palette.
+    #[test]
+    fn the_terminal_answers_which_colours_it_is_using() {
+        let foreground = reply_to(b"\x1b]10;?\x1b\\");
+        let background = reply_to(b"\x1b]11;?\x1b\\");
+        assert!(
+            foreground.starts_with("\x1b]10;rgb:"),
+            "expected a foreground colour, got {foreground:?}"
+        );
+        assert!(
+            background.starts_with("\x1b]11;rgb:"),
+            "expected a background colour, got {background:?}"
+        );
+        assert_ne!(
+            foreground, background,
+            "text drawn in the background colour would be invisible"
+        );
+        // Asked together, as tmux asks, both answers come back.
+        let both = reply_to(b"\x1b]10;?\x1b\\\x1b]11;?\x1b\\");
+        assert!(both.contains("\x1b]10;rgb:") && both.contains("\x1b]11;rgb:"));
     }
 
     #[test]
