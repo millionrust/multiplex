@@ -5890,12 +5890,14 @@ mod tests {
 
     #[test]
     fn settings_round_trip_through_serde() {
-        let mut original = AppSettings::default();
-        original.copy_on_select = true;
-        original.terminal_font_size = 16;
-        original.theme_preset = ThemePreset::Light;
-        original.auto_reconnect_attempts = 5;
-        original.auto_reconnect_delay_secs = 30;
+        let original = AppSettings {
+            copy_on_select: true,
+            terminal_font_size: 16,
+            theme_preset: ThemePreset::Light,
+            auto_reconnect_attempts: 5,
+            auto_reconnect_delay_secs: 30,
+            ..AppSettings::default()
+        };
 
         let json = serde_json::to_string(&original).expect("serialize settings");
         let parsed: AppSettings = serde_json::from_str(&json).expect("deserialize settings");
@@ -5988,9 +5990,11 @@ mod tests {
 
     #[test]
     fn settings_normalize_clamps_auto_reconnect_bounds() {
-        let mut settings = AppSettings::default();
-        settings.auto_reconnect_attempts = 99;
-        settings.auto_reconnect_delay_secs = 0;
+        let mut settings = AppSettings {
+            auto_reconnect_attempts: 99,
+            auto_reconnect_delay_secs: 0,
+            ..AppSettings::default()
+        };
         settings.normalize();
         assert_eq!(settings.auto_reconnect_attempts, 10);
         assert_eq!(settings.auto_reconnect_delay_secs, 1);

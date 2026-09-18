@@ -505,9 +505,7 @@ pub(super) fn collect_path_autocomplete_candidates(
             if is_dir && !candidate_path.ends_with('/') {
                 candidate_path.push('/');
             }
-            let Some(match_kind) = path_match_kind(&query.fragment, &candidate_path) else {
-                return None;
-            };
+            let match_kind = path_match_kind(&query.fragment, &candidate_path)?;
             let full_command = format!("{}{}", query.prefix, candidate_path);
             if seen.insert(full_command.to_ascii_lowercase()) {
                 suggestions.push((

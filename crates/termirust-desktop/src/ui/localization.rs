@@ -2925,6 +2925,22 @@ pub fn hosts_onboarding_shortcuts_description(modifier: impl Into<String>) -> St
     )))
 }
 
+pub fn theme_preset_message(preset: crate::models::ThemePreset) -> MessageId {
+    use crate::models::ThemePreset;
+
+    match preset {
+        ThemePreset::System => MessageId::SettingsThemeSystem,
+        ThemePreset::Dark => MessageId::SettingsThemeDark,
+        ThemePreset::Light => MessageId::SettingsThemeLight,
+        ThemePreset::HighContrast => MessageId::SettingsThemeHighContrast,
+        ThemePreset::Recording => MessageId::SettingsThemeRecording,
+    }
+}
+
+pub fn theme_preset_label(preset: crate::models::ThemePreset) -> String {
+    static_message(theme_preset_message(preset))
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
@@ -3027,20 +3043,4 @@ mod tests {
 
         set_development_locale("en-US").unwrap();
     }
-}
-
-pub fn theme_preset_message(preset: crate::models::ThemePreset) -> MessageId {
-    use crate::models::ThemePreset;
-
-    match preset {
-        ThemePreset::System => MessageId::SettingsThemeSystem,
-        ThemePreset::Dark => MessageId::SettingsThemeDark,
-        ThemePreset::Light => MessageId::SettingsThemeLight,
-        ThemePreset::HighContrast => MessageId::SettingsThemeHighContrast,
-        ThemePreset::Recording => MessageId::SettingsThemeRecording,
-    }
-}
-
-pub fn theme_preset_label(preset: crate::models::ThemePreset) -> String {
-    static_message(theme_preset_message(preset))
 }

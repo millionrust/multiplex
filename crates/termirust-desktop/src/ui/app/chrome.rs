@@ -680,7 +680,7 @@ impl TermiRustApp {
                     let active = this
                         .active_workspace_id
                         .and_then(|wid| this.workspaces.iter().find(|w| w.id == wid))
-                        .and_then(|w| Some((w.id, w.active_pane_id)));
+                        .map(|w| (w.id, w.active_pane_id));
                     if let Some((wid, pid)) = active {
                         this.open_workspace_files_for_pane(wid, pid, cx);
                     } else {

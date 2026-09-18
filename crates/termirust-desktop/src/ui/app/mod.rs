@@ -1777,9 +1777,8 @@ impl TermiRustApp {
                 ),
                 desktop_panes.clone(),
             )
-            .map_err(|error| {
+            .inspect_err(|&error| {
                 eprintln!("[controller] desktop pane bridge unavailable: {error}");
-                error
             })
             .ok()?;
             // The SSH and relay routes run in their own processes and find the panes here.
@@ -5923,7 +5922,7 @@ impl TermiRustApp {
         &self,
     ) -> anyhow::Result<DesktopReplication<OsReplicationSecretBackend>> {
         let root = desktop_replication_root()?;
-        Ok(DesktopReplication::open(root, OsReplicationSecretBackend)?)
+        DesktopReplication::open(root, OsReplicationSecretBackend)
     }
 
     fn sync_secure_folder(&mut self, cx: &mut Context<Self>) {
