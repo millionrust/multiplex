@@ -417,9 +417,17 @@ a public key does not and the server needs them. Key generation takes an RNG thr
 0.10's traits, which `rand 0.8`'s `OsRng` does not implement, so those three call sites use `rand`
 0.10 under an alias. Both are the operating system's source; only the trait shape differs.
 
+**iroh is now in the lockfile**, as an optional dependency of `termirust-screen-transport` behind
+an `iroh` feature that is off by default. A default build of this workspace — which is every build
+that ships today — resolves no QUIC stack, no relay client and no Tokio runtime from it, and
+`cargo tree -p termirust-screen-transport` shows only the screen protocol beneath it. It is named
+here because the lockfile checksum this ADR pins is what would otherwise let a dependency of that
+size arrive without anyone saying so.
+
 **What this does not settle.** Adopting iroh is still gated on the 0.4 device spike. This
 amendment makes it *possible* to adopt, and the owner directed it on 2026-09-18 ahead of that
-spike; if 0.4 says no, these pins stay where they are and nothing has to be undone.
+spike; if 0.4 says no, the feature stays off, these pins stay where they are, and nothing has to
+be undone.
 
 ## Golden vectors and change control
 

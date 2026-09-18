@@ -6,10 +6,15 @@
 //! transport seam was drawn — reliable ordered streams for tile batches, unreliable datagrams for
 //! video, and a connection that survives the address underneath it changing.
 //!
-//! **This is built ahead of the 0.4 device spike, by the owner's decision on 2026-09-18.** The
-//! spike is a phone on cellular, which no amount of local testing substitutes for. What is here is
-//! written against the seam so that a no-go costs a transport rather than a milestone: everything
-//! above talks to [`Transport`], and nothing in the session knows iroh exists.
+//! **Behind the `iroh` feature, and off by default.** A host serving tiles over the Controller
+//! channel has no use for a QUIC stack, a relay client and a Tokio runtime, and Stage A is the
+//! configuration that ships today. Everything above this module talks to [`Transport`], so a
+//! build without the feature is missing a route rather than missing a capability.
+//!
+//! **Built ahead of the 0.4 device spike, by the owner's decision on 2026-09-18.** That spike is a
+//! phone on cellular, which no amount of local testing substitutes for. Writing this against the
+//! seam is what makes a no-go cost a transport rather than a milestone: nothing in the session
+//! knows iroh exists.
 //!
 //! ## Why each class gets what it gets
 //!
@@ -78,8 +83,8 @@ impl IrohTransport {
     ///
     /// This waits for the handshake before handing back a route. The further win — writing the
     /// first bytes *during* the handshake, on the `Connection<OutgoingZeroRtt>` typestate — is
-    /// available and deliberately not taken here: it needs the replay reasoning above to be
-    /// reviewed rather than asserted by a spike.
+    /// available and deliberately not taken here: it needs the replay reasoning above reviewed
+    /// rather than asserted, and that review is part of the 0.4 gate.
     pub async fn connect(
         endpoint: &Endpoint,
         peer: impl Into<EndpointAddr>,

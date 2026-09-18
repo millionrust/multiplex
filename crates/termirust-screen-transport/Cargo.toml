@@ -3,8 +3,28 @@ name = "termirust-screen-transport"
 version = "0.1.0"
 edition = "2024"
 rust-version.workspace = true
-description = "What carries a TermiRust Remote Screens session: the delivery each class of message needs, and the seam a QUIC transport will fit into"
+description = "What carries a TermiRust Remote Screens session: the delivery each class of message needs, and the QUIC route that fits the seam"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
 termirust-screen-protocol = { version = "0.1.0", path = "../termirust-screen-protocol" }
+
+# The QUIC route for Stage B. Off by default: nothing in Stage A needs it, and it pulls in a QUIC
+# stack, a relay client and a Tokio runtime that a host serving tiles over the Controller channel
+# has no use for.
+iroh = { version = "1.2", optional = true }
+tokio = { version = "1", features = ["rt", "sync"], optional = true }
+bytes = { version = "1", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+
+[features]
+default = []
+iroh = ["dep:iroh", "dep:tokio", "dep:bytes"]
+
+# Not built at all without the feature, so a default `cargo test` neither compiles a QUIC stack
+# nor reports a skipped test that was never going to run.
+[[test]]
+name = "quic_route"
+required-features = ["iroh"]

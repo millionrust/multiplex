@@ -8,7 +8,8 @@
 //! What it cannot prove is the thing 0.4 exists for: a phone on cellular, moving between networks,
 //! reaching a self-hosted relay. Loopback has no NAT to punch and no path to migrate between.
 
-use termirust_iroh_transport_spike::{ALPN, Class, Delivery, IrohTransport, Transport};
+use termirust_screen_transport::quic::{ALPN, IrohTransport};
+use termirust_screen_transport::{Class, Delivery, Transport};
 
 use iroh::{Endpoint, endpoint::Incoming};
 
@@ -147,7 +148,7 @@ async fn a_video_frame_larger_than_a_datagram_is_refused_rather_than_split() {
     tokio::task::spawn_blocking(move || {
         assert_eq!(
             route.send(Class::Video, &vec![0u8; ceiling + 1]),
-            Err(termirust_iroh_transport_spike::TransportError::TooLarge)
+            Err(termirust_screen_transport::TransportError::TooLarge)
         );
         // And a stream class has no such ceiling: a large batch there is merely slow.
         assert_eq!(route.maximum_chunk(Class::Tiles), None);

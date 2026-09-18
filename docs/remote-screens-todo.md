@@ -339,8 +339,24 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   the last picture, so one lost batch leaves the screen wrong forever; only the motion path may take
   a route that drops things, because it is the only part built for it. A transport that claims
   otherwise is refused when the session opens rather than when a batch goes missing.
-- [ ] 5.3b `feat(screen-transport): survive network changes with migration and 0-RTT resume`
-  **Blocked on the 0.4 iroh spike.** The seam above is what it plugs into.
+- [x] 5.3b `feat(screen-transport): survive network changes with migration and 0-RTT resume`
+  The QUIC route is in the workspace, in `termirust-screen-transport::quic`, behind an `iroh`
+  feature that is off by default. Eleven tests green, three of them two real iroh endpoints on
+  loopback: each class gets the delivery the seam demands, a 4 kB tile batch arrives whole and in
+  order over its stream, a video frame goes as one datagram and is refused rather than fragmented
+  when it exceeds the path's ceiling, and a second connection to the same peer resumes.
+  Migration needed no code. QUIC identifies a connection by its id rather than by the address it
+  arrived from, so Wi-Fi to cellular keeps the same connection — which is why nothing in the
+  module tries to detect roaming. There is nothing to detect.
+  Getting here meant moving `zeroize` to 1.9.0 and `russh` to 0.60, at the owner's direction on
+  2026-09-18: `iroh-base` wants `zeroize ^1.9` against the exact `=1.8.2` the security ADR names,
+  and `ed25519-dalek 3.0.0-rc` wants a released `rand_core ^0.10` that no russh before 0.60
+  allows. The ADR is amended and the Docker SSH and SFTP suite passes whole.
+  **Still gated on 0.4 for the thing loopback cannot show**: a phone on cellular, moving between
+  networks, punching through a carrier NAT or failing to and reaching a relay. Loopback has no NAT
+  and no path to migrate between. The 0-RTT *typestate* — writing the first bytes during the
+  handshake rather than after it — is deliberately not taken yet; it needs the replay reasoning in
+  `connect`'s documentation reviewed rather than asserted, and that review belongs with 0.4.
 - [x] 5.4 `docs(self-hosted-relay): deploy an iroh relay next to relay-host`
   [docs/self-hosted-iroh-relay.md](self-hosted-iroh-relay.md), written in full with concrete config
   at the owner's direction (2026-09-18) rather than waiting on 0.4.

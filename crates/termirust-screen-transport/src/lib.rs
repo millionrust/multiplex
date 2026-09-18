@@ -22,12 +22,19 @@
 //! So the seam's job is to keep those three apart, not to blur them. A transport that cannot
 //! offer unreliable delivery simply reports [`Delivery::Reliable`] for every class and carries
 //! video the same way it carries everything else, which is exactly what Stage A does.
+//!
+//! The QUIC route that motivated all of this lives in [`quic`], behind the `iroh` feature and off
+//! by default. Stage A is what ships today and it has no use for a QUIC stack, so a default build
+//! is missing a route rather than missing a capability.
 
 #![forbid(unsafe_code)]
 
 use std::fmt;
 
 pub use termirust_screen_protocol::Class;
+
+#[cfg(feature = "iroh")]
+pub mod quic;
 
 /// What a route promises.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
