@@ -148,7 +148,8 @@ impl WrappedSessionAppearance {
         //
         // A dropped path arrives bracketed, which tmux reads as a single key it has no name for,
         // so a catch-all is the only binding that can answer it; the path itself follows as
-        // ordinary bytes and arrives whole. tmux answers this binding before any binding for the
+        // ordinary bytes and arrives whole. tmux only offers that key to a binding from 3.6:
+        // 3.4 and 3.5a consume the paste in copy mode and the tab keeps the file dropped on it. tmux answers this binding before any binding for the
         // key itself and tells it nothing about which key ran it, so a character typed by hand
         // to a scrolled-back tab still ends copy mode without reaching the program. Binding every
         // printable key to send itself does not work around that: tmux runs the catch-all

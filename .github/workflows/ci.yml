@@ -193,8 +193,26 @@ jobs:
           # run rebuilt the whole workspace from scratch.
           cache-on-failure: true
 
+      # Every other platform tests the features the workspace ships with. This job alone asked for
+      # all of them, which on Windows means compiling the Stage B QUIC stack -- a route nothing
+      # here exercises -- before a single test runs. The MSRV job already builds every feature.
       - name: Compile and test Windows workspace
-        run: cargo test --workspace --all-targets --all-features --locked --no-fail-fast
+        run: cargo test --workspace --all-targets --locked --no-fail-fast
+
+  # The release binaries do not depend on the tests passing, and waiting for them put an hour
+  # between a push and knowing whether Windows can still produce what it ships.
+  windows-release:
+    name: windows release executables
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.97.1
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - name: Build required Windows release executables
         run: >-

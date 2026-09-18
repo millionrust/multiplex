@@ -741,18 +741,40 @@ fn a_file_dropped_on_a_scrolled_back_tab_reaches_the_program() {
     let dropped = "'/tmp/a b.txt'";
     client.type_bytes(format!("\x1b[200~{dropped} \x1b[201~").as_bytes());
 
-    wait_for("#{pane_in_mode}", "0");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    loop {
-        let screen = server.output(&["capture-pane", "-p", "-t", session]);
-        if screen.contains(dropped) {
-            break;
+    // A paste only reaches a binding on tmux 3.6 and newer. Before that copy mode consumes the
+    // whole thing and the catch-all never runs, so the tab keeps a file dropped on it. Measured
+    // against 3.4, 3.5a, 3.6 and 3.7c with these very bindings; the older half is held to what it
+    // does today so that a tmux which starts answering is noticed rather than assumed.
+    let answers_a_paste = termirust_tmux::parse_version(server.tmux.version())
+        .is_none_or(|version| version >= (3, 6));
+    if answers_a_paste {
+        wait_for("#{pane_in_mode}", "0");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let screen = server.output(&["capture-pane", "-p", "-t", session]);
+            if screen.contains(dropped) {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the dropped path never reached the program, screen was {screen:?}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "the dropped path never reached the program, screen was {screen:?}"
+    } else {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        assert_eq!(
+            server.output(&["display-message", "-p", "-t", session, "#{pane_in_mode}"]),
+            "1",
+            "tmux {} answered a paste in copy mode; the version this is gated on can move",
+            server.tmux.version()
         );
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        let screen = server.output(&["capture-pane", "-p", "-t", session]);
+        assert!(
+            !screen.contains(dropped),
+            "tmux {} delivered the drop after all: {screen:?}",
+            server.tmux.version()
+        );
     }
 
     client.close();
