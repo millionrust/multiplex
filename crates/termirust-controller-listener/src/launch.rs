@@ -1114,6 +1114,15 @@ where
             )
             .with_screens(screens.clone().filter(|_| descriptor.screen_sharing)),
     );
+    // Whatever this host must settle before it can offer a screen at all, settled now rather than
+    // when a device arrives. On Wayland that is the portal dialog, and a person who has just
+    // turned sharing on is expecting to be asked; a person whose phone connects an hour later is
+    // not, and by then the session already needs to know what it is sharing.
+    if descriptor.screen_sharing
+        && let Some(screens) = screens.as_ref()
+    {
+        screens.prepare();
+    }
     let mut source_key = [0; 32];
     rand::rngs::OsRng
         .try_fill_bytes(&mut source_key)

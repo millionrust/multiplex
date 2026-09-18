@@ -405,12 +405,22 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   import this does not do.
   New dependency `pipewire` 0.8 (MIT) and its tree, recorded in the plan's gate 5. It links the
   system `libpipewire-0.3`, so a Linux build needs `libpipewire-0.3-dev`.
-  Not wired into `controller/screen_sharing.rs`, and deliberately so. Every other platform lets
-  the host enumerate screens, publish them, and let the watching device pick one; on Wayland the
-  portal does the picking and cannot be asked until a session is starting, so there is nothing
-  truthful to publish beforehand. Publishing one invented display would make the device's picker
-  work and the pick mean nothing, so Linux publishes an empty list until the flow is reshaped
-  around a "share a screen" action on the host. That is product work, not wiring.
+  Wired into `controller/screen_sharing.rs`, in the shape Wayland forces rather than the shape the
+  other two use. The portal is asked **once, when sharing is turned on**, through a new
+  `ScreenSessionFactory::prepare` hook the worker calls at startup: a person who has just enabled
+  sharing expects a dialog, and one appearing when a phone connects an hour later is both a
+  surprise and too late, because by then the session already needs to know what it is sharing.
+  A grant is one PipeWire stream, so there is no capture per device the way there is elsewhere —
+  opening a second would ask the person again. One stream's frames are handed to every watcher,
+  and a watcher whose session has ended is dropped on the next frame. That fan-out is the part
+  with real logic and no platform in it, so it is compiled and tested on every platform: three
+  watchers, one of them gone, and the other two must keep being fed.
+  Until the dialog is answered this computer offers no screen. That is the truth rather than a
+  gap; one invented display would make the device's picker work while the pick meant nothing.
+  Still to do: persist the restore token in saved state so the dialog is answered once per
+  machine rather than once per listener run. The token is already read back from the grant
+  (`ScreenSharing::restore_token`) and the portal is already asked with `PersistMode::
+  ExplicitlyRevoked`; what is missing is carrying it through the listener descriptor and back.
   **(device)** Type-checked, clippy-clean and unit-tested on `x86_64-unknown-linux-gnu` in a
   container — the pure parts (stride unpacking, short-buffer rejection, the offered format) have
   real tests — but never run against a live compositor. What is unverified is everything that

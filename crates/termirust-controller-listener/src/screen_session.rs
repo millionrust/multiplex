@@ -94,6 +94,17 @@ pub trait ScreenSessionFactory: Send + Sync {
     fn watchers(&self) -> Vec<ScreenWatcherReport> {
         Vec::new()
     }
+
+    /// Called once when the worker starts with screen sharing on, before any device connects.
+    ///
+    /// A host that has to ask a person before it can capture anything does the asking here rather
+    /// than when a phone arrives. On Wayland the compositor's portal owns the choice of screen, so
+    /// asking at the moment a device connects would be both a surprise and too late: the session
+    /// needs to know what it is sharing before it can offer it. Hosts that can simply enumerate
+    /// their displays have nothing to prepare and keep the default.
+    ///
+    /// Must not block: it is called on the worker's startup path.
+    fn prepare(&self) {}
 }
 
 #[cfg(test)]

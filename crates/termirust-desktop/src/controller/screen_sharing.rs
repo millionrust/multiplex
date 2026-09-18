@@ -6,6 +6,16 @@
 //!
 //! Sharing is off until [`ScreenSharing::set_enabled`] turns it on, and the UI reads
 //! [`ScreenSharing::watchers`] for the sharing indicator.
+//!
+//! **Linux works differently, and has to.** Everywhere else this computer can be asked for its
+//! displays at any moment, publishes them, and lets the watching device pick one — so a capture
+//! per device is free. On Wayland the compositor's portal owns that choice: a person grants one
+//! screen once, and the grant is one PipeWire stream. Opening a second capture for a second device
+//! would ask them again, and there is nothing truthful to publish before they have answered at
+//! all. So Linux asks once, when sharing is turned on rather than when a phone arrives, and every
+//! watcher is fed from that one stream. Until the dialog is answered this computer offers no
+//! screen, which is the truth: one invented display would make the device's picker work while the
+//! pick meant nothing.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
@@ -40,6 +50,15 @@ pub struct ScreenWatcher {
 pub struct ScreenSharing {
     enabled: Arc<AtomicBool>,
     watchers: Arc<Mutex<Vec<ScreenWatcher>>>,
+    /// The one screen the portal granted, and every session being fed from it.
+    ///
+    /// Linux only, and it exists because a portal grant is not like a display. macOS and Windows
+    /// can be asked for their displays at any moment and can open a capture per watching device.
+    /// On Wayland a person grants one screen once, and that grant is one PipeWire stream: opening
+    /// a second capture would ask them again. So there is one stream here and its frames are
+    /// handed to every watcher.
+    #[cfg(target_os = "linux")]
+    portal: Arc<Mutex<Option<PortalGrant>>>,
 }
 
 impl Default for ScreenSharing {
@@ -72,6 +91,8 @@ impl ScreenSharing {
         Self {
             enabled: Arc::new(AtomicBool::new(enabled)),
             watchers: Arc::new(Mutex::new(Vec::new())),
+            #[cfg(target_os = "linux")]
+            portal: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -108,6 +129,26 @@ impl ScreenSharing {
             watcher.controlling = watcher.device_id == device_id && controlling;
         }
     }
+
+    /// What this computer can offer a device right now.
+    ///
+    /// Two different questions behind one name. macOS and Windows ask the operating system, which
+    /// always has an answer. Linux asks what the person granted, which is nothing until they have
+    /// answered the portal.
+    #[cfg(not(target_os = "linux"))]
+    fn shared_displays(&self) -> Vec<SharedDisplay> {
+        displays().unwrap_or_default()
+    }
+
+    #[cfg(target_os = "linux")]
+    fn shared_displays(&self) -> Vec<SharedDisplay> {
+        self.portal
+            .lock()
+            .expect("portal grant")
+            .as_ref()
+            .map(|grant| vec![grant.display.clone()])
+            .unwrap_or_default()
+    }
 }
 
 impl ScreenSessionFactory for ScreenSharing {
@@ -119,7 +160,7 @@ impl ScreenSessionFactory for ScreenSharing {
         if !self.is_enabled() {
             return None;
         }
-        let displays = displays().ok()?;
+        let displays = self.shared_displays();
         if displays.is_empty() {
             return None;
         }
@@ -151,6 +192,10 @@ impl ScreenSessionFactory for ScreenSharing {
                         for display in &displays {
                             spawn_capture(display.clone(), handle.clone());
                         }
+                        // Linux captures nothing per session: it joins the one stream the portal
+                        // granted, which is already running.
+                        #[cfg(target_os = "linux")]
+                        sharing.watch(handle.clone());
                         spawn_injection(layout, input, handle);
                     }
                 }
@@ -186,6 +231,13 @@ impl ScreenSessionFactory for ScreenSharing {
                 controlling: watcher.controlling,
             })
             .collect()
+    }
+
+    /// Asks the portal now, so a person who has just turned sharing on is the one who sees the
+    /// dialog. Nothing to prepare where the operating system can simply be asked for its displays.
+    fn prepare(&self) {
+        #[cfg(target_os = "linux")]
+        self.open_portal(None);
     }
 }
 
@@ -362,9 +414,134 @@ fn spawn_capture(display: SharedDisplay, handle: ScreenHostHandle) {
         .ok();
 }
 
-/// Nothing to capture where nothing was published; see `displays` above.
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+/// Adds a watcher to the one stream the portal granted.
+///
+/// No new capture: on Wayland there is one grant and one stream, and opening a second would ask
+/// the person again. See [`PortalGrant`].
+#[cfg(target_os = "linux")]
 fn spawn_capture(_display: SharedDisplay, _handle: ScreenHostHandle) {}
+
+/// The screen a person granted through the portal, and everyone being shown it.
+///
+/// One stream, many watchers. The pump thread owns the source and hands each frame to every
+/// handle still listening; a handle whose session has gone is dropped on the next frame rather
+/// than tracked separately, because a closed session is exactly what a failed `frame` means.
+#[cfg(target_os = "linux")]
+struct PortalGrant {
+    display: SharedDisplay,
+    watchers: Arc<Mutex<Vec<ScreenHostHandle>>>,
+    /// Handed back to the portal next time so the person is not asked again. `None` when the
+    /// compositor does not support restoring.
+    restore_token: Option<String>,
+}
+
+#[cfg(target_os = "linux")]
+impl ScreenSharing {
+    /// Asks the portal for a screen, once, and starts feeding whoever watches it.
+    ///
+    /// Blocks on a dialog, so it runs on its own thread and the caller does not wait. Until the
+    /// person answers, `shared_displays` is empty and a device that connects is offered no screen
+    /// — which is the truth, not a failure.
+    fn open_portal(&self, restore_token: Option<String>) {
+        if self.portal.lock().expect("portal grant").is_some() {
+            return;
+        }
+        let sharing = self.clone();
+        let _ = std::thread::Builder::new()
+            .name("screen-portal".to_owned())
+            .spawn(move || {
+                let config = CaptureConfig {
+                    // The portal's picker chooses the screen, so there is no id to ask for.
+                    display_id: 0,
+                    scale: 1.0,
+                    max_fps: 60,
+                    show_cursor: true,
+                };
+                let Ok(source) = termirust_screen_capture::PortalScreenCastSource::start(
+                    config,
+                    restore_token.as_deref(),
+                ) else {
+                    return;
+                };
+                let info = source.display();
+                let Ok(pixels) = Size::new(
+                    info.size_points.width().max(1),
+                    info.size_points.height().max(1),
+                ) else {
+                    return;
+                };
+                let display = SharedDisplay {
+                    id: info.id,
+                    name: "Shared Screen".to_owned(),
+                    pixels,
+                    size_points: info.size_points,
+                    origin_points: info.origin_points,
+                    scale_milli: 1000,
+                };
+                let watchers = Arc::new(Mutex::new(Vec::new()));
+                *sharing.portal.lock().expect("portal grant") = Some(PortalGrant {
+                    display: display.clone(),
+                    watchers: Arc::clone(&watchers),
+                    restore_token: source.restore_token().map(str::to_owned),
+                });
+                fan_out(source, display.id, &watchers, &sharing.enabled);
+                // The stream ended: the person revoked it, or the screen went away. Drop the grant
+                // so `shared_displays` stops offering a screen nobody is capturing.
+                *sharing.portal.lock().expect("portal grant") = None;
+            });
+    }
+
+    /// The token to ask with next time, so the person is asked once rather than once per run.
+    pub fn restore_token(&self) -> Option<String> {
+        self.portal
+            .lock()
+            .expect("portal grant")
+            .as_ref()
+            .and_then(|grant| grant.restore_token.clone())
+    }
+
+    fn watch(&self, handle: ScreenHostHandle) {
+        if let Some(grant) = self.portal.lock().expect("portal grant").as_ref() {
+            grant.watchers.lock().expect("portal watchers").push(handle);
+        }
+    }
+}
+
+/// Reads one stream and gives every frame to everyone watching.
+///
+/// Only Linux has a use for this today, but it is compiled and tested everywhere on purpose: it is
+/// the part of the portal flow with no platform in it, and a fan-out that quietly stops feeding one
+/// of two watchers is not something worth discovering on a machine that cannot run the tests.
+fn fan_out(
+    mut source: impl FrameSource,
+    display_id: u32,
+    watchers: &Arc<Mutex<Vec<ScreenHostHandle>>>,
+    enabled: &AtomicBool,
+) {
+    while enabled.load(Ordering::Acquire) {
+        match source.next_frame(CAPTURE_POLL) {
+            Ok(Some(captured)) => {
+                let Ok(frame) = Frame::new(captured.size, captured.stride, &captured.pixels) else {
+                    continue;
+                };
+                let damage = match &captured.damage {
+                    Damage::Rects(rects) => Some(rects.as_slice()),
+                    Damage::Unknown => None,
+                };
+                // A handle that will not take a frame belongs to a session that has ended, so it
+                // is dropped here rather than counted anywhere else.
+                watchers.lock().expect("portal watchers").retain(|handle| {
+                    handle.is_open()
+                        && handle
+                            .frame(display_id, &frame, damage, captured.timestamp_ms)
+                            .is_ok()
+                });
+            }
+            Ok(None) => {}
+            Err(_) => return,
+        }
+    }
+}
 
 /// Injects the input the session allowed, on a thread that owns the platform's event source.
 fn spawn_injection(
@@ -505,5 +682,78 @@ mod tests {
         let placement = layout.placement(7).expect("the display is placed");
         assert_eq!(placement.to_global(3023, 1963).x, 1511.5);
         assert_eq!(displays[0].surface().size, displays[0].pixels);
+    }
+
+    /// One stream, three watchers, one of which has gone.
+    ///
+    /// This is the shape Wayland forces: a person grants one screen, and opening a second capture
+    /// to serve a second device would ask them again. So every watcher is fed from the same frames,
+    /// and a session that has ended has to stop being fed without taking the others with it. Only
+    /// Linux uses this today, and it is tested here precisely because the machine that runs it
+    /// cannot run the tests.
+    #[test]
+    fn one_granted_stream_feeds_every_watcher_and_forgets_the_ones_that_left() {
+        let size = Size::new(64, 64).unwrap();
+        let surface = SurfaceInfo {
+            id: 1,
+            size,
+            scale_milli: 1000,
+            name: "Shared Screen".to_owned(),
+        };
+        // The receivers are held for the whole test: a dropped one closes the session's outgoing
+        // channel, which would end the session for a reason this test is not about.
+        let mut receivers = Vec::new();
+        let mut handles = Vec::new();
+        let mut sessions = Vec::new();
+        for _ in 0..3 {
+            let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+            let (session, handle) = ScreenHost::new(
+                vec![surface.clone()],
+                HostConfig::default(),
+                sender,
+                Arc::new(|_| {}),
+            );
+            receivers.push(receiver);
+            handles.push(handle);
+            sessions.push(session);
+        }
+        // The middle device left.
+        handles[1].stop("device_left");
+
+        let watchers = Arc::new(Mutex::new(handles));
+        let frames = (0..4).map(|index| {
+            termirust_screen_capture::CapturedFrame::tight(
+                size,
+                vec![index * 20; (size.width() * size.height()) as usize * 4],
+                Damage::Unknown,
+                u64::from(index) * 33,
+            )
+        });
+        let enabled = AtomicBool::new(true);
+        // Ends when the replay runs out, so this returns rather than waiting on the flag.
+        fan_out(
+            termirust_screen_capture::ReplaySource::new(frames),
+            1,
+            &watchers,
+            &enabled,
+        );
+
+        let left = watchers.lock().expect("watchers");
+        assert_eq!(
+            left.len(),
+            2,
+            "the departed session should be dropped and the other two kept"
+        );
+        assert!(
+            left.iter().all(ScreenHostHandle::is_open),
+            "a watcher that was still there must not have been dropped with it"
+        );
+        // What this does *not* assert, deliberately: that bytes reached a device. A session only
+        // encodes for a viewer that has said hello and subscribed, so asserting on the outgoing
+        // channel here would be testing the handshake rather than the fan-out, and the host and
+        // viewer already meet properly in the M2 tests. What belongs here is which handles the
+        // fan-out keeps feeding, which is the part Wayland's one-grant-one-stream shape made
+        // necessary and the part with no other test.
+        drop(receivers);
     }
 }
