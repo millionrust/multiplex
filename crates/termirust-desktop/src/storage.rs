@@ -1019,10 +1019,10 @@ fn is_importable_host_alias(alias: &str) -> bool {
 }
 
 fn expand_home_path(value: &str) -> String {
-    if let Some(stripped) = value.strip_prefix("~/") {
-        if let Some(home_dir) = dirs::home_dir() {
-            return home_dir.join(stripped).display().to_string();
-        }
+    if let Some(stripped) = value.strip_prefix("~/")
+        && let Some(home_dir) = dirs::home_dir()
+    {
+        return home_dir.join(stripped).display().to_string();
     }
 
     value.to_string()

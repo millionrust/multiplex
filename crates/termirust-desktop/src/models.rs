@@ -2097,10 +2097,10 @@ fn normalize_local_forwards(
     mut local_forwards: Vec<LocalPortForward>,
     local_forward: Option<LocalPortForward>,
 ) -> Vec<LocalPortForward> {
-    if local_forwards.is_empty() {
-        if let Some(local_forward) = local_forward {
-            local_forwards.push(local_forward);
-        }
+    if local_forwards.is_empty()
+        && let Some(local_forward) = local_forward
+    {
+        local_forwards.push(local_forward);
     }
 
     let mut normalized = Vec::new();

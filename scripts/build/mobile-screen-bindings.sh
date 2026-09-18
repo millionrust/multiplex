@@ -70,15 +70,24 @@ cd "$ROOT_DIR"
   printf 'Expected rustc %s, found %s.\n' "$PINNED_RUST_VERSION" "$(rustc --version)" >&2
   exit 1
 }
+# The pinned toolchains are what makes a shipped artifact reproducible. A build that only has to
+# prove the applications still compile does not need them, and a hosted runner does not get to
+# choose its Xcode, so it may say so — loudly, and never for anything released.
+UNPINNED="${TERMIRUST_SCREEN_BINDINGS_ALLOW_UNPINNED:-0}"
+require_pinned() {
+  local what="$1" expected="$2" found="$3"
+  [[ "$found" == "$expected" ]] && return 0
+  if [[ "$UNPINNED" != "0" ]]; then
+    printf 'warning: %s is %s, not the pinned %s. These artifacts are not release-reproducible.\n' \
+      "$what" "$found" "$expected" >&2
+    return 0
+  fi
+  printf 'Expected %s %s, found %s.\n' "$what" "$expected" "$found" >&2
+  exit 1
+}
 if [[ "$BUILD_IOS" -eq 1 ]]; then
-  [[ "$(xcodebuild -version | head -1)" == "Xcode $PINNED_XCODE_VERSION" ]] || {
-    printf 'Expected Xcode %s.\n' "$PINNED_XCODE_VERSION" >&2
-    exit 1
-  }
-  [[ "$(xcrun --sdk iphoneos --show-sdk-version)" == "$PINNED_IOS_SDK_VERSION" ]] || {
-    printf 'Expected iOS SDK %s.\n' "$PINNED_IOS_SDK_VERSION" >&2
-    exit 1
-  }
+  require_pinned Xcode "Xcode $PINNED_XCODE_VERSION" "$(xcodebuild -version | head -1)"
+  require_pinned "the iOS SDK" "$PINNED_IOS_SDK_VERSION" "$(xcrun --sdk iphoneos --show-sdk-version)"
 fi
 BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/termirust-screen-bindings.XXXXXX")"
 trap 'rm -rf "$BUILD_ROOT"' EXIT
@@ -182,13 +191,19 @@ build_android() {
     printf 'Android NDK not found. Set ANDROID_NDK_HOME or install it under %s/ndk.\n' "$android_sdk" >&2
     exit 1
   }
-  [[ "$(basename "$android_ndk")" == "$PINNED_ANDROID_NDK_VERSION" ]] || {
-    printf 'Expected Android NDK %s, found %s.\n' \
-      "$PINNED_ANDROID_NDK_VERSION" "$(basename "$android_ndk")" >&2
-    exit 1
-  }
+  require_pinned "the Android NDK" "$PINNED_ANDROID_NDK_VERSION" "$(basename "$android_ndk")"
 
-  local host_tag="darwin-x86_64"
+  # The NDK ships one prebuilt toolchain per host, named after it. Both Apple silicon and Intel
+  # Macs use the x86_64 build, under Rosetta where it applies.
+  local host_tag
+  case "$(uname -s)" in
+    Darwin) host_tag="darwin-x86_64" ;;
+    Linux) host_tag="linux-x86_64" ;;
+    *)
+      printf 'Android bindings are built on macOS or Linux, not %s.\n' "$(uname -s)" >&2
+      exit 1
+      ;;
+  esac
   local toolchain="$android_ndk/toolchains/llvm/prebuilt/$host_tag/bin"
   local readelf="$toolchain/llvm-readelf"
   [[ -x "$readelf" ]] || { printf 'Android llvm-readelf missing at %s.\n' "$readelf" >&2; exit 1; }

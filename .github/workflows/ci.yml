@@ -43,6 +43,7 @@ jobs:
           sudo apt-get install -y \
             libxkbcommon-dev libxkbcommon-x11-dev libssl-dev libfontconfig1-dev libdbus-1-dev \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libpipewire-0.3-dev libspa-0.2-dev libclang-dev \
             pkg-config tmux
 
       - name: macOS tmux dependency
@@ -114,6 +115,7 @@ jobs:
           sudo apt-get install -y \
             libxkbcommon-dev libxkbcommon-x11-dev libssl-dev libfontconfig1-dev libdbus-1-dev \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libpipewire-0.3-dev libspa-0.2-dev libclang-dev \
             pkg-config
 
       - name: Check minimum supported Rust version
@@ -205,6 +207,11 @@ jobs:
       # The Remote Screens bindings are generated rather than vendored, and the Kotlin sources
       # name their types, so `compileDebugKotlin` needs them before anything else runs.
       - name: Build and sync Remote Screens bindings
+        # A hosted runner does not get to choose its NDK, and these bindings are built to prove the
+        # application compiles and its tests pass, not to be released. Release artifacts are built
+        # on the pinned toolchains, where this variable is unset.
+        env:
+          TERMIRUST_SCREEN_BINDINGS_ALLOW_UNPINNED: "1"
         run: |
           scripts/build/mobile-screen-bindings.sh --android
           scripts/sync/mobile-screen-bindings.sh --write --android
@@ -236,6 +243,10 @@ jobs:
       # The Xcode project lists the generated Remote Screens bindings among its sources, and they
       # are generated rather than vendored, so the project cannot even be generated without them.
       - name: Build and sync Remote Screens bindings
+        # As on Android: the runner's Xcode is whatever the image ships, and what is built here is
+        # verified, not shipped.
+        env:
+          TERMIRUST_SCREEN_BINDINGS_ALLOW_UNPINNED: "1"
         run: |
           scripts/build/mobile-screen-bindings.sh --ios
           scripts/sync/mobile-screen-bindings.sh --write --ios

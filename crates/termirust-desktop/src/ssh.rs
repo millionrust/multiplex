@@ -1247,7 +1247,7 @@ async fn start_remote_forwarder(
 ) -> Result<()> {
     let requested_port = forward.remote_port;
     let assigned_port = {
-        let mut handle = handle.lock().await;
+        let handle = handle.lock().await;
         handle
             .tcpip_forward(forward.remote_host.clone(), requested_port.into())
             .await

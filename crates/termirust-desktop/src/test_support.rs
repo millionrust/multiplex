@@ -436,6 +436,9 @@ impl TestSshAgent {
             .args(["-q", "-t", "ed25519", "-N", ""])
             .arg("-f")
             .arg(&key)
+            // Nothing here can answer a prompt, and ssh-keygen asks before overwriting a key that
+            // is already there. Reading nothing turns that wait into an error the test reports.
+            .stdin(Stdio::null())
             .output()
             .map_err(|error| format!("unable to generate SSH-agent test key: {error}"))?;
         if !output.status.success() {

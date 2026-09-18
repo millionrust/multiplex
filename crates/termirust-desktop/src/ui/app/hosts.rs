@@ -1963,19 +1963,17 @@ impl TermiRustApp {
                         "Duplicate",
                         false,
                         |this, _, cx| {
-                            if let Some(id) = this.selected_profile_id.clone() {
-                                if let Some(orig) =
+                            if let Some(id) = this.selected_profile_id.clone()
+                                && let Some(orig) =
                                     this.saved.profiles.iter().find(|p| p.id == id).cloned()
-                                {
-                                    let mut copy = orig.clone();
-                                    copy.id =
-                                        format!("{}-copy-{}", orig.id, this.next_session_id());
-                                    copy.label = format!("{} (copy)", orig.label);
-                                    this.saved.upsert_profile(copy.clone());
-                                    this.selected_profile_id = Some(copy.id);
-                                    this.persist_runtime_state();
-                                    cx.notify();
-                                }
+                            {
+                                let mut copy = orig.clone();
+                                copy.id = format!("{}-copy-{}", orig.id, this.next_session_id());
+                                copy.label = format!("{} (copy)", orig.label);
+                                this.saved.upsert_profile(copy.clone());
+                                this.selected_profile_id = Some(copy.id);
+                                this.persist_runtime_state();
+                                cx.notify();
                             }
                         },
                         cx,

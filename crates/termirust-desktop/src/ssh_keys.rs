@@ -528,7 +528,16 @@ mod tests {
         record_ssh_key_audit, remove_authorized_key,
     };
     use std::fs;
-    use std::process::Command;
+    use std::process::{Command, Stdio};
+
+    /// `ssh-keygen` reading a key it cannot parse asks for a passphrase, and a test that inherits
+    /// a console waits for one that never comes. Nothing here has anything to type, so give it
+    /// nothing to read: a prompt then fails at once and says so, instead of hanging the suite.
+    fn openssh_tool(arguments: &[&str]) -> Command {
+        let mut command = Command::new("ssh-keygen");
+        command.args(arguments).stdin(Stdio::null());
+        command
+    }
     use tempfile::TempDir;
 
     #[test]
@@ -567,7 +576,7 @@ mod tests {
 
     #[test]
     fn generated_unencrypted_key_is_accepted_by_openssh_tooling() {
-        if Command::new("ssh-keygen").arg("-V").output().is_err() {
+        if openssh_tool(&["-V"]).output().is_err() {
             eprintln!("skipping OpenSSH compatibility check: ssh-keygen is unavailable");
             return;
         }
@@ -577,8 +586,7 @@ mod tests {
         let public_path = generated.public_key_path.clone();
         let expected_fingerprint = generated.fingerprint.clone();
 
-        let derived = Command::new("ssh-keygen")
-            .args(["-y", "-f"])
+        let derived = openssh_tool(&["-y", "-f"])
             .arg(&private_path)
             .output()
             .expect("ssh-keygen should inspect the generated private key");
@@ -588,8 +596,7 @@ mod tests {
         let generated_material = PublicKeyMaterial::parse(&generated.public_key).unwrap();
         assert!(generated_material.same_key(&derived.key));
 
-        let fingerprint = Command::new("ssh-keygen")
-            .args(["-l", "-f"])
+        let fingerprint = openssh_tool(&["-l", "-f"])
             .arg(public_path)
             .output()
             .expect("ssh-keygen should inspect the generated public key");

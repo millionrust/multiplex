@@ -976,10 +976,10 @@ impl WorkspaceTab {
                 self.pane_ids.push(pane_id);
             }
         }
-        if !self.pane_ids.contains(&self.active_pane_id) {
-            if let Some(first) = self.pane_ids.first().copied() {
-                self.active_pane_id = first;
-            }
+        if !self.pane_ids.contains(&self.active_pane_id)
+            && let Some(first) = self.pane_ids.first().copied()
+        {
+            self.active_pane_id = first;
         }
     }
 }
@@ -2569,10 +2569,10 @@ impl TermiRustApp {
             return;
         };
 
-        if let Some(identity_id) = group.identity_id.as_deref() {
-            if let Some(identity) = self.identity_by_id(identity_id).cloned() {
-                self.use_identity(&identity, window, cx);
-            }
+        if let Some(identity_id) = group.identity_id.as_deref()
+            && let Some(identity) = self.identity_by_id(identity_id).cloned()
+        {
+            self.use_identity(&identity, window, cx);
         }
         if let Some(username) = group.username.clone() {
             Self::set_input_value(&self.inputs.username, username, window, cx);
@@ -3842,10 +3842,10 @@ impl TermiRustApp {
             });
             self.status_message = localization::snippet_prompts_required(prompts.len());
             self.error_message.clear();
-            if let Some(prompts) = self.pending_snippet_prompts.as_ref() {
-                if let Some(first) = prompts.fields.first() {
-                    first.input.read(cx).focus_handle(cx).focus(window);
-                }
+            if let Some(prompts) = self.pending_snippet_prompts.as_ref()
+                && let Some(first) = prompts.fields.first()
+            {
+                first.input.read(cx).focus_handle(cx).focus(window);
             }
             cx.notify();
             return;
@@ -4438,10 +4438,9 @@ impl TermiRustApp {
             .selected_profile_id
             .as_ref()
             .is_some_and(|profile_id| selected.contains(profile_id))
+            && let Some(profile_id) = self.selected_profile_id.clone()
         {
-            if let Some(profile_id) = self.selected_profile_id.clone() {
-                self.load_profile_into_inputs(&profile_id, window, cx);
-            }
+            self.load_profile_into_inputs(&profile_id, window, cx);
         }
 
         self.status_message = if promoted > 0 {
@@ -4499,10 +4498,9 @@ impl TermiRustApp {
             .selected_profile_id
             .as_ref()
             .is_some_and(|profile_id| selected.contains(profile_id))
+            && let Some(profile_id) = self.selected_profile_id.clone()
         {
-            if let Some(profile_id) = self.selected_profile_id.clone() {
-                self.load_profile_into_inputs(&profile_id, window, cx);
-            }
+            self.load_profile_into_inputs(&profile_id, window, cx);
         }
 
         self.status_message = if promoted > 0 {
@@ -4694,12 +4692,12 @@ impl TermiRustApp {
                 draft.password_credential_id = existing_password_credential_id.clone();
             }
         } else {
-            if let Some(credential_id) = existing_password_credential_id.as_deref() {
-                if let Err(error) = credentials::delete_password(credential_id) {
-                    self.error_message = error.to_string();
-                    cx.notify();
-                    return;
-                }
+            if let Some(credential_id) = existing_password_credential_id.as_deref()
+                && let Err(error) = credentials::delete_password(credential_id)
+            {
+                self.error_message = error.to_string();
+                cx.notify();
+                return;
             }
             draft.password_credential_id = None;
         }
@@ -4777,12 +4775,12 @@ impl TermiRustApp {
             return;
         }
 
-        if let Some(credential_id) = credential_id.as_deref() {
-            if let Err(error) = credentials::delete_password(credential_id) {
-                self.error_message = error.to_string();
-                cx.notify();
-                return;
-            }
+        if let Some(credential_id) = credential_id.as_deref()
+            && let Err(error) = credentials::delete_password(credential_id)
+        {
+            self.error_message = error.to_string();
+            cx.notify();
+            return;
         }
 
         self.saved.remove_profile(&profile_id);
@@ -6838,10 +6836,10 @@ impl TermiRustApp {
             restore_active_index.and_then(|index| restored_workspace_ids.get(index).copied());
 
         if let Some(workspace_id) = self.active_workspace_id {
-            if let Some(active_pane_id) = self.workspace(workspace_id).map(|w| w.active_pane_id) {
-                if let Some(pane) = self.pane(active_pane_id) {
-                    pane.terminal_focus.focus(window);
-                }
+            if let Some(active_pane_id) = self.workspace(workspace_id).map(|w| w.active_pane_id)
+                && let Some(pane) = self.pane(active_pane_id)
+            {
+                pane.terminal_focus.focus(window);
             }
             self.sync_terminal_layout(window, cx);
         }
@@ -6995,20 +6993,20 @@ impl TermiRustApp {
         self.persist_runtime_state();
         self.status_message = localization::workspace_renamed_status(new_title);
         self.error_message.clear();
-        if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
-            if let Some(pane) = self.pane(pane_id) {
-                pane.terminal_focus.focus(window);
-            }
+        if let Some(pane_id) = self.active_pane().map(|pane| pane.id)
+            && let Some(pane) = self.pane(pane_id)
+        {
+            pane.terminal_focus.focus(window);
         }
         cx.notify();
     }
 
     fn cancel_workspace_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.tab_rename_workspace_id = None;
-        if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
-            if let Some(pane) = self.pane(pane_id) {
-                pane.terminal_focus.focus(window);
-            }
+        if let Some(pane_id) = self.active_pane().map(|pane| pane.id)
+            && let Some(pane) = self.pane(pane_id)
+        {
+            pane.terminal_focus.focus(window);
         }
         cx.notify();
     }
@@ -7055,10 +7053,10 @@ impl TermiRustApp {
 
     fn cancel_pane_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let pane_id = self.pane_rename_id.take();
-        if let Some(pane_id) = pane_id {
-            if let Some(pane) = self.pane(pane_id) {
-                pane.terminal_focus.focus(window);
-            }
+        if let Some(pane_id) = pane_id
+            && let Some(pane) = self.pane(pane_id)
+        {
+            pane.terminal_focus.focus(window);
         }
         cx.notify();
     }
@@ -8244,20 +8242,20 @@ impl TermiRustApp {
             pane.show_connect_log = show_connect_log;
         }
 
-        if let Some(workspace_id) = workspace_id {
-            if let Some(workspace) = self.workspace_mut(workspace_id) {
-                if let Some(pos) = workspace.pane_ids.iter().position(|id| *id == pane_id) {
-                    workspace.pane_ids[pos] = new_pane_id;
-                    if workspace.active_pane_id == pane_id {
-                        workspace.active_pane_id = new_pane_id;
-                    }
+        if let Some(workspace_id) = workspace_id
+            && let Some(workspace) = self.workspace_mut(workspace_id)
+        {
+            if let Some(pos) = workspace.pane_ids.iter().position(|id| *id == pane_id) {
+                workspace.pane_ids[pos] = new_pane_id;
+                if workspace.active_pane_id == pane_id {
+                    workspace.active_pane_id = new_pane_id;
                 }
-                if let Some(browser) = workspace.sftp.as_mut() {
-                    if browser.pane_id == pane_id {
-                        browser.pane_id = new_pane_id;
-                        browser.request = request.clone();
-                    }
-                }
+            }
+            if let Some(browser) = workspace.sftp.as_mut()
+                && browser.pane_id == pane_id
+            {
+                browser.pane_id = new_pane_id;
+                browser.request = request.clone();
             }
         }
 
@@ -8294,11 +8292,11 @@ impl TermiRustApp {
 
         let mut reconnect_count = 0;
         for pane_id in pane_ids {
-            if let Some(pane) = self.pane(pane_id) {
-                if !pane.connected {
-                    self.reconnect_pane(pane_id, window, cx);
-                    reconnect_count += 1;
-                }
+            if let Some(pane) = self.pane(pane_id)
+                && !pane.connected
+            {
+                self.reconnect_pane(pane_id, window, cx);
+                reconnect_count += 1;
             }
         }
 
@@ -9760,10 +9758,10 @@ impl TermiRustApp {
             SplitAxis::Vertical => f32::from(position.y),
         };
         let new_ratio = drag.start_ratio + (pos - drag.origin) / drag.span.max(1.0);
-        if let Some(workspace) = self.workspace_mut(drag.workspace_id) {
-            if let Some(layout) = workspace.layout.as_mut() {
-                layout.set_ratio(drag.divider_id, new_ratio);
-            }
+        if let Some(workspace) = self.workspace_mut(drag.workspace_id)
+            && let Some(layout) = workspace.layout.as_mut()
+        {
+            layout.set_ratio(drag.divider_id, new_ratio);
         }
         cx.notify();
     }
@@ -11182,22 +11180,21 @@ impl TermiRustApp {
         let mut copy_text: Option<String> = None;
         if let Some(pane) = self.pane_mut(pane_id) {
             pane.dragging_selection = false;
-            if let Some(selection) = pane.selection {
-                if selection.anchor == selection.head {
-                    pane.selection = None;
-                }
+            if let Some(selection) = pane.selection
+                && selection.anchor == selection.head
+            {
+                pane.selection = None;
             }
-            if copy_on_select {
-                if let Some(selection) = pane.selection.and_then(normalized_selection) {
-                    let text = pane.terminal.contents_between(
-                        selection.anchor.row,
-                        selection.anchor.col,
-                        selection.head.row,
-                        selection.head.col,
-                    );
-                    if !text.is_empty() {
-                        copy_text = Some(text);
-                    }
+            if copy_on_select && let Some(selection) = pane.selection.and_then(normalized_selection)
+            {
+                let text = pane.terminal.contents_between(
+                    selection.anchor.row,
+                    selection.anchor.col,
+                    selection.head.row,
+                    selection.head.col,
+                );
+                if !text.is_empty() {
+                    copy_text = Some(text);
                 }
             }
         }
@@ -13423,12 +13420,11 @@ impl TermiRustApp {
                 profile.host == log.host
                     && profile.port == log.port
                     && profile.username == log.username
-            }) {
-                if seen.insert(profile.id.clone()) {
-                    recent.push((profile.clone(), log.started_at));
-                    if recent.len() >= 6 {
-                        break;
-                    }
+            }) && seen.insert(profile.id.clone())
+            {
+                recent.push((profile.clone(), log.started_at));
+                if recent.len() >= 6 {
+                    break;
                 }
             }
         }
@@ -13743,14 +13739,13 @@ impl Render for TermiRustApp {
         // created this very frame.
         if self.active_workspace_id != self.tab_strip_scrolled_to {
             self.tab_strip_scrolled_to = self.active_workspace_id;
-            if let Some(active_id) = self.active_workspace_id {
-                if let Some(index) = self
+            if let Some(active_id) = self.active_workspace_id
+                && let Some(index) = self
                     .workspaces
                     .iter()
                     .position(|workspace| workspace.id == active_id)
-                {
-                    self.tab_strip_scroll.scroll_to_item(index);
-                }
+            {
+                self.tab_strip_scroll.scroll_to_item(index);
             }
         }
 
@@ -14306,15 +14301,13 @@ fn apply_group_defaults_to_draft(
     if draft.identity_id.is_none() {
         draft.identity_id = group.identity_id.clone();
     }
-    if draft.key_path.trim().is_empty() {
-        if let Some(identity_id) = draft.identity_id.as_deref() {
-            if let Some(identity) = identities
-                .iter()
-                .find(|identity| identity.id == identity_id)
-            {
-                draft.key_path = identity.key_path.clone();
-            }
-        }
+    if draft.key_path.trim().is_empty()
+        && let Some(identity_id) = draft.identity_id.as_deref()
+        && let Some(identity) = identities
+            .iter()
+            .find(|identity| identity.id == identity_id)
+    {
+        draft.key_path = identity.key_path.clone();
     }
     if draft.jump_host_id.is_none() {
         draft.jump_host_id = group.jump_host_id.clone();

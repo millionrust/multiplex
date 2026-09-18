@@ -909,17 +909,17 @@ impl TermiRustApp {
     }
 
     pub(super) fn restart_choose_protocol(&mut self, workspace_id: u64, cx: &mut Context<Self>) {
-        if let Some(workspace) = self.workspaces.iter_mut().find(|w| w.id == workspace_id) {
-            if let Some(failure) = workspace.connect_failure.take() {
-                workspace.pending_connect = Some(failure.profile);
-                workspace.pending_connect_protocol = failure.protocol;
-                workspace.pending_connect_mode = ConnectDialogMode::ChooseProtocol;
-                workspace.title = workspace
-                    .pending_connect
-                    .as_ref()
-                    .map(|p| p.display_name())
-                    .unwrap_or_default();
-            }
+        if let Some(workspace) = self.workspaces.iter_mut().find(|w| w.id == workspace_id)
+            && let Some(failure) = workspace.connect_failure.take()
+        {
+            workspace.pending_connect = Some(failure.profile);
+            workspace.pending_connect_protocol = failure.protocol;
+            workspace.pending_connect_mode = ConnectDialogMode::ChooseProtocol;
+            workspace.title = workspace
+                .pending_connect
+                .as_ref()
+                .map(|p| p.display_name())
+                .unwrap_or_default();
         }
         cx.notify();
     }

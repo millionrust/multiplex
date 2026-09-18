@@ -126,10 +126,9 @@ pub fn extract_git_branch_targets(lines: &[String]) -> Vec<String> {
         if let Some(branch) = trimmed.strip_prefix("On branch ") {
             if let Some(branch) =
                 clean_context_token(branch.split_whitespace().next().unwrap_or_default())
+                && seen.insert(branch.clone())
             {
-                if seen.insert(branch.clone()) {
-                    branches.push(branch);
-                }
+                branches.push(branch);
             }
             continue;
         }
@@ -138,14 +137,12 @@ pub fn extract_git_branch_targets(lines: &[String]) -> Vec<String> {
             .strip_prefix("* ")
             .or_else(|| trimmed.strip_prefix("+ "))
             .or_else(|| trimmed.strip_prefix("  "))
-        {
-            if let Some(branch) =
+            && let Some(branch) =
                 clean_context_token(rest.split_whitespace().next().unwrap_or_default())
-            {
-                if branch != "HEAD" && seen.insert(branch.clone()) {
-                    branches.push(branch);
-                }
-            }
+            && branch != "HEAD"
+            && seen.insert(branch.clone())
+        {
+            branches.push(branch);
         }
     }
 
@@ -166,10 +163,10 @@ pub fn extract_docker_targets(lines: &[String]) -> Vec<String> {
         if tokens.len() < 2 || !looks_like_hex_id(tokens[0]) {
             continue;
         }
-        if let Some(target) = clean_context_token(tokens.last().copied().unwrap_or_default()) {
-            if seen.insert(target.clone()) {
-                targets.push(target);
-            }
+        if let Some(target) = clean_context_token(tokens.last().copied().unwrap_or_default())
+            && seen.insert(target.clone())
+        {
+            targets.push(target);
         }
     }
 
