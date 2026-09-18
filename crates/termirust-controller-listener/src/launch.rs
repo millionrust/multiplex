@@ -1329,13 +1329,23 @@ mod tests {
         }
     }
 
+    /// A directory a descriptor would accept. A path is absolute on Windows only with a drive
+    /// behind it, and a descriptor keeps only absolute ones.
+    fn private_directory(name: &str) -> PathBuf {
+        #[cfg(unix)]
+        return PathBuf::from(format!("/private/{name}"));
+        #[cfg(windows)]
+        return PathBuf::from(format!(r"C:\private\{name}"));
+    }
+
     #[test]
     fn launch_descriptor_round_trips_bounded_and_redacts_paths_and_secret() {
+        let controller = private_directory("controller");
         let descriptor = ListenerLaunchDescriptor::new(
-            PathBuf::from("/private/controller"),
-            PathBuf::from("/private/projects"),
-            PathBuf::from("/private/sessions"),
-            PathBuf::from("/private/runtime"),
+            controller.clone(),
+            private_directory("projects"),
+            private_directory("sessions"),
+            private_directory("runtime"),
             ControllerNetworkRevision::ZERO,
             ControllerListenPolicy {
                 enabled: true,
@@ -1365,7 +1375,8 @@ mod tests {
                 .tmux_sessions
         );
         let debug = format!("{descriptor:?}");
-        assert!(!debug.contains("private/controller"));
+        // The path as this platform writes it, so the check cannot pass by spelling.
+        assert!(!debug.contains(&controller.display().to_string()));
         assert!(!debug.contains("7, 7"));
     }
 

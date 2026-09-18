@@ -939,6 +939,9 @@ mod tests {
         DesktopPaneBridgeServer, DesktopPaneRegistration, DesktopPaneRegistry, DesktopPaneTransport,
     };
 
+    /// Reaches a live desktop pane through the bridge, which serves only over a same-user Unix
+    /// socket. Off Unix there is no bridge to reach.
+    #[cfg(unix)]
     #[tokio::test]
     async fn session_list_puts_live_desktop_panes_before_durable_history() {
         let fixture = tempfile::tempdir().unwrap();
@@ -1009,6 +1012,7 @@ mod tests {
         drop(server);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn live_desktop_pane_attach_replays_output_and_accepts_input() {
         let fixture = tempfile::tempdir().unwrap();

@@ -1117,6 +1117,26 @@ mod tests {
         return builder.tempdir().unwrap();
     }
 
+    /// Off Unix there is no socket only one user can open, so the bridge refuses to start rather
+    /// than serving desktop panes over something weaker. A caller is told which it got.
+    #[cfg(not(unix))]
+    #[test]
+    fn the_bridge_is_unavailable_off_unix() {
+        let fixture = fixture_directory();
+        let runtime_root = fixture.path().join("desktop-pane-bridge");
+        let error = DesktopPaneBridgeServer::start(&runtime_root, DesktopPaneRegistry::default())
+            .expect_err("a bridge with no same-user socket must not report itself started");
+        assert_eq!(error.code, ListenerErrorCode::HostUnavailable);
+        assert!(
+            DesktopPaneBridgeEndpoint::discover(&runtime_root).is_none(),
+            "nothing may be discoverable when nothing is served"
+        );
+    }
+
+    /// The bridge carries desktop panes over a socket only the same user can open, which is a
+    /// Unix socket and its file mode. Windows has no such endpoint here, and says so rather than
+    /// serving one; `the_bridge_is_unavailable_off_unix` covers that side.
+    #[cfg(unix)]
     #[test]
     fn published_endpoint_is_discovered_by_another_process_and_removed_on_stop() {
         let fixture = fixture_directory();
@@ -1336,6 +1356,7 @@ mod tests {
         assert_eq!(pane.snapshot_sequence, pane.latest_sequence);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn same_user_socket_round_trip_lists_attaches_and_forwards_input() {
         let fixture = tempfile::tempdir().unwrap();

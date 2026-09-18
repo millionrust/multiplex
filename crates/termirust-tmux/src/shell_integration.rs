@@ -802,8 +802,13 @@ mod tests {
             .unwrap()
             .apply()
             .unwrap();
-        let init_path = home.path().join(".config/termirust/shell-init.zsh");
-        let config_path = home.path().join(".config/termirust/tmux.conf");
+        // Built the way the code builds them: a path written with one separator and read back
+        // with the platform's own does not compare equal on Windows.
+        let init_path = home
+            .path()
+            .join(CONFIG_DIRECTORY)
+            .join(Shell::Zsh.init_file_name());
+        let config_path = home.path().join(CONFIG_DIRECTORY).join(TMUX_CONFIG_FILE);
         let init = fs::read_to_string(&init_path).unwrap();
         assert!(init.contains(&format!(
             "new-session -s \"termirust-${{PWD:t}}-$$\" \\; source-file -q '{}' && exit",
