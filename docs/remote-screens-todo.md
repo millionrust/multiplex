@@ -417,10 +417,12 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   watchers, one of them gone, and the other two must keep being fed.
   Until the dialog is answered this computer offers no screen. That is the truth rather than a
   gap; one invented display would make the device's picker work while the pick meant nothing.
-  Still to do: persist the restore token in saved state so the dialog is answered once per
-  machine rather than once per listener run. The token is already read back from the grant
-  (`ScreenSharing::restore_token`) and the portal is already asked with `PersistMode::
-  ExplicitlyRevoked`; what is missing is carrying it through the listener descriptor and back.
+  The dialog is answered once for the machine, not once per listener run. The portal asks with
+  `PersistMode::ExplicitlyRevoked` and hands back an opaque token; the worker reports it on the
+  poll that already reports watchers, the app writes it to settings, and the next listener
+  descriptor carries it back. Nothing about the token names a screen, so saving it leaks nothing.
+  Both ends of that path are tested: the state keeps a reported token, replaces it when the
+  compositor reissues, and starts a run already knowing one.
   **(device)** Type-checked, clippy-clean and unit-tested on `x86_64-unknown-linux-gnu` in a
   container — the pure parts (stride unpacking, short-buffer rejection, the offered format) have
   real tests — but never run against a live compositor. What is unverified is everything that
@@ -487,10 +489,11 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   until this branch merged `dev`: the Docker fixtures gained image-carried keys and remote-daemon
   support there, and a stale branch fails them with bind-mount and port-timeout errors that read
   exactly like a broken Docker environment. Merge `dev` before investigating any of them.
-  The one remaining failure, `worker_pairs_a_phone_over_tcp_with_the_code_it_shows`, is
-  environmental rather than a defect. The listener announces private addresses and never loopback,
-  so the test pairs over this machine's LAN address, and macOS Local Network permission is granted
-  per code signature. `dev`'s test binary has been approved; this branch's differs, so its packets
-  are dropped after `connect` succeeds and the handshake times out at 60 s. Both sides sample as
-  healthy and parked on I/O. It needs the owner to allow the binary once, which is why it cannot
-  be closed from here.
+  One test, `worker_pairs_a_phone_over_tcp_with_the_code_it_shows`, is intermittent on macOS and
+  not a defect. The listener announces private addresses and never loopback, so the test pairs over
+  this machine's LAN address, where macOS Local Network privacy applies to the test binary. When it
+  fails, `connect` succeeds, no packet reaches the listener, both sides sample as healthy and parked
+  on I/O, and the client times out at 60 s. It failed consistently for one build of this branch and
+  passes for the next, so the trigger is the binary and the grant rather than anything in the code
+  — but the exact mechanism is not pinned down, and it should not be described as though it were.
+  Treat a failure here as "run it again and check the Local Network list", not as a regression.

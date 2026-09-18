@@ -235,9 +235,18 @@ impl ScreenSessionFactory for ScreenSharing {
 
     /// Asks the portal now, so a person who has just turned sharing on is the one who sees the
     /// dialog. Nothing to prepare where the operating system can simply be asked for its displays.
-    fn prepare(&self) {
+    fn prepare(&self, restore_token: Option<&str>) {
         #[cfg(target_os = "linux")]
-        self.open_portal(None);
+        self.open_portal(restore_token.map(str::to_owned));
+        #[cfg(not(target_os = "linux"))]
+        let _ = restore_token;
+    }
+
+    fn restore_token(&self) -> Option<String> {
+        #[cfg(target_os = "linux")]
+        return self.granted_restore_token();
+        #[cfg(not(target_os = "linux"))]
+        None
     }
 }
 
@@ -492,7 +501,7 @@ impl ScreenSharing {
     }
 
     /// The token to ask with next time, so the person is asked once rather than once per run.
-    pub fn restore_token(&self) -> Option<String> {
+    fn granted_restore_token(&self) -> Option<String> {
         self.portal
             .lock()
             .expect("portal grant")

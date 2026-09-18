@@ -128,6 +128,10 @@ pub struct ListenerLaunchDescriptor {
     /// Serves this computer's screens to paired devices that may watch them. Opt-in.
     #[serde(default)]
     pub screen_sharing: bool,
+    /// What a previous run was given for reopening a screen grant without asking again. Only
+    /// Wayland has anything to put here; everywhere else capture needs no per-screen permission.
+    #[serde(default)]
+    pub screen_restore_token: Option<String>,
     pub network_revision: ControllerNetworkRevision,
     pub policy: ControllerListenPolicy,
     host_private: [u8; 32],
@@ -153,6 +157,7 @@ impl ListenerLaunchDescriptor {
             desktop_pane_bridge: None,
             tmux_sessions: false,
             screen_sharing: false,
+            screen_restore_token: None,
             network_revision,
             policy,
             host_private: host_private.copy_for_process_handoff(),
@@ -177,6 +182,12 @@ impl ListenerLaunchDescriptor {
 
     pub fn with_screen_sharing(mut self, enabled: bool) -> Self {
         self.screen_sharing = enabled;
+        self
+    }
+
+    /// Hands back the grant token a previous run reported, so the person is not asked again.
+    pub fn with_screen_restore_token(mut self, token: Option<String>) -> Self {
+        self.screen_restore_token = token;
         self
     }
 
@@ -1121,7 +1132,7 @@ where
     if descriptor.screen_sharing
         && let Some(screens) = screens.as_ref()
     {
-        screens.prepare();
+        screens.prepare(descriptor.screen_restore_token.as_deref());
     }
     let mut source_key = [0; 32];
     rand::rngs::OsRng
@@ -1159,6 +1170,7 @@ where
         let watcher_cancel = cancel.clone();
         std::thread::spawn(move || {
             let mut reported = Vec::new();
+            let mut reported_token: Option<String> = None;
             while !watcher_cancel.is_cancelled() {
                 let watching = screens.watchers();
                 if watching != reported {
@@ -1169,6 +1181,18 @@ where
                         return;
                     }
                     reported = watching;
+                }
+                // The grant token appears only once the person has answered the portal, which is
+                // some time after this thread starts, so it is polled rather than read at startup.
+                let token = screens.restore_token();
+                if let Some(token) = token.filter(|token| Some(token) != reported_token.as_ref()) {
+                    if watcher_events
+                        .send(&ListenerProcessEvent::screen_restore_token(token.clone()))
+                        .is_err()
+                    {
+                        return;
+                    }
+                    reported_token = Some(token);
                 }
                 std::thread::sleep(SCREEN_WATCHER_POLL);
             }

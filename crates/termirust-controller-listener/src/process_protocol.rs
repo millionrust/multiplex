@@ -148,6 +148,9 @@ pub enum ListenerProcessEvent {
         schema_version: u16,
         watchers: Vec<crate::ScreenWatcherReport>,
     },
+    /// A screen grant worth remembering, so the person is asked for it once rather than once per
+    /// listener run. Only Wayland produces one.
+    ScreenRestoreToken { schema_version: u16, token: String },
 }
 
 impl ListenerProcessEvent {
@@ -243,6 +246,14 @@ impl ListenerProcessEvent {
         }
     }
 
+    /// Reports a grant token for the application to keep.
+    pub fn screen_restore_token(token: String) -> Self {
+        Self::ScreenRestoreToken {
+            schema_version: PROCESS_PROTOCOL_VERSION,
+            token,
+        }
+    }
+
     pub fn read(reader: &mut impl BufRead) -> Result<Option<Self>, ListenerError> {
         let Some(bytes) = read_line(reader)? else {
             return Ok(None);
@@ -272,7 +283,8 @@ impl ListenerProcessEvent {
             | Self::PairingCodeAttemptFailed { schema_version, .. }
             | Self::PairingComplete { schema_version, .. }
             | Self::PairingFailed { schema_version, .. }
-            | Self::ScreenWatchers { schema_version, .. } => *schema_version,
+            | Self::ScreenWatchers { schema_version, .. }
+            | Self::ScreenRestoreToken { schema_version, .. } => *schema_version,
         }
     }
 }
@@ -350,6 +362,7 @@ impl std::fmt::Debug for ListenerProcessEvent {
             Self::PairingComplete { .. } => "pairing_complete",
             Self::PairingFailed { .. } => "pairing_failed",
             Self::ScreenWatchers { .. } => "screen_watchers",
+            Self::ScreenRestoreToken { .. } => "screen_restore_token",
         };
         formatter
             .debug_struct("ListenerProcessEvent")

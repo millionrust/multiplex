@@ -1798,6 +1798,7 @@ impl TermiRustApp {
             desktop_pane_bridge_endpoint,
             saved.settings.remote_tmux_sessions,
             saved.settings.remote_screen_sharing,
+            saved.settings.remote_screen_restore_token.clone(),
         );
         let project_label_input = cx
             .new(|cx| InputState::new(window, cx).placeholder(localization::project_label_field()));

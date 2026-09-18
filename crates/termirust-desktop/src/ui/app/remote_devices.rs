@@ -76,6 +76,9 @@ pub(super) struct RemoteDevicesState {
     desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
     tmux_sessions: bool,
     screen_sharing: bool,
+    /// What the portal gave the listener for reopening its screen grant. Saved so a person
+    /// answers that dialog once for this machine rather than once for every listener run.
+    screen_restore_token: Option<String>,
     /// Who is watching this computer's screens, as the listener last reported.
     screen_watchers: Vec<termirust_controller_listener::ScreenWatcherReport>,
     listener_last_polled: Instant,
@@ -116,6 +119,7 @@ impl RemoteDevicesState {
         desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
         tmux_sessions: bool,
         screen_sharing: bool,
+        screen_restore_token: Option<String>,
     ) -> Self {
         let root = match crate::storage::controller_store_dir() {
             Ok(root) => root,
@@ -165,6 +169,7 @@ impl RemoteDevicesState {
                     desktop_pane_bridge,
                     tmux_sessions,
                     screen_sharing,
+                    screen_restore_token,
                     screen_watchers: Vec::new(),
                     listener_last_polled: Instant::now(),
                     host_private,
@@ -218,9 +223,11 @@ impl RemoteDevicesState {
         _desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
         tmux_sessions: bool,
         screen_sharing: bool,
+        screen_restore_token: Option<String>,
     ) -> Self {
         Self {
             repository: None,
+            screen_restore_token,
             identity_state: HostIdentityState::Ready,
             identity: Some(HostIdentityPublic::new(
                 termirust_domain::HostIdentityGeneration::INITIAL,
@@ -284,6 +291,7 @@ impl RemoteDevicesState {
             desktop_pane_bridge: None,
             tmux_sessions: false,
             screen_sharing: false,
+            screen_restore_token: None,
             screen_watchers: Vec::new(),
             listener_last_polled: Instant::now(),
             host_private: None,
@@ -544,6 +552,7 @@ impl RemoteDevicesState {
                     descriptor
                         .with_tmux_sessions(self.tmux_sessions)
                         .with_screen_sharing(self.screen_sharing)
+                        .with_screen_restore_token(self.screen_restore_token.clone())
                 })
         })
         .map_err(|_| ())?;
@@ -611,6 +620,12 @@ impl RemoteDevicesState {
     }
 
     /// Who is watching this computer's screens, as the listener last reported.
+    /// The grant token the listener has reported, if any. The app persists it; this state cannot,
+    /// because saved settings belong to the app.
+    pub(super) fn screen_restore_token(&self) -> Option<&str> {
+        self.screen_restore_token.as_deref()
+    }
+
     pub(super) fn screen_watchers(&self) -> &[termirust_controller_listener::ScreenWatcherReport] {
         &self.screen_watchers
     }
@@ -901,6 +916,9 @@ impl RemoteDevicesState {
             }
             ControllerListenerEventProjection::ScreenWatchers { watchers } => {
                 self.screen_watchers = watchers;
+            }
+            ControllerListenerEventProjection::ScreenRestoreToken { token } => {
+                self.screen_restore_token = Some(token);
             }
         }
         Ok(())
@@ -2233,7 +2251,19 @@ impl TermiRustApp {
             .remote_devices
             .refresh_listener_process(&self.controller_coordinator)
         {
-            Ok(true) => cx.notify(),
+            Ok(true) => {
+                // A grant token the listener has just been given. Saved here rather than in the
+                // listener state, because settings are the app's to write, and saved now rather
+                // than at shutdown: the whole point is that it survives a crash as well as a quit.
+                let reported = self.remote_devices.screen_restore_token();
+                if reported.is_some()
+                    && reported != self.saved.settings.remote_screen_restore_token.as_deref()
+                {
+                    self.saved.settings.remote_screen_restore_token = reported.map(str::to_owned);
+                    self.save_settings();
+                }
+                cx.notify();
+            }
             Ok(false) => {}
             Err(()) => {
                 self.error_message = localization::remote_devices_listener_start_failed();
@@ -2631,8 +2661,13 @@ mod network_tests {
 
     #[test]
     fn remote_devices_add_controller_is_disabled_without_route() {
-        let state =
-            RemoteDevicesState::open_default(&ControllerCoordinator::default(), None, false, false);
+        let state = RemoteDevicesState::open_default(
+            &ControllerCoordinator::default(),
+            None,
+            false,
+            false,
+            None,
+        );
         assert!(!state.route_available);
         assert!(state.devices.is_empty());
         assert_eq!(
@@ -2641,10 +2676,51 @@ mod network_tests {
         );
     }
 
+    /// The portal is answered once for this machine, not once per listener run.
+    ///
+    /// Wayland's grant comes back as an opaque token, and it is only worth anything if it outlives
+    /// the process that was given it. The listener reports it; this state keeps it and hands it to
+    /// the next descriptor; the app writes it to settings. This covers the middle link, which is
+    /// the one where a token could be received and quietly dropped.
+    #[test]
+    fn a_reported_screen_grant_is_kept_and_handed_to_the_next_listener() {
+        let coordinator = ControllerCoordinator::default();
+        let mut state = RemoteDevicesState::open_default(&coordinator, None, false, true, None);
+        assert_eq!(state.screen_restore_token(), None);
+
+        state
+            .apply_listener_event(
+                ListenerProcessEvent::screen_restore_token("grant-abc".to_owned()),
+                &coordinator,
+            )
+            .expect("the event is accepted");
+        assert_eq!(state.screen_restore_token(), Some("grant-abc"));
+
+        // A newer grant replaces the old one: the portal reissues on revoke-and-regrant, and
+        // handing back a token the compositor has forgotten means being asked again.
+        state
+            .apply_listener_event(
+                ListenerProcessEvent::screen_restore_token("grant-def".to_owned()),
+                &coordinator,
+            )
+            .expect("the event is accepted");
+        assert_eq!(state.screen_restore_token(), Some("grant-def"));
+
+        // A run that was started with a token already knows it before any event arrives.
+        let restored = RemoteDevicesState::open_default(
+            &coordinator,
+            None,
+            false,
+            true,
+            Some("grant-ghi".to_owned()),
+        );
+        assert_eq!(restored.screen_restore_token(), Some("grant-ghi"));
+    }
+
     #[test]
     fn reported_watchers_reach_the_indicator_with_the_names_the_user_gave_them() {
         let coordinator = ControllerCoordinator::default();
-        let mut state = RemoteDevicesState::open_default(&coordinator, None, false, true);
+        let mut state = RemoteDevicesState::open_default(&coordinator, None, false, true, None);
         assert!(state.screen_watchers().is_empty());
 
         let phone = ControllerDeviceId::new();
@@ -2747,8 +2823,13 @@ mod network_tests {
         assert_eq!(super::grouped_pairing_code("305917"), "305 917");
         assert_eq!(super::grouped_pairing_code("12345"), "12345");
 
-        let mut state =
-            RemoteDevicesState::open_default(&ControllerCoordinator::default(), None, false, false);
+        let mut state = RemoteDevicesState::open_default(
+            &ControllerCoordinator::default(),
+            None,
+            false,
+            false,
+            None,
+        );
         let address = |label: &str, kind, value: &str| termirust_domain::ListeningAddress {
             interface_id: termirust_domain::NetworkInterfaceId::new(format!("1:{label}")).unwrap(),
             label: label.into(),
@@ -2812,7 +2893,7 @@ mod network_tests {
     #[test]
     fn pairing_events_require_one_matching_offer_and_fail_closed() {
         let coordinator = ControllerCoordinator::default();
-        let mut state = RemoteDevicesState::open_default(&coordinator, None, false, false);
+        let mut state = RemoteDevicesState::open_default(&coordinator, None, false, false, None);
         let offer_id = PairingOfferId::new();
         state
             .apply_listener_event(

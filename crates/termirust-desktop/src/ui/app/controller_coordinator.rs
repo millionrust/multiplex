@@ -82,6 +82,11 @@ pub(super) enum ControllerListenerEventProjection {
     ScreenWatchers {
         watchers: Vec<termirust_controller_listener::ScreenWatcherReport>,
     },
+    /// A screen grant to remember, so the person is asked for it once per machine rather than
+    /// once per listener run. Only Wayland produces one.
+    ScreenRestoreToken {
+        token: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -328,6 +333,9 @@ impl ControllerCoordinator {
             }
             ListenerProcessEvent::ScreenWatchers { watchers, .. } => {
                 Ok(ControllerListenerEventProjection::ScreenWatchers { watchers })
+            }
+            ListenerProcessEvent::ScreenRestoreToken { token, .. } => {
+                Ok(ControllerListenerEventProjection::ScreenRestoreToken { token })
             }
             ListenerProcessEvent::PairingCode {
                 offer_id,

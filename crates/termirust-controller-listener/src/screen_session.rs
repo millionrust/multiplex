@@ -103,8 +103,19 @@ pub trait ScreenSessionFactory: Send + Sync {
     /// needs to know what it is sharing before it can offer it. Hosts that can simply enumerate
     /// their displays have nothing to prepare and keep the default.
     ///
-    /// Must not block: it is called on the worker's startup path.
-    fn prepare(&self) {}
+    /// `restore_token` is what a previous run was given back, so the person is asked once per
+    /// machine rather than once per listener. Must not block: it is called on the worker's startup
+    /// path.
+    fn prepare(&self, _restore_token: Option<&str>) {}
+
+    /// A token worth remembering for next time, once the host has one.
+    ///
+    /// The listener polls this alongside [`Self::watchers`] and reports it to the application,
+    /// which is the only part that can persist anything. Hosts that need no permission to capture
+    /// have nothing to remember.
+    fn restore_token(&self) -> Option<String> {
+        None
+    }
 }
 
 #[cfg(test)]
