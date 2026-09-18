@@ -95,12 +95,32 @@ GENERATED="$BUILD_ROOT/generated"
 STAGED="$BUILD_ROOT/output"
 mkdir -p "$GENERATED" "$STAGED"
 
+# uniffi-bindgen reads the host build of the library, and the Kotlin unit tests load that same
+# file through JNA, so its name and the tool that lists its symbols follow the machine doing the
+# build rather than the machine being built for. CI builds the Android half on Linux.
+case "$(uname -s)" in
+  Darwin)
+    HOST_LIB_SUFFIX="dylib"
+    host_exported_symbols() { nm -gj "$1" | sed 's/^_//'; }
+    ;;
+  Linux)
+    HOST_LIB_SUFFIX="so"
+    # A release cdylib carries its exports in the dynamic symbol table; -g alone finds none.
+    host_exported_symbols() { nm -D --defined-only --format=just-symbols "$1"; }
+    ;;
+  *)
+    printf 'Bindings are built on macOS or Linux, not %s.\n' "$(uname -s)" >&2
+    exit 1
+    ;;
+esac
+
 HOST_TARGET="$BUILD_ROOT/host-target"
 CARGO_TARGET_DIR="$HOST_TARGET" cargo build --locked -p "$CRATE" --release \
   --features bindgen-cli --lib --bin uniffi-bindgen
+HOST_LIB="$HOST_TARGET/release/lib${LIB_STEM}.$HOST_LIB_SUFFIX"
 
 "$HOST_TARGET/release/uniffi-bindgen" generate \
-  "$HOST_TARGET/release/lib${LIB_STEM}.dylib" \
+  "$HOST_LIB" \
   --language swift \
   --language kotlin \
   --out-dir "$GENERATED" \
@@ -139,13 +159,12 @@ HOST_RESOURCE_PREFIX="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
 case "$HOST_RESOURCE_PREFIX" in
   darwin-arm64) HOST_RESOURCE_PREFIX="darwin-aarch64" ;;
   darwin-x86_64) HOST_RESOURCE_PREFIX="darwin-x86-64" ;;
+  linux-x86_64) HOST_RESOURCE_PREFIX="linux-x86-64" ;;
 esac
 mkdir -p "$STAGED/kotlin-test/$HOST_RESOURCE_PREFIX"
-cp "$HOST_TARGET/release/lib${LIB_STEM}.dylib" \
-  "$STAGED/kotlin-test/$HOST_RESOURCE_PREFIX/"
+cp "$HOST_LIB" "$STAGED/kotlin-test/$HOST_RESOURCE_PREFIX/"
 
-nm -gj "$HOST_TARGET/release/lib${LIB_STEM}.dylib" \
-  | sed 's/^_//' \
+host_exported_symbols "$HOST_LIB" \
   | LC_ALL=C sort \
   | grep -E "^(ffi_${LIB_STEM}|uniffi_${LIB_STEM})" \
   > "$STAGED/abi-symbols-v1.txt"
