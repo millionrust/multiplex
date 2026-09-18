@@ -25,7 +25,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, macos-14]
+        # macos-14 is deprecated and carries an Xcode far behind the one the iOS job builds
+        # against; both macOS jobs now test the toolchain the applications are actually built on.
+        runner: [ubuntu-24.04, macos-26]
     steps:
       - uses: actions/checkout@v4
         with:
