@@ -108,7 +108,7 @@ pub fn seed_store() -> SeededStore {
             PresetDraft {
                 id: PRESET_ID,
                 label: "Counter".into(),
-                executable: fixture_executable().into(),
+                executable: fixture_executable(),
                 args: vec!["-c".into(), "sleep 30".into()],
                 working_directory: WorkingDirectoryRule::ProjectRoot,
                 runtime: None,

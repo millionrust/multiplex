@@ -243,14 +243,14 @@ impl TermiRustApp {
     pub(super) fn refresh_wrapped_tmux_behavior(&mut self, cx: &mut Context<Self>) {
         // Tests never reach for the developer's own tmux server.
         #[cfg(not(test))]
-        if !matches!(self.remote_terminals.status, IntegrationStatus::Off) {
-            if let Some(tmux) = self.remote_terminals.tmux.clone() {
-                cx.background_executor()
-                    .spawn(async move {
-                        let _ = tmux.apply_wrapped_session_appearance(true);
-                    })
-                    .detach();
-            }
+        if !matches!(self.remote_terminals.status, IntegrationStatus::Off)
+            && let Some(tmux) = self.remote_terminals.tmux.clone()
+        {
+            cx.background_executor()
+                .spawn(async move {
+                    let _ = tmux.apply_wrapped_session_appearance(true);
+                })
+                .detach();
         }
         #[cfg(test)]
         let _ = cx;
