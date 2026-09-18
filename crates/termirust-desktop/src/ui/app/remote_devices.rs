@@ -1195,8 +1195,8 @@ impl TermiRustApp {
                 this.child(
                     img(picture)
                         .object_fit(ObjectFit::Contain)
-                        .w(px(96.0))
-                        .h(px(60.0)),
+                        .w(px(theme::SCREEN_PREVIEW_WIDTH))
+                        .h(px(theme::SCREEN_PREVIEW_HEIGHT)),
                 )
             })
             .child(

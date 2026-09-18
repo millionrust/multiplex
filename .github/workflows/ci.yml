@@ -117,7 +117,13 @@ jobs:
             pkg-config
 
       - name: Check minimum supported Rust version
-        run: cargo +1.88.0 check --workspace --exclude termirust-slate --all-targets --all-features --locked
+        # termirust-screen-transport is excluded from the all-features pass and checked on its
+        # own below: its `iroh` feature is the Stage B QUIC route, off by default, and the QUIC
+        # stack it pulls in needs Rust 1.91. The crate itself, as it ships, builds at the MSRV.
+        run: |
+          cargo +1.88.0 check --workspace --exclude termirust-slate \
+            --exclude termirust-screen-transport --all-targets --all-features --locked
+          cargo +1.88.0 check -p termirust-screen-transport --all-targets --locked
 
   windows:
     name: windows runtime and sidecars
@@ -196,6 +202,13 @@ jobs:
           mkdir -p apps/android/app/src/test/native/linux-x86-64
           cp target/release/libtermirust_controller_bindings.so apps/android/app/src/test/native/linux-x86-64/
 
+      # The Remote Screens bindings are generated rather than vendored, and the Kotlin sources
+      # name their types, so `compileDebugKotlin` needs them before anything else runs.
+      - name: Build and sync Remote Screens bindings
+        run: |
+          scripts/build/mobile-screen-bindings.sh --android
+          scripts/sync/mobile-screen-bindings.sh --write --android
+
       - name: Verify Kotlin contracts, unit tests, lint, and debug APK
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
@@ -211,6 +224,21 @@ jobs:
 
       - name: Install XcodeGen
         run: brew install xcodegen
+
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      # The Xcode project lists the generated Remote Screens bindings among its sources, and they
+      # are generated rather than vendored, so the project cannot even be generated without them.
+      - name: Build and sync Remote Screens bindings
+        run: |
+          scripts/build/mobile-screen-bindings.sh --ios
+          scripts/sync/mobile-screen-bindings.sh --write --ios
 
       - name: Verify Swift 6 contracts and generic application build
         run: apps/ios/scripts/verify-ios-unified-routes.sh

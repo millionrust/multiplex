@@ -617,6 +617,13 @@ pub const HOST_COMPACT_ROW_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
     .layout_host_compact_row_height()
     .0;
 
+// Remote Screens geometry, composed from the governed global scale: a display's
+// preview keeps a screen's 16:10 proportions, and the panel beside a watched
+// screen is narrower than an inspector because it lists displays, not fields.
+pub const SCREEN_PREVIEW_WIDTH: f32 = SPACE_8 + SPACE_8;
+pub const SCREEN_PREVIEW_HEIGHT: f32 = SPACE_8 + SPACE_4;
+pub const SCREEN_PANEL_WIDTH: f32 = SPACE_9 + SPACE_9 + SPACE_9 + SPACE_8;
+
 // SFTP library geometry is composed from the governed global scale so the
 // dense two-pane browser preserves its current proportions without literals.
 pub const SFTP_PATH_ROW_HEIGHT: f32 = SPACE_6 + SPACE_4;

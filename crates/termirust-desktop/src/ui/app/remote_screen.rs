@@ -261,7 +261,7 @@ impl TermiRustApp {
             .id("remote-screen-inspector")
             .debug_selector(|| "remote-screen-inspector".to_string())
             .flex_none()
-            .w(px(240.0))
+            .w(px(theme::SCREEN_PANEL_WIDTH))
             .h_full()
             .gap_2()
             .p_3()
