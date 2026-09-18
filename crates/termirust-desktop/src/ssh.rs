@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, bail};
 use russh::client;
-use russh::keys::PublicKey;
+use russh::keys::PublicKeyOrCertificate;
 use russh::{ChannelMsg, Sig};
 use russh_sftp::client::SftpSession;
 use std::io::{self, Read, Write};
@@ -1477,9 +1477,27 @@ struct SessionHandler {
 impl client::Handler for SessionHandler {
     type Error = anyhow::Error;
 
-    async fn check_server_key(&mut self, server_public_key: &PublicKey) -> Result<bool> {
+    /// Trust on first use, against the key the server actually proved it holds.
+    ///
+    /// russh 0.63 offers a host *certificate* here as well as a bare key, because it now
+    /// advertises the certificate host-key algorithms. `public_key()` reduces both to the same
+    /// thing: the key the server signed the handshake with, which for a certificate is the key the
+    /// CA vouched for rather than the CA's own. Pinning that is exactly the trust decision this
+    /// store has always made, and a server that upgrades from a bare key to a certificate over the
+    /// same key still matches its existing entry.
+    ///
+    /// What this deliberately does **not** do is validate the certificate — no CA trust store, no
+    /// principal match, no validity window. This app's promise is trust on first use, and
+    /// accepting a certificate as if it had been verified would be a weaker guarantee wearing a
+    /// stronger name. Host-certificate validation would be its own feature with its own decision
+    /// record.
+    async fn check_server_key(
+        &mut self,
+        server_public_key: &PublicKeyOrCertificate,
+    ) -> Result<bool> {
         eprintln!("[ssh] check_server_key for endpoint={}", self.endpoint);
         let key = server_public_key
+            .public_key()
             .to_openssh()
             .context("Unable to serialize the server public key")?;
 
@@ -1502,6 +1520,13 @@ impl client::Handler for SessionHandler {
         }
     }
 
+    /// A connection the server is handing back through a reverse forward.
+    ///
+    /// russh 0.63 passes a handle that must be accepted or the channel is refused: dropping it
+    /// sends `AdministrativelyProhibited`. That makes the acceptance explicit, which is worth
+    /// having — an unrecognised forwarded connection is now refused on its own rather than by
+    /// failing the handler, and failing the handler tears down the whole SSH session. One stray
+    /// channel from the server should cost that channel, not every pane on the connection.
     async fn server_channel_open_forwarded_tcpip(
         &mut self,
         channel: russh::Channel<russh::client::Msg>,
@@ -1509,6 +1534,7 @@ impl client::Handler for SessionHandler {
         connected_port: u32,
         _originator_address: &str,
         _originator_port: u32,
+        open: client::ChannelOpenHandle,
         _session: &mut client::Session,
     ) -> Result<()> {
         let target = self
@@ -1526,15 +1552,19 @@ impl client::Handler for SessionHandler {
                             .count()
                             == 1)
             })
-            .cloned()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "No remote forward target registered for {}:{}",
-                    connected_address,
-                    connected_port
-                )
-            })?;
+            .cloned();
 
+        let Some(target) = target else {
+            eprintln!(
+                "[ssh] refusing a forwarded connection for {connected_address}:{connected_port} \
+                 with no registered target"
+            );
+            open.reject(russh::ChannelOpenFailure::AdministrativelyProhibited)
+                .await;
+            return Ok(());
+        };
+
+        open.accept().await;
         tokio::spawn(async move {
             if let Err(error) = proxy_remote_forward_connection(channel, target.clone()).await {
                 eprintln!(
@@ -1547,22 +1577,35 @@ impl client::Handler for SessionHandler {
         Ok(())
     }
 
+    /// The server asking to reach our SSH agent.
+    ///
+    /// Refusing is the default and the safe one: the handle rejects on drop, and an agent-forward
+    /// channel the user never approved is precisely what agent forwarding's reputation is built
+    /// on. Under russh 0.60 an unapproved request failed the handler and took the session with it;
+    /// now it costs the channel alone, which is both safer and less disruptive.
     async fn server_channel_open_agent_forward(
         &mut self,
         channel: russh::Channel<russh::client::Msg>,
+        open: client::ChannelOpenHandle,
         _session: &mut client::Session,
     ) -> Result<()> {
         #[cfg(not(unix))]
         {
             let _ = channel;
-            bail!("SSH-agent forwarding is unavailable on this platform");
+            eprintln!("[ssh] SSH-agent forwarding is unavailable on this platform");
+            open.reject(russh::ChannelOpenFailure::AdministrativelyProhibited)
+                .await;
+            return Ok(());
         }
         #[cfg(unix)]
         {
-            let socket = self
-                .agent_forward_socket
-                .clone()
-                .context("The server requested SSH-agent forwarding without approval")?;
+            let Some(socket) = self.agent_forward_socket.clone() else {
+                eprintln!("[ssh] refusing SSH-agent forwarding that was never approved");
+                open.reject(russh::ChannelOpenFailure::AdministrativelyProhibited)
+                    .await;
+                return Ok(());
+            };
+            open.accept().await;
             tokio::spawn(async move {
                 let result = async move {
                     let mut local_agent =

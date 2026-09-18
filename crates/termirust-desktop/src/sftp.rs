@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use russh::keys::PublicKey;
+use russh::keys::PublicKeyOrCertificate;
 use russh::{ChannelMsg, client};
 use russh_sftp::client::SftpSession;
 use russh_sftp::client::error::Error as SftpClientError;
@@ -1975,8 +1975,14 @@ struct SftpHandler {
 impl client::Handler for SftpHandler {
     type Error = anyhow::Error;
 
-    async fn check_server_key(&mut self, server_public_key: &PublicKey) -> Result<bool> {
+    /// The same trust-on-first-use decision as `ssh.rs`, over the same store. See the note there
+    /// for why a host certificate is reduced to the key it carries rather than validated.
+    async fn check_server_key(
+        &mut self,
+        server_public_key: &PublicKeyOrCertificate,
+    ) -> Result<bool> {
         let key = server_public_key
+            .public_key()
             .to_openssh()
             .context("Unable to serialize the server public key")?;
 

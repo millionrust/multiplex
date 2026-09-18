@@ -388,34 +388,68 @@ are what the tile codec is built around.
 
 `cargo deny check` is green on advisories, bans, licences, and sources after the change.
 
-### Amendment: zeroize 1.8.2 to 1.9.0, and russh 0.57 to 0.60 (2026-09-18)
+### Amendment: zeroize 1.8.2 to 1.9.0, and russh 0.57 to 0.63 (2026-09-18)
 
 Remote Screens Stage B carries pictures over QUIC, and the transport chosen for it in section 5.3
-of the plan is iroh. iroh 1.2 cannot be resolved alongside this workspace as it stood: `iroh-base`
-requires `zeroize ^1.9` against the exact `=1.8.2` pinned here and in seven other crates, and
-`ed25519-dalek 3.0.0-rc` requires a released `rand_core ^0.10` against the exact `=0.10.0-rc-3`
-that `russh` pins up to and including 0.59. Both pins had to move, and one of them is named in this
-ADR, so this amendment is what the change-control section below asks for.
+of the plan is iroh. iroh 1.2 could not be resolved alongside this workspace as it stood, for two
+separate reasons, and one of them is named in this ADR — so this amendment is what the change
+control section below asks for.
 
-**What changed and what did not.** `zeroize` moved from `=1.8.2` to `=1.9.0` across the workspace,
-still pinned exactly. `russh` moved from 0.57 to 0.60 in the desktop crate. No code in
-`termirust-controller-security` changed, no handshake or SAS derivation changed, and **no vector
-byte changed** — only the pinned lockfile checksum and this document's own.
+**The zeroize pin.** `iroh-base` requires `zeroize ^1.9` against the exact `=1.8.2` pinned here and
+in seven other manifests. It moved to `=1.9.0`, still pinned exactly. This is not a security
+change: 1.9.0 is a minor release of the same crate under the same authors and licence, and the
+guarantee this ADR relies on — that a `Zeroizing` value is overwritten on drop — is unchanged. What
+the pin is for is reproducibility and deliberate review, not immunity from upstream.
 
-**Why zeroize 1.9.0 is not a security change.** 1.9.0 is a minor release of the same crate under
-the same authors and licence, and the guarantee this ADR relies on — that a `Zeroizing` value is
-overwritten on drop — is unchanged. What the pin is for is reproducibility and review, not
-immunity from upstream: an exact pin means a version moves only deliberately, which is what is
-happening here.
+**The russh pin, which took two attempts and is the part worth reading.** russh through 0.59 pins
+`rand_core = "=0.10.0-rc-3"` exactly, against the released `^0.10` that `ed25519-dalek 3.0.0`
+requires. Moving to 0.60 cleared that and looked sufficient: the workspace compiled and the whole
+Docker-backed SSH and SFTP suite passed.
 
-**What russh 0.60 changed at the call sites**, all in the desktop crate and none of it
-cryptographic: SSH-agent identities are now an `AgentIdentity` enum rather than a bare public key,
-so a certificate held by an agent is offered through `authenticate_certificate_with` and a plain
-key through `authenticate_publickey_with`. Earlier versions took the identity whole and decided
-internally; the split is an improvement, because a certificate carries principals and validity that
-a public key does not and the server needs them. Key generation takes an RNG through rand_core
-0.10's traits, which `rand 0.8`'s `OsRng` does not implement, so those three call sites use `rand`
-0.10 under an alias. Both are the operating system's source; only the trait shape differs.
+It was not sufficient, and the way it failed is the lesson. Adding iroh to the lockfile made the
+desktop crate stop compiling, inside a dependency neither of them names: `rsa 0.10.0-rc.16`, which
+russh 0.60.1 carries. iroh's `ed25519 3.0.0` needs the *released* `pkcs8 0.11.0`; that rsa release
+candidate was written against `pkcs8 0.11.0-rc.11`, in which `Error::KeyMalformed` is a unit
+variant rather than one with fields. Cargo unifies both to a single `0.11.x` and rsa loses. The
+same collision sits behind russh 0.60's elliptic-curve stack, where `p256/p384/p521 0.14.0-rc.7`
+pin `primefield 0.14.0-rc.7` against a `crypto-bigint` that the newer rsa cannot use.
+
+In other words: **iroh needs the released RustCrypto crates and russh 0.60 is still on their
+release candidates**, and no amount of pinning reconciles them. russh 0.63 moved to the released
+stack — `primefield 0.14.0`, `pkcs8 0.11.0`, `rsa 0.10.0-rc.18` — and that is the only reason the
+two can share a lockfile at all. This is worth recording because it will recur: this workspace now
+depends on two independent projects tracking the same pre-release ecosystem, and they will fall out
+of step again.
+
+**What changed and what did not.** No code in `termirust-controller-security` changed, no handshake
+or SAS derivation changed, and **no vector byte changed** — all four golden vectors pass untouched.
+Only the pinned lockfile checksum and this document's own moved.
+
+**What russh 0.63 changed at the call sites**, all in the desktop crate:
+
+- *SSH-agent identities* are an `AgentIdentity` enum rather than a bare public key, so a
+  certificate held by an agent is offered through `authenticate_certificate_with` and a plain key
+  through `authenticate_publickey_with`. The split is an improvement: a certificate carries
+  principals and validity that a public key does not, and the server needs them.
+- *Key generation* takes an RNG through rand_core 0.10's traits, which `rand 0.8`'s `OsRng` does
+  not implement, so three call sites use `rand` 0.10 under an alias. Both are the operating
+  system's source; only the trait shape differs.
+- *Host key verification* — `check_server_key` — now receives a `PublicKeyOrCertificate`, because
+  russh 0.63 advertises the certificate host-key algorithms and a server may answer with a
+  certificate. Both call sites take `public_key()`, which for a certificate is the key the CA
+  vouched for rather than the CA's own, and pin that. **This is deliberately not certificate
+  validation**: there is no CA trust store, no principal match and no validity window, and
+  accepting a certificate as though it had been verified would be a weaker guarantee wearing a
+  stronger name. The practical effect is nil — a server that upgrades from a bare key to a
+  certificate over the same key still matches its existing pinned entry — and host-certificate
+  validation, if it is ever wanted, is its own feature with its own decision record.
+- *Channel-open callbacks* for reverse forwards and agent forwarding are handed a handle that must
+  be accepted, and which rejects with `AdministrativelyProhibited` when dropped. This is a trap
+  worth naming: the parameter can be ignored with an underscore, the code compiles, and every
+  forwarded connection is then silently refused at runtime. Both sites accept explicitly. It also
+  improves the refusal path — an unapproved agent-forward request or an unrecognised forwarded
+  connection now costs that channel alone, where before it failed the handler and took the whole
+  SSH session with it.
 
 **iroh is now in the lockfile**, as an optional dependency of `termirust-screen-transport` behind
 an `iroh` feature that is off by default. A default build of this workspace — which is every build
@@ -429,6 +463,14 @@ amendment makes it *possible* to adopt, and the owner directed it on 2026-09-18 
 spike; if 0.4 says no, the feature stays off, these pins stay where they are, and nothing has to
 be undone.
 
+**Nor does it settle the release gate.** The independent cryptographic review named at the top of
+this document is still outstanding, and this amendment does not touch it. What the amendment can
+claim is narrower and checkable: the handshake, the SAS derivation and every golden vector are
+byte-for-byte unchanged, so the surface that review would examine has not moved. The one security
+relevant *code* change is the host-key certificate handling above, which is in the desktop SSH
+client rather than in this crate, and is the part of this amendment most worth a second opinion.
+
+**Accepted by the decision owner on 2026-09-18.**
 ## Golden vectors and change control
 
 `crates/termirust-controller-security/tests/vectors/controller-v1.json` stores fixture-only private/public static and ephemeral keys, exact offer/prologue, all three messages, final `h`, SAS, both split transport keys, and first/last legal frames. A conformance run consumes those bytes; it never regenerates missing fields. The verification script checks the fixture plus ADR and lockfile checksums. Any deliberate protocol or dependency change must update this ADR first, regenerate every vector in review, and demonstrate that prior vectors fail under the declared compatibility policy.
