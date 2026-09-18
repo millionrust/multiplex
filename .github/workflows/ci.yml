@@ -98,6 +98,15 @@ jobs:
       - name: Verify fail-closed release contract
         run: ./scripts/verify/release-workflow.sh
 
+      # Ubuntu 23.10 and newer refuse unprivileged user namespaces to unconfined programs, which
+      # is exactly what Chromium's sandbox needs to start; without this the live browser capture
+      # never loads a page and the test only sees a timeout. This lets Chromium's own sandbox
+      # work rather than turning it off — scripts/verify/browser-capability.sh fails the build if
+      # --no-sandbox ever appears in the crates, and that stays true.
+      - name: Let Chromium's sandbox start on this runner
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Verify Rust workspace
         env:
           TERMIRUST_CLIPPY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}

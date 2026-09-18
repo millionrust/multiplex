@@ -541,6 +541,10 @@ mod tests {
     static LIVE_BROWSER_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     fn read_request_head(stream: &mut std::net::TcpStream) -> std::io::Result<()> {
+        // The BSDs, macOS among them, hand an accepted socket its listener's non-blocking flag;
+        // Linux does not. A test that polls accept() would therefore read nothing here and fail
+        // with WouldBlock on macOS only, and the read timeout below governs blocking reads.
+        stream.set_nonblocking(false)?;
         stream.set_read_timeout(Some(Duration::from_secs(2)))?;
         let mut request = Vec::with_capacity(1024);
         let mut chunk = [0_u8; 1024];
