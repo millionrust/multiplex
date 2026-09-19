@@ -29,6 +29,9 @@ on:
 jobs:
   test:
     name: rust baseline (${{ matrix.runner }})
+    # A probe run asks one narrow question and should not also occupy every runner for an hour.
+    # `inputs` is absent on a push, where this reads as empty and the job runs as it always has.
+    if: inputs.windows_probe == ''
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:
@@ -158,6 +161,7 @@ jobs:
 
   msrv:
     name: Rust 1.88 MSRV
+    if: inputs.windows_probe == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -193,6 +197,7 @@ jobs:
 
   windows:
     name: windows runtime and sidecars
+    if: inputs.windows_probe == ''
     runs-on: windows-2022
     timeout-minutes: 120
     steps:
@@ -246,6 +251,7 @@ jobs:
   # between a push and knowing whether Windows can still produce what it ships.
   windows-release:
     name: windows release executables
+    if: inputs.windows_probe == ''
     runs-on: windows-2022
     timeout-minutes: 120
     steps:
@@ -286,6 +292,7 @@ jobs:
 
   android:
     name: native Android application
+    if: inputs.windows_probe == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -360,6 +367,7 @@ jobs:
 
   ios:
     name: native iOS and iPadOS application
+    if: inputs.windows_probe == ''
     runs-on: macos-26
     timeout-minutes: 120
     steps:
