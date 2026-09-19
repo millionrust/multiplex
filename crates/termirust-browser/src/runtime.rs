@@ -878,8 +878,11 @@ mod tests {
             std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).expect("listener");
         let address = listener.local_addr().expect("address");
         let (accepted_tx, accepted_rx) = std::sync::mpsc::channel();
+        let connected = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let server_connected = connected.clone();
         let server = std::thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
+                server_connected.store(true, std::sync::atomic::Ordering::Release);
                 let mut request = [0_u8; 4096];
                 read_request_head(&mut stream).expect("request header");
                 let _ = accepted_tx.send(());
@@ -930,8 +933,13 @@ mod tests {
             } else {
                 "the capture was still running".to_string()
             };
+            let fixture = if connected.load(std::sync::atomic::Ordering::Acquire) {
+                "the fixture was connected to but never got a whole request head"
+            } else {
+                "nothing connected to the fixture"
+            };
             panic!(
-                "navigation never reached the fixture ({error:?}); {capture}; {}",
+                "navigation never reached the fixture ({error:?}); {capture}; {fixture}; {}",
                 crate::test_support::machine_state()
             );
         }
