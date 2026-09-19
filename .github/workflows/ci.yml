@@ -201,6 +201,18 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 120
     steps:
+      # Defender scans every file the build writes and every test binary the first time it runs.
+      # Measured on this runner: a test binary with no tests in it took seven seconds to start,
+      # 178 of them run one after another, and the suites that read and write many files ran ten to
+      # twenty times slower than on macOS. The runner is discarded when the job ends, so real-time
+      # scanning of our own build output protects nothing here; what is tested is unchanged.
+      - name: Keep Defender off the build output
+        shell: pwsh
+        run: >-
+          Add-MpPreference -ExclusionPath
+          $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:TEMP,
+          "$env:USERPROFILE\.cargo", "$env:USERPROFILE\.rustup"
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -231,6 +243,14 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 60
     steps:
+      # As in the full Windows job, and needed here too so a probe measures the same machine.
+      - name: Keep Defender off the build output
+        shell: pwsh
+        run: >-
+          Add-MpPreference -ExclusionPath
+          $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:TEMP,
+          "$env:USERPROFILE\.cargo", "$env:USERPROFILE\.rustup"
+
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@1.97.1
