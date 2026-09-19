@@ -199,7 +199,7 @@ TERMIRUST_TUI_PROBE="bun run app.ts" cargo test -p termirust --bin termirust -- 
 TERMIRUST_CLIPPY_BASE=<sha> python3 scripts/dev/clippy-changed.py  # the changed-line Clippy
   # policy as CI runs it. Its base defaults to HEAD, so running it with a clean working tree
   # reads no changed lines and always passes; CI passes the sha the push started from.
-TERMIRUST_PERF_BUDGETS=1 cargo test --workspace --benches --locked  # enforce the throughput
+TERMIRUST_PERF_BUDGETS=1 cargo test --workspace --bench '*' --locked  # enforce the throughput
   # budgets. The benches always run and always print their p50/p95; the thresholds in
   # tests/support/perf_budget.rs are only asserted when `CI` is unset, because a hosted runner
   # overshoots them by more than ten times without anything in the code changing. Set this to

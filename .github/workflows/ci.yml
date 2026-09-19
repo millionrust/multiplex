@@ -272,10 +272,12 @@ jobs:
           --no-fail-fast --partition count:${{ matrix.shard }}/3
 
       # Once rather than three times: the benches are not split, so every shard would run all of
-      # them.
+      # them. `--bench '*'` and not `--benches`: to cargo, `--benches` means every target with
+      # `bench = true`, which libraries and binaries have by default, so it quietly ran nearly the
+      # whole unit-test suite a second time, one binary after another, for thirty-six minutes.
       - name: Run the benches as tests
         if: matrix.shard == 1
-        run: cargo test --workspace --benches --all-features --locked --no-fail-fast
+        run: cargo test --workspace --bench '*' --all-features --locked --no-fail-fast
 
       # Whether sccache earned its place: how many compiles it served, missed, or could not cache.
       - name: Compile cache report

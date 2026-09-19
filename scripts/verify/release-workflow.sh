@@ -37,7 +37,7 @@ grep -F 'branches: [main, dev, test]' "$ci" >/dev/null
 # libraries, binaries, integration tests and examples, and cargo test takes the benches. Together
 # they are `cargo test --all-targets`, so the contract holds both, each with every feature.
 grep -F 'cargo nextest run --workspace --lib --bins --tests --examples --all-features --locked' "$ci" >/dev/null
-grep -F 'cargo test --workspace --benches --all-features --locked' "$ci" >/dev/null
+grep -F "cargo test --workspace --bench '*' --all-features --locked" "$ci" >/dev/null
 grep -F 'apps/android/scripts/verify-android-unified-routes.sh' "$ci" >/dev/null
 grep -F 'apps/android/gradlew -p apps/android lintDebug' "$ci" >/dev/null
 grep -F 'apps/ios/scripts/verify-ios-unified-routes.sh' "$ci" >/dev/null
