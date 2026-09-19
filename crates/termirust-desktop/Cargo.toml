@@ -91,6 +91,15 @@ block = "0.1"
 objc = "0.2"
 termirust-accessibility-macos = { version = "0.1.0", path = "../termirust-accessibility-macos" }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
 # 4.18 raises MSRV above the workspace contract; keep 4.17 pinned until N14
 # qualification moves the whole workspace together.

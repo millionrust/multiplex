@@ -12,6 +12,9 @@ use tokio::sync::mpsc as tokio_mpsc;
 use crate::models::{ConnectRequest, LocalShellConfig};
 use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent, SshEventSender};
 
+#[cfg(windows)]
+mod console_job;
+
 enum WorkerEvent {
     Command(SessionCommand),
     CommandsClosed,
@@ -89,6 +92,8 @@ fn run_local_session(
         .spawn_command(built_command.command)
         .context("Unable to launch the local shell")?;
     drop(pair.slave);
+    #[cfg(windows)]
+    console_job::adopt(child.process_id());
 
     if let Some(target) = built_command.tmux_readiness
         && let Err(readiness_error) =
