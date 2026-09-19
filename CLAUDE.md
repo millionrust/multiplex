@@ -267,5 +267,8 @@ bounded rotation and retention. See [docs/diagnostics.md](docs/diagnostics.md).
   enforces it, and the signed update fixtures fail verification if Git rewrites them); a path
   is absolute there only with a drive behind it, so fixtures cannot use `/bin/sh` or
   `/usr/...`; committing a rename by opening its directory as a file is refused, so treat that
-  as reduced durability rather than failure; and a held lock reports a lock violation rather
-  than `WouldBlock`, which `fs2::lock_contended_error()` names per platform.
+  as reduced durability rather than failure; a held lock reports a lock violation rather
+  than `WouldBlock`, which `fs2::lock_contended_error()` names per platform; and a process that
+  exits with local panes open leaves their console hosts behind, each spinning a core on Windows
+  Server 2022, which starved every later test of a nextest run until `local/console_job.rs` put
+  them in a job object that ends them with the process.
