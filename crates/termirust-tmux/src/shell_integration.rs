@@ -306,6 +306,31 @@ impl ShellIntegration {
         }
     }
 
+    /// Brings TermiRust's own tmux configuration up to this version, when it is installed and
+    /// still names itself managed in its first line. Returns whether the file was rewritten.
+    ///
+    /// Every new wrapped tab sources this file, and key bindings are global to the tmux server,
+    /// so a server brought up to date while the file stays old is put back the next time a tab
+    /// opens. That is how a click in a scrolled-back tab kept leaving copy mode and dropping the
+    /// reader at the bottom long after it had been fixed: the file only changed through a repair
+    /// in Settings that nothing prompted anyone to find. This file is TermiRust's alone and says
+    /// so; the user's shell startup files still change only through a reviewed plan, and a
+    /// configuration file whose first line is no longer ours is left as it is.
+    pub fn refresh_managed_config(&self) -> Result<bool, IntegrationError> {
+        let path = self.tmux_config_path();
+        let Some(installed) = read_optional(&path)? else {
+            return Ok(false);
+        };
+        let current = self.appearance.configuration_file();
+        if installed == current
+            || installed.lines().next() != Some(appearance::CONFIGURATION_FILE_HEADER)
+        {
+            return Ok(false);
+        }
+        write_atomically(&path, &current)?;
+        Ok(true)
+    }
+
     /// Changes that install or repair the integration for `shells`. Empty when everything
     /// is already in place.
     pub fn plan_enable(&self, shells: &[Shell]) -> Result<ChangePlan, IntegrationError> {
@@ -637,6 +662,44 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let integration = ShellIntegration::new(home.path(), TMUX);
         (home, integration)
+    }
+
+    #[test]
+    fn an_outdated_managed_tmux_config_is_brought_up_to_date() {
+        let (_home, integration) = home();
+        let path = integration.tmux_config_path();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // As TermiRust wrote it on 2026-09-15, when a click in a scrolled-back tab still left
+        // copy mode and dropped the reader at the bottom.
+        let older = [
+            appearance::CONFIGURATION_FILE_HEADER,
+            r##"bind-key -T copy-mode MouseDown1Pane 'if-shell -F "#{m:termirust-*,#{session_name}}" "select-pane ; send-keys -X cancel" select-pane'"##,
+        ]
+        .join("\n");
+        fs::write(&path, older).unwrap();
+
+        assert!(integration.refresh_managed_config().unwrap());
+        let refreshed = fs::read_to_string(&path).unwrap();
+        assert_eq!(refreshed, integration.appearance.configuration_file());
+        assert!(refreshed.contains("#{==:#{scroll_position},0}"));
+        // Once it is current there is nothing left to do.
+        assert!(!integration.refresh_managed_config().unwrap());
+    }
+
+    #[test]
+    fn a_tmux_config_that_is_not_ours_or_not_there_is_left_alone() {
+        let (_home, integration) = home();
+        let path = integration.tmux_config_path();
+        // Not installed: nothing is created, since the integration is off.
+        assert!(!integration.refresh_managed_config().unwrap());
+        assert!(!path.exists());
+
+        // Taken over: its first line is no longer TermiRust's.
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let theirs = "# mine now\nset -g status on\n";
+        fs::write(&path, theirs).unwrap();
+        assert!(!integration.refresh_managed_config().unwrap());
+        assert_eq!(fs::read_to_string(&path).unwrap(), theirs);
     }
 
     #[test]

@@ -234,20 +234,27 @@ fn availability_message(availability: TmuxAvailability) -> Option<String> {
 }
 
 impl TermiRustApp {
-    /// Brings a running tmux server up to date with this version of the app, once at launch.
-    /// The key bindings a wrapped tab relies on are global to a tmux server and are written
-    /// only when the setup is applied, so a server an earlier version started keeps that
-    /// version's behavior — a click in a tab scrolled back, for one, used to leave copy mode
-    /// and drop the reader at the bottom. Only the server is touched: the user's files still
-    /// change through a reviewed plan.
+    /// Brings wrapped tabs up to date with this version of the app, once at launch.
+    ///
+    /// The key bindings a wrapped tab relies on are global to a tmux server, so a server an
+    /// earlier version started keeps that version's behavior — a click in a tab scrolled back,
+    /// for one, used to leave copy mode and drop the reader at the bottom. Updating the server
+    /// alone is not enough, and was the whole of this once: every new tab sources TermiRust's
+    /// tmux configuration file, so an old file put the old bindings back the next time a tab
+    /// opened. The file is brought up to date first, then the server. That file is TermiRust's
+    /// own and says so; the user's shell startup files still change only through a reviewed plan.
     pub(super) fn refresh_wrapped_tmux_behavior(&mut self, cx: &mut Context<Self>) {
-        // Tests never reach for the developer's own tmux server.
+        // Tests never reach for the developer's own tmux server or files.
         #[cfg(not(test))]
         if !matches!(self.remote_terminals.status, IntegrationStatus::Off)
             && let Some(tmux) = self.remote_terminals.tmux.clone()
         {
+            let integration = self.remote_terminals.integration();
             cx.background_executor()
                 .spawn(async move {
+                    if let Some(integration) = integration {
+                        let _ = integration.refresh_managed_config();
+                    }
                     let _ = tmux.apply_wrapped_session_appearance(true);
                 })
                 .detach();
