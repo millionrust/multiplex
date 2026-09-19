@@ -655,7 +655,7 @@ mod tests {
             text.starts_with("HTTP/1.1 200 OK"),
             "the proxy should carry the origin's answer back, got {text:?} after {:?}: {ending}, \
              the proxy accepted {} connections, the origin {} reached, and it was asked for {} \
-             bytes before it answered",
+             bytes before it answered; {}",
             started.elapsed(),
             proxy.accepted(),
             if reached.load(Ordering::Acquire) {
@@ -663,7 +663,8 @@ mod tests {
             } else {
                 "was never"
             },
-            answered.load(Ordering::Acquire)
+            answered.load(Ordering::Acquire),
+            crate::test_support::machine_state()
         );
         assert!(
             text.ends_with("proxy"),

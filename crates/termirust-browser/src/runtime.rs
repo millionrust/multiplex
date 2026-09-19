@@ -665,7 +665,12 @@ mod tests {
             policy,
             &BrowserCancellation::default(),
         );
-        assert_eq!(result, Err(BrowserError::ResourceLimit));
+        assert_eq!(
+            result,
+            Err(BrowserError::ResourceLimit),
+            "{}",
+            crate::test_support::machine_state()
+        );
         server.join().expect("server");
     }
 
@@ -719,7 +724,12 @@ mod tests {
             worker.join().expect("download worker"),
             Err(BrowserError::Cancelled)
         );
-        assert!(cancelled_at.elapsed() < Duration::from_secs(2));
+        let took = cancelled_at.elapsed();
+        assert!(
+            took < Duration::from_secs(2),
+            "the download took {took:?} to end after it was cancelled; {}",
+            crate::test_support::machine_state()
+        );
         server.join().expect("server");
     }
 
