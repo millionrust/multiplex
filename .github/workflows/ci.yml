@@ -292,7 +292,7 @@ jobs:
     name: windows probe
     if: inputs.windows_probe != ''
     runs-on: windows-2022
-    timeout-minutes: 90
+    timeout-minutes: 120
     # The test job's build, exactly, so a probe compiles from its warm cache and what it measures is
     # the machine the tests run on, not a different build of them.
     env:
@@ -332,7 +332,17 @@ jobs:
         shell: bash
         env:
           PROBE: ${{ inputs.windows_probe }}
-        run: eval "$PROBE"
+        # Also to a file that is uploaded whatever happens: a job cancelled at its time limit
+        # can lose its log entirely, and a long probe is the kind that reaches the limit.
+        run: eval "$PROBE" 2>&1 | tee "$RUNNER_TEMP/probe.log"
+
+      - name: Keep the probe output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-probe-log
+          path: ${{ runner.temp }}/probe.log
+          if-no-files-found: ignore
 
       # What the tests left running, newest first. Sorting by CPU, as this once did, hides a
       # process that is idle but still holding something, which is the kind worth finding. The
