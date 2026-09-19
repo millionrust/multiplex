@@ -922,9 +922,19 @@ mod tests {
                 &worker_cancellation,
             )
         });
-        accepted_rx
-            .recv_timeout(Duration::from_secs(10))
-            .expect("navigation reached fixture");
+        // A capture that failed before navigating and one still starting look the same from here,
+        // so say which it was.
+        if let Err(error) = accepted_rx.recv_timeout(Duration::from_secs(10)) {
+            let capture = if worker.is_finished() {
+                format!("the capture had ended: {:?}", worker.join())
+            } else {
+                "the capture was still running".to_string()
+            };
+            panic!(
+                "navigation never reached the fixture ({error:?}); {capture}; {}",
+                crate::test_support::machine_state()
+            );
+        }
         let started = std::time::Instant::now();
         cancellation.cancel();
         assert_eq!(
