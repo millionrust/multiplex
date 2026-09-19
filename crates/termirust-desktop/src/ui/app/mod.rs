@@ -20968,16 +20968,19 @@ sleep 1
         app.update(cx, |app, cx| {
             assert!(app.send_input_bytes(pane_id, vec![b'\n'], cx));
         });
-        wait_for_poll_result(
-            Duration::from_secs(10),
-            || {
-                std::fs::read_to_string(&output_path)
-                    .ok()
-                    .filter(|contents| contents == "snippet-e2e\n")
-                    .map(|_| ())
-            },
-            "explicit Enter did not execute the inserted Snippet",
-        );
+        // Waited on through the app rather than by polling the file alone. The app keeps taking
+        // the shell's output while it waits, where a bare poll left it unread: on Windows a
+        // pseudoconsole nobody reads fills its pipe and can stall the shell partway through
+        // echoing the command it was about to run. And when this gives up it prints every pane's
+        // terminal, saying whether the snippet arrived, whether Enter did, and what the shell
+        // answered. It failed twice on the Windows runner under nextest reporting only that
+        // nothing ran.
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |_| {
+            std::fs::read_to_string(&output_path)
+                .ok()
+                .filter(|contents| contents == "snippet-e2e\n")
+                .map(|_| ())
+        });
         assert_eq!(
             std::fs::read_to_string(&output_path).expect("Snippet output should be readable"),
             "snippet-e2e\n"
