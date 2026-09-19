@@ -15,6 +15,19 @@
 # there it costs a little time and changes nothing.
 durable-host-session = { max-threads = 1 }
 
+# The desktop application's tests take TestIsolation, a process-wide lock held for the whole test,
+# so under `cargo test` - one process for the binary - they have always run one at a time. nextest
+# gives each its own process and that lock orders nothing, so several now started local shells and
+# typed into them at once. On the Windows runner that lost the typed input: the shell printed its
+# prompt and then saw nothing for ten seconds, several tests at a time, while tests in every other
+# binary kept passing around them. Run these one at a time, as they always were; the rest of the
+# workspace still runs in parallel beside them.
+desktop-isolation = { max-threads = 1 }
+
 [[profile.default.overrides]]
 filter = 'package(termirust-cli) and kind(test)'
 test-group = 'durable-host-session'
+
+[[profile.default.overrides]]
+filter = 'binary_id(termirust::bin/termirust)'
+test-group = 'desktop-isolation'
