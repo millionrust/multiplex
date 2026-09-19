@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use termirust_client::LocalEndpoint;
+use termirust_client::{ConnectOptions, HostClient, LocalEndpoint};
 use termirust_domain::{HostInstanceId, HostedSessionId};
 use termirust_session_host::{
     HostErrorCode, LaunchDescriptor, MAX_LIVE_HOSTS, SessionHostHandle, StopDeadlines, start,
@@ -148,4 +148,51 @@ async fn thirty_two_host_limit_is_exact_and_the_next_start_fails_closed() {
     for host in hosts {
         host.shutdown().await.unwrap();
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_client_that_hangs_up_mid_request_leaves_the_others_connected() {
+    let fixture = tempfile::tempdir().unwrap();
+    let session_id = HostedSessionId::new();
+    let mut descriptor = descriptor(fixture.path(), session_id, "/bin/sh");
+    descriptor.arguments = vec![
+        "-c".to_string(),
+        "while IFS= read -r line; do :; done".to_string(),
+    ];
+    let host = start(descriptor.clone()).await.unwrap();
+    let endpoint = LocalEndpoint::new(&descriptor.runtime_root, session_id);
+    let cancel = CancellationToken::new();
+    let options = |index: u64| {
+        let mut nonce = [0_u8; 32];
+        nonce[..8].copy_from_slice(&index.to_le_bytes());
+        ConnectOptions::local(session_id, nonce)
+    };
+    let mut bystander = HostClient::connect(endpoint.clone(), options(0), &cancel)
+        .await
+        .unwrap();
+
+    // Each of these asks for the Host's state and hangs up before the answer, so the Host writes
+    // to a connection that is already gone. That once ended the Host's whole listener: the
+    // bystander lost its connection mid-request and no one could connect again.
+    for index in 1..=50 {
+        let mut client = HostClient::connect(endpoint.clone(), options(index), &cancel)
+            .await
+            .unwrap_or_else(|error| panic!("connection {index} was refused: {error:?}"));
+        tokio::select! {
+            biased;
+            _ = client.get_state(&cancel) => {}
+            () = std::future::ready(()) => {}
+        }
+        drop(client);
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+
+    HostClient::connect(endpoint, options(51), &cancel)
+        .await
+        .expect("a new client can still connect");
+    bystander
+        .get_state(&cancel)
+        .await
+        .expect("the client that stayed is still answered");
+    host.shutdown().await.unwrap();
 }

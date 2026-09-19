@@ -1031,13 +1031,19 @@ impl UserOnlyListener {
         })
     }
 
-    async fn accept(&self) -> Result<UnixStream, HostError> {
-        let (stream, _) = self.listener.accept().await.map_err(HostError::io)?;
-        let credentials = stream.peer_cred().map_err(HostError::io)?;
-        if credentials.uid() != self.expected_uid {
-            return Err(HostError::new(HostErrorCode::PermissionDenied));
+    /// The next connection from this user, or `None` for one refused on its own: a peer that is not
+    /// this user, or one already gone before it could be asked who it is. Neither says anything
+    /// about the listener, and failing on them would turn every client away.
+    async fn accept(&self) -> Result<Option<UnixStream>, HostError> {
+        let (stream, _) = match self.listener.accept().await {
+            Ok(accepted) => accepted,
+            Err(error) if error.kind() == io::ErrorKind::ConnectionAborted => return Ok(None),
+            Err(error) => return Err(HostError::io(error)),
+        };
+        match stream.peer_cred() {
+            Ok(credentials) if credentials.uid() == self.expected_uid => Ok(Some(stream)),
+            _ => Ok(None),
         }
-        Ok(stream)
     }
 }
 
@@ -1083,13 +1089,15 @@ async fn accept_loop(
     let mut handlers = JoinSet::new();
     loop {
         while let Some(result) = handlers.try_join_next() {
-            result.map_err(|_| HostError::new(HostErrorCode::JoinFailed))??;
+            result.map_err(|_| HostError::new(HostErrorCode::JoinFailed))?;
         }
         tokio::select! {
             biased;
             _ = cancel.cancelled() => break,
             accepted = listener.accept() => {
-                let stream = accepted?;
+                let Some(stream) = accepted? else {
+                    continue;
+                };
                 let Ok(permit) = permits.clone().try_acquire_owned() else {
                     drop(stream);
                     continue;
@@ -1099,21 +1107,21 @@ async fn accept_loop(
                 handlers.spawn(async move {
                     let connection_id = state.next_connection.fetch_add(1, Ordering::Relaxed);
                     state.active_connections.fetch_add(1, Ordering::AcqRel);
-                    let result = serve_connection(stream, state.clone(), connection_id, child_cancel).await;
+                    // What went wrong on one connection ends that connection and nothing else.
+                    // Passed up, it ended this loop, which dropped every other client mid-request
+                    // and left the Host running with nobody able to reach it; a client that hung
+                    // up while its answer was being written was enough to do that.
+                    let _ = serve_connection(stream, state.clone(), connection_id, child_cancel).await;
                     state.release_writer(connection_id).await;
                     state.active_connections.fetch_sub(1, Ordering::AcqRel);
                     drop(permit);
-                    match result {
-                        Err(error) if matches!(error.code, HostErrorCode::Cancelled | HostErrorCode::Protocol | HostErrorCode::ResourceLimit) => Ok(()),
-                        other => other,
-                    }
                 });
             }
         }
     }
     cancel.cancel();
     while let Some(result) = handlers.join_next().await {
-        result.map_err(|_| HostError::new(HostErrorCode::JoinFailed))??;
+        result.map_err(|_| HostError::new(HostErrorCode::JoinFailed))?;
     }
     Ok(())
 }
