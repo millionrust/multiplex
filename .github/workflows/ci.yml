@@ -209,6 +209,19 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3]
+    env:
+      # LLVM's lld, which ships with the toolchain, in place of MSVC's link.exe: every run links
+      # 178 test executables, and link.exe is the slow step in each. The release job keeps link.exe,
+      # since what it builds is what ships.
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld.exe
+      # rust-cache keeps dependencies but not this workspace's own crates, which cargo rebuilds on
+      # every checkout because checkout gives every source file a new timestamp. sccache keys each
+      # compile by its contents instead, so a crate nobody touched is fetched rather than rebuilt
+      # and nothing stale can come back. It cannot cache the test executables, only the libraries
+      # under them. (Restoring timestamps from git history would skip more, but hands back stale
+      # builds whenever a commit is older than the cache, so it is not used.)
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: sccache
     steps:
       # Defender scans every file the build writes and every test binary the first time it runs.
       # Measured on this runner: a test binary with no tests in it took seven seconds to start,
@@ -244,6 +257,8 @@ jobs:
         with:
           tool: nextest
 
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
       # Every feature, deliberately: Windows is where an optional dependency is likeliest to break,
       # and the release contract in scripts/verify/release-workflow.sh holds this job to it.
       #
@@ -261,6 +276,11 @@ jobs:
       - name: Run the benches as tests
         if: matrix.shard == 1
         run: cargo test --workspace --benches --all-features --locked --no-fail-fast
+
+      # Whether sccache earned its place: how many compiles it served, missed, or could not cache.
+      - name: Compile cache report
+        if: always()
+        run: sccache --show-stats
 
   # A slice of the Windows suite, run by hand, for questions the full job answers too slowly to be
   # worth asking. It never runs on a push: `windows_probe` is empty there, and an empty argument
