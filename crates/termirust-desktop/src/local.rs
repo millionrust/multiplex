@@ -115,6 +115,14 @@ fn run_local_session(
         .context("Unable to attach a PTY reader")?;
     let master = pair.master;
 
+    // Before the reader exists, so the app hears of the connection ahead of any output. It answers
+    // a program's questions about the terminal only on a connected pane, and on Windows the
+    // pseudo-console's first output is such a question, which it waits on before writing more.
+    let _ = event_tx.send(SshEvent::Connected {
+        session_id,
+        trusted_new_host: false,
+    });
+
     // The reader sends output straight to the app, and a second thread forwards commands,
     // so the worker blocks until there is something to do instead of polling.
     let (worker_tx, worker_rx) = mpsc::channel();
@@ -158,11 +166,6 @@ fn run_local_session(
             let _ = worker_tx.send(WorkerEvent::CommandsClosed);
         })
         .context("Unable to spawn the local command forwarder")?;
-
-    let _ = event_tx.send(SshEvent::Connected {
-        session_id,
-        trusted_new_host: false,
-    });
 
     loop {
         let Ok(event) = worker_rx.recv() else {
@@ -648,6 +651,35 @@ mod tests {
                 .contains(&TERMINAL_PROGRAM),
             "TermiRust panes are reachable without tmux and must not be wrapped"
         );
+    }
+
+    /// The app answers what a program asks about the terminal only once its pane is connected,
+    /// so output that arrives ahead of `Connected` goes unanswered. On Windows the pseudo-console
+    /// opens by asking for the cursor position and writes nothing more until it is told, so a
+    /// shell whose first output won that race showed an empty pane for good.
+    #[test]
+    fn a_local_session_is_connected_before_any_of_its_output_arrives() {
+        for attempt in 0..10_u64 {
+            let session_id = 950 + attempt;
+            let request = ConnectRequest::local_shell_with_config(
+                session_id,
+                LocalShellConfig {
+                    program: crate::test_support::test_shell_program(),
+                    args: vec!["-c".to_string(), "printf ready; sleep 5".to_string()],
+                    cwd: None,
+                },
+            );
+            let (event_tx, event_rx) = std::sync::mpsc::channel();
+            let runtime = spawn_local_session(request, event_tx.into());
+            let first = event_rx
+                .recv_timeout(Duration::from_secs(10))
+                .expect("the local session reported something");
+            assert!(
+                matches!(first, SshEvent::Connected { .. }),
+                "attempt {attempt}: the first event was not Connected: {first:?}"
+            );
+            let _ = runtime.command_tx.send(SessionCommand::Disconnect);
+        }
     }
 
     #[cfg(unix)]
