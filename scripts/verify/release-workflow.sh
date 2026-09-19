@@ -32,7 +32,12 @@ if grep -F 'macos-13' "$workflow" >/dev/null; then
 fi
 grep -F 'windows-2022' "$ci" >/dev/null
 grep -F 'branches: [main, dev, test]' "$ci" >/dev/null
-grep -F 'cargo test --workspace --all-targets --all-features --locked' "$ci" >/dev/null
+# Windows compiles and tests every feature across every target. The job runs that as two commands,
+# because nextest cannot run a bench whose harness prints its own report: nextest takes the
+# libraries, binaries, integration tests and examples, and cargo test takes the benches. Together
+# they are `cargo test --all-targets`, so the contract holds both, each with every feature.
+grep -F 'cargo nextest run --workspace --lib --bins --tests --examples --all-features --locked' "$ci" >/dev/null
+grep -F 'cargo test --workspace --benches --all-features --locked' "$ci" >/dev/null
 grep -F 'apps/android/scripts/verify-android-unified-routes.sh' "$ci" >/dev/null
 grep -F 'apps/android/gradlew -p apps/android lintDebug' "$ci" >/dev/null
 grep -F 'apps/ios/scripts/verify-ios-unified-routes.sh' "$ci" >/dev/null

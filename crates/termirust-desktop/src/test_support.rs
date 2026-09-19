@@ -329,7 +329,17 @@ impl TestIsolation {
         let lock = test_mutex()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let temp_dir = std::env::temp_dir().join(format!("termirust-test-{}", now_millis()));
+        // Named by process and sequence, not by the clock alone. The lock above only orders tests
+        // within one process; a runner that gives every test a process of its own, as nextest
+        // does, can have two acquire in the same millisecond, share one directory, and have the
+        // first to finish delete it out from under the other.
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let temp_dir = std::env::temp_dir().join(format!(
+            "termirust-test-{}-{}-{}",
+            std::process::id(),
+            now_millis(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
         fs::create_dir_all(&temp_dir).expect("unable to create test config dir");
         dialog_paths()
             .lock()

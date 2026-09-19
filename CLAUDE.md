@@ -190,6 +190,9 @@ cargo check
 cargo run            # debug build; use --release for performance testing
 TERMIRUST_TRACE_FOCUS=1 cargo run   # log every keyboard focus change to stderr
 cargo test --workspace --all-targets --locked --no-fail-fast   # everything, as CI runs it
+cargo nextest run --workspace --lib --bins --tests --examples --locked  # the same minus the
+  # benches, as the Windows job runs it, in about two thirds of the time. nextest gives every
+  # test its own process, so what may not run at once is declared in .config/nextest.toml.
 TERMIRUST_TUI_PROBE="bun run app.ts" cargo test -p termirust --bin termirust -- \
   a_terminal_interface_program_renders --ignored --nocapture   # drive a real TUI program
                                                                # through the emulator

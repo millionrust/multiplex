@@ -195,11 +195,20 @@ jobs:
             --exclude termirust-screen-transport --all-targets --all-features --locked
           cargo +1.88.0 check -p termirust-screen-transport --all-targets --locked
 
+  # Split three ways, because the Windows suite spends almost all of its time running tests one
+  # binary at a time: measured on 355cc81, twelve minutes compiling from a warm cache, then
+  # fifty-four running 178 test binaries in sequence on a four-core machine. nextest runs every
+  # binary's tests at once and hands each shard a third of them; each shard repeats the cached
+  # compile, which is the price of the split and cheap next to what it saves.
   windows:
-    name: windows runtime and sidecars
+    name: windows runtime and sidecars (${{ matrix.shard }}/3)
     if: inputs.windows_probe == ''
     runs-on: windows-2022
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       # Defender scans every file the build writes and every test binary the first time it runs.
       # Measured on this runner: a test binary with no tests in it took seven seconds to start,
@@ -226,13 +235,32 @@ jobs:
           # CI has been red, and rust-cache saves nothing from a failed job by default, so every
           # run rebuilt the whole workspace from scratch.
           cache-on-failure: true
+          # The three shards build the same thing, so they share one cache, and one of them saves
+          # it rather than all three writing the same gigabytes.
+          shared-key: windows-test
+          save-if: ${{ matrix.shard == 1 }}
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
 
       # Every feature, deliberately: Windows is where an optional dependency is likeliest to break,
-      # and the release contract in scripts/verify/release-workflow.sh holds this job to it. It is
-      # also most of why this job is slow, since it compiles the Stage B QUIC stack that nothing
-      # here exercises. Worth revisiting as a policy, not by quietly dropping the flag.
+      # and the release contract in scripts/verify/release-workflow.sh holds this job to it.
+      #
+      # This and the bench step below are `cargo test --all-targets` split in two. nextest cannot
+      # run a bench whose harness prints its own report, so it takes every other kind of target and
+      # the benches run under cargo test. What each test assumes about sharing a process with
+      # others is in .config/nextest.toml.
       - name: Compile and test Windows workspace
-        run: cargo test --workspace --all-targets --all-features --locked --no-fail-fast
+        run: >-
+          cargo nextest run --workspace --lib --bins --tests --examples --all-features --locked
+          --no-fail-fast --partition count:${{ matrix.shard }}/3
+
+      # Once rather than three times: the benches are not split, so every shard would run all of
+      # them.
+      - name: Run the benches as tests
+        if: matrix.shard == 1
+        run: cargo test --workspace --benches --all-features --locked --no-fail-fast
 
   # A slice of the Windows suite, run by hand, for questions the full job answers too slowly to be
   # worth asking. It never runs on a push: `windows_probe` is empty there, and an empty argument
