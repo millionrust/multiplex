@@ -247,6 +247,16 @@ jobs:
           PROBE: ${{ inputs.windows_probe }}
         run: cargo test $PROBE --locked --no-fail-fast -- --nocapture
 
+      # What the tests left running. A test that starts a shell, a browser or a host and does not
+      # reap it leaves it holding a core on a two-core machine, which starves every test after it;
+      # the runner only clears orphans once the job ends, so this is the one place to see them.
+      - name: Processes the tests left behind
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process | Sort-Object CPU -Descending | Select-Object -First 25 Name, Id, CPU, StartTime |
+            Format-Table -AutoSize | Out-String -Width 200
+
   # The release binaries do not depend on the tests passing, and waiting for them put an hour
   # between a push and knowing whether Windows can still produce what it ships.
   windows-release:
