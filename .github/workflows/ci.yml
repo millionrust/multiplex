@@ -17,6 +17,14 @@ on:
         description: "Open a shell on each runner for the length of the job"
         type: boolean
         default: false
+      # The full Windows job compiles every feature and takes over an hour, which is unusable as
+      # a loop when the question is why four particular tests behave differently there. This runs
+      # a chosen slice instead, on the same runner image, in minutes. Example:
+      # `-p termirust-browser --lib`. Empty, as on every push, and the job does not run.
+      windows_probe:
+        description: "cargo test arguments to run on Windows, e.g. -p termirust-browser --lib"
+        type: string
+        default: ""
 
 jobs:
   test:
@@ -208,6 +216,31 @@ jobs:
       # here exercises. Worth revisiting as a policy, not by quietly dropping the flag.
       - name: Compile and test Windows workspace
         run: cargo test --workspace --all-targets --all-features --locked --no-fail-fast
+
+  # A slice of the Windows suite, run by hand, for questions the full job answers too slowly to be
+  # worth asking. It never runs on a push: `windows_probe` is empty there, and an empty argument
+  # list would otherwise mean "the whole workspace", which is the job above.
+  windows-probe:
+    name: windows probe
+    if: inputs.windows_probe != ''
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.97.1
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Run the chosen Windows tests
+        # Through the environment rather than straight into the command line, so the value is data
+        # and not another line of script. Unquoted on use because it is an argument list.
+        shell: bash
+        env:
+          PROBE: ${{ inputs.windows_probe }}
+        run: cargo test $PROBE --locked --no-fail-fast -- --nocapture
 
   # The release binaries do not depend on the tests passing, and waiting for them put an hour
   # between a push and knowing whether Windows can still produce what it ships.

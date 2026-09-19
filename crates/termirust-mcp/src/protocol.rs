@@ -2034,6 +2034,24 @@ mod tests {
         }
     }
 
+    /// Waits for the worker to be inside `inspect`, which is what makes the call in flight.
+    ///
+    /// This is a barrier, not a measurement: cancelling or filling the queue proves nothing until
+    /// the first call is actually running, and how long the OS takes to get a thread there is not
+    /// what these tests are about. The bound exists only so a worker that never starts fails
+    /// instead of hanging, so it is generous — one second was enough on a developer machine and
+    /// not on a hosted Windows runner, which is a fact about the runner.
+    fn wait_until_in_flight(started: &AtomicBool) {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while !started.load(Ordering::Acquire) {
+            assert!(
+                Instant::now() < deadline,
+                "the worker never reached the inspection"
+            );
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
+
     #[test]
     fn cancellation_stops_an_in_flight_inspection_and_suppresses_its_response() {
         let started = Arc::new(AtomicBool::new(false));
@@ -2071,11 +2089,7 @@ mod tests {
                 "params": { "name": "termirust_status", "arguments": {} }
             }))
         });
-        let deadline = Instant::now() + Duration::from_secs(1);
-        while !started.load(Ordering::Acquire) && Instant::now() < deadline {
-            thread::sleep(Duration::from_millis(1));
-        }
-        assert!(started.load(Ordering::Acquire));
+        wait_until_in_flight(&started);
         server.cancel(&json!(77));
         assert_eq!(worker.join().expect("worker exits"), None);
     }
@@ -2135,11 +2149,7 @@ mod tests {
                 "params": { "name": "termirust_status", "arguments": {} }
             }))
         });
-        let deadline = Instant::now() + Duration::from_secs(1);
-        while !started.load(Ordering::Acquire) && Instant::now() < deadline {
-            thread::sleep(Duration::from_millis(1));
-        }
-        assert!(started.load(Ordering::Acquire));
+        wait_until_in_flight(&started);
         let second = server
             .process(json!({
                 "jsonrpc": "2.0",

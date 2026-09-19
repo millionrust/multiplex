@@ -1222,8 +1222,13 @@ mod tests {
             &mut cancellation,
         )
         .unwrap();
-        let AppEvent::Refresh { generation, result } =
-            receiver.recv_timeout(Duration::from_secs(1)).unwrap()
+        // A bound against hanging, not a measurement: what this test is about is that a source
+        // that panics becomes a bounded failure, not how quickly a thread can be spawned and its
+        // panic caught and unwound. A hosted Windows runner has needed more than a second for
+        // that much, so the wait is generous and its expiry means the worker never answered.
+        let AppEvent::Refresh { generation, result } = receiver
+            .recv_timeout(Duration::from_secs(30))
+            .expect("the refresh worker answered")
         else {
             panic!("expected refresh result");
         };
