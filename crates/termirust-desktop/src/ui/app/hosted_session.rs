@@ -432,6 +432,12 @@ fn default_host_executable() -> Result<PathBuf, String> {
         return Ok(PathBuf::from(path));
     }
     let current = std::env::current_exe().map_err(|error| error.to_string())?;
+    // A unit test runs from the test harness in `deps/`, and handing the harness to a durable
+    // Host launch starts another copy of the test suite instead of a Host: it either rejects the
+    // Host's arguments and exits, leaving the caller to wait out the whole ready deadline, or
+    // takes them as test filters and runs tests of its own in the background. The real binary
+    // sits one level up once it has been built, and without it there is nothing correct to
+    // launch, so say that rather than launching the wrong thing.
     #[cfg(test)]
     if current
         .parent()
@@ -440,9 +446,16 @@ fn default_host_executable() -> Result<PathBuf, String> {
         && let Some(debug_dir) = current.parent().and_then(Path::parent)
     {
         let packaged = debug_dir.join(format!("termirust{}", std::env::consts::EXE_SUFFIX));
-        if packaged.is_file() {
-            return Ok(packaged);
-        }
+        return if packaged.is_file() {
+            Ok(packaged)
+        } else {
+            Err(format!(
+                "the durable Host binary {} has not been built, and a unit test launches it rather \
+                 than itself; build it first with `cargo build -p termirust`, or run the suite \
+                 with --all-targets, which builds it",
+                packaged.display()
+            ))
+        };
     }
     Ok(current)
 }
