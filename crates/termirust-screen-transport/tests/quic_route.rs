@@ -146,8 +146,12 @@ async fn a_video_frame_larger_than_a_datagram_is_refused_rather_than_split() {
         "a plausible ceiling: {ceiling}"
     );
     tokio::task::spawn_blocking(move || {
+        // Larger than any UDP datagram can carry, rather than one byte over the ceiling just read.
+        // Path-MTU discovery raises that ceiling while the connection lives, so on a fast machine
+        // a frame one byte over the first reading already fits by the time it is sent, and the
+        // test reported `Ok` for a send that was never oversized.
         assert_eq!(
-            route.send(Class::Video, &vec![0u8; ceiling + 1]),
+            route.send(Class::Video, &vec![0u8; usize::from(u16::MAX) + 1]),
             Err(termirust_screen_transport::TransportError::TooLarge)
         );
         // And a stream class has no such ceiling: a large batch there is merely slow.

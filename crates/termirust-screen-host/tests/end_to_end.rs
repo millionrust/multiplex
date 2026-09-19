@@ -275,20 +275,49 @@ async fn a_viewer_watches_and_drives_a_computer_over_the_controller_channel() {
     viewer.send().await;
 
     // The host captures; the viewer sees exactly those pixels.
+    //
+    // Captured the way the application captures: continuously, from the moment a device opens
+    // (screen_sharing.rs starts a capture per display on `Opened`). A frame that reaches the host
+    // before it has processed the viewer's subscription is dropped, having nobody to go to, and in
+    // the application the next frame simply follows. Pushing each frame once, as this did, raced
+    // that subscription: on Windows the host's task tends to run later, the first frame arrived
+    // first, and the viewer waited out its deadline for a picture that was never coming.
+    //
+    // Reads are never abandoned and retried, because a half-read frame would desynchronise the
+    // encrypted channel, so capture runs beside them. It pauses once the viewer shows the frame:
+    // anything the host sends here and nobody reads fills a 64 KiB pipe.
     let handle = wait_for_handle(&handle).await;
+    let capturing: Arc<Mutex<Option<(FrameBuffer, u64)>>> = Arc::new(Mutex::new(None));
+    let capture = {
+        let handle = handle.clone();
+        let capturing = Arc::clone(&capturing);
+        tokio::spawn(async move {
+            loop {
+                let current = capturing.lock().unwrap().clone();
+                if let Some((frame, at)) = current {
+                    handle
+                        .frame(1, &frame.as_frame(), None, at)
+                        .expect("the host takes a captured frame");
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+    };
     for step in 0..3 {
         let frame = desktop(step);
-        handle
-            .frame(1, &frame.as_frame(), None, u64::from(step) * 100)
-            .unwrap();
-        viewer.receive(1).await;
-        viewer.send().await;
-        assert_eq!(
-            viewer.session.framebuffer(1).unwrap(),
-            &frame,
-            "step {step}"
-        );
+        *capturing.lock().unwrap() = Some((frame.clone(), u64::from(step) * 100));
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+        while viewer.session.framebuffer(1) != Some(&frame) {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "step {step}: the viewer never showed the captured frame"
+            );
+            viewer.receive(1).await;
+            viewer.send().await;
+        }
+        *capturing.lock().unwrap() = None;
     }
+    capture.abort();
 
     // Control is the host's to give.
     viewer.session.request_control();
