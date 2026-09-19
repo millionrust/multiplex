@@ -521,6 +521,20 @@ So this amendment supplies evidence for a review, not a substitute for one, and 
 the reviewer's list.
 
 **Accepted by the decision owner on 2026-09-18.**
+
+### Lockfile note: Windows local-pane job object (2026-09-19)
+
+The desktop crate now names `windows-sys 0.61.2` on Windows, to put each local pane's shell and
+console host into a job object that ends them when the app exits. That changed the workspace
+`Cargo.lock` by one dependency edge, so the checksum below was repinned. Nothing in
+`termirust-controller-security` changed, and no vector byte changed; only the pinned lockfile hash
+did.
+
+No package was added: `windows-sys 0.61.2` was already in the lock file. The edge sits behind
+`cfg(windows)` in `termirust-desktop`, which this crate does not depend on.
+
+`cargo deny check` is green on advisories, bans, licences, and sources after the change.
+
 ## Golden vectors and change control
 
 `crates/termirust-controller-security/tests/vectors/controller-v1.json` stores fixture-only private/public static and ephemeral keys, exact offer/prologue, all three messages, final `h`, SAS, both split transport keys, and first/last legal frames. A conformance run consumes those bytes; it never regenerates missing fields. The verification script checks the fixture plus ADR and lockfile checksums. Any deliberate protocol or dependency change must update this ADR first, regenerate every vector in review, and demonstrate that prior vectors fail under the declared compatibility policy.
