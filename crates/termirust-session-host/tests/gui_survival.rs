@@ -52,10 +52,14 @@ async fn host_survives_one_thousand_gui_drops_during_ordered_replay() {
         journal_limits: JournalLimits::default(),
         stop_deadlines: StopDeadlines::default(),
     };
+    // To a file, not discarded: when the final stop fails the Host's own account of it is the
+    // only evidence of whether it crashed or closed without answering. A pipe nobody reads could
+    // fill and stall the Host, which a file cannot.
+    let host_stderr = fixture.path().join("host-stderr.log");
     let mut process = Command::new(env!("CARGO_BIN_EXE_termirust-session-host"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(std::fs::File::create(&host_stderr).unwrap())
         .spawn()
         .unwrap();
     serde_json::to_writer(process.stdin.as_mut().unwrap(), &descriptor).unwrap();
@@ -117,10 +121,19 @@ async fn host_survives_one_thousand_gui_drops_during_ordered_replay() {
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
     assert!(String::from_utf8_lossy(&terminal_bytes).contains("COUNT:1000"));
-    final_client
+    // This has failed on a busy macOS runner, and never on an idle machine, with the Host closing
+    // the connection before its answer arrived. Say what the Host was doing when it did.
+    if let Err(error) = final_client
         .stop(CommandId::new(), wire::StopMode::Graceful, &cancel)
         .await
-        .unwrap();
+    {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        panic!(
+            "the graceful stop was not answered: {error:?}; host exit status: {:?}; host stderr: {:?}",
+            process.try_wait(),
+            std::fs::read_to_string(&host_stderr).unwrap_or_default()
+        );
+    }
 
     let deadline = Instant::now() + Duration::from_secs(6);
     while process.try_wait().unwrap().is_none() && Instant::now() < deadline {
