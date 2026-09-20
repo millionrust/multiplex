@@ -1725,4 +1725,229 @@ mod tests {
             MouseProtocolEncoding::Sgr => "sgr",
         }
     }
+
+    /// Runs `script` through this emulator on a pseudoterminal and returns what it painted,
+    /// answering the program's questions the way a pane does. Ends as soon as the script's last
+    /// line is on screen.
+    #[cfg(unix)]
+    fn painted_by(
+        program: &std::path::Path,
+        arguments: &[String],
+        environment: &[(String, String)],
+        until: &str,
+    ) -> TerminalState {
+        use std::io::{Read as _, Write as _};
+
+        let size = TerminalSize::new(100, 30, 800, 480);
+        let pty = portable_pty::native_pty_system()
+            .openpty(portable_pty::PtySize {
+                rows: size.rows,
+                cols: size.cols,
+                pixel_width: size.pixel_width,
+                pixel_height: size.pixel_height,
+            })
+            .expect("a pseudoterminal");
+        let mut command = portable_pty::CommandBuilder::new(program);
+        for argument in arguments {
+            command.arg(argument);
+        }
+        // What a local pane tells a program about itself.
+        command.env("TERM", "xterm-256color");
+        command.env("COLORTERM", "truecolor");
+        command.env("TERM_PROGRAM", "TermiRust");
+        // tmux refuses to start a session from inside one, and these tests are often run from a
+        // terminal this app has already wrapped.
+        command.env_remove("TMUX");
+        command.env_remove("TMUX_PANE");
+        for (name, value) in environment {
+            command.env(name, value);
+        }
+        let mut child = pty
+            .slave
+            .spawn_command(command)
+            .expect("the program starts");
+        drop(pty.slave);
+        let mut writer = pty.master.take_writer().expect("a writer");
+        let mut reader = pty.master.try_clone_reader().expect("a reader");
+        let (output_tx, output_rx) = std::sync::mpsc::channel::<Vec<u8>>();
+        std::thread::spawn(move || {
+            let mut buffer = [0_u8; 8192];
+            while let Ok(read) = reader.read(&mut buffer) {
+                if read == 0 || output_tx.send(buffer[..read].to_vec()).is_err() {
+                    break;
+                }
+            }
+        });
+
+        let mut terminal = TerminalState::new(size, 2_000);
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while Instant::now() < deadline {
+            match output_rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(bytes) => {
+                    terminal.process_bytes(&bytes);
+                    let replies = terminal.take_pty_replies();
+                    if !replies.is_empty() {
+                        let _ = writer.write_all(&replies);
+                        let _ = writer.flush();
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+            if terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains(until))
+            {
+                break;
+            }
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        terminal
+    }
+
+    /// Every cell up to `until` as character, foreground, background and weight, which is what a
+    /// person sees. tmux's own status line and the marker itself are left out.
+    #[cfg(unix)]
+    fn painted_cells(terminal: &TerminalState, until: &str) -> Vec<String> {
+        let snapshot = terminal.snapshot();
+        let hex = |colour: Hsla| {
+            let rgba = gpui::Rgba::from(colour);
+            format!(
+                "#{:02x}{:02x}{:02x}",
+                (rgba.r * 255.0).round() as u8,
+                (rgba.g * 255.0).round() as u8,
+                (rgba.b * 255.0).round() as u8
+            )
+        };
+        let mut painted = Vec::new();
+        for (index, row) in snapshot.rows.iter().enumerate() {
+            let text: String = row.cells.iter().map(|cell| cell.character).collect();
+            if text.contains(until) {
+                break;
+            }
+            for cell in &row.cells {
+                painted.push(format!(
+                    "row {index} {:?} fg {} bg {} bold {} italic {}",
+                    cell.character,
+                    hex(cell.style.fg),
+                    hex(cell.style.bg),
+                    u8::from(cell.style.bold),
+                    u8::from(cell.style.italic),
+                ));
+            }
+        }
+        painted
+    }
+
+    /// A wrapped tab has to look like the tab it replaced. tmux parses everything a program
+    /// writes and redraws it in its own words, so each colour has to survive that round trip:
+    /// 24-bit, the 256-colour palette, the sixteen named colours, bold, dim, and backgrounds.
+    /// This runs one program twice through this emulator, once directly and once inside a
+    /// session configured the way a wrapped tab is, and compares every painted cell.
+    ///
+    /// Skipped where tmux is not installed, as the other tmux tests are.
+    #[cfg(unix)]
+    #[test]
+    fn a_wrapped_tab_paints_the_same_colours_as_a_plain_one() {
+        const MARKER: &str = "PAINTED";
+
+        let Ok(tmux) = termirust_tmux::Tmux::discover() else {
+            eprintln!("skipping the wrapped-tab colour test: tmux is unavailable");
+            return;
+        };
+        // tmux socket paths are limited to about 100 bytes, so stay out of long temp dirs.
+        let fixture = tempfile::Builder::new()
+            .prefix("tr-colour-")
+            .tempdir_in("/tmp")
+            .expect("a fixture directory");
+        let script = fixture.path().join("colours.sh");
+        std::fs::write(
+            &script,
+            concat!(
+                "#!/bin/sh\n",
+                "i=0\n",
+                "while [ $i -lt 16 ]; do printf '\\033[38;5;%dmX\\033[0m' \"$i\"; i=$((i+1)); done\n",
+                "printf '\\n'\n",
+                "i=0\n",
+                "while [ $i -lt 8 ]; do printf '\\033[1;3%dmB\\033[0m' \"$i\"; i=$((i+1)); done\n",
+                "printf '\\n'\n",
+                "i=0\n",
+                "while [ $i -lt 8 ]; do printf '\\033[2;3%dmF\\033[0m' \"$i\"; i=$((i+1)); done\n",
+                "printf '\\n'\n",
+                "i=0\n",
+                "while [ $i -lt 16 ]; do printf '\\033[48;5;%dm \\033[0m' \"$i\"; i=$((i+1)); done\n",
+                "printf '\\n'\n",
+                "printf '\\033[38;2;200;100;50mT\\033[48;2;20;60;90mU\\033[0m\\n'\n",
+                "printf 'PAINTED\\n'\n",
+                "sleep 30\n",
+            ),
+        )
+        .expect("the script is written");
+        let script = script.to_string_lossy().into_owned();
+
+        let plain = painted_by(
+            std::path::Path::new("/bin/sh"),
+            std::slice::from_ref(&script),
+            &[],
+            MARKER,
+        );
+
+        let tmux = tmux.with_socket_directory(fixture.path());
+        let configuration = fixture.path().join("tmux.conf");
+        std::fs::write(
+            &configuration,
+            termirust_tmux::appearance::WrappedSessionAppearance::for_this_platform()
+                .configuration_file(),
+        )
+        .expect("the configuration is written");
+        let mut arguments = termirust_tmux::appearance::client_flags(&[
+            termirust_tmux::appearance::TRUECOLOR_FEATURE,
+            termirust_tmux::appearance::SYNCHRONIZED_UPDATE_FEATURE,
+        ]);
+        arguments.extend(
+            [
+                "-f",
+                "/dev/null",
+                "new-session",
+                "-s",
+                "termirust-colours",
+                &format!("/bin/sh {script}"),
+                ";",
+                "source-file",
+                "-q",
+                &configuration.to_string_lossy(),
+            ]
+            .map(str::to_owned),
+        );
+        let wrapped = painted_by(
+            tmux.executable(),
+            &arguments,
+            &tmux.client_environment(),
+            MARKER,
+        );
+
+        let plain_cells = painted_cells(&plain, MARKER);
+        let wrapped_cells = painted_cells(&wrapped, MARKER);
+        assert!(
+            plain_cells.len() > 40,
+            "the plain pane painted almost nothing: {:?}",
+            plain.all_rows_text()
+        );
+        let differences: Vec<_> = plain_cells
+            .iter()
+            .zip(wrapped_cells.iter())
+            .filter(|(plain, wrapped)| plain != wrapped)
+            .collect();
+        assert!(
+            differences.is_empty(),
+            "a wrapped tab painted different colours: {differences:#?}"
+        );
+        assert_eq!(
+            plain_cells.len(),
+            wrapped_cells.len(),
+            "a wrapped tab painted a different number of cells"
+        );
+    }
 }
