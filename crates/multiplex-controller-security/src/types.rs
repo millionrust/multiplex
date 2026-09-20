@@ -18,12 +18,15 @@ pub struct ControllerProtocolVersion {
     pub minor: u16,
 }
 
-pub const CONTROLLER_V1: ControllerProtocolVersion =
-    ControllerProtocolVersion { major: 1, minor: 0 };
+pub const CONTROLLER_V2: ControllerProtocolVersion =
+    ControllerProtocolVersion { major: 2, minor: 0 };
 
 impl ControllerProtocolVersion {
-    pub(crate) fn require_v1(self) -> Result<()> {
-        if self == CONTROLLER_V1 {
+    /// Exact-version compatibility, as the ADR requires. A Controller-v1 peer is refused here,
+    /// before any key material is derived, rather than failing later as an authentication error
+    /// that a user could not tell from tampering: its separators derive different keys.
+    pub(crate) fn require_supported(self) -> Result<()> {
+        if self == CONTROLLER_V2 {
             Ok(())
         } else {
             Err(ErrorCode::IncompatibleVersion.into())

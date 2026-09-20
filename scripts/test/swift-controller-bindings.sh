@@ -7,7 +7,7 @@ GENERATED="$ARTIFACTS/ios/Sources/TermiRustControllerSecurity.swift"
 FRAMEWORKS="$ARTIFACTS/ios/TermiRustControllerSecurity.xcframework/ios-arm64"
 MODULE_MAP="$FRAMEWORKS/TermiRustControllerSecurityFFI.framework/Modules/module.modulemap"
 NATIVE="$ARTIFACTS/kotlin-test/darwin-aarch64"
-FIXTURE="$ROOT_DIR/crates/multiplex-controller-security/tests/vectors/controller-v1.json"
+FIXTURE="$ROOT_DIR/crates/multiplex-controller-security/tests/vectors/controller-v2.json"
 RUNNER="$ROOT_DIR/tests/swift/controller_binding_conformance.swift"
 
 for required_path in "$GENERATED" "$MODULE_MAP" \

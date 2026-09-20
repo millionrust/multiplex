@@ -1,7 +1,7 @@
 use std::fmt;
 
 use multiplex_controller_security::{
-    CONTROLLER_V1, CapabilitySet, ControllerSecurityError, PairingMachine, PairingNonce,
+    CONTROLLER_V2, CapabilitySet, ControllerSecurityError, PairingMachine, PairingNonce,
     PairingOfferCore, PairingState, RevocationEpoch, SasCode, StaticPrivateKey,
 };
 use multiplex_domain::{
@@ -281,7 +281,7 @@ impl PairingCoordinator {
 
 fn security_offer(offer: &PairingOfferRecord) -> Result<PairingOfferCore, PairingServiceError> {
     Ok(PairingOfferCore {
-        version: CONTROLLER_V1,
+        version: CONTROLLER_V2,
         expires_at_unix_seconds: offer.expires_at,
         nonce: PairingNonce(offer.nonce),
         host_static_public_key: multiplex_controller_security::HostStaticPublicKey(

@@ -220,7 +220,7 @@ All integers are unsigned big-endian. Reserved fields must be zero. No trailing 
 | 50 | 32 | Host static public key |
 | 82 | 2 | requested capability bits |
 
-The Noise prologue is `ASCII("termirust-controller-v1\0") || u16be(84) || offer_bytes`. This binds version, suite, expiry, nonce, Host identity, and requested capability template to the Noise transcript without making the QR/offer secret.
+The Noise prologue is `ASCII("multiplex-controller-v2\0") || u16be(84) || offer_bytes`. This binds version, suite, expiry, nonce, Host identity, and requested capability template to the Noise transcript without making the QR/offer secret.
 
 ## XX messages and transcript checks
 
@@ -247,13 +247,13 @@ After both roles process message 3, they take the final BLAKE2s Noise handshake 
 
 SAS-v1 is byte-for-byte fixed:
 
-1. `salt = SHA-256(ASCII("termirust-controller-sas-v1\0") || pairing_nonce[32])`.
+1. `salt = SHA-256(ASCII("multiplex-controller-sas-v2\0") || pairing_nonce[32])`.
 2. `info = ASCII("sas\0") || u16be(major) || u16be(minor) || host_static_public_key[32] || device_static_public_key[32]`.
 3. Run HKDF-SHA256 with `IKM = h`, that salt and info, and output exactly five bytes.
 4. Read the 40 bits MSB-first as eight five-bit indices into `0123456789ABCDEFGHJKMNPQRSTVWXYZ`.
 5. Display uppercase `XXXX-XXXX`. There is no checksum, modulo, discarded range, or localized alphabet.
 
-The comparison space is exactly 40 bits. SAS is comparison-only and is never entered as authentication. Accessible speech identifies each visible symbol as `letter` or `digit`. `Debug` output is redacted. The normative independent anchor is committed in `tests/vectors/controller-v1.json` and yields `YKHM-ZHBT`.
+The comparison space is exactly 40 bits. SAS is comparison-only and is never entered as authentication. Accessible speech identifies each visible symbol as `letter` or `digit`. `Debug` output is redacted. The normative independent anchor is committed in `tests/vectors/controller-v2.json` and yields `5FSW-YX9D`.
 
 ## Amendment 2026-09-15: six-digit code pairing
 
@@ -268,10 +268,10 @@ A six-digit code carries about 20 bits. Using it directly as a Noise pre-shared 
 - Group and hash: CPace over Ristretto255 with SHA-512, `DSI = "CPaceRistretto255"`, implemented in `termirust-controller-security::cpace` with `curve25519-dalek 4.1.3` (default features off, `zeroize` on) and the already pinned `sha2 0.10.9`. The implementation reproduces the draft's appendix B.3 generator, share, secret, ISK, and invalid-point vectors.
 - Code: exactly six ASCII digits, drawn uniformly with rejection sampling from the OS CSPRNG. `PRS` is the six ASCII bytes.
 - Offer: the 84-byte `PairingOfferCore` above, delivered by the Host in plaintext at the start of the connection. It is not secret.
-- `CI = "termirust-controller-code-v1" || offer_bytes`; `sid = device_nonce[32] || offer_nonce[32]`, where the device nonce is fresh per attempt.
-- Parties: the device is CPace party A with `ADa = "termirust-controller-device"`, the Host party B with `ADb = offer_bytes`. Shares that do not decode or multiply to the neutral element abort.
-- `ISK` is the draft's initiator-responder ISK. `binding = SHA-512("termirust-controller-code-binding-v1\0" || ISK)[..32]`.
-- The XX prologue becomes `ASCII("termirust-controller-v1\0") || u16be(84) || offer_bytes || ASCII("termirust-controller-code-v1\0") || binding`. A peer that used another code derives another binding, so Host proof decryption fails at message 2 and neither static key is accepted.
+- `CI = "multiplex-controller-code-v2" || offer_bytes`; `sid = device_nonce[32] || offer_nonce[32]`, where the device nonce is fresh per attempt.
+- Parties: the device is CPace party A with `ADa = "multiplex-controller-device"`, the Host party B with `ADb = offer_bytes`. Shares that do not decode or multiply to the neutral element abort.
+- `ISK` is the draft's initiator-responder ISK. `binding = SHA-512("multiplex-controller-code-binding-v2\0" || ISK)[..32]`.
+- The XX prologue becomes `ASCII("multiplex-controller-v2\0") || u16be(84) || offer_bytes || ASCII("multiplex-controller-code-v2\0") || binding`. A peer that used another code derives another binding, so Host proof decryption fails at message 2 and neither static key is accepted.
 - After message 3, `confirm_code_authenticated` finalizes only a code-bound machine. There is no SAS comparison; an unbound machine cannot use this path.
 
 ### Wire sequence
@@ -545,9 +545,61 @@ changed beyond its own name, and no vector byte changed.
 
 `cargo deny check` is green on advisories, bans, licences, and sources after the change.
 
+## Amendment 2: Controller-v2, the Multiplex identity (2026-09-21)
+
+The product is now called Multiplex, and every domain separator in this construction carried the
+old name. A separator is an input to key derivation, not a label: `multiplex-controller-v2\0` is
+in the Noise prologue, `multiplex-controller-sas-v2\0` in the SAS salt, and
+`multiplex-controller-code-v2` and `-code-binding-v1\0` in CPace. Renaming them changes the keys,
+the transcript and the SAS for the same inputs.
+
+### What this amendment changes
+
+- Every separator moves to the Multiplex name and the new version:
+  `multiplex-controller-v2\0`, `multiplex-controller-sas-v2\0`,
+  `multiplex-controller-connection-v2\0`, `multiplex-controller-code-v2`,
+  `multiplex-controller-code-binding-v2\0`, and `multiplex-controller-device`.
+- The protocol version becomes exactly `2.0`.
+- The four-byte magics do not move. `TCO1`, `TPS1`, `TCP1`, `TCC1` and `TCF1` name the byte
+  layout, not the protocol, and the layout is unchanged. Moving them was tried and reverted: a
+  Controller-v1 peer reading a `TCO2` offer stops at the magic and reports a malformed encoding,
+  never reaching the version field, which is the opposite of what this amendment is for. Holding
+  the magic still is what lets both sides answer `incompatible_version`.
+- Nothing else about the construction moves. The Noise pattern, its pinned implementation, the
+  CPace group and encoding, the SAS derivation and its digits, the frame header layout, the
+  capability bits, and every bound field are as Amendment 1 left them.
+
+### Why the version moves with the name
+
+A separator change alone would leave both peers agreeing on version `1.0` and failing at message
+2 with an authentication failure, which is exactly what a tampering attacker produces. A user
+would be told their pairing was attacked when it had merely aged. `2.0` makes the refusal
+explicit: exact-version compatibility rejects a `1.0` offer with `incompatible_version` before
+any key material is derived, and the peer can say plainly that both sides must be updated.
+
+### What it costs
+
+Every paired device must pair again. A stored Controller-v1 device record cannot authenticate a
+Controller-v2 channel, because the static keys were bound into a transcript this version does not
+produce. That cost is paid once, and it is paid now rather than at the next identity change.
+
+### Evidence
+
+Every vector in `controller-v2.json` and `controller-code-v2.json` was regenerated, in review,
+from the same fixture keys as before, so the two files differ from their predecessors in exactly
+the values the separators and version fields feed. The previous files are kept beside them as
+`legacy/controller-v1.json` and `legacy/controller-code-v1.json`, and
+`prior_vectors_are_refused` demonstrates the compatibility policy: the v1 offer bytes are
+rejected with `incompatible_version`, and the v1 prologue is not a prologue this version
+produces.
+
+This amendment does not change the release gate. The independent cryptographic review named at
+the top of this document remains outstanding, and renaming a separator is not a substitute for
+it.
+
 ## Golden vectors and change control
 
-`crates/termirust-controller-security/tests/vectors/controller-v1.json` stores fixture-only private/public static and ephemeral keys, exact offer/prologue, all three messages, final `h`, SAS, both split transport keys, and first/last legal frames. A conformance run consumes those bytes; it never regenerates missing fields. The verification script checks the fixture plus ADR and lockfile checksums. Any deliberate protocol or dependency change must update this ADR first, regenerate every vector in review, and demonstrate that prior vectors fail under the declared compatibility policy.
+`crates/multiplex-controller-security/tests/vectors/controller-v2.json` stores fixture-only private/public static and ephemeral keys, exact offer/prologue, all three messages, final `h`, SAS, both split transport keys, and first/last legal frames. A conformance run consumes those bytes; it never regenerates missing fields. The verification script checks the fixture plus ADR and lockfile checksums. Any deliberate protocol or dependency change must update this ADR first, regenerate every vector in review, and demonstrate that prior vectors fail under the declared compatibility policy.
 
 ## Residual risks and release gates
 

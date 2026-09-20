@@ -33,7 +33,7 @@ const HELLO_MAGIC: [u8; 4] = *b"TRH1";
 const CHALLENGE_MAGIC: [u8; 4] = *b"TRC1";
 const PROOF_MAGIC: [u8; 4] = *b"TRP1";
 const RESULT_MAGIC: [u8; 4] = *b"TRA1";
-const ADMISSION_DOMAIN: &[u8] = b"termirust-relay-admission-v1\0";
+const ADMISSION_DOMAIN: &[u8] = b"multiplex-relay-admission-v1\0";
 
 pub const CLIENT_HELLO_BYTES: usize = 40;
 pub const ADMISSION_CHALLENGE_BYTES: usize = 128;
@@ -298,7 +298,7 @@ impl RelayEnvelopeV1 {
         if bytes.len() < RELAY_ENVELOPE_HEADER_BYTES || bytes[..4] != ENVELOPE_MAGIC {
             return Err(RelayProtocolError::InvalidEnvelope);
         }
-        require_v1(u16::from_be_bytes(read_array(bytes, 4)?))?;
+        require_supported(u16::from_be_bytes(read_array(bytes, 4)?))?;
         if bytes[7] != 0 {
             return Err(RelayProtocolError::NonCanonical);
         }
@@ -393,7 +393,7 @@ impl RelayClientHello {
         if bytes.len() != CLIENT_HELLO_BYTES || bytes[..4] != HELLO_MAGIC || bytes[7] != 0 {
             return Err(RelayProtocolError::InvalidAdmissionMessage);
         }
-        require_v1(u16::from_be_bytes(read_array(bytes, 4)?))?;
+        require_supported(u16::from_be_bytes(read_array(bytes, 4)?))?;
         Ok(Self {
             route_id: RelayRouteId(read_array(bytes, 8)?),
             role: decode_role(bytes[6])?,
@@ -449,7 +449,7 @@ impl RelayAdmissionChallenge {
         {
             return Err(RelayProtocolError::InvalidAdmissionMessage);
         }
-        require_v1(u16::from_be_bytes(read_array(bytes, 4)?))?;
+        require_supported(u16::from_be_bytes(read_array(bytes, 4)?))?;
         Ok(Self {
             route_id: RelayRouteId(read_array(bytes, 8)?),
             role: decode_role(bytes[6])?,
@@ -499,7 +499,7 @@ impl RelayAdmissionProof {
         if bytes.len() != ADMISSION_PROOF_BYTES || bytes[..4] != PROOF_MAGIC || bytes[7] != 0 {
             return Err(RelayProtocolError::InvalidAdmissionMessage);
         }
-        require_v1(u16::from_be_bytes(read_array(bytes, 4)?))?;
+        require_supported(u16::from_be_bytes(read_array(bytes, 4)?))?;
         Ok(Self {
             route_id: RelayRouteId(read_array(bytes, 8)?),
             role: decode_role(bytes[6])?,
@@ -565,7 +565,7 @@ impl RelayAdmissionResult {
         if bytes.len() != ADMISSION_RESULT_BYTES || bytes[..4] != RESULT_MAGIC {
             return Err(RelayProtocolError::InvalidAdmissionMessage);
         }
-        require_v1(u16::from_be_bytes(read_array(bytes, 4)?))?;
+        require_supported(u16::from_be_bytes(read_array(bytes, 4)?))?;
         let diagnostic = RelayDiagnosticCode::from_u16(u16::from_be_bytes(read_array(bytes, 6)?))?;
         let raw_id = u64::from_be_bytes(read_array(bytes, 8)?);
         let connection_id =
@@ -749,7 +749,7 @@ impl fmt::Display for RelayProtocolError {
 
 impl std::error::Error for RelayProtocolError {}
 
-fn require_v1(version: u16) -> Result<(), RelayProtocolError> {
+fn require_supported(version: u16) -> Result<(), RelayProtocolError> {
     if version == RELAY_V1.0 {
         Ok(())
     } else {

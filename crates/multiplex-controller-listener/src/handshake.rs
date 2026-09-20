@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use multiplex_controller_security::{
-    AuthenticatedConnection, CONTROLLER_V1, CapabilitySet, ConnectionChallenge,
+    AuthenticatedConnection, CONTROLLER_V2, CapabilitySet, ConnectionChallenge,
     ConnectionInitiator, ConnectionPrelude, ConnectionResponder, DeviceStaticPublicKey,
     HostStaticPublicKey, RevocationEpoch, StaticPrivateKey, host_public_key_from_private,
 };
@@ -90,7 +90,7 @@ async fn initiate_controller_inner<S: AsyncRead + AsyncWrite + Unpin>(
         .write_to(stream)
         .await?;
     let prelude = ConnectionPrelude {
-        version: CONTROLLER_V1,
+        version: CONTROLLER_V2,
         identity_generation,
         revocation_epoch: RevocationEpoch(revocation_epoch),
         client_nonce: entropy.nonce()?,
@@ -352,7 +352,7 @@ mod tests {
         });
 
         let prelude = ConnectionPrelude {
-            version: CONTROLLER_V1,
+            version: CONTROLLER_V2,
             identity_generation: 1,
             revocation_epoch: RevocationEpoch(7),
             client_nonce: [3; 32],

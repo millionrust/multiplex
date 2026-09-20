@@ -119,7 +119,7 @@ class ReplicationCustodyInstrumentedTest {
     fun realRustIdentitiesReopenAndDeleteWithoutAffectingController() {
         val controller = ControllerSecureBlobStore(context, controllerAlias)
         controller.store(controllerAccount, byteArrayOf(1, 2, 3))
-        ControllerSecurityEngine(controller).use { assertEquals(1, it.protocolVersion().major.toInt()) }
+        ControllerSecurityEngine(controller).use { assertEquals(2, it.protocolVersion().major.toInt()) }
         ReplicationCustody(store).use { engine ->
             val one = engine.createDeviceIdentity()
             val two = engine.createDeviceIdentity()
@@ -133,7 +133,7 @@ class ReplicationCustodyInstrumentedTest {
             }
         }
         assertArrayEquals(byteArrayOf(1, 2, 3), controller.load(controllerAccount))
-        ControllerSecurityEngine(controller).use { assertEquals(1, it.protocolVersion().major.toInt()) }
+        ControllerSecurityEngine(controller).use { assertEquals(2, it.protocolVersion().major.toInt()) }
     }
 
     @Test

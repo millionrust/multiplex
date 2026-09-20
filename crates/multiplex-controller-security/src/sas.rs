@@ -16,10 +16,10 @@ pub fn derive_sas_v1(
     host_key: HostStaticPublicKey,
     device_key: DeviceStaticPublicKey,
 ) -> Result<SasCode> {
-    version.require_v1()?;
+    version.require_supported()?;
 
     let mut salt_input = Vec::with_capacity(60);
-    salt_input.extend_from_slice(b"termirust-controller-sas-v1\0");
+    salt_input.extend_from_slice(b"multiplex-controller-sas-v2\0");
     salt_input.extend_from_slice(&nonce.0);
     let salt = Sha256::digest(&salt_input);
 
@@ -51,7 +51,7 @@ pub fn derive_sas_v1(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::CONTROLLER_V1;
+    use crate::types::CONTROLLER_V2;
 
     fn sequential(start: u8) -> [u8; 32] {
         core::array::from_fn(|index| start.wrapping_add(index as u8))
@@ -63,8 +63,8 @@ mod tests {
         let hash = HandshakeHash(sequential(0x20));
         let host = HostStaticPublicKey(sequential(0x40));
         let device = DeviceStaticPublicKey(sequential(0x60));
-        let sas = derive_sas_v1(&nonce, &hash, CONTROLLER_V1, host, device)
+        let sas = derive_sas_v1(&nonce, &hash, CONTROLLER_V2, host, device)
             .unwrap_or_else(|error| panic!("anchor failed: {error}"));
-        assert_eq!(sas.as_str(), "YKHM-ZHBT");
+        assert_eq!(sas.as_str(), "5FSW-YX9D");
     }
 }

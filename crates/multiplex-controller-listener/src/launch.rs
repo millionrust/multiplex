@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
 use multiplex_controller_security::{
-    CONTROLLER_V1, CapabilitySet, DeviceStaticPublicKey, PairingNonce, PairingOfferCore,
+    CONTROLLER_V2, CapabilitySet, DeviceStaticPublicKey, PairingNonce, PairingOfferCore,
     StaticPrivateKey,
 };
 use multiplex_domain::{
@@ -388,7 +388,7 @@ impl RepositoryAuthority {
         let record =
             record.ok_or_else(|| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
         let core = PairingOfferCore {
-            version: CONTROLLER_V1,
+            version: CONTROLLER_V2,
             expires_at_unix_seconds: record.expires_at,
             nonce: PairingNonce(record.nonce),
             host_static_public_key: multiplex_controller_security::HostStaticPublicKey(
@@ -474,7 +474,7 @@ impl RepositoryStdioAuthority {
         let record =
             record.ok_or_else(|| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
         let offer = PairingOfferCore {
-            version: CONTROLLER_V1,
+            version: CONTROLLER_V2,
             expires_at_unix_seconds: record.expires_at,
             nonce: PairingNonce(record.nonce),
             host_static_public_key: multiplex_controller_security::HostStaticPublicKey(
@@ -536,7 +536,7 @@ impl ControllerPairingAuthority for RepositoryStdioAuthority {
             .ok_or_else(|| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
         Ok(PairingAuthoritySnapshot {
             offer: PairingOfferCore {
-                version: CONTROLLER_V1,
+                version: CONTROLLER_V2,
                 expires_at_unix_seconds: offer.expires_at,
                 nonce: PairingNonce(offer.nonce),
                 host_static_public_key: multiplex_controller_security::HostStaticPublicKey(
@@ -713,7 +713,7 @@ impl ControllerPairingAuthority for RepositoryAuthority {
             .ok_or_else(|| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
         Ok(PairingAuthoritySnapshot {
             offer: PairingOfferCore {
-                version: CONTROLLER_V1,
+                version: CONTROLLER_V2,
                 expires_at_unix_seconds: offer.expires_at,
                 nonce: PairingNonce(offer.nonce),
                 host_static_public_key: multiplex_controller_security::HostStaticPublicKey(

@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use multiplex_controller_security::{
-    CONTROLLER_V1, CapabilitySet, ControllerCapability, PairingMachine, PairingNonce,
+    CONTROLLER_V2, CapabilitySet, ControllerCapability, PairingMachine, PairingNonce,
     PairingOfferCore, RevocationEpoch, StaticPrivateKey, host_public_key_from_private,
 };
 use multiplex_relay_protocol::{
@@ -90,7 +90,7 @@ pub fn confirmed_controller_pair() -> (
 ) {
     let host_static = StaticPrivateKey::from_fixture_bytes(fixture_bytes(0));
     let offer = PairingOfferCore {
-        version: CONTROLLER_V1,
+        version: CONTROLLER_V2,
         expires_at_unix_seconds: 1_300,
         nonce: PairingNonce(fixture_bytes(0x80)),
         host_static_public_key: host_public_key_from_private(&host_static),

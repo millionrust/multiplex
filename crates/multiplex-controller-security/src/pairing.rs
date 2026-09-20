@@ -383,6 +383,23 @@ impl PairingMachine {
         self.finalize(revocation_epoch)
     }
 
+    /// The two transport keys this handshake split into, which the golden vector records. Taken
+    /// the way `finalize` takes them, so the vector is written from the same code path the
+    /// protocol runs. Only for regenerating vectors under review: key material never leaves this
+    /// crate otherwise, which is why this is not a public accessor.
+    #[cfg(test)]
+    pub(crate) fn split_keys_for_vectors(mut self) -> Result<([u8; 32], [u8; 32])> {
+        let noise = self.noise.take().ok_or(ErrorCode::WrongState)?;
+        let cipherstates = noise
+            .finalize()
+            .map_err(|_| ErrorCode::CryptoFailure)?
+            .take();
+        Ok((
+            *cipherstates.initiator_to_responder.take().0,
+            *cipherstates.responder_to_initiator.take().0,
+        ))
+    }
+
     fn finalize(mut self, revocation_epoch: RevocationEpoch) -> Result<ConfirmedPairing> {
         let noise = self.noise.take().ok_or(ErrorCode::WrongState)?;
         let cipherstates = noise
@@ -561,7 +578,7 @@ fn prologue_for(offer: &PairingOfferCore, binding: Option<&CodeBinding>) -> Resu
 }
 
 fn validate_offer_time(offer: &PairingOfferCore, now_unix_seconds: u64) -> Result<()> {
-    offer.version.require_v1()?;
+    offer.version.require_supported()?;
     if now_unix_seconds > offer.expires_at_unix_seconds {
         Err(ErrorCode::Expired.into())
     } else if offer

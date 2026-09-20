@@ -3,7 +3,7 @@
 use libfuzzer_sys::fuzz_target;
 use multiplex_controller_security::{
     CapabilitySet, ControllerCapability, PairingMachine, PairingNonce, PairingOfferCore,
-    RevocationEpoch, StaticPrivateKey, CONTROLLER_V1, decode_offer,
+    RevocationEpoch, StaticPrivateKey, CONTROLLER_V2, decode_offer,
     host_public_key_from_private,
 };
 
@@ -13,7 +13,7 @@ fuzz_target!(|data: &[u8]| {
     let host_static = StaticPrivateKey::from_fixture_bytes([1; 32]);
     let device_static = StaticPrivateKey::from_fixture_bytes([4; 32]);
     let offer = PairingOfferCore {
-        version: CONTROLLER_V1,
+        version: CONTROLLER_V2,
         expires_at_unix_seconds: 300,
         nonce: PairingNonce([2; 32]),
         host_static_public_key: host_public_key_from_private(&host_static),

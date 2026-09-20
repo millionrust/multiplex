@@ -37,7 +37,7 @@ use tokio::sync::Mutex;
 use crate::{Class, Delivery, Transport, TransportError};
 
 /// What a Remote Screens connection calls itself on the wire.
-pub const ALPN: &[u8] = b"termirust/screen/1";
+pub const ALPN: &[u8] = b"multiplex/screen/1";
 
 /// How long a dropped connection is retried before the session is told it is gone.
 ///
@@ -257,6 +257,6 @@ mod tests {
     fn the_alpn_names_the_protocol_and_its_version() {
         // Changing this is changing what peers will talk to each other, so it should be a
         // deliberate edit with a test to notice it.
-        assert_eq!(ALPN, b"termirust/screen/1");
+        assert_eq!(ALPN, b"multiplex/screen/1");
     }
 }

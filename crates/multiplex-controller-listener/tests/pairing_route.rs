@@ -8,7 +8,7 @@ use multiplex_controller_listener::{
     pair_controller_client, read_bounded_frame, write_bounded_frame,
 };
 use multiplex_controller_security::{
-    CONTROLLER_V1, CapabilitySet, ControllerCapability, DeviceStaticPublicKey, PairingMachine,
+    CONTROLLER_V2, CapabilitySet, ControllerCapability, DeviceStaticPublicKey, PairingMachine,
     PairingNonce, PairingOfferCore, SasCode, StaticPrivateKey, device_public_key_from_private,
     host_public_key_from_private,
 };
@@ -126,7 +126,7 @@ async fn synthetic_controller_allows_human_confirmation_after_thirty_seconds() {
     let host_private = StaticPrivateKey::from_fixture_bytes([1; 32]);
     let device_private = StaticPrivateKey::from_fixture_bytes([2; 32]);
     let offer = PairingOfferCore {
-        version: CONTROLLER_V1,
+        version: CONTROLLER_V2,
         expires_at_unix_seconds: now + 60,
         nonce: PairingNonce([3; 32]),
         host_static_public_key: host_public_key_from_private(&host_private),
@@ -189,7 +189,7 @@ async fn rejected_sas_never_persists_or_acknowledges_a_device() {
     let offer_id = PairingOfferId::new();
     let host_private = StaticPrivateKey::from_fixture_bytes([11; 32]);
     let offer = PairingOfferCore {
-        version: CONTROLLER_V1,
+        version: CONTROLLER_V2,
         expires_at_unix_seconds: now + 60,
         nonce: PairingNonce([12; 32]),
         host_static_public_key: host_public_key_from_private(&host_private),

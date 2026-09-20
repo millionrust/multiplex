@@ -26,9 +26,9 @@ pub const CODE_PAIRING_SHARE_BYTES: usize = 32;
 const DSI: &[u8] = b"CPaceRistretto255";
 const DSI_ISK: &[u8] = b"CPaceRistretto255_ISK";
 const HASH_BLOCK_BYTES: usize = 128;
-const CHANNEL_IDENTIFIER: &[u8] = b"termirust-controller-code-v1";
-const DEVICE_ASSOCIATED_DATA: &[u8] = b"termirust-controller-device";
-const BINDING_LABEL: &[u8] = b"termirust-controller-code-binding-v1\0";
+const CHANNEL_IDENTIFIER: &[u8] = b"multiplex-controller-code-v2";
+const DEVICE_ASSOCIATED_DATA: &[u8] = b"multiplex-controller-device";
+const BINDING_LABEL: &[u8] = b"multiplex-controller-code-binding-v2\0";
 const CODE_SPACE: u32 = 1_000_000;
 
 /// The six-digit code shown on the desktop and typed on the phone.
@@ -263,7 +263,7 @@ pub(crate) fn intermediate_session_key(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{CONTROLLER_V1, CapabilitySet, ControllerCapability, HostStaticPublicKey};
+    use crate::types::{CONTROLLER_V2, CapabilitySet, ControllerCapability, HostStaticPublicKey};
 
     fn hex(value: &str) -> Vec<u8> {
         let value: String = value.split_whitespace().collect();
@@ -352,7 +352,7 @@ mod tests {
 
     fn offer() -> PairingOfferCore {
         PairingOfferCore {
-            version: CONTROLLER_V1,
+            version: CONTROLLER_V2,
             expires_at_unix_seconds: 1_000,
             nonce: PairingNonce([5; 32]),
             host_static_public_key: HostStaticPublicKey([6; 32]),

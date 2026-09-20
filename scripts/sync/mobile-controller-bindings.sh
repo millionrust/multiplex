@@ -26,11 +26,11 @@ DO_ANDROID=0
 
 IOS_FRAMEWORK="$IOS_DIR/Frameworks/TermiRustControllerSecurity.xcframework"
 IOS_SWIFT="$IOS_DIR/TermiRustMobile/Generated/TermiRustControllerSecurity.swift"
-IOS_FIXTURE="$IOS_DIR/TermiRustMobileTests/Fixtures/controller-v1.json"
+IOS_FIXTURE="$IOS_DIR/TermiRustMobileTests/Fixtures/controller-v2.json"
 ANDROID_KOTLIN="$ANDROID_DIR/app/src/main/java/com/termirust/controller/security/termirust_controller_bindings.kt"
-ANDROID_FIXTURE="$ANDROID_DIR/app/src/test/resources/controller-v1.json"
+ANDROID_FIXTURE="$ANDROID_DIR/app/src/test/resources/controller-v2.json"
 ANDROID_TEST_NATIVE="$ANDROID_DIR/app/src/test/native"
-FIXTURE="$ROOT_DIR/crates/multiplex-controller-security/tests/vectors/controller-v1.json"
+FIXTURE="$ROOT_DIR/crates/multiplex-controller-security/tests/vectors/controller-v2.json"
 
 if [[ "$MODE" == "--write" ]]; then
   if [[ "$DO_IOS" -eq 1 ]]; then

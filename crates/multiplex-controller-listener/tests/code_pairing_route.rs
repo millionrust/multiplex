@@ -8,7 +8,7 @@ use multiplex_controller_listener::{
     pair_controller_with_code, pair_controller_with_code_client,
 };
 use multiplex_controller_security::{
-    CONTROLLER_V1, CapabilitySet, ControllerCapability, DeviceStaticPublicKey, PairingCode,
+    CONTROLLER_V2, CapabilitySet, ControllerCapability, DeviceStaticPublicKey, PairingCode,
     PairingNonce, PairingOfferCore, SasCode, StaticPrivateKey, device_public_key_from_private,
     host_public_key_from_private,
 };
@@ -139,7 +139,7 @@ fn authority(code: &str) -> Authority {
     Authority {
         offer_id: PairingOfferId::new(),
         offer: PairingOfferCore {
-            version: CONTROLLER_V1,
+            version: CONTROLLER_V2,
             expires_at_unix_seconds: now + 300,
             nonce: PairingNonce([42; 32]),
             host_static_public_key: host_public_key_from_private(&host_private),

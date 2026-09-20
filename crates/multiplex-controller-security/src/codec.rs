@@ -21,7 +21,7 @@ pub(crate) struct PairingPayload {
 }
 
 pub fn encode_offer(offer: &PairingOfferCore) -> Result<[u8; PAIRING_OFFER_BYTES]> {
-    offer.version.require_v1()?;
+    offer.version.require_supported()?;
     let mut bytes = [0_u8; PAIRING_OFFER_BYTES];
     bytes[..4].copy_from_slice(&OFFER_MAGIC);
     bytes[4..6].copy_from_slice(&offer.version.major.to_be_bytes());
@@ -46,7 +46,7 @@ pub fn decode_offer(bytes: &[u8]) -> Result<PairingOfferCore> {
         major: read_u16(bytes, 4)?,
         minor: read_u16(bytes, 6)?,
     };
-    version.require_v1()?;
+    version.require_supported()?;
     if bytes.len() != PAIRING_OFFER_BYTES {
         return Err(ErrorCode::InvalidEncoding.into());
     }
@@ -72,7 +72,7 @@ pub(crate) fn code_pairing_prologue(
     binding: &crate::cpace::CodeBinding,
 ) -> Result<Vec<u8>> {
     let mut bytes = pairing_prologue(offer)?;
-    bytes.extend_from_slice(b"termirust-controller-code-v1\0");
+    bytes.extend_from_slice(b"multiplex-controller-code-v2\0");
     bytes.extend_from_slice(binding.as_bytes());
     Ok(bytes)
 }
@@ -80,7 +80,7 @@ pub(crate) fn code_pairing_prologue(
 pub fn pairing_prologue(offer: &PairingOfferCore) -> Result<Vec<u8>> {
     let encoded = encode_offer(offer)?;
     let mut bytes = Vec::with_capacity(30 + encoded.len());
-    bytes.extend_from_slice(b"termirust-controller-v1\0");
+    bytes.extend_from_slice(b"multiplex-controller-v2\0");
     bytes.extend_from_slice(&(PAIRING_OFFER_BYTES as u16).to_be_bytes());
     bytes.extend_from_slice(&encoded);
     Ok(bytes)
@@ -89,7 +89,7 @@ pub fn pairing_prologue(offer: &PairingOfferCore) -> Result<Vec<u8>> {
 pub(crate) fn encode_pairing_payload(
     payload: &PairingPayload,
 ) -> Result<[u8; PAIRING_PAYLOAD_BYTES]> {
-    payload.version.require_v1()?;
+    payload.version.require_supported()?;
     let mut bytes = [0_u8; PAIRING_PAYLOAD_BYTES];
     bytes[..4].copy_from_slice(b"TPS1");
     bytes[4] = payload.step as u8;
@@ -118,7 +118,7 @@ pub(crate) fn decode_pairing_payload(bytes: &[u8]) -> Result<PairingPayload> {
         major: read_u16(bytes, 8)?,
         minor: read_u16(bytes, 10)?,
     };
-    version.require_v1()?;
+    version.require_supported()?;
     Ok(PairingPayload {
         step: PairingStep::from_wire(bytes[4])?,
         role: PairingRole::from_wire(bytes[5])?,
@@ -158,11 +158,11 @@ fn read_array<const N: usize>(bytes: &[u8], offset: usize) -> Result<[u8; N]> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::CONTROLLER_V1;
+    use crate::types::CONTROLLER_V2;
 
     fn offer() -> PairingOfferCore {
         PairingOfferCore {
-            version: CONTROLLER_V1,
+            version: CONTROLLER_V2,
             expires_at_unix_seconds: 500,
             nonce: PairingNonce([7; 32]),
             host_static_public_key: HostStaticPublicKey([9; 32]),
@@ -186,7 +186,7 @@ mod tests {
     fn future_major_fails_before_body_validation() {
         let mut encoded =
             encode_offer(&offer()).unwrap_or_else(|error| panic!("offer encode failed: {error}"));
-        encoded[4..6].copy_from_slice(&2_u16.to_be_bytes());
+        encoded[4..6].copy_from_slice(&3_u16.to_be_bytes());
         encoded[8] = 255;
         assert_eq!(
             decode_offer(&encoded).map_err(|error| error.code()),

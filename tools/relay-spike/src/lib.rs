@@ -20,7 +20,7 @@ pub const REPORT_SCHEMA_VERSION: u32 = 1;
 pub const FIXTURE_SEED: u64 = 0x2201_2026;
 
 const ENVELOPE_MAGIC: [u8; 4] = *b"TRR1";
-const PROOF_DOMAIN: &[u8] = b"termirust-relay-admission-v1\0";
+const PROOF_DOMAIN: &[u8] = b"multiplex-relay-admission-v1\0";
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RelayRouteId(pub [u8; 32]);

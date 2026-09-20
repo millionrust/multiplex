@@ -1,5 +1,5 @@
 use multiplex_controller_security::{
-    CONTROLLER_V1, CapabilitySet, ControllerCapability, ErrorCode, HANDSHAKE_TIMEOUT_MILLIS,
+    CONTROLLER_V2, CapabilitySet, ControllerCapability, ErrorCode, HANDSHAKE_TIMEOUT_MILLIS,
     PairingMachine, PairingNonce, PairingOfferCore, StaticPrivateKey, host_public_key_from_private,
 };
 
@@ -93,7 +93,7 @@ fn cancel() -> Result<&'static str, ErrorCode> {
 fn machines() -> Result<(PairingMachine, PairingMachine), ErrorCode> {
     let host_static = StaticPrivateKey::from_fixture_bytes(bytes(0x00));
     let offer = PairingOfferCore {
-        version: CONTROLLER_V1,
+        version: CONTROLLER_V2,
         expires_at_unix_seconds: NOW_SECONDS + 300,
         nonce: PairingNonce(bytes(0x80)),
         host_static_public_key: host_public_key_from_private(&host_static),

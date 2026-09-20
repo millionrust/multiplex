@@ -71,7 +71,7 @@ class ControllerConnection internal constructor(
             val offer = envelope.offerBytes.map(Int::toByte).toByteArray()
             val summary = engine.decodeOfferSummary(offer)
             val nowSeconds = clockMillis() / 1_000
-            require(summary.version.major.toInt() == 1 && summary.version.minor.toInt() == 0)
+            require(summary.version.major.toInt() == 2 && summary.version.minor.toInt() == 0)
             require(summary.expiresAtUnixSeconds.toLong() > nowSeconds)
             require(summary.hostStaticPublicKey.size == 32 && envelope.identityGeneration > 0)
             val fingerprint = summary.hostStaticPublicKey.hex()
@@ -258,7 +258,7 @@ class ControllerConnection internal constructor(
             require(envelope.identityGeneration > 0 && envelope.revocationEpoch >= 0 && envelope.sessionGeneration >= 0)
             val offer = envelope.offerBytes.map(Int::toByte).toByteArray()
             val summary = engine.decodeOfferSummary(offer)
-            require(summary.version.major.toInt() == 1 && summary.version.minor.toInt() == 0)
+            require(summary.version.major.toInt() == 2 && summary.version.minor.toInt() == 0)
             require(summary.expiresAtUnixSeconds.toLong() > clockMillis() / 1_000)
             require(summary.hostStaticPublicKey.size == 32)
             val discoveryId = ControllerNetworkAddresses.discoveryId(summary.hostStaticPublicKey)

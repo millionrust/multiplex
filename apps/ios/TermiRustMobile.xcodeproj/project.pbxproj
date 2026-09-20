@@ -58,7 +58,7 @@
 		772A35B8595785DF03EE098E /* MobileVaultImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC21F9172941D89CFE3131A7 /* MobileVaultImporter.swift */; };
 		775848E92C529BF6B8B02838 /* AppleControllerRouteViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E1408239ECD857465267C7 /* AppleControllerRouteViewModelTests.swift */; };
 		79A6A8B2381FB2C9319EFD99 /* ControllerReadOnlyAttach.swift in Sources */ = {isa = PBXBuildFile; fileRef = C71FF821F9BC71B9C9F14692 /* ControllerReadOnlyAttach.swift */; };
-		7A740E922F044472CD76815E /* controller-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 26B5CDEA33B10C29FDE1E103 /* controller-v1.json */; };
+		7A740E922F044472CD76815E /* controller-v2.json in Resources */ = {isa = PBXBuildFile; fileRef = 26B5CDEA33B10C29FDE1E103 /* controller-v2.json */; };
 		7BC12CEB77638F96894844C8 /* VideoToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B16B406E13B7FD59FC3352E3 /* VideoToolbox.framework */; };
 		7F3B1423EA45161ABAA62A33 /* TerminalInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E45128AD706AEC225C1F294 /* TerminalInteraction.swift */; };
 		842AE4985FCB208E1989689D /* ControllerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E63E0CD0058EC2B95291EA /* ControllerModels.swift */; };
@@ -159,7 +159,7 @@
 		1E45128AD706AEC225C1F294 /* TerminalInteraction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInteraction.swift; sourceTree = "<group>"; };
 		1EB20052E78613D8BC81E141 /* ControllerWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerWriterTests.swift; sourceTree = "<group>"; };
 		211167AA57A499461175EBFA /* BoundedTerminalBuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoundedTerminalBuffer.swift; sourceTree = "<group>"; };
-		26B5CDEA33B10C29FDE1E103 /* controller-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "controller-v1.json"; sourceTree = "<group>"; };
+		26B5CDEA33B10C29FDE1E103 /* controller-v2.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "controller-v2.json"; sourceTree = "<group>"; };
 		277131147B3185EC9831827E /* EncryptedVaultStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncryptedVaultStore.swift; sourceTree = "<group>"; };
 		296A8C3A317C5ECF8CB3439A /* TerminalAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAcceptanceTests.swift; sourceTree = "<group>"; };
 		2BE28279348591AEB341AE8D /* TermiRustControllerSecurity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermiRustControllerSecurity.swift; sourceTree = "<group>"; };
@@ -505,7 +505,7 @@
 		EA70891C41F601296B2C45A0 /* Fixtures */ = {
 			isa = PBXGroup;
 			children = (
-				26B5CDEA33B10C29FDE1E103 /* controller-v1.json */,
+				26B5CDEA33B10C29FDE1E103 /* controller-v2.json */,
 				6AD282CBDD90BF824CBC1910 /* mobile-cross-route-acceptance-v1.json */,
 				B820A5D658D609799EC6CC7C /* mobile-route-contract-v1.json */,
 				BB2F2DAE936682CF0CB07AFA /* remote-route-acceptance-v1.json */,
@@ -685,7 +685,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7A740E922F044472CD76815E /* controller-v1.json in Resources */,
+				7A740E922F044472CD76815E /* controller-v2.json in Resources */,
 				0CD35E18DDA691D2A6450F2A /* mobile-cross-route-acceptance-v1.json in Resources */,
 				4BB82480F92834CDF72A902D /* mobile-route-contract-v1.json in Resources */,
 				7239DE5F94AF7A583DE90773 /* remote-route-acceptance-v1.json in Resources */,

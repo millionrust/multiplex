@@ -9,7 +9,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use crate::{ListenerError, ListenerErrorCode};
 
 const MAX_SOURCE_BUCKETS: usize = 1_024;
-const SOURCE_BUCKET_DOMAIN: &[u8] = b"termirust-controller-source-bucket-v1\0";
+const SOURCE_BUCKET_DOMAIN: &[u8] = b"multiplex-controller-source-bucket-v1\0";
 
 #[derive(Clone, Eq, PartialEq, Zeroize, ZeroizeOnDrop)]
 pub struct SourceBucketKey([u8; 32]);

@@ -81,7 +81,7 @@ impl SecureBlobStore for MemoryBlobStore {
 
 fn vector() -> Vector {
     serde_json::from_str(include_str!(
-        "../../multiplex-controller-security/tests/vectors/controller-v1.json"
+        "../../multiplex-controller-security/tests/vectors/controller-v2.json"
     ))
     .unwrap_or_else(|error| panic!("vector: {error}"))
 }
@@ -115,7 +115,7 @@ fn ffi_contract_matches_every_controller_v1_pairing_and_frame_byte() {
     let summary = device
         .decode_offer_summary(offer.clone())
         .unwrap_or_else(|error| panic!("summary: {error}"));
-    assert_eq!((summary.version.major, summary.version.minor), (1, 0));
+    assert_eq!((summary.version.major, summary.version.minor), (2, 0));
     assert_eq!(summary.capability_bits, 7);
 
     let device_session = device
@@ -199,7 +199,7 @@ fn ffi_contract_matches_every_controller_v1_pairing_and_frame_byte() {
             ControllerFrameKind::Control,
             ControllerCapability::ObserveSessions,
             4,
-            b"controller-v1-first".to_vec(),
+            b"controller-v2-first".to_vec(),
         )
         .unwrap_or_else(|error| panic!("seal: {error}"));
     assert_eq!(frame, bytes(&vector.first_frame_hex));
@@ -207,7 +207,7 @@ fn ffi_contract_matches_every_controller_v1_pairing_and_frame_byte() {
         .open_frame(frame)
         .unwrap_or_else(|error| panic!("open: {error}"));
     assert_eq!(opened.sequence, 0);
-    assert_eq!(opened.payload, b"controller-v1-first");
+    assert_eq!(opened.payload, b"controller-v2-first");
 }
 
 #[test]
@@ -276,7 +276,7 @@ fn ffi_code_pairing_matches_the_code_vectors_and_confirms_without_a_sas() {
     use termirust_controller_bindings::{CodePairingFinishRequest, CodePairingStartRequest};
 
     let vector: CodeVector = serde_json::from_str(include_str!(
-        "../../multiplex-controller-security/tests/vectors/controller-code-v1.json"
+        "../../multiplex-controller-security/tests/vectors/controller-code-v2.json"
     ))
     .unwrap();
     let store = Arc::new(MemoryBlobStore::default());

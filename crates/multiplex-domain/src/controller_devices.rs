@@ -11,7 +11,7 @@ pub const MAX_PAIRING_OFFER_LIFETIME_SECONDS: u64 = 5 * 60;
 pub const PAIRING_ATTEMPT_LIMIT: usize = 5;
 pub const PAIRING_ATTEMPT_WINDOW_SECONDS: u64 = 10 * 60;
 
-const FINGERPRINT_DOMAIN: &[u8] = b"termirust-host-fingerprint-v1\0";
+const FINGERPRINT_DOMAIN: &[u8] = b"multiplex-host-fingerprint-v1\0";
 const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 #[derive(
@@ -928,14 +928,14 @@ mod tests {
         assert_eq!(
             fingerprint.digest(),
             [
-                0xbd, 0x0d, 0xa4, 0x54, 0x68, 0x73, 0xaf, 0x30, 0x9c, 0xa2, 0x59, 0xb3, 0x5c, 0x62,
-                0x32, 0x01, 0xc8, 0x6c, 0x27, 0xd4, 0x22, 0xd2, 0x59, 0x8a, 0xa1, 0xd1, 0x2b, 0x39,
-                0xe8, 0x94, 0x3e, 0xf4,
+                0xc6, 0xd5, 0xa8, 0xcd, 0x2f, 0x45, 0x2d, 0x06, 0x6c, 0xde, 0xc3, 0x23, 0x71, 0x5e,
+                0x84, 0x89, 0x1e, 0x7b, 0x1b, 0xe8, 0xd8, 0xfe, 0x68, 0xda, 0x67, 0x75, 0xd0, 0xfe,
+                0xf1, 0xc0, 0x31, 0xad,
             ]
         );
-        let display = "QM6T-8N38-EEQK-1752-B6SN-RRHJ-0746-R9YM-4B95-K2N1-T4NK-KT4M-7VT0";
+        let display = "RVAT-HK9F-8MPG-CV6Y-RCHQ-2QM4-H4F7-P6Z8-V3Z6-HPK7-EQ8F-XWE0-66PG";
         assert_eq!(fingerprint.canonical(), display);
-        assert_eq!(fingerprint.row_suffix(), "KT4M7VT0");
+        assert_eq!(fingerprint.row_suffix(), "XWE066PG");
         assert_eq!(HostFingerprint::parse_canonical(display), Ok(fingerprint));
         let mut noncanonical = display.to_string();
         noncanonical.pop();

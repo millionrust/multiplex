@@ -606,7 +606,7 @@ actor ControllerConnectionActor: ControllerConnecting {
         let offerBytes = Data(envelope.offerBytes)
         let summary = try securityEngine.decodeOfferSummary(offerBytes: offerBytes)
         let nowSeconds = UInt64(Date().timeIntervalSince1970)
-        guard summary.version.major == 1,
+        guard summary.version.major == 2,
               summary.version.minor == 0,
               summary.expiresAtUnixSeconds > nowSeconds,
               summary.hostStaticPublicKey.count == 32,
@@ -733,7 +733,7 @@ actor ControllerConnectionActor: ControllerConnecting {
             }
             let offerBytes = Data(envelope.offerBytes)
             let summary = try securityEngine.decodeOfferSummary(offerBytes: offerBytes)
-            guard summary.version.major == 1,
+            guard summary.version.major == 2,
                   summary.version.minor == 0,
                   summary.expiresAtUnixSeconds > UInt64(Date().timeIntervalSince1970),
                   summary.hostStaticPublicKey.count == 32 else {

@@ -3,6 +3,9 @@
 //! This crate owns no sockets, storage, user interface, or platform bindings. It has not been
 //! independently audited and must not be described as an audited security product.
 
+#[cfg(test)]
+mod vector_regeneration;
+
 mod authorization;
 mod codec;
 mod connection;
@@ -29,7 +32,7 @@ pub use pairing::{
 pub use sas::derive_sas_v1;
 pub use transport::{ControllerTransport, MAX_SEQUENCE};
 pub use types::{
-    CONTROLLER_V1, CapabilitySet, ControllerCapability, ControllerFrame, ControllerFrameKind,
+    CONTROLLER_V2, CapabilitySet, ControllerCapability, ControllerFrame, ControllerFrameKind,
     ControllerProtocolVersion, DeviceStaticPublicKey, HANDSHAKE_TIMEOUT_MILLIS, HandshakeHash,
     HandshakeMessage, HostStaticPublicKey, MAX_CONTROL_PAYLOAD_BYTES,
     MAX_PAIRING_OFFER_LIFETIME_SECONDS, MAX_SCREEN_FRAME_BYTES, MAX_TERMINAL_FRAME_BYTES,

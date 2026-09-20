@@ -4,7 +4,7 @@
       "devices": [{
         "capabilities": ["observe_sessions", "attach_output", "send_input"],
         "created_at_unix_seconds": 100,
-        "fingerprint_suffix": "B5HQXD4G",
+        "fingerprint_suffix": "SGRYM5AG",
         "id": "00000000-0000-0000-0000-000000000007",
         "identity_generation": 1,
         "last_seen_at_unix_seconds": 200,
@@ -15,7 +15,7 @@
       }, {
         "capabilities": ["observe_sessions"],
         "created_at_unix_seconds": 101,
-        "fingerprint_suffix": "M4994Y8G",
+        "fingerprint_suffix": "SSFMEQSG",
         "id": "00000000-0000-0000-0000-000000000008",
         "identity_generation": 1,
         "name": "Team tablet",
@@ -36,7 +36,7 @@
       "device": {
         "capabilities": ["observe_sessions", "attach_output", "send_input"],
         "created_at_unix_seconds": 100,
-        "fingerprint_suffix": "B5HQXD4G",
+        "fingerprint_suffix": "SGRYM5AG",
         "id": "00000000-0000-0000-0000-000000000007",
         "identity_generation": 1,
         "last_seen_at_unix_seconds": 200,
@@ -58,7 +58,7 @@
       "device": {
         "capabilities": ["observe_sessions", "attach_output", "send_input"],
         "created_at_unix_seconds": 100,
-        "fingerprint_suffix": "B5HQXD4G",
+        "fingerprint_suffix": "SGRYM5AG",
         "id": "00000000-0000-0000-0000-000000000007",
         "identity_generation": 1,
         "last_seen_at_unix_seconds": 200,
@@ -79,7 +79,7 @@
       "device": {
         "capabilities": ["observe_sessions", "attach_output", "send_input"],
         "created_at_unix_seconds": 100,
-        "fingerprint_suffix": "B5HQXD4G",
+        "fingerprint_suffix": "SGRYM5AG",
         "id": "00000000-0000-0000-0000-000000000007",
         "identity_generation": 1,
         "last_seen_at_unix_seconds": 200,

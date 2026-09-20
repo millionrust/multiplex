@@ -87,7 +87,7 @@ fn duplicate_out_of_order_timeout_cancel_reject_and_sas_mismatch_fail_closed() {
         let different_offer = multiplex_controller_security::derive_sas_v1(
             &multiplex_controller_security::PairingNonce([1; 32]),
             &multiplex_controller_security::HandshakeHash([2; 32]),
-            multiplex_controller_security::CONTROLLER_V1,
+            multiplex_controller_security::CONTROLLER_V2,
             multiplex_controller_security::HostStaticPublicKey([3; 32]),
             multiplex_controller_security::DeviceStaticPublicKey([4; 32]),
         )

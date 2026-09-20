@@ -8,7 +8,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use multiplex_controller_security::{
-    AuthorizationDecision as CoreAuthorizationDecision, AuthorizationPolicy, CONTROLLER_V1,
+    AuthorizationDecision as CoreAuthorizationDecision, AuthorizationPolicy, CONTROLLER_V2,
     CapabilitySet, CodeKeyExchange, ConnectionChallenge, ConnectionInitiator, ConnectionPrelude,
     ControllerCapability as CoreCapability, ControllerFrameKind as CoreFrameKind,
     ControllerSecurityError, ControllerTransport, ErrorCode, HostStaticPublicKey,
@@ -281,8 +281,8 @@ impl ControllerSecurityEngine {
     pub fn protocol_version(&self) -> Result<ProtocolVersion, ControllerBindingError> {
         boundary(|| {
             Ok(ProtocolVersion {
-                major: CONTROLLER_V1.major,
-                minor: CONTROLLER_V1.minor,
+                major: CONTROLLER_V2.major,
+                minor: CONTROLLER_V2.minor,
             })
         })
     }
@@ -1049,7 +1049,7 @@ fn connection_prelude(
     CapabilitySet::from_bits(request.requested_capability_bits)
         .map_err(ControllerBindingError::from)?;
     Ok(ConnectionPrelude {
-        version: CONTROLLER_V1,
+        version: CONTROLLER_V2,
         identity_generation: request.identity_generation,
         revocation_epoch: RevocationEpoch(request.revocation_epoch),
         client_nonce,

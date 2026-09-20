@@ -9,7 +9,7 @@ if [[ "${1:-}" != "--check" || "$#" -ne 1 ]]; then
   exit 2
 fi
 
-fixture="crates/multiplex-controller-security/tests/vectors/controller-v1.json"
+fixture="crates/multiplex-controller-security/tests/vectors/controller-v2.json"
 adr="docs/decisions/controller-security-v1.md"
 
 expected_adr=$(sed -n 's/.*"adr_sha256": "\([0-9a-f]\{64\}\)".*/\1/p' "$fixture")

@@ -1,7 +1,7 @@
 #![allow(dead_code)] // Each integration-test crate compiles only the helpers it exercises.
 
 use multiplex_controller_security::{
-    CONTROLLER_V1, CapabilitySet, ControllerCapability, PairingMachine, PairingNonce,
+    CONTROLLER_V2, CapabilitySet, ControllerCapability, PairingMachine, PairingNonce,
     PairingOfferCore, StaticPrivateKey, host_public_key_from_private,
 };
 
@@ -30,7 +30,7 @@ pub fn device_ephemeral() -> StaticPrivateKey {
 
 pub fn offer() -> PairingOfferCore {
     PairingOfferCore {
-        version: CONTROLLER_V1,
+        version: CONTROLLER_V2,
         expires_at_unix_seconds: NOW_SECONDS + 300,
         nonce: PairingNonce(bytes(0x80)),
         host_static_public_key: host_public_key_from_private(&host_static()),

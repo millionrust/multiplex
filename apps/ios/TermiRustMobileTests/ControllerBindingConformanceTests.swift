@@ -15,7 +15,7 @@ final class ControllerBindingConformanceTests: XCTestCase {
 
         let offer = try vector.data("offer_hex")
         let summary = try device.decodeOfferSummary(offerBytes: offer)
-        XCTAssertEqual(summary.version, ProtocolVersion(major: 1, minor: 0))
+        XCTAssertEqual(summary.version, ProtocolVersion(major: 2, minor: 0))
         XCTAssertEqual(summary.capabilityBits, 7)
 
         let deviceSession = try device.pairingStart(request: PairingStartRequest(
@@ -69,12 +69,12 @@ final class ControllerBindingConformanceTests: XCTestCase {
             kind: .control,
             capability: .observeSessions,
             revocationEpoch: 4,
-            payload: Data("controller-v1-first".utf8)
+            payload: Data("controller-v2-first".utf8)
         )
         XCTAssertEqual(frame, try vector.data("first_frame_hex"))
         let opened = try hostSession.openFrame(frame: frame)
         XCTAssertEqual(opened.sequence, 0)
-        XCTAssertEqual(opened.payload, Data("controller-v1-first".utf8))
+        XCTAssertEqual(opened.payload, Data("controller-v2-first".utf8))
     }
 
     func testCallbackSizeCancellationAndDisposalFailuresAreTyped() throws {

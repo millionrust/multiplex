@@ -30,7 +30,7 @@ class ControllerBindingConformanceTest {
             host.storeSecureBlob("fixture-host", vector.bytes("host_static_private_hex"))
             val offer = vector.bytes("offer_hex")
             val summary = device.decodeOfferSummary(offer)
-            assertEquals(1.toUShort(), summary.version.major)
+            assertEquals(2.toUShort(), summary.version.major)
             assertEquals(0.toUShort(), summary.version.minor)
             assertEquals(7.toUShort(), summary.capabilityBits)
 
@@ -85,12 +85,12 @@ class ControllerBindingConformanceTest {
                     ControllerFrameKind.CONTROL,
                     ControllerCapability.OBSERVE_SESSIONS,
                     4UL,
-                    "controller-v1-first".encodeToByteArray(),
+                    "controller-v2-first".encodeToByteArray(),
                 )
                 assertArrayEquals(vector.bytes("first_frame_hex"), frame)
                 val opened = hostSession.openFrame(frame)
                 assertEquals(0UL, opened.sequence)
-                assertArrayEquals("controller-v1-first".encodeToByteArray(), opened.payload)
+                assertArrayEquals("controller-v2-first".encodeToByteArray(), opened.payload)
             } finally {
                 deviceSession.close()
                 hostSession.close()
@@ -179,7 +179,7 @@ private class GoldenVector private constructor(private val objectValue: JsonObje
         fun load(): GoldenVector {
             val stream = requireNotNull(
                 ControllerBindingConformanceTest::class.java.classLoader
-                    ?.getResourceAsStream("controller-v1.json"),
+                    ?.getResourceAsStream("controller-v2.json"),
             )
             return stream.bufferedReader().use { reader ->
                 GoldenVector(Json.parseToJsonElement(reader.readText()).jsonObject)

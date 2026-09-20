@@ -934,7 +934,7 @@ mod address_tests {
 mod tests {
     use super::*;
     use multiplex_controller_security::{
-        CONTROLLER_V1, CapabilitySet, ConnectionChallenge, ConnectionInitiator, ConnectionPrelude,
+        CONTROLLER_V2, CapabilitySet, ConnectionChallenge, ConnectionInitiator, ConnectionPrelude,
         ControllerFrameKind, HostStaticPublicKey, RevocationEpoch, device_public_key_from_private,
         host_public_key_from_private,
     };
@@ -1097,7 +1097,7 @@ mod tests {
             .await
             .unwrap();
         let prelude = ConnectionPrelude {
-            version: CONTROLLER_V1,
+            version: CONTROLLER_V2,
             identity_generation: 1,
             revocation_epoch: RevocationEpoch(2),
             client_nonce: [3; 32],

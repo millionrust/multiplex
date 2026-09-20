@@ -1,5 +1,5 @@
 use multiplex_controller_security::{
-    CONTROLLER_V1, ControllerProtocolVersion, DeviceStaticPublicKey, ErrorCode, HandshakeHash,
+    CONTROLLER_V2, ControllerProtocolVersion, DeviceStaticPublicKey, ErrorCode, HandshakeHash,
     HostStaticPublicKey, PairingNonce, derive_sas_v1,
 };
 
@@ -13,9 +13,9 @@ fn normative_sas_v1_anchor_matches_every_byte() {
     let hash = HandshakeHash(bytes(0x20));
     let host = HostStaticPublicKey(bytes(0x40));
     let device = DeviceStaticPublicKey(bytes(0x60));
-    let sas = derive_sas_v1(&nonce, &hash, CONTROLLER_V1, host, device)
+    let sas = derive_sas_v1(&nonce, &hash, CONTROLLER_V2, host, device)
         .unwrap_or_else(|error| panic!("SAS anchor failed: {error}"));
-    assert_eq!(sas.as_str(), "YKHM-ZHBT");
+    assert_eq!(sas.as_str(), "5FSW-YX9D");
     assert_eq!(sas.accessibility_symbols().len(), 8);
 }
 
@@ -33,7 +33,7 @@ fn any_single_bit_change_to_a_bound_256_bit_field_changes_anchor() {
             let changed = derive_sas_v1(
                 &PairingNonce(values[0]),
                 &HandshakeHash(values[1]),
-                CONTROLLER_V1,
+                CONTROLLER_V2,
                 HostStaticPublicKey(values[2]),
                 DeviceStaticPublicKey(values[3]),
             )
@@ -48,7 +48,7 @@ fn unsupported_version_never_derives_a_code() {
     let result = derive_sas_v1(
         &PairingNonce([0; 32]),
         &HandshakeHash([0; 32]),
-        ControllerProtocolVersion { major: 2, minor: 0 },
+        ControllerProtocolVersion { major: 3, minor: 0 },
         HostStaticPublicKey([0; 32]),
         DeviceStaticPublicKey([0; 32]),
     );

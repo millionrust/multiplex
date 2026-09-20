@@ -24,7 +24,7 @@ enum ControllerBindingConformanceRunner {
 
         let offer = try vector.data("offer_hex")
         let summary = try device.decodeOfferSummary(offerBytes: offer)
-        try require(summary.version == ProtocolVersion(major: 1, minor: 0))
+        try require(summary.version == ProtocolVersion(major: 2, minor: 0))
         try require(summary.capabilityBits == 7)
 
         let deviceSession = try device.pairingStart(request: PairingStartRequest(
@@ -82,12 +82,12 @@ enum ControllerBindingConformanceRunner {
             kind: .control,
             capability: .observeSessions,
             revocationEpoch: 4,
-            payload: Data("controller-v1-first".utf8)
+            payload: Data("controller-v2-first".utf8)
         )
         try require(frame == vector.data("first_frame_hex"))
         let opened = try hostSession.openFrame(frame: frame)
         try require(opened.sequence == 0)
-        try require(opened.payload == Data("controller-v1-first".utf8))
+        try require(opened.payload == Data("controller-v2-first".utf8))
     }
 
     private static func runFailureContract(_ vector: GoldenVector) throws {

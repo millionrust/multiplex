@@ -77,7 +77,7 @@ struct SasAnchor {
 }
 
 fn vector() -> Vector {
-    serde_json::from_str(include_str!("vectors/controller-v1.json"))
+    serde_json::from_str(include_str!("vectors/controller-v2.json"))
         .unwrap_or_else(|error| panic!("golden vector JSON failed: {error}"))
 }
 
@@ -174,7 +174,7 @@ fn exact_offer_handshake_sas_and_first_transport_frame_are_reproducible() {
             ControllerFrameKind::Control,
             ControllerCapability::ObserveSessions,
             RevocationEpoch(4),
-            b"controller-v1-first",
+            b"controller-v2-first",
         )
         .unwrap_or_else(|error| panic!("seal: {error}"));
     assert_eq!(hex::encode(frame.as_bytes()), expected.first_frame_hex);
@@ -215,13 +215,13 @@ fn normative_anchor_locks_salt_info_hkdf_and_display() {
     let hash = array32(&anchor.handshake_hash_hex);
     let host = array32(&anchor.host_static_public_hex);
     let device = array32(&anchor.device_static_public_hex);
-    let mut salt_input = b"termirust-controller-sas-v1\0".to_vec();
+    let mut salt_input = b"multiplex-controller-sas-v2\0".to_vec();
     salt_input.extend_from_slice(&nonce);
     let salt = Sha256::digest(&salt_input);
     assert_eq!(hex::encode(salt), anchor.salt_hex);
 
     let mut info = b"sas\0".to_vec();
-    info.extend_from_slice(&1_u16.to_be_bytes());
+    info.extend_from_slice(&2_u16.to_be_bytes());
     info.extend_from_slice(&0_u16.to_be_bytes());
     info.extend_from_slice(&host);
     info.extend_from_slice(&device);
@@ -234,7 +234,7 @@ fn normative_anchor_locks_salt_info_hkdf_and_display() {
     let sas = multiplex_controller_security::derive_sas_v1(
         &multiplex_controller_security::PairingNonce(nonce),
         &multiplex_controller_security::HandshakeHash(hash),
-        multiplex_controller_security::CONTROLLER_V1,
+        multiplex_controller_security::CONTROLLER_V2,
         multiplex_controller_security::HostStaticPublicKey(host),
         multiplex_controller_security::DeviceStaticPublicKey(device),
     )
@@ -364,4 +364,34 @@ fn array32(value: &str) -> [u8; 32] {
         .ok()
         .and_then(|bytes| bytes.try_into().ok())
         .unwrap_or_else(|| panic!("fixture field is not 32 bytes"))
+}
+
+/// The compatibility policy, demonstrated rather than asserted: the vectors this version
+/// replaced are kept beside it, and every one of them is refused. A Controller-v1 offer is
+/// rejected for its version before any key material is derived, and the prologue v1 bound is not
+/// a prologue this version produces, so a v1 device cannot complete a handshake here.
+#[test]
+fn prior_vectors_are_refused() {
+    #[derive(Deserialize)]
+    struct PriorVector {
+        protocol_version: String,
+        offer_hex: String,
+        prologue_hex: String,
+    }
+
+    let prior: PriorVector =
+        serde_json::from_str(include_str!("vectors/legacy/controller-v1.json"))
+            .unwrap_or_else(|error| panic!("prior vector JSON failed: {error}"));
+    assert_eq!(prior.protocol_version, "1.0");
+
+    let offer_bytes =
+        hex::decode(&prior.offer_hex).unwrap_or_else(|error| panic!("prior offer hex: {error}"));
+    assert_eq!(
+        decode_offer(&offer_bytes).map_err(|error| error.code()),
+        Err(multiplex_controller_security::ErrorCode::IncompatibleVersion)
+    );
+
+    let current =
+        pairing_prologue(&common::offer()).unwrap_or_else(|error| panic!("prologue: {error}"));
+    assert_ne!(hex::encode(current), prior.prologue_hex);
 }

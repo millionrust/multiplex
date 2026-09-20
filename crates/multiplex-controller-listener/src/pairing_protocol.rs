@@ -524,7 +524,7 @@ fn decode_control<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> Result<T, Liste
 mod tests {
     use super::*;
     use multiplex_controller_security::{
-        CONTROLLER_V1, CapabilitySet, ControllerCapability, HostStaticPublicKey, PairingNonce,
+        CONTROLLER_V2, CapabilitySet, ControllerCapability, HostStaticPublicKey, PairingNonce,
     };
     use multiplex_domain::{NetworkInterfaceId, NetworkInterfaceKind};
 
@@ -547,7 +547,7 @@ mod tests {
 
     fn offer() -> PairingOfferCore {
         PairingOfferCore {
-            version: CONTROLLER_V1,
+            version: CONTROLLER_V2,
             expires_at_unix_seconds: 500,
             nonce: PairingNonce([7; 32]),
             host_static_public_key: HostStaticPublicKey([8; 32]),

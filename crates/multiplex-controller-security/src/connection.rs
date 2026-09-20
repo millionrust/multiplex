@@ -22,7 +22,7 @@ use crate::types::{
 
 pub const NOISE_CONNECTION_PROTOCOL_NAME: &str = "Noise_IK_25519_ChaChaPoly_BLAKE2s";
 
-const CONNECTION_PROLOGUE_DOMAIN: &[u8] = b"termirust-controller-connection-v1\0";
+const CONNECTION_PROLOGUE_DOMAIN: &[u8] = b"multiplex-controller-connection-v2\0";
 const CONNECTION_PAYLOAD_MAGIC: [u8; 4] = *b"TRC1";
 const CONNECTION_PAYLOAD_BYTES: usize = 27;
 const CONNECTION_MESSAGE_MAX_BYTES: usize = CONNECTION_PAYLOAD_BYTES + 96;
@@ -122,7 +122,7 @@ impl ConnectionPrelude {
     }
 
     fn validate(&self) -> Result<()> {
-        self.version.require_v1()?;
+        self.version.require_supported()?;
         if self.identity_generation == 0 || self.client_nonce == [0; 32] {
             return Err(ErrorCode::InvalidEncoding.into());
         }
@@ -556,7 +556,7 @@ mod tests {
 
     fn prelude() -> ConnectionPrelude {
         ConnectionPrelude {
-            version: crate::CONTROLLER_V1,
+            version: crate::CONTROLLER_V2,
             identity_generation: 7,
             revocation_epoch: RevocationEpoch(11),
             client_nonce: [5; 32],

@@ -7,7 +7,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use crate::authorization::AuthorizationPolicy;
 use crate::error::{ErrorCode, Result};
 use crate::types::{
-    CONTROLLER_V1, ControllerCapability, ControllerFrame, ControllerFrameKind,
+    CONTROLLER_V2, ControllerCapability, ControllerFrame, ControllerFrameKind,
     MAX_CONTROL_PAYLOAD_BYTES, MAX_SCREEN_FRAME_BYTES, MAX_TERMINAL_FRAME_BYTES, RevocationEpoch,
     SealedControllerFrame,
 };
@@ -202,8 +202,8 @@ fn encode_header(
     }
     let ciphertext_len = u32::try_from(ciphertext_len).map_err(|_| ErrorCode::FrameTooLarge)?;
     bytes[..4].copy_from_slice(&FRAME_MAGIC);
-    bytes[4..6].copy_from_slice(&CONTROLLER_V1.major.to_be_bytes());
-    bytes[6..8].copy_from_slice(&CONTROLLER_V1.minor.to_be_bytes());
+    bytes[4..6].copy_from_slice(&CONTROLLER_V2.major.to_be_bytes());
+    bytes[6..8].copy_from_slice(&CONTROLLER_V2.minor.to_be_bytes());
     bytes[8] = kind as u8;
     bytes[9] = capability as u8;
     bytes[10..12].copy_from_slice(&0_u16.to_be_bytes());
@@ -224,7 +224,7 @@ fn decode_header(bytes: &[u8]) -> Result<Header> {
         major: read_u16(bytes, 4)?,
         minor: read_u16(bytes, 6)?,
     };
-    version.require_v1()?;
+    version.require_supported()?;
     if bytes[10..12] != [0, 0] {
         return Err(ErrorCode::InvalidEncoding.into());
     }
