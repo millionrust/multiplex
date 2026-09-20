@@ -473,8 +473,8 @@ impl ShellIntegration {
         let sync = appearance::SYNCHRONIZED_UPDATE_FEATURE;
         let sync_programs = SYNCHRONIZED_UPDATE_PROGRAMS.join("|");
         let session = match shell {
-            Shell::Zsh => "termirust-${PWD:t}-$$",
-            Shell::Bash => "termirust-${PWD##*/}-$$",
+            Shell::Zsh => "multiplex-${PWD:t}-$$",
+            Shell::Bash => "multiplex-${PWD##*/}-$$",
         };
         let start = format!(
             "{tmux} {utf8} $termirust_features new-session -s \"{session}\" \\; source-file -q {config} && exit"
@@ -877,7 +877,7 @@ mod tests {
         let config_path = home.path().join(CONFIG_DIRECTORY).join(TMUX_CONFIG_FILE);
         let init = fs::read_to_string(&init_path).unwrap();
         assert!(init.contains(&format!(
-            "new-session -s \"termirust-${{PWD:t}}-$$\" \\; source-file -q '{}' && exit",
+            "new-session -s \"multiplex-${{PWD:t}}-$$\" \\; source-file -q '{}' && exit",
             config_path.display()
         )));
         let config = fs::read_to_string(&config_path).unwrap();

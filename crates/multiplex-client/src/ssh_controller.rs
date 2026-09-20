@@ -352,7 +352,7 @@ pub fn strict_ssh_command_argv(target: &SshControllerTarget) -> Vec<OsString> {
         argv.push(target.port.to_string().into());
     }
     argv.push(target.host.as_str().into());
-    argv.extend(["termirust", "controller-bridge", "--stdio"].map(OsString::from));
+    argv.extend(["multiplex", "controller-bridge", "--stdio"].map(OsString::from));
     argv
 }
 
@@ -790,7 +790,7 @@ mod tests {
                 "-p",
                 "2222",
                 "example.com",
-                "termirust",
+                "multiplex",
                 "controller-bridge",
                 "--stdio",
             ]

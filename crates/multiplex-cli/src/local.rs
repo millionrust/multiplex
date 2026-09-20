@@ -78,11 +78,30 @@ impl fmt::Debug for CliPaths {
     }
 }
 
+/// Where this CLI looks for the data directory under `config_dir`.
+///
+/// The desktop app owns the move from the old name to the new one, and does it on launch. This
+/// only has to find what is there: the new directory when it exists, and otherwise the old one,
+/// so someone who reaches for the CLI before ever opening the app still sees their own hosts and
+/// sessions rather than an empty store. It never creates or moves anything, because two programs
+/// moving the same directory is worse than either name.
+pub fn discovered_config_root(config_dir: PathBuf) -> PathBuf {
+    let current = config_dir.join("multiplex");
+    if current.is_dir() {
+        return current;
+    }
+    let legacy = config_dir.join("termirust");
+    if legacy.is_dir() {
+        return legacy;
+    }
+    current
+}
+
 impl CliPaths {
     pub fn discover() -> Result<Self, CliError> {
         let config_root = std::env::var_os("TERMIRUST_CONFIG_DIR")
             .map(PathBuf::from)
-            .or_else(|| dirs::config_dir().map(|root| root.join("termirust")))
+            .or_else(|| dirs::config_dir().map(discovered_config_root))
             .ok_or_else(|| {
                 CliError::new(
                     ErrorCode::Unavailable,

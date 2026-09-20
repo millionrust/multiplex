@@ -342,7 +342,7 @@ fn run_wrapped_shell(
             .into_iter()
             .map(|session| session.name)
             .collect::<Vec<_>>();
-        let wrapped = names.iter().any(|name| name.starts_with("termirust-"));
+        let wrapped = names.iter().any(|name| name.starts_with("multiplex-"));
         if ready.exists() || wrapped {
             // Either the plain shell ran the command, or the wrapper started tmux; give the
             // other outcome no chance to race by re-reading once more.
@@ -403,7 +403,7 @@ fn shell_integration_starts_new_terminal_app_shells_inside_tmux() {
         );
         let wrapped = names
             .iter()
-            .filter(|name| name.starts_with("termirust-"))
+            .filter(|name| name.starts_with("multiplex-"))
             .count();
         assert_eq!(
             wrapped, 1,
@@ -424,7 +424,7 @@ fn shell_integration_starts_new_terminal_app_shells_inside_tmux() {
         assert_eq!(
             names
                 .iter()
-                .filter(|name| name.starts_with("termirust-"))
+                .filter(|name| name.starts_with("multiplex-"))
                 .count(),
             1,
             "{shell}: TERMIRUST_NO_WRAP keeps a shell out of tmux: {names:?}"
@@ -445,7 +445,7 @@ fn shell_integration_starts_new_terminal_app_shells_inside_tmux() {
         assert_eq!(
             names
                 .iter()
-                .filter(|name| name.starts_with("termirust-"))
+                .filter(|name| name.starts_with("multiplex-"))
                 .count(),
             1,
             "{shell}: unlisted terminal apps are left alone: {names:?}"
@@ -849,7 +849,7 @@ fn a_wrapped_tab_tells_tmux_what_its_terminal_can_do() {
             let output = command.output().unwrap();
             let arguments = fs::read_to_string(&recorded).unwrap();
             assert!(
-                arguments.starts_with(&format!("{expected} new-session -s termirust-")),
+                arguments.starts_with(&format!("{expected} new-session -s multiplex-")),
                 "{shell_path}, {program}, COLORTERM={colorterm:?}: expected {expected:?}, \
                  tmux got {arguments:?} ({output:?})"
             );

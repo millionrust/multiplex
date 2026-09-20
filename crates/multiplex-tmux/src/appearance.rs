@@ -11,8 +11,13 @@
 //! The same commands are rendered into the app-owned tmux configuration file that new tabs
 //! source, and run against a live server when the setup is applied or removed.
 
-/// A tmux format that is true in a session the shell setup started.
-pub const WRAPPED_SESSION_FORMAT: &str = "#{m:termirust-*,#{session_name}}";
+/// A tmux format that is true in a session the shell setup started, under either name.
+///
+/// A person who updates mid-session has tmux sessions already running under the old name, and a
+/// tmux server outlives the app. Matching both keeps those sessions behaving as they did until
+/// they end on their own; new ones are named with the current prefix.
+pub const WRAPPED_SESSION_FORMAT: &str =
+    "#{||:#{m:multiplex-*,#{session_name}},#{m:termirust-*,#{session_name}}}";
 /// A tmux format that is true when a binding was run by a key rather than by the mouse: a
 /// mouse binding has the pointer's position in its formats and a typed key has not. Without it
 /// the catch-all binding below would answer a button release and end copy mode on every click.
@@ -331,19 +336,16 @@ mod tests {
             10,
             "four keys and the catch-all in two copy-mode tables"
         );
-        assert!(
-            bindings
-                .iter()
-                .all(|line| line.contains("if-shell -F \"#{m:termirust-*,#{session_name}}\""))
-        );
-        assert!(file.contains(
-            "bind-key -T copy-mode MouseDragEnd1Pane 'if-shell -F \"#{m:termirust-*,#{session_name}}\" \"send-keys -X copy-pipe-no-clear pbcopy ; send-keys -X stop-selection\" \"send-keys -X copy-pipe-and-cancel\"'"
-        ));
+        let guard = format!("if-shell -F \"{WRAPPED_SESSION_FORMAT}\"");
+        assert!(bindings.iter().all(|line| line.contains(&guard)));
+        assert!(file.contains(&format!(
+            "bind-key -T copy-mode MouseDragEnd1Pane '{guard} \"send-keys -X copy-pipe-no-clear pbcopy ; send-keys -X stop-selection\" \"send-keys -X copy-pipe-and-cancel\"'"
+        )));
         // Anything typed or dropped hands the tab back to the program, but only when a key sent
         // it: the mouse goes on scrolling and selecting with the view where the reader left it.
-        assert!(file.contains(
-            "bind-key -T copy-mode Any 'if-shell -F \"#{m:termirust-*,#{session_name}}\" \"if-shell -F \\\"#{==:#{mouse_x},}\\\" \\\"copy-mode -q\\\"\"'"
-        ));
+        assert!(file.contains(&format!(
+            "bind-key -T copy-mode Any '{guard} \"if-shell -F \\\"#{{==:#{{mouse_x}},}}\\\" \\\"copy-mode -q\\\"\"'"
+        )));
         assert!(!file.lines().any(|line| line.starts_with("set-option -g")));
     }
 

@@ -48,14 +48,14 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   links and bounded dependency orchestration.
 - Remote access (Devices, or Settings → Remote Devices) is On/Off: the Controller listener
   binds every private address (RFC 1918, Tailscale's 100.64/10, fc00::/7) on one port, follows
-  network changes, and announces `_termirust._tcp` with Bonjour on LAN interfaces only.
+  network changes, and announces `_multiplex._tcp` with Bonjour on LAN interfaces only.
   **Pair phone** shows a six-digit code (CPace bound into the Noise XX pairing, three attempts,
   five minutes); the QR offer and SAS comparison remain under "Other ways to pair".
 - Paired mobile controllers can list, watch, and type into tmux sessions the app did not
   create when "Show tmux sessions" is on, over LAN, SSH, and relay routes. Devices also offers a previewed,
   reversible shell startup change that starts new Terminal, Zed, iTerm2, Ghostty, WezTerm,
   and VS Code terminal tabs inside tmux, and on macOS a LaunchAgent
-  (`termirust controller-service`) that keeps the LAN listener up after the app quits.
+  (`multiplex controller-service`) that keeps the LAN listener up after the app quits.
   See `docs/remote-terminals.md`.
 - Saved host groups can open directly as SSH Fleet canvases. The fleet panel
   summarizes connection and tmux state and provides guarded reconnect,
@@ -220,7 +220,7 @@ On macOS, `.cargo/config.toml` runs binaries through `scripts/dev/run-signed.sh`
 desktop app with a stable identifier and your Apple Development identity (or
 `TERMIRUST_CODESIGN_IDENTITY`) so Keychain and Local Network permissions survive rebuilds.
 
-Structured diagnostics are stored under `<data dir>/termirust/diagnostics` with
+Structured diagnostics are stored under `<data dir>/multiplex/diagnostics` with
 bounded rotation and retention. See [docs/diagnostics.md](docs/diagnostics.md).
 
 ## UI behavior details

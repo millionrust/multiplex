@@ -28,8 +28,12 @@ pub const MAX_SESSION_NAME_BYTES: usize = 1024;
 pub const MAX_COMMAND_CHARS: usize = 128;
 /// The oldest tmux that understands `attach-session -f ignore-size`.
 pub const MINIMUM_ATTACH_VERSION: (u32, u32) = (3, 2);
-/// Sessions the shell setup starts are named `termirust-<directory>-<pid>`.
-pub const WRAPPED_SESSION_PREFIX: &str = "termirust-";
+/// Sessions the shell setup starts are named `multiplex-<directory>-<pid>`.
+pub const WRAPPED_SESSION_PREFIX: &str = "multiplex-";
+/// What those sessions were named before the rename. A tmux server outlives this app, so a
+/// person who updates mid-session still has sessions under the old name, and they are still
+/// recognised as ones the setup started.
+pub const LEGACY_WRAPPED_SESSION_PREFIX: &str = "termirust-";
 /// The server option an earlier version of the shell setup set to keep tmux clients off the
 /// alternate screen. tmux redraws with scroll regions, so lines never reached the terminal
 /// app's scrollback and programs such as Claude Code could not be scrolled back at all.
@@ -290,7 +294,11 @@ impl Tmux {
         for session in listing
             .sessions
             .iter()
-            .filter(|session| session.name.starts_with(WRAPPED_SESSION_PREFIX))
+            // Under either name: a session started before the rename is still one of ours.
+            .filter(|session| {
+                session.name.starts_with(WRAPPED_SESSION_PREFIX)
+                    || session.name.starts_with(LEGACY_WRAPPED_SESSION_PREFIX)
+            })
         {
             let id = session.id();
             let mut applied = true;

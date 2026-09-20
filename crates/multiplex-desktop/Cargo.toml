@@ -12,7 +12,7 @@ default-run = "multiplex"
 
 [package.metadata.bundle]
 name = "Multiplex"
-identifier = "com.termirust.desktop"
+identifier = "com.multiplex.desktop"
 icon = ["assets/icons/app.png", "assets/icons/app@2x.png"]
 copyright = "Copyright (c) 2025 Multiplex contributors"
 category = "DeveloperTool"
@@ -23,7 +23,7 @@ SFTP browsing, port forwarding, jump host chains, snippets,
 broadcast input, and more.
 """
 osx_minimum_system_version = "12.0"
-osx_url_schemes = ["termirust"]
+osx_url_schemes = ["multiplex"]
 deb_depends = ["libssl3", "libxkbcommon0"]
 
 # `objc`'s `msg_send!` and `sel!` expand to a `cfg(feature = "cargo-clippy")` check, which this

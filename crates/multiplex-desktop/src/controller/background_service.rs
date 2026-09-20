@@ -18,7 +18,12 @@ use multiplex_controller_listener::{ListenerError, ListenerOwnership};
 
 pub const SERVICE_COMMAND: &str = "controller-service";
 /// The LaunchAgent label, derived from the app bundle identifier.
-pub const LAUNCH_AGENT_LABEL: &str = "com.termirust.desktop.controller-service";
+pub const LAUNCH_AGENT_LABEL: &str = "com.multiplex.desktop.controller-service";
+/// The label an installed copy registered before the rename. Its plist names an application
+/// path that no longer exists, so launchd keeps trying to start something that is gone; both
+/// installing and removing the service take it out.
+#[cfg(target_os = "macos")]
+const LEGACY_LAUNCH_AGENT_LABEL: &str = "com.termirust.desktop.controller-service";
 
 const YIELD_SOCKET: &str = "controller-service.sock";
 const YIELD_REQUEST: &[u8] = b"yield\n";
@@ -390,6 +395,7 @@ pub fn install() -> Result<(), ServiceError> {
     .map_err(|_| ServiceError("service.write_failed"))?;
     // Replace a previous registration so a moved app takes effect.
     let _ = launchctl(&["bootout", &launchctl_service_target()]);
+    remove_legacy_launch_agent();
     launchctl(&[
         "bootstrap",
         &launchctl_domain(),
@@ -407,6 +413,7 @@ pub fn install() -> Result<(), ServiceError> {
 pub fn remove() -> Result<(), ServiceError> {
     let plist_path = launch_agent_path().ok_or(ServiceError("service.home_unavailable"))?;
     let _ = launchctl(&["bootout", &launchctl_service_target()]);
+    remove_legacy_launch_agent();
     match std::fs::remove_file(&plist_path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
@@ -417,6 +424,23 @@ pub fn remove() -> Result<(), ServiceError> {
 #[cfg(not(target_os = "macos"))]
 pub fn remove() -> Result<(), ServiceError> {
     Err(ServiceError("service.unsupported"))
+}
+
+/// Takes out the agent an installed copy registered before the rename. Nothing here is worth
+/// failing over: the agent may never have existed, and what matters is that this app's own
+/// registration is the one launchd has.
+#[cfg(target_os = "macos")]
+fn remove_legacy_launch_agent() {
+    let _ = launchctl(&[
+        "bootout",
+        &format!("{}/{LEGACY_LAUNCH_AGENT_LABEL}", launchctl_domain()),
+    ]);
+    if let Some(home) = dirs::home_dir() {
+        let _ = std::fs::remove_file(
+            home.join("Library/LaunchAgents")
+                .join(format!("{LEGACY_LAUNCH_AGENT_LABEL}.plist")),
+        );
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -702,10 +726,10 @@ mod tests {
     fn launch_agent_plist_is_escaped_and_valid() {
         let fixture = tempfile::tempdir().unwrap();
         let plist = launch_agent_plist(
-            Path::new("/Applications/Terminal & Co <beta>.app/Contents/MacOS/termirust"),
-            Path::new("/Users/me/Library/Application Support/termirust/controller-service.log"),
+            Path::new("/Applications/Terminal & Co <beta>.app/Contents/MacOS/multiplex"),
+            Path::new("/Users/me/Library/Application Support/multiplex/controller-service.log"),
         );
-        assert!(plist.contains("<string>com.termirust.desktop.controller-service</string>"));
+        assert!(plist.contains("<string>com.multiplex.desktop.controller-service</string>"));
         assert!(plist.contains("Terminal &amp; Co &lt;beta&gt;.app"));
         assert!(plist.contains("<string>controller-service</string>\n\t\t<string>run</string>"));
         let path = fixture.path().join("agent.plist");

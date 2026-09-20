@@ -1,12 +1,52 @@
 #[cfg(not(test))]
-use anyhow::{Context, Result};
+use anyhow::Context;
+use anyhow::Result;
 #[cfg(not(test))]
 use keyring::{Entry, Error as KeyringError};
 
-/// Only the real keyring names a service; the tests stand in for it, and naming one there
-/// would be an unused name.
-#[cfg(not(test))]
-const SERVICE_NAME: &str = "com.termirust.password";
+/// Where this app's passwords live in the system credential store, and where an installed copy
+/// put them before the rename. Both are needed: the store is keyed by this name, so a password
+/// saved under the old one is invisible under the new.
+const SERVICE_NAME: &str = "com.multiplex.password";
+const LEGACY_SERVICE_NAME: &str = "com.termirust.password";
+
+/// The system credential store, as this module uses it. One implementation talks to the real
+/// store; the tests keep passwords in memory so they never read or write a developer's own, and
+/// so a machine without a credential store still runs them. Both go through the same lookup
+/// below, so the move from the old service name is exercised rather than assumed.
+trait PasswordStore {
+    fn get(&self, service: &str, credential_id: &str) -> Result<Option<String>>;
+    fn set(&self, service: &str, credential_id: &str, password: &str) -> Result<()>;
+    fn delete(&self, service: &str, credential_id: &str) -> Result<bool>;
+}
+
+/// Reads a password, bringing one saved under the old service name across as it goes.
+///
+/// The copy is written before the original is removed, so a failure in between leaves the
+/// password readable under one name rather than neither. A failure to remove the old one is not
+/// worth refusing the password over: the next read finds it under the new name and does not
+/// come back here.
+fn load_from(store: &impl PasswordStore, credential_id: &str) -> Result<String> {
+    if let Some(password) = store.get(SERVICE_NAME, credential_id)? {
+        return Ok(password);
+    }
+    let Some(password) = store.get(LEGACY_SERVICE_NAME, credential_id)? else {
+        return Err(anyhow::anyhow!(
+            "No stored password was found in {}",
+            secure_store_label()
+        ));
+    };
+    store.set(SERVICE_NAME, credential_id, &password)?;
+    let _ = store.delete(LEGACY_SERVICE_NAME, credential_id);
+    Ok(password)
+}
+
+/// Forgets a password under both names, so removing one does not leave the old copy behind.
+fn delete_from(store: &impl PasswordStore, credential_id: &str) -> Result<bool> {
+    let current = store.delete(SERVICE_NAME, credential_id)?;
+    let legacy = store.delete(LEGACY_SERVICE_NAME, credential_id)?;
+    Ok(current || legacy)
+}
 
 pub fn secure_store_label() -> &'static str {
     #[cfg(target_os = "macos")]
@@ -48,32 +88,53 @@ mod in_memory {
     use std::collections::HashMap;
     use std::sync::{Mutex, MutexGuard, OnceLock};
 
-    use anyhow::{Result, anyhow};
+    use anyhow::Result;
 
-    fn passwords() -> MutexGuard<'static, HashMap<String, String>> {
-        static STORE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+    /// Keyed by service as well as credential, like the real store, so the move from the old
+    /// service name is exercised here rather than only in production.
+    pub(super) fn passwords() -> MutexGuard<'static, HashMap<(String, String), String>> {
+        static STORE: OnceLock<Mutex<HashMap<(String, String), String>>> = OnceLock::new();
         STORE
             .get_or_init(|| Mutex::new(HashMap::new()))
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    pub(super) struct MemoryStore;
+
+    impl super::PasswordStore for MemoryStore {
+        fn get(&self, service: &str, credential_id: &str) -> Result<Option<String>> {
+            Ok(passwords()
+                .get(&(service.to_owned(), credential_id.to_owned()))
+                .cloned())
+        }
+
+        fn set(&self, service: &str, credential_id: &str, password: &str) -> Result<()> {
+            passwords().insert(
+                (service.to_owned(), credential_id.to_owned()),
+                password.to_owned(),
+            );
+            Ok(())
+        }
+
+        fn delete(&self, service: &str, credential_id: &str) -> Result<bool> {
+            Ok(passwords()
+                .remove(&(service.to_owned(), credential_id.to_owned()))
+                .is_some())
+        }
+    }
+
     pub fn store_password(credential_id: &str, password: &str) -> Result<()> {
-        passwords().insert(credential_id.to_owned(), password.to_owned());
-        Ok(())
+        use super::PasswordStore as _;
+        MemoryStore.set(super::SERVICE_NAME, credential_id, password)
     }
 
     pub fn load_password(credential_id: &str) -> Result<String> {
-        passwords().get(credential_id).cloned().ok_or_else(|| {
-            anyhow!(
-                "No stored password was found in {}",
-                super::secure_store_label()
-            )
-        })
+        super::load_from(&MemoryStore, credential_id)
     }
 
     pub fn delete_password(credential_id: &str) -> Result<bool> {
-        Ok(passwords().remove(credential_id).is_some())
+        super::delete_from(&MemoryStore, credential_id)
     }
 }
 
@@ -82,33 +143,54 @@ pub use in_memory::{delete_password, load_password, store_password};
 
 #[cfg(not(test))]
 pub fn store_password(credential_id: &str, password: &str) -> Result<()> {
-    entry(credential_id)?
-        .set_password(password)
-        .with_context(|| format!("Unable to store password in {}", secure_store_label()))?;
-    Ok(())
+    SystemStore.set(SERVICE_NAME, credential_id, password)
 }
 
 #[cfg(not(test))]
 pub fn load_password(credential_id: &str) -> Result<String> {
-    entry(credential_id)?
-        .get_password()
-        .with_context(|| format!("No stored password was found in {}", secure_store_label()))
+    load_from(&SystemStore, credential_id)
 }
 
 #[cfg(not(test))]
 pub fn delete_password(credential_id: &str) -> Result<bool> {
-    let entry = entry(credential_id)?;
-    match entry.delete_credential() {
-        Ok(()) => Ok(true),
-        Err(KeyringError::NoEntry) => Ok(false),
-        Err(error) => Err(anyhow::Error::new(error))
-            .with_context(|| format!("Unable to delete password from {}", secure_store_label())),
+    delete_from(&SystemStore, credential_id)
+}
+
+#[cfg(not(test))]
+struct SystemStore;
+
+#[cfg(not(test))]
+impl PasswordStore for SystemStore {
+    fn get(&self, service: &str, credential_id: &str) -> Result<Option<String>> {
+        match entry(service, credential_id)?.get_password() {
+            Ok(password) => Ok(Some(password)),
+            Err(KeyringError::NoEntry) => Ok(None),
+            Err(error) => Err(anyhow::Error::new(error)).with_context(|| {
+                format!("Unable to read a password from {}", secure_store_label())
+            }),
+        }
+    }
+
+    fn set(&self, service: &str, credential_id: &str, password: &str) -> Result<()> {
+        entry(service, credential_id)?
+            .set_password(password)
+            .with_context(|| format!("Unable to store password in {}", secure_store_label()))
+    }
+
+    fn delete(&self, service: &str, credential_id: &str) -> Result<bool> {
+        match entry(service, credential_id)?.delete_credential() {
+            Ok(()) => Ok(true),
+            Err(KeyringError::NoEntry) => Ok(false),
+            Err(error) => Err(anyhow::Error::new(error)).with_context(|| {
+                format!("Unable to delete password from {}", secure_store_label())
+            }),
+        }
     }
 }
 
 #[cfg(not(test))]
-fn entry(credential_id: &str) -> Result<Entry> {
-    Entry::new(SERVICE_NAME, credential_id).context("Unable to initialize credential entry")
+fn entry(service: &str, credential_id: &str) -> Result<Entry> {
+    Entry::new(service, credential_id).context("Unable to initialize credential entry")
 }
 
 fn normalize(value: &str) -> String {
@@ -139,5 +221,70 @@ mod tests {
             connection_password_credential_id("Root", "prod.example.com", 22),
             "connection:root@prod.example.com:22"
         );
+    }
+}
+
+#[cfg(test)]
+mod credential_store_tests {
+    use super::in_memory::{MemoryStore, passwords};
+    use super::{
+        LEGACY_SERVICE_NAME, PasswordStore as _, SERVICE_NAME, delete_from, load_from,
+        load_password, store_password,
+    };
+
+    /// A password saved before the rename still opens a host, and moves to this app's name as it
+    /// is read: the store is keyed by that name, so one saved under the old one is otherwise
+    /// invisible and the user is asked for a password they already gave.
+    #[test]
+    fn a_password_saved_under_the_previous_name_is_found_and_brought_across() {
+        let id = "connection:migrated@example.test:22";
+        passwords().insert(
+            (LEGACY_SERVICE_NAME.to_owned(), id.to_owned()),
+            "hunter2".to_owned(),
+        );
+
+        assert_eq!(
+            load_from(&MemoryStore, id).expect("the password"),
+            "hunter2"
+        );
+        assert_eq!(
+            MemoryStore.get(SERVICE_NAME, id).expect("a read"),
+            Some("hunter2".to_owned()),
+            "it is stored under this app's name afterwards"
+        );
+        assert_eq!(
+            MemoryStore.get(LEGACY_SERVICE_NAME, id).expect("a read"),
+            None,
+            "and not left behind under the old one"
+        );
+    }
+
+    #[test]
+    fn a_password_saved_now_is_read_without_touching_the_previous_name() {
+        let id = "connection:current@example.test:22";
+        store_password(id, "correct-horse").expect("the password is stored");
+        assert_eq!(
+            MemoryStore.get(LEGACY_SERVICE_NAME, id).expect("a read"),
+            None
+        );
+        assert_eq!(load_password(id).expect("the password"), "correct-horse");
+    }
+
+    #[test]
+    fn forgetting_a_password_forgets_the_one_saved_under_the_previous_name_too() {
+        let id = "profile:both";
+        passwords().insert(
+            (LEGACY_SERVICE_NAME.to_owned(), id.to_owned()),
+            "old".to_owned(),
+        );
+        store_password(id, "new").expect("the password is stored");
+
+        assert!(delete_from(&MemoryStore, id).expect("the delete runs"));
+        assert_eq!(MemoryStore.get(SERVICE_NAME, id).expect("a read"), None);
+        assert_eq!(
+            MemoryStore.get(LEGACY_SERVICE_NAME, id).expect("a read"),
+            None
+        );
+        assert!(!delete_from(&MemoryStore, id).expect("the delete runs"));
     }
 }

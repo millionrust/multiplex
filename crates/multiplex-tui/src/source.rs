@@ -74,7 +74,9 @@ impl LocalFleetSource {
         let config_root = match std::env::var_os("TERMIRUST_CONFIG_DIR") {
             Some(path) if !path.is_empty() => Some(PathBuf::from(path)),
             Some(_) => None,
-            None => dirs::config_dir().map(|root| root.join("termirust")),
+            // The same lookup the CLI uses: the current directory when it is there, and what the
+            // previous name left otherwise, so this reads a person's own fleet either way.
+            None => dirs::config_dir().map(multiplex_cli::discovered_config_root),
         }
         .ok_or(FleetLoadError {
             diagnostic: TuiDiagnostic {

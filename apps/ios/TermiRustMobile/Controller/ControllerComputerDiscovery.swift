@@ -35,7 +35,7 @@ protocol ControllerComputerLookup: Sendable {
 
 @MainActor
 final class ControllerComputerBrowser: ObservableObject, ControllerComputerLookup {
-    static let serviceType = "_termirust._tcp"
+    static let serviceType = "_multiplex._tcp"
     static let serviceDomain = "local."
     private static let maxComputers = 32
     private static let maxNameScalars = 63

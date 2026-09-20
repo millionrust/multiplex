@@ -13,7 +13,7 @@ use multiplex_domain::{HostFingerprint, HostPublicKey, ListeningAddress, Network
 
 use crate::{ListenerError, ListenerErrorCode};
 
-pub const BONJOUR_SERVICE_TYPE: &str = "_termirust._tcp.local.";
+pub const BONJOUR_SERVICE_TYPE: &str = "_multiplex._tcp.local.";
 const DISCOVERY_ID_BYTES: usize = 16;
 
 /// What one announcement publishes.

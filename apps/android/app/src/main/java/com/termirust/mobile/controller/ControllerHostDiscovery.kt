@@ -124,7 +124,7 @@ internal object ControllerNetworkAddresses {
 }
 
 /**
- * Browses `_termirust._tcp` with [NsdManager]. Several callers can share one browse: each
+ * Browses `_multiplex._tcp` with [NsdManager]. Several callers can share one browse: each
  * [start] must be balanced by a [stop]. Finding a computer is not trusting it; pairing still
  * needs the code, and a paired Host is still authenticated by its static key.
  */
@@ -326,6 +326,6 @@ class ControllerHostDiscovery(context: Context) : AutoCloseable {
     }
 
     private companion object {
-        const val SERVICE_TYPE = "_termirust._tcp."
+        const val SERVICE_TYPE = "_multiplex._tcp."
     }
 }

@@ -23,6 +23,7 @@ pub use local::{
     HostAttachRequest, HostAttachSummary, HostController, HostLaunchOutcome, HostLauncher,
     HostResizeRequest, LocalCommandService, ManagementCommand, ManagementRemovalManifest,
     ManagementRemovalPreview, SshControllerCommandExecutor, cli_installation_status,
+    discovered_config_root,
 };
 pub use local_attach::LocalSessionAttachExecutor;
 pub use remote_ssh::SystemSshControllerExecutor;

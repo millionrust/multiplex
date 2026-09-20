@@ -31,7 +31,10 @@ use crate::models::{
     SavedSnippet, SavedState, SavedVault, VaultKind,
 };
 
-const APP_DIR_NAME: &str = "termirust";
+const APP_DIR_NAME: &str = "multiplex";
+/// What this app was called before, and where an installed copy still keeps everything a person
+/// would lose. See `resolve_app_dir`.
+const LEGACY_APP_DIR_NAME: &str = "termirust";
 const STATE_FILE_NAME: &str = "state.json";
 const KNOWN_HOSTS_FILE_NAME: &str = "known_hosts.json";
 const PORTABLE_BUNDLE_VERSION: u16 = 1;
@@ -114,12 +117,57 @@ pub(crate) fn app_dir() -> Result<PathBuf> {
     let path = if let Some(explicit_dir) = std::env::var_os("TERMIRUST_CONFIG_DIR") {
         PathBuf::from(explicit_dir)
     } else {
-        let base_dir = dirs::config_dir().unwrap_or(std::env::current_dir()?);
-        base_dir.join(APP_DIR_NAME)
+        resolve_app_dir(&dirs::config_dir().unwrap_or(std::env::current_dir()?))?
     };
     fs::create_dir_all(&path)
         .with_context(|| format!("Unable to create app directory at {}", path.display()))?;
     Ok(path)
+}
+
+/// This app's directory under `base_dir`, taking over what the previous name left there.
+///
+/// Everything a person would lose is in that directory: saved hosts, vaults, pinned host keys,
+/// snippets, session history and the window they last used. The rename would otherwise start
+/// them with an empty app and their own data still on disk under a name nothing reads.
+///
+/// The old directory is moved, not copied, so there is one copy of the truth and no question of
+/// which is current. Where a move cannot happen, the contents are copied and the old directory
+/// is left exactly as it was: a second copy is recoverable, a half-moved one is not. Either way
+/// it happens once, because afterwards this directory exists.
+fn resolve_app_dir(base_dir: &Path) -> Result<PathBuf> {
+    let path = base_dir.join(APP_DIR_NAME);
+    let legacy = base_dir.join(LEGACY_APP_DIR_NAME);
+    if path.exists() || !legacy.is_dir() {
+        return Ok(path);
+    }
+    if fs::rename(&legacy, &path).is_ok() {
+        return Ok(path);
+    }
+    copy_dir_recursively(&legacy, &path).with_context(|| {
+        format!(
+            "Unable to bring the data at {} across to {}",
+            legacy.display(),
+            path.display()
+        )
+    })?;
+    Ok(path)
+}
+
+fn copy_dir_recursively(from: &Path, to: &Path) -> Result<()> {
+    fs::create_dir_all(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        // Symlinks are left behind rather than followed: what they point at is not this
+        // directory's to copy, and following one could walk out of it entirely.
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            copy_dir_recursively(&entry.path(), &target)?;
+        } else if kind.is_file() {
+            fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn managed_agent_worktree_dir() -> Result<PathBuf> {
@@ -2017,5 +2065,81 @@ Host app-prod
         assert!(unknown.to_string().contains("Host key is not trusted"));
         assert_eq!(store.entries().unwrap().len(), 1);
         assert!(!path.exists());
+    }
+}
+
+#[cfg(test)]
+mod app_dir_tests {
+    use super::*;
+
+    fn write(path: &Path, contents: &str) {
+        fs::create_dir_all(path.parent().expect("a parent directory")).expect("directories");
+        fs::write(path, contents).expect("a file");
+    }
+
+    /// Everything a person has saved is in the old directory. The rename must bring it across
+    /// rather than start them with an empty app.
+    #[test]
+    fn the_previous_name_s_data_is_taken_over_once() {
+        let base = tempfile::tempdir().expect("a base directory");
+        let legacy = base.path().join(LEGACY_APP_DIR_NAME);
+        write(&legacy.join("state.json"), "{\"hosts\":1}");
+        write(&legacy.join("controller/devices.json"), "{\"devices\":1}");
+
+        let resolved = resolve_app_dir(base.path()).expect("the directory resolves");
+        assert_eq!(resolved, base.path().join(APP_DIR_NAME));
+        assert_eq!(
+            fs::read_to_string(resolved.join("state.json")).expect("the state came across"),
+            "{\"hosts\":1}"
+        );
+        assert_eq!(
+            fs::read_to_string(resolved.join("controller/devices.json"))
+                .expect("nested files came across"),
+            "{\"devices\":1}"
+        );
+
+        // Once, and only once: a later launch leaves whatever is there now alone, even if the
+        // old directory reappears.
+        write(&resolved.join("state.json"), "{\"hosts\":2}");
+        write(&legacy.join("state.json"), "{\"hosts\":3}");
+        assert_eq!(
+            resolve_app_dir(base.path()).expect("the directory resolves"),
+            resolved
+        );
+        assert_eq!(
+            fs::read_to_string(resolved.join("state.json")).expect("the state is untouched"),
+            "{\"hosts\":2}"
+        );
+    }
+
+    /// Where the directory cannot be moved, its contents are copied and the original is left
+    /// exactly as it was: a second copy can be thrown away, a half-moved one cannot.
+    #[test]
+    fn data_that_cannot_be_moved_is_copied_and_the_original_kept() {
+        let base = tempfile::tempdir().expect("a base directory");
+        let legacy = base.path().join(LEGACY_APP_DIR_NAME);
+        write(&legacy.join("vaults/default.json"), "{\"vault\":true}");
+
+        copy_dir_recursively(&legacy, &base.path().join(APP_DIR_NAME)).expect("the copy runs");
+
+        let resolved = resolve_app_dir(base.path()).expect("the directory resolves");
+        assert_eq!(
+            fs::read_to_string(resolved.join("vaults/default.json")).expect("the vault copied"),
+            "{\"vault\":true}"
+        );
+        assert_eq!(
+            fs::read_to_string(legacy.join("vaults/default.json")).expect("the original stayed"),
+            "{\"vault\":true}"
+        );
+    }
+
+    #[test]
+    fn a_first_launch_with_nothing_to_take_over_just_names_the_directory() {
+        let base = tempfile::tempdir().expect("a base directory");
+        assert_eq!(
+            resolve_app_dir(base.path()).expect("the directory resolves"),
+            base.path().join(APP_DIR_NAME)
+        );
+        assert!(!base.path().join(APP_DIR_NAME).exists());
     }
 }
