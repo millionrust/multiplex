@@ -10166,7 +10166,13 @@ impl TermiRustApp {
                     input_changed |= !pane.current_input.is_empty();
                     pane.current_input.clear();
                 }
-                b'\t' => {}
+                // The shell's own completion rewrites the line, and this app never sees what it
+                // became, so it gives the line up rather than rub out the wrong number of
+                // characters when a suggestion is accepted later.
+                b'\t' => {
+                    input_changed |= !pane.current_input.is_empty();
+                    pane.current_input.clear();
+                }
                 byte if byte.is_ascii_control() => {}
                 _ => {
                     pane.current_input.push(byte as char);
@@ -10544,6 +10550,23 @@ impl TermiRustApp {
         self.apply_autocomplete_candidate(&candidate.command, candidate.source, cx)
     }
 
+    /// Puts the suggestions away without changing the line. Answers Escape, and says whether
+    /// there was anything to put away, so Escape still reaches the program otherwise.
+    fn dismiss_autocomplete(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.workspace_autocomplete_candidates().is_empty() {
+            return false;
+        }
+        let Some(pane_id) = self.active_pane().map(|pane| pane.id) else {
+            return false;
+        };
+        if let Some(pane) = self.pane_mut(pane_id) {
+            pane.current_input.clear();
+            pane.selected_autocomplete_index = None;
+        }
+        cx.notify();
+        true
+    }
+
     fn apply_autocomplete_candidate(
         &mut self,
         command: &str,
@@ -10563,6 +10586,12 @@ impl TermiRustApp {
         let mut bytes = vec![0x7f; current_input.chars().count()];
         bytes.extend_from_slice(command.as_bytes());
         if self.send_input_bytes(pane_id, bytes, cx) {
+            // The line now holds the command, so that is what further typing adds to and what
+            // accepting another suggestion would rub out.
+            if let Some(pane) = self.pane_mut(pane_id) {
+                pane.current_input = command.to_owned();
+                pane.selected_autocomplete_index = None;
+            }
             self.status_message = localization::autocomplete_applied_status(source);
             self.error_message.clear();
             cx.notify();
@@ -10932,6 +10961,33 @@ impl TermiRustApp {
 
         if event.keystroke.modifiers.platform {
             return false;
+        }
+
+        // The suggestions belong to the line being typed, so they answer the keys Settings says
+        // they do before the keystroke reaches the program. Up and Down only take a key when
+        // there is something to suggest, and Enter only once a suggestion has been chosen, so a
+        // pane with nothing to offer types and runs commands as it always has.
+        if !event.keystroke.modifiers.control
+            && !event.keystroke.modifiers.alt
+            && !event.keystroke.modifiers.platform
+            && !event.keystroke.modifiers.shift
+            && self.active_pane().is_some_and(|pane| pane.id == pane_id)
+        {
+            let key = event.keystroke.key.as_str();
+            let chosen = self
+                .active_pane()
+                .is_some_and(|pane| pane.selected_autocomplete_index.is_some());
+            if (key == "up" || key == "down")
+                && self.move_autocomplete_selection(if key == "up" { -1 } else { 1 }, cx)
+            {
+                return true;
+            }
+            if key == "enter" && chosen && self.accept_selected_autocomplete(cx) {
+                return true;
+            }
+            if key == "escape" && self.dismiss_autocomplete(cx) {
+                return true;
+            }
         }
 
         let application_cursor = self
@@ -26687,6 +26743,101 @@ sleep 1
             .expect("window update should succeed");
     }
 
+    /// Typing offers suggestions, Up and Down choose one, and Enter puts it on the line in place
+    /// of what was typed. Enter with nothing chosen runs the line, as it always has.
+    #[gpui::test]
+    fn e2e_typed_input_offers_suggestions_and_enter_accepts_the_chosen_one(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: crate::test_support::test_shell_program(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let pane_id = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.saved.command_history = vec!["git status --short".to_string()];
+                    app.open_request_workspace(request, window, cx)
+                        .expect("a local workspace opens")
+                        .1
+                })
+            })
+            .expect("window update should succeed");
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        let key = |keystroke: &str| KeyDownEvent {
+            keystroke: Keystroke::parse(keystroke).expect("the keystroke parses"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    // Nothing is suggested for a line nobody has typed into, so Enter runs it.
+                    assert!(app.workspace_autocomplete_candidates().is_empty());
+
+                    for keystroke in ["g->g", "i->i", "t->t"] {
+                        assert!(app.handle_terminal_key(pane_id, &key(keystroke), window, cx));
+                    }
+                    let pane = app.pane(pane_id).expect("the pane exists");
+                    assert_eq!(pane.current_input, "git");
+                    assert!(pane.selected_autocomplete_index.is_none());
+                    let candidates = app.workspace_autocomplete_candidates();
+                    assert!(!candidates.is_empty(), "the typed line suggested nothing");
+
+                    // Down chooses one, and Enter puts it on the line instead of running it.
+                    assert!(app.handle_terminal_key(pane_id, &key("down"), window, cx));
+                    let chosen = app
+                        .pane(pane_id)
+                        .expect("the pane exists")
+                        .selected_autocomplete_index
+                        .expect("Down chooses a suggestion");
+                    let expected = candidates[chosen].command.clone();
+                    assert!(app.handle_terminal_key(pane_id, &key("enter"), window, cx));
+                    let pane = app.pane(pane_id).expect("the pane exists");
+                    assert_eq!(pane.current_input, expected);
+                    assert!(pane.selected_autocomplete_index.is_none());
+                })
+            })
+            .expect("window update should succeed");
+
+        // What the pane was sent: the typed line rubbed out, then the whole command.
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id).and_then(|pane| {
+                let typed = pane.current_input.clone();
+                pane.terminal
+                    .all_rows_text()
+                    .iter()
+                    .any(|row| row.contains(typed.as_str()))
+                    .then_some(())
+            })
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    // With nothing chosen, Escape puts the suggestions away and Enter runs the
+                    // line rather than accepting anything.
+                    assert!(app.handle_terminal_key(pane_id, &key("escape"), window, cx));
+                    assert!(app.workspace_autocomplete_candidates().is_empty());
+                    assert!(app.handle_terminal_key(pane_id, &key("enter"), window, cx));
+                    assert_eq!(
+                        app.pane(pane_id).expect("the pane exists").current_input,
+                        ""
+                    );
+                })
+            })
+            .expect("window update should succeed");
+    }
     #[gpui::test]
     fn e2e_keyboard_conformance_terminal_shortcuts_preserve_input_and_restore_focus(
         cx: &mut TestAppContext,

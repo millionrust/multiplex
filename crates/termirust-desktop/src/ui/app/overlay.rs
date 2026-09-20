@@ -21,6 +21,10 @@ use crate::ui::autocomplete::AutocompleteSource;
 use crate::ui::localization;
 use crate::ui::theme;
 
+/// How many suggestions the bar shows at once. Enough to choose from without taking the
+/// terminal over.
+const VISIBLE_AUTOCOMPLETE_SUGGESTIONS: usize = 5;
+
 impl TermiRustApp {
     pub(super) fn render_snippet_prompts_panel(&self, cx: &Context<Self>) -> Option<Div> {
         let prompts = self.pending_snippet_prompts.as_ref()?;
@@ -110,6 +114,78 @@ impl TermiRustApp {
                                 .child(Input::new(&field.input).small())
                                 .into_any_element()
                         })),
+                ),
+        )
+    }
+
+    /// What the line being typed into the active pane could become, above the terminal, with
+    /// the chosen suggestion marked. Nothing is drawn until there is something to suggest, so a
+    /// pane nobody is typing into looks as it always has. Up and Down choose, Enter accepts,
+    /// Escape puts them away, which is what the Settings shortcut list says.
+    pub(super) fn render_autocomplete_suggestions(&self) -> Option<Stateful<Div>> {
+        let candidates = self.workspace_autocomplete_candidates();
+        if candidates.is_empty() {
+            return None;
+        }
+        let chosen = self
+            .active_pane()
+            .and_then(|pane| pane.selected_autocomplete_index);
+        Some(
+            h_flex()
+                .id("terminal-autocomplete")
+                .debug_selector(|| "terminal-autocomplete".to_string())
+                .w_full()
+                .px(px(theme::SHELL_BANNER_HORIZONTAL))
+                .py(px(theme::SPACE_2))
+                .gap_2()
+                .items_center()
+                .flex_wrap()
+                .bg(theme::with_alpha(theme::accent(), 0.10))
+                .border_b_1()
+                .border_color(theme::with_alpha(theme::accent(), 0.35))
+                .children(
+                    candidates
+                        .into_iter()
+                        .take(VISIBLE_AUTOCOMPLETE_SUGGESTIONS)
+                        .enumerate()
+                        .map(|(index, candidate)| {
+                            let marked = chosen == Some(index);
+                            h_flex()
+                                .gap_1p5()
+                                .items_center()
+                                .px_2()
+                                .py_0p5()
+                                .rounded(px(theme::CONTROL_RADIUS))
+                                .when(marked, |this| {
+                                    this.bg(theme::with_alpha(theme::accent(), 0.28))
+                                })
+                                .child(
+                                    div()
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                        .text_color(if marked {
+                                            theme::text_main()
+                                        } else {
+                                            theme::text_muted()
+                                        })
+                                        .child(candidate.command.clone()),
+                                )
+                                .when_some(candidate.scope_label.clone(), |this, scope| {
+                                    // Which host or session the suggestion came from, when it
+                                    // came from one in particular.
+                                    this.child(
+                                        div()
+                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                            .text_color(theme::text_muted())
+                                            .child(scope),
+                                    )
+                                })
+                                .child(self.status_badge(
+                                    candidate.source.label(),
+                                    theme::library_bg(),
+                                    source_tone(candidate.source),
+                                ))
+                                .into_any_element()
+                        }),
                 ),
         )
     }

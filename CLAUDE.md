@@ -231,6 +231,13 @@ bounded rotation and retention. See [docs/diagnostics.md](docs/diagnostics.md).
 - Dropping a tab onto a terminal pane splits that pane.
 - Double-clicking the empty chrome area opens a new local terminal.
 - Active workspace search is local to the active pane; search and unread badges are per workspace tab.
+- Typing in a terminal pane offers suggestions above it, drawn from snippets, command history,
+  built-in templates, the browsed path, and recent output. Up and Down choose one, Enter accepts
+  it in place of what was typed, and Escape puts them away, which is what the Settings shortcut
+  list says. Nothing is offered for an empty line or on the alternate screen, so a full-screen
+  program and a pane nobody is typing into behave as they always have. The line is followed by
+  the bytes sent to the program, and anything that could rewrite it from elsewhere — Tab
+  completion, Ctrl-C, Ctrl-U — gives it up rather than guess.
 
 ## Known implementation limits
 
