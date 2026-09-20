@@ -1111,7 +1111,30 @@ async fn accept_loop(
                     // Passed up, it ended this loop, which dropped every other client mid-request
                     // and left the Host running with nobody able to reach it; a client that hung
                     // up while its answer was being written was enough to do that.
-                    let _ = serve_connection(stream, state.clone(), connection_id, child_cancel).await;
+                    //
+                    // It is still recorded: a request that goes unanswered looks the same to a
+                    // client however it failed, and this line is the only account of which it was.
+                    // An ordinary ending — the client went away, said something this Host does not
+                    // accept, or asked for more than it allows — is not a failure and says nothing.
+                    if let Err(error) =
+                        serve_connection(stream, state.clone(), connection_id, child_cancel).await
+                        && !matches!(
+                            error.code,
+                            HostErrorCode::Cancelled
+                                | HostErrorCode::Protocol
+                                | HostErrorCode::ResourceLimit
+                        )
+                    {
+                        let line = serde_json::json!({
+                            "schema_version": 1,
+                            "event": "connection_failed",
+                            "connection": connection_id,
+                            "code": error.stable_code(),
+                            "stage": error.stage(),
+                            "io_kind": error.io_kind.map(|kind| format!("{kind:?}")),
+                        });
+                        eprintln!("{line}");
+                    }
                     state.release_writer(connection_id).await;
                     state.active_connections.fetch_sub(1, Ordering::AcqRel);
                     drop(permit);
@@ -1397,7 +1420,23 @@ async fn serve_connection(
                 let mut cache = state.idempotency.lock().await;
                 match cache.inspect(command_id, payload_hash, Instant::now()) {
                     MutationDecision::Apply => {
-                        state.stop_owned(force).await?;
+                        // A stop that could not be carried out is answered as one. Letting the
+                        // error end the connection instead tells the client only that its
+                        // connection ended, which is what a Host that died looks like too, and
+                        // leaves whoever asked for the stop with nothing to report or retry.
+                        if let Err(error) = state.stop_owned(force).await {
+                            drop(cache);
+                            send_error(
+                                &mut stream,
+                                envelope.request_id,
+                                wire::ErrorCode::InvalidState,
+                                wire::RecoveryHint::RetryExplicitly,
+                                0,
+                                &cancel,
+                            )
+                            .await?;
+                            return Err(error);
+                        }
                         cache.record(command_id, payload_hash, Instant::now());
                     }
                     MutationDecision::Replay => {}

@@ -52,6 +52,12 @@ impl HostError {
         self
     }
 
+    /// Where the failure happened, for the few errors that say. Part of what a Host records
+    /// when a connection ends badly.
+    pub const fn stage(&self) -> Option<&'static str> {
+        self.stage
+    }
+
     pub const fn stable_code(&self) -> &'static str {
         match self.code {
             HostErrorCode::Cancelled => "host_cancelled",
