@@ -330,7 +330,19 @@ impl RuntimeState {
 
     async fn wait_for_stop_response(&self) {
         let connected = self.active_connections.load(Ordering::Acquire) > 0;
-        self.stop_response.wait(connected).await;
+        if self.stop_response.wait(connected).await || !connected {
+            return;
+        }
+        // Closing on a connected client is how a stop request ends without an answer, and the
+        // client sees only that its connection ended. Say which it was: a stop that was read and
+        // left unanswered, or a shutdown that began before one arrived.
+        let line = serde_json::json!({
+            "schema_version": 1,
+            "event": "closed_while_connected",
+            "stop_requested": self.stop_response.requested.load(Ordering::Acquire),
+            "connections": self.active_connections.load(Ordering::Acquire),
+        });
+        eprintln!("{line}");
     }
 }
 
@@ -363,26 +375,28 @@ impl StopResponse {
     /// that only looked at what it owes would close the connection on the very request that asked
     /// it to close. A connected client is therefore given a moment for a request already on its
     /// way. A host nobody is connected to closes at once.
-    async fn wait(&self, connected: bool) {
+    /// Whether the answer this waited for was given.
+    async fn wait(&self, connected: bool) -> bool {
         if self.answered.load(Ordering::Acquire) {
-            return;
+            return true;
         }
         if !self.requested.load(Ordering::Acquire) {
             if !connected {
-                return;
+                return false;
             }
             let began = self.began.notified();
             if !self.requested.load(Ordering::Acquire)
                 && timeout(STOP_REQUEST_GRACE, began).await.is_err()
             {
-                return;
+                return false;
             }
         }
         let notified = self.notify.notified();
         if self.answered.load(Ordering::Acquire) {
-            return;
+            return true;
         }
         let _ = timeout(STOP_RESPONSE_DEADLINE, notified).await;
+        self.answered.load(Ordering::Acquire)
     }
 }
 
