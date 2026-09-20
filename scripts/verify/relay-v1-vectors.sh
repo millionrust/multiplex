@@ -9,7 +9,7 @@ if [[ ${1:-} != "--check" || $# -ne 1 ]]; then
   exit 2
 fi
 
-cargo run -q -p termirust-relay-protocol --example relay_vectors -- \
+cargo run -q -p multiplex-relay-protocol --example relay_vectors -- \
   --check tests/fixtures/relay-v1/vectors.json
 
 python3 - <<'PY'
@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 
 vectors = json.loads(Path("tests/fixtures/relay-v1/vectors.json").read_text())
-assert vectors["schema"] == "termirust-relay-v1-vectors"
+assert vectors["schema"] == "multiplex-relay-v1-vectors"
 assert vectors["schema_version"] == 1
 assert vectors["protocol_version"] == 1
 assert vectors["limits"]["ciphertext_payload_bytes"] == 1_048_576

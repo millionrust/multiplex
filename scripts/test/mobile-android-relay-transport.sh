@@ -80,7 +80,7 @@ if [[ -z "$SERIAL" ]]; then
     [[ -x "$EMULATOR" ]] || { status_line FAIL "Android emulator executable is missing"; exit 1; }
     [[ -n "$AVD" ]] || AVD="$("$EMULATOR" -list-avds 2>/dev/null | awk 'NF { print; exit }')"
     [[ -n "$AVD" ]] || { status_line FAIL "no authorized device or installed AVD"; exit 1; }
-    EMULATOR_LOG="$(mktemp "${TMPDIR:-/tmp}/termirust-relay-emulator.XXXXXX.log")"
+    EMULATOR_LOG="$(mktemp "${TMPDIR:-/tmp}/multiplex-relay-emulator.XXXXXX.log")"
     status_line RUN "starting owned Android emulator $AVD"
     "$EMULATOR" -avd "$AVD" -no-window -no-audio -no-boot-anim -no-snapshot-save \
       >"$EMULATOR_LOG" 2>&1 &
@@ -118,7 +118,7 @@ done
 }
 export ANDROID_HOME ANDROID_SERIAL="$SERIAL"
 
-FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/termirust-relay-android.XXXXXX")"
+FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/multiplex-relay-android.XXXXXX")"
 cat >"$FIXTURE/server.ext" <<'EOF'
 subjectAltName=IP:127.0.0.1
 extendedKeyUsage=serverAuth
@@ -141,13 +141,13 @@ PIN="$(openssl x509 -in "$FIXTURE/server.pem" -pubkey -noout \
 
 status_line RUN "building and provisioning the disposable Rust relay"
 cd "$ROOT_DIR"
-cargo build -p termirust-relay-server --bin termirust-relay --locked
-"$ROOT_DIR/target/debug/termirust-relay" provision \
+cargo build -p multiplex-relay-server --bin multiplex-relay --locked
+"$ROOT_DIR/target/debug/multiplex-relay" provision \
   --state "$FIXTURE/state/relay.json" \
   --endpoint "wss://127.0.0.1:$PORT/relay/v1" \
   --spki-pin "sha256/$PIN" \
   --output-dir "$FIXTURE/packages" >/dev/null
-TERMIRUST_RELAY_TEST_DIAGNOSTICS=1 "$ROOT_DIR/target/debug/termirust-relay" run \
+TERMIRUST_RELAY_TEST_DIAGNOSTICS=1 "$ROOT_DIR/target/debug/multiplex-relay" run \
   --state "$FIXTURE/state/relay.json" --bind "127.0.0.1:$PORT" \
   --cert "$FIXTURE/server-chain.pem" --key "$FIXTURE/server.key" \
   >"$FIXTURE/server.log" 2>&1 &
@@ -158,7 +158,7 @@ kill -0 "$SERVER_PID" 2>/dev/null || {
   sed -n '1,80p' "$FIXTURE/server.log" >&2
   exit 1
 }
-cargo run -p termirust-relay-client --example relay_echo_host \
+cargo run -p multiplex-relay-client --example relay_echo_host \
   --features test-support --locked -- \
   "$FIXTURE/packages/host-route.json" "$FIXTURE/ca.der" 33 >"$FIXTURE/host.log" 2>&1 &
 HOST_PID=$!

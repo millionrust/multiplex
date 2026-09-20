@@ -1,0 +1,32 @@
+[package]
+name = "multiplex-controller-bindings"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "Generated Swift and Kotlin boundary for TermiRust Controller-v1 security"
+license = "MIT OR Apache-2.0"
+
+[lib]
+# The name the phone apps load, and the one uniffi writes into its bindings. It stays as it
+# was while the crate around it is renamed: what an installed app looks for belongs with the
+# rest of the app-facing identity, in the OS registration step of the rename.
+name = "termirust_controller_bindings"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+bindgen-cli = ["uniffi/cargo-metadata", "uniffi/cli"]
+
+[dependencies]
+multiplex-controller-security = { version = "0.1.0", path = "../multiplex-controller-security" }
+uniffi = { version = "=0.32.0", default-features = false }
+zeroize = "=1.9.0"
+
+[dev-dependencies]
+hex = "=0.4.3"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.149"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen-cli"]

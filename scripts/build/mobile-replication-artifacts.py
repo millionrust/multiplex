@@ -85,9 +85,9 @@ def build():
     if not Path(readelf).is_file():
         raise RuntimeError("Pinned Android NDK 27.0.12077973 missing")
     space()
-    run("cargo", "build", "--locked", "-p", "termirust-replication-bindings", "--lib")
+    run("cargo", "build", "--locked", "-p", "multiplex-replication-bindings", "--lib")
     # The existing pinned generator is shared, without changing Controller outputs.
-    run("cargo", "build", "--locked", "-p", "termirust-controller-bindings",
+    run("cargo", "build", "--locked", "-p", "multiplex-controller-bindings",
         "--features", "bindgen-cli", "--bin", "uniffi-bindgen")
     target = Path(json.loads(run("cargo", "metadata", "--no-deps", "--format-version", "1", capture=True))["target_directory"])
     generator = str(target / "debug/uniffi-bindgen")
@@ -110,7 +110,7 @@ def build():
                 env = dict(os.environ, CARGO_TARGET_DIR=slice_dir)
                 env["CARGO_TARGET_" + rust_target.upper().replace("-", "_") + "_LINKER"] = str(toolchain / (clang + "26-clang"))
                 env["RUSTFLAGS"] = "-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384"
-                run("cargo", "build", "--locked", "-p", "termirust-replication-bindings",
+                run("cargo", "build", "--locked", "-p", "multiplex-replication-bindings",
                     "--release", "--lib", "--target", rust_target, env=env)
                 lib = Path(slice_dir) / rust_target / "release" / f"lib{STEM}.so"
                 if machine not in run(readelf, "-h", str(lib), capture=True):

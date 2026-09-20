@@ -36,10 +36,10 @@ focused() {
   ./scripts/verify/mcp-readonly.sh
   ./scripts/verify/mcp-actions.sh
   ./scripts/verify/browser-capability.sh
-  cargo check -p termirust --all-targets --all-features --locked
+  cargo check -p multiplex --all-targets --all-features --locked
   python3 scripts/dev/clippy-changed.py
-  cargo test -p termirust local::tests::local_tmux_session_survives_disconnect_and_reattaches -- --exact --nocapture
-  cargo test -p termirust ui::app::tests::canvas_persistent_local_terminal_opens_or_explains_missing_tmux -- --exact --nocapture
+  cargo test -p multiplex local::tests::local_tmux_session_survives_disconnect_and_reattaches -- --exact --nocapture
+  cargo test -p multiplex ui::app::tests::canvas_persistent_local_terminal_opens_or_explains_missing_tmux -- --exact --nocapture
 }
 
 policy() {
@@ -58,14 +58,14 @@ metadata = json.loads(subprocess.check_output(
 ))
 versions = {package["name"]: package.get("rust_version") for package in metadata["packages"]}
 # Slate sits on gpui-pre, whose dependencies need a newer compiler; the CI MSRV job excludes it.
-expected_versions = {"termirust-slate": "1.92"}
+expected_versions = {"multiplex-slate": "1.92"}
 unexpected = {
     name: version
     for name, version in versions.items()
     if version != expected_versions.get(name, "1.88")
 }
 if unexpected:
-    print(f"Workspace packages must declare rust-version 1.88 (termirust-slate 1.92): {unexpected}", file=sys.stderr)
+    print(f"Workspace packages must declare rust-version 1.88 (multiplex-slate 1.92): {unexpected}", file=sys.stderr)
     raise SystemExit(1)
 
 policy = Path("deny.toml").read_text()

@@ -2,9 +2,9 @@
 set -eu
 
 cargo fmt --all -- --check
-cargo test -p termirust structured_runtime_contract --locked -- --test-threads=1
-cargo test -p termirust cancellation_remains_cancelled_after_the_child_exits --locked -- --test-threads=1
-cargo clippy -p termirust --bin termirust --tests --locked
+cargo test -p multiplex structured_runtime_contract --locked -- --test-threads=1
+cargo test -p multiplex cancellation_remains_cancelled_after_the_child_exits --locked -- --test-threads=1
+cargo clippy -p multiplex --bin multiplex --tests --locked
 python3 scripts/dev/clippy-changed.py
 git diff --check
 

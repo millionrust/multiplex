@@ -63,8 +63,8 @@ def build():
     if not run("rustc", "--version", capture=True).startswith("rustc 1.97.1 "):
         raise RuntimeError("Rust 1.97.1 required")
     run("rustup", "component", "add", "llvm-tools-preview")
-    run("cargo", "build", "--locked", "-p", "termirust-replication-bindings", "--lib")
-    run("cargo", "build", "--locked", "-p", "termirust-controller-bindings", "--features", "bindgen-cli", "--bin", "uniffi-bindgen")
+    run("cargo", "build", "--locked", "-p", "multiplex-replication-bindings", "--lib")
+    run("cargo", "build", "--locked", "-p", "multiplex-controller-bindings", "--features", "bindgen-cli", "--bin", "uniffi-bindgen")
     target = Path(json.loads(run("cargo", "metadata", "--no-deps", "--format-version", "1", capture=True))["target_directory"])
     generator = str(target / "debug/uniffi-bindgen")
     if run(generator, "--version", capture=True).strip() != "uniffi-bindgen 0.32.0":
@@ -88,7 +88,7 @@ def build():
             with tempfile.TemporaryDirectory(prefix="slice-", dir=work) as build_dir:
                 # Ship machine-code archives, not Rust LLVM bitcode newer than Apple's tools.
                 env = dict(os.environ, CARGO_TARGET_DIR=build_dir, IPHONEOS_DEPLOYMENT_TARGET="17.0", CARGO_PROFILE_RELEASE_LTO="false")
-                run("cargo", "build", "--locked", "-p", "termirust-replication-bindings", "--release", "--lib", "--target", rust_target, env=env)
+                run("cargo", "build", "--locked", "-p", "multiplex-replication-bindings", "--release", "--lib", "--target", rust_target, env=env)
                 shutil.copy2(Path(build_dir) / rust_target / "release" / f"lib{STEM}.a", work / f"{rust_target}.a")
         run("lipo", "-create", str(work / "aarch64-apple-ios-sim.a"), str(work / "x86_64-apple-ios.a"), "-output", str(work / "simulator.a"))
         run("bash", "scripts/build/ios-static-xcframework.sh", f"{NAME}FFI", str(work / "aarch64-apple-ios.a"), str(work / "simulator.a"), str(headers), str(staged / f"{NAME}.xcframework"))

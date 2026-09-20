@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-CRATE="termirust-screen-bindings"
+CRATE="multiplex-screen-bindings"
 LIB_STEM="termirust_screen_bindings"
 SWIFT_MODULE="TermiRustRemoteScreens"
 KOTLIN_PACKAGE_PATH="com/termirust/screens"
@@ -89,7 +89,7 @@ if [[ "$BUILD_IOS" -eq 1 ]]; then
   require_pinned Xcode "Xcode $PINNED_XCODE_VERSION" "$(xcodebuild -version | head -1)"
   require_pinned "the iOS SDK" "$PINNED_IOS_SDK_VERSION" "$(xcrun --sdk iphoneos --show-sdk-version)"
 fi
-BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/termirust-screen-bindings.XXXXXX")"
+BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/multiplex-screen-bindings.XXXXXX")"
 trap 'rm -rf "$BUILD_ROOT"' EXIT
 GENERATED="$BUILD_ROOT/generated"
 STAGED="$BUILD_ROOT/output"

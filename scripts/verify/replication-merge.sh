@@ -2,8 +2,8 @@
 set -eu
 
 cargo fmt --all -- --check
-cargo test -p termirust-domain --test replication_contract --locked -- --test-threads=1
-cargo clippy -p termirust-domain --all-targets --locked -- -D warnings
+cargo test -p multiplex-domain --test replication_contract --locked -- --test-threads=1
+cargo clippy -p multiplex-domain --all-targets --locked -- -D warnings
 python3 scripts/dev/clippy-changed.py
 git diff --check
 

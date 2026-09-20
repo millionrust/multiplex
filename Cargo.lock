@@ -6805,6 +6805,591 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
 
 [[package]]
+name = "multiplex"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm-siv",
+ "alacritty_terminal",
+ "anyhow",
+ "argon2 0.5.3",
+ "base64 0.22.1",
+ "block",
+ "chrono",
+ "dirs 6.0.0",
+ "gpui",
+ "gpui-component",
+ "image",
+ "keyring",
+ "libc",
+ "multiplex-accessibility-macos",
+ "multiplex-cli",
+ "multiplex-client",
+ "multiplex-controller-listener",
+ "multiplex-controller-security",
+ "multiplex-diagnostics",
+ "multiplex-domain",
+ "multiplex-host-protocol",
+ "multiplex-protocol",
+ "multiplex-relay-client",
+ "multiplex-screen-capture",
+ "multiplex-screen-codec",
+ "multiplex-screen-host",
+ "multiplex-screen-input",
+ "multiplex-screen-protocol",
+ "multiplex-screen-session",
+ "multiplex-session-host",
+ "multiplex-store",
+ "multiplex-tmux",
+ "multiplex-ui-contract",
+ "notify-rust",
+ "objc",
+ "portable-pty",
+ "qrcode",
+ "rand 0.10.2",
+ "rand 0.8.6",
+ "rfd",
+ "russh",
+ "russh-sftp",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "smallvec",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "unicode-width 0.2.2",
+ "uuid",
+ "vt100",
+ "windows-sys 0.61.2",
+ "zeroize",
+]
+
+[[package]]
+name = "multiplex-accessibility-macos"
+version = "0.1.0"
+dependencies = [
+ "cocoa 0.26.0",
+ "multiplex-ui-contract",
+ "objc",
+]
+
+[[package]]
+name = "multiplex-browser"
+version = "0.1.0"
+dependencies = [
+ "chromiumoxide",
+ "futures",
+ "libc",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "multiplex-cli"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "crossterm",
+ "ctrlc",
+ "dirs 6.0.0",
+ "futures-util",
+ "keyring",
+ "libc",
+ "multiplex-client",
+ "multiplex-controller-listener",
+ "multiplex-controller-security",
+ "multiplex-domain",
+ "multiplex-host-protocol",
+ "multiplex-session-host",
+ "multiplex-store",
+ "portable-pty",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "unicode-width 0.2.2",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "multiplex-client"
+version = "0.1.0"
+dependencies = [
+ "crc32c",
+ "libc",
+ "multiplex-domain",
+ "multiplex-host-protocol",
+ "multiplex-session-host",
+ "multiplex-store",
+ "prost",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "uuid",
+]
+
+[[package]]
+name = "multiplex-controller-bindings"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "multiplex-controller-security",
+ "serde",
+ "serde_json",
+ "uniffi",
+ "zeroize",
+]
+
+[[package]]
+name = "multiplex-controller-listener"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "if-addrs",
+ "libc",
+ "mdns-sd",
+ "multiplex-client",
+ "multiplex-controller-security",
+ "multiplex-domain",
+ "multiplex-host-protocol",
+ "multiplex-screen-codec",
+ "multiplex-screen-host",
+ "multiplex-screen-protocol",
+ "multiplex-screen-session",
+ "multiplex-session-host",
+ "multiplex-store",
+ "multiplex-tmux",
+ "proptest",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "multiplex-controller-security"
+version = "0.1.0"
+dependencies = [
+ "clatter",
+ "curve25519-dalek 4.1.3",
+ "hex",
+ "hkdf 0.12.4",
+ "proptest",
+ "rand_core 0.6.4",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "multiplex-diagnostics"
+version = "0.1.0"
+dependencies = [
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+]
+
+[[package]]
+name = "multiplex-domain"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "unicode-casefold",
+ "unicode-normalization",
+ "unicode-segmentation",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "multiplex-host-protocol"
+version = "0.1.0"
+dependencies = [
+ "crc32c",
+ "multiplex-domain",
+ "proptest",
+ "prost",
+ "prost-build",
+ "protoc-bin-vendored",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "multiplex-mcp"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "fs2",
+ "multiplex-browser",
+ "multiplex-cli",
+ "multiplex-domain",
+ "multiplex-store",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+]
+
+[[package]]
+name = "multiplex-mobile-ffi"
+version = "0.1.0"
+dependencies = [
+ "jni 0.21.1",
+ "multiplex-protocol",
+ "multiplex-relay-protocol",
+ "serde",
+ "serde_json",
+ "vt100",
+]
+
+[[package]]
+name = "multiplex-protocol"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm-siv",
+ "argon2 0.5.3",
+ "base64 0.22.1",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "multiplex-relay-client"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "futures-util",
+ "multiplex-controller-listener",
+ "multiplex-controller-security",
+ "multiplex-domain",
+ "multiplex-relay-protocol",
+ "multiplex-relay-server",
+ "rand_core 0.6.4",
+ "rcgen",
+ "rustls",
+ "rustls-native-certs",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "url",
+ "uuid",
+ "x509-parser",
+ "zeroize",
+]
+
+[[package]]
+name = "multiplex-relay-protocol"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek 2.2.0",
+ "hex",
+ "proptest",
+ "rand_core 0.6.4",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "zeroize",
+]
+
+[[package]]
+name = "multiplex-relay-server"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "fs2",
+ "futures-util",
+ "libc",
+ "multiplex-controller-security",
+ "multiplex-relay-protocol",
+ "rand_core 0.6.4",
+ "rcgen",
+ "rustls",
+ "rustls-pemfile",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-rustls",
+ "tokio-tungstenite",
+ "tokio-util",
+ "zeroize",
+]
+
+[[package]]
+name = "multiplex-replication-bindings"
+version = "0.1.0"
+dependencies = [
+ "fs2",
+ "libc",
+ "multiplex-domain",
+ "multiplex-protocol",
+ "multiplex-replication-security",
+ "multiplex-store",
+ "serde_json",
+ "tempfile",
+ "uniffi",
+ "zeroize",
+]
+
+[[package]]
+name = "multiplex-replication-security"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm-siv",
+ "getrandom 0.4.2",
+ "hex",
+ "hkdf 0.12.4",
+ "hpke",
+ "keyring",
+ "multiplex-domain",
+ "rand_core 0.6.4",
+ "rand_core 0.9.5",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "zeroize",
+]
+
+[[package]]
+name = "multiplex-screen-bindings"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "multiplex-screen-codec",
+ "multiplex-screen-protocol",
+ "multiplex-screen-session",
+ "serde_json",
+ "sha2 0.10.9",
+ "uniffi",
+]
+
+[[package]]
+name = "multiplex-screen-capture"
+version = "0.1.0"
+dependencies = [
+ "ashpd 0.13.13",
+ "async-io",
+ "core-graphics 0.24.0",
+ "multiplex-screen-codec",
+ "pipewire",
+ "screencapturekit 10.0.3",
+ "windows 0.61.3",
+]
+
+[[package]]
+name = "multiplex-screen-codec"
+version = "0.1.0"
+dependencies = [
+ "miniz_oxide",
+ "proptest",
+ "xxhash-rust",
+]
+
+[[package]]
+name = "multiplex-screen-host"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "multiplex-controller-listener",
+ "multiplex-controller-security",
+ "multiplex-domain",
+ "multiplex-screen-codec",
+ "multiplex-screen-protocol",
+ "multiplex-screen-session",
+ "multiplex-screen-transport",
+ "multiplex-screen-video",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "multiplex-screen-input"
+version = "0.1.0"
+dependencies = [
+ "core-graphics 0.24.0",
+ "libc",
+ "multiplex-screen-codec",
+ "multiplex-screen-protocol",
+ "multiplex-screen-session",
+]
+
+[[package]]
+name = "multiplex-screen-protocol"
+version = "0.1.0"
+dependencies = [
+ "multiplex-screen-codec",
+ "proptest",
+]
+
+[[package]]
+name = "multiplex-screen-session"
+version = "0.1.0"
+dependencies = [
+ "multiplex-screen-codec",
+ "multiplex-screen-protocol",
+ "multiplex-screen-video",
+]
+
+[[package]]
+name = "multiplex-screen-transport"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "iroh",
+ "multiplex-screen-protocol",
+ "tokio",
+]
+
+[[package]]
+name = "multiplex-screen-video"
+version = "0.1.0"
+
+[[package]]
+name = "multiplex-session-host"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "crc32c",
+ "libc",
+ "multiplex-client",
+ "multiplex-controller-listener",
+ "multiplex-domain",
+ "multiplex-host-protocol",
+ "multiplex-store",
+ "portable-pty",
+ "prost",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "uuid",
+ "vt100",
+]
+
+[[package]]
+name = "multiplex-slate"
+version = "0.1.0"
+dependencies = [
+ "gpui-base",
+ "gpui-pre",
+ "gpui-pre-platform",
+ "multiplex-ui-contract",
+]
+
+[[package]]
+name = "multiplex-store"
+version = "0.1.0"
+dependencies = [
+ "crc32c",
+ "fs2",
+ "libc",
+ "multiplex-domain",
+ "multiplex-replication-security",
+ "same-file",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "multiplex-tmux"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "portable-pty",
+ "tempfile",
+]
+
+[[package]]
+name = "multiplex-tui"
+version = "0.1.0"
+dependencies = [
+ "dirs 6.0.0",
+ "libc",
+ "multiplex-cli",
+ "multiplex-client",
+ "multiplex-domain",
+ "multiplex-host-protocol",
+ "multiplex-session-host",
+ "multiplex-store",
+ "multiplex-ui-contract",
+ "portable-pty",
+ "rand 0.8.6",
+ "ratatui",
+ "serde_json",
+ "signal-hook 0.3.18",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "uuid",
+ "vt100",
+]
+
+[[package]]
+name = "multiplex-ui-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
+name = "multiplex-update-trust"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "jiff",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tough",
+ "url",
+]
+
+[[package]]
 name = "n0-dns-resolver"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11573,591 +12158,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "termirust"
-version = "0.1.0"
-dependencies = [
- "aes-gcm-siv",
- "alacritty_terminal",
- "anyhow",
- "argon2 0.5.3",
- "base64 0.22.1",
- "block",
- "chrono",
- "dirs 6.0.0",
- "gpui",
- "gpui-component",
- "image",
- "keyring",
- "libc",
- "notify-rust",
- "objc",
- "portable-pty",
- "qrcode",
- "rand 0.10.2",
- "rand 0.8.6",
- "rfd",
- "russh",
- "russh-sftp",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "smallvec",
- "tempfile",
- "termirust-accessibility-macos",
- "termirust-cli",
- "termirust-client",
- "termirust-controller-listener",
- "termirust-controller-security",
- "termirust-diagnostics",
- "termirust-domain",
- "termirust-host-protocol",
- "termirust-protocol",
- "termirust-relay-client",
- "termirust-screen-capture",
- "termirust-screen-codec",
- "termirust-screen-host",
- "termirust-screen-input",
- "termirust-screen-protocol",
- "termirust-screen-session",
- "termirust-session-host",
- "termirust-store",
- "termirust-tmux",
- "termirust-ui-contract",
- "tokio",
- "tokio-util",
- "unicode-width 0.2.2",
- "uuid",
- "vt100",
- "windows-sys 0.61.2",
- "zeroize",
-]
-
-[[package]]
-name = "termirust-accessibility-macos"
-version = "0.1.0"
-dependencies = [
- "cocoa 0.26.0",
- "objc",
- "termirust-ui-contract",
-]
-
-[[package]]
-name = "termirust-browser"
-version = "0.1.0"
-dependencies = [
- "chromiumoxide",
- "futures",
- "libc",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "url",
-]
-
-[[package]]
-name = "termirust-cli"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "crossterm",
- "ctrlc",
- "dirs 6.0.0",
- "futures-util",
- "keyring",
- "libc",
- "portable-pty",
- "rand 0.8.6",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "termirust-client",
- "termirust-controller-listener",
- "termirust-controller-security",
- "termirust-domain",
- "termirust-host-protocol",
- "termirust-session-host",
- "termirust-store",
- "tokio",
- "tokio-util",
- "unicode-width 0.2.2",
- "uuid",
- "zeroize",
-]
-
-[[package]]
-name = "termirust-client"
-version = "0.1.0"
-dependencies = [
- "crc32c",
- "libc",
- "prost",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "termirust-domain",
- "termirust-host-protocol",
- "termirust-session-host",
- "termirust-store",
- "tokio",
- "tokio-util",
- "uuid",
-]
-
-[[package]]
-name = "termirust-controller-bindings"
-version = "0.1.0"
-dependencies = [
- "hex",
- "serde",
- "serde_json",
- "termirust-controller-security",
- "uniffi",
- "zeroize",
-]
-
-[[package]]
-name = "termirust-controller-listener"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "if-addrs",
- "libc",
- "mdns-sd",
- "proptest",
- "rand 0.8.6",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "termirust-client",
- "termirust-controller-security",
- "termirust-domain",
- "termirust-host-protocol",
- "termirust-screen-codec",
- "termirust-screen-host",
- "termirust-screen-protocol",
- "termirust-screen-session",
- "termirust-session-host",
- "termirust-store",
- "termirust-tmux",
- "tokio",
- "tokio-util",
- "uuid",
- "zeroize",
-]
-
-[[package]]
-name = "termirust-controller-security"
-version = "0.1.0"
-dependencies = [
- "clatter",
- "curve25519-dalek 4.1.3",
- "hex",
- "hkdf 0.12.4",
- "proptest",
- "rand_core 0.6.4",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "subtle",
- "zeroize",
-]
-
-[[package]]
-name = "termirust-diagnostics"
-version = "0.1.0"
-dependencies = [
- "rand 0.8.6",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
-]
-
-[[package]]
-name = "termirust-domain"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "unicode-casefold",
- "unicode-normalization",
- "unicode-segmentation",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "termirust-host-protocol"
-version = "0.1.0"
-dependencies = [
- "crc32c",
- "proptest",
- "prost",
- "prost-build",
- "protoc-bin-vendored",
- "serde",
- "serde_json",
- "termirust-domain",
- "uuid",
-]
-
-[[package]]
-name = "termirust-mcp"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "fs2",
- "rand 0.8.6",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "termirust-browser",
- "termirust-cli",
- "termirust-domain",
- "termirust-store",
-]
-
-[[package]]
-name = "termirust-mobile-ffi"
-version = "0.1.0"
-dependencies = [
- "jni 0.21.1",
- "serde",
- "serde_json",
- "termirust-protocol",
- "termirust-relay-protocol",
- "vt100",
-]
-
-[[package]]
-name = "termirust-protocol"
-version = "0.1.0"
-dependencies = [
- "aes-gcm-siv",
- "argon2 0.5.3",
- "base64 0.22.1",
- "rand 0.8.6",
- "serde",
- "serde_json",
- "sha2 0.10.9",
-]
-
-[[package]]
-name = "termirust-relay-client"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "futures-util",
- "rand_core 0.6.4",
- "rcgen",
- "rustls",
- "rustls-native-certs",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "termirust-controller-listener",
- "termirust-controller-security",
- "termirust-domain",
- "termirust-relay-protocol",
- "termirust-relay-server",
- "tokio",
- "tokio-tungstenite",
- "tokio-util",
- "url",
- "uuid",
- "x509-parser",
- "zeroize",
-]
-
-[[package]]
-name = "termirust-relay-protocol"
-version = "0.1.0"
-dependencies = [
- "ed25519-dalek 2.2.0",
- "hex",
- "proptest",
- "rand_core 0.6.4",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "zeroize",
-]
-
-[[package]]
-name = "termirust-relay-server"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "fs2",
- "futures-util",
- "libc",
- "rand_core 0.6.4",
- "rcgen",
- "rustls",
- "rustls-pemfile",
- "serde",
- "serde_json",
- "tempfile",
- "termirust-controller-security",
- "termirust-relay-protocol",
- "tokio",
- "tokio-rustls",
- "tokio-tungstenite",
- "tokio-util",
- "zeroize",
-]
-
-[[package]]
-name = "termirust-replication-bindings"
-version = "0.1.0"
-dependencies = [
- "fs2",
- "libc",
- "serde_json",
- "tempfile",
- "termirust-domain",
- "termirust-protocol",
- "termirust-replication-security",
- "termirust-store",
- "uniffi",
- "zeroize",
-]
-
-[[package]]
-name = "termirust-replication-security"
-version = "0.1.0"
-dependencies = [
- "aes-gcm-siv",
- "getrandom 0.4.2",
- "hex",
- "hkdf 0.12.4",
- "hpke",
- "keyring",
- "rand_core 0.6.4",
- "rand_core 0.9.5",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "termirust-domain",
- "zeroize",
-]
-
-[[package]]
-name = "termirust-screen-bindings"
-version = "0.1.0"
-dependencies = [
- "hex",
- "serde_json",
- "sha2 0.10.9",
- "termirust-screen-codec",
- "termirust-screen-protocol",
- "termirust-screen-session",
- "uniffi",
-]
-
-[[package]]
-name = "termirust-screen-capture"
-version = "0.1.0"
-dependencies = [
- "ashpd 0.13.13",
- "async-io",
- "core-graphics 0.24.0",
- "pipewire",
- "screencapturekit 10.0.3",
- "termirust-screen-codec",
- "windows 0.61.3",
-]
-
-[[package]]
-name = "termirust-screen-codec"
-version = "0.1.0"
-dependencies = [
- "miniz_oxide",
- "proptest",
- "xxhash-rust",
-]
-
-[[package]]
-name = "termirust-screen-host"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "termirust-controller-listener",
- "termirust-controller-security",
- "termirust-domain",
- "termirust-screen-codec",
- "termirust-screen-protocol",
- "termirust-screen-session",
- "termirust-screen-transport",
- "termirust-screen-video",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
-name = "termirust-screen-input"
-version = "0.1.0"
-dependencies = [
- "core-graphics 0.24.0",
- "libc",
- "termirust-screen-codec",
- "termirust-screen-protocol",
- "termirust-screen-session",
-]
-
-[[package]]
-name = "termirust-screen-protocol"
-version = "0.1.0"
-dependencies = [
- "proptest",
- "termirust-screen-codec",
-]
-
-[[package]]
-name = "termirust-screen-session"
-version = "0.1.0"
-dependencies = [
- "termirust-screen-codec",
- "termirust-screen-protocol",
- "termirust-screen-video",
-]
-
-[[package]]
-name = "termirust-screen-transport"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "iroh",
- "termirust-screen-protocol",
- "tokio",
-]
-
-[[package]]
-name = "termirust-screen-video"
-version = "0.1.0"
-
-[[package]]
-name = "termirust-session-host"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "crc32c",
- "libc",
- "portable-pty",
- "prost",
- "serde",
- "serde_json",
- "tempfile",
- "termirust-client",
- "termirust-controller-listener",
- "termirust-domain",
- "termirust-host-protocol",
- "termirust-store",
- "tokio",
- "tokio-util",
- "uuid",
- "vt100",
-]
-
-[[package]]
-name = "termirust-slate"
-version = "0.1.0"
-dependencies = [
- "gpui-base",
- "gpui-pre",
- "gpui-pre-platform",
- "termirust-ui-contract",
-]
-
-[[package]]
-name = "termirust-store"
-version = "0.1.0"
-dependencies = [
- "crc32c",
- "fs2",
- "libc",
- "same-file",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "termirust-domain",
- "termirust-replication-security",
- "uuid",
- "zeroize",
-]
-
-[[package]]
-name = "termirust-tmux"
-version = "0.1.0"
-dependencies = [
- "libc",
- "portable-pty",
- "tempfile",
-]
-
-[[package]]
-name = "termirust-tui"
-version = "0.1.0"
-dependencies = [
- "dirs 6.0.0",
- "libc",
- "portable-pty",
- "rand 0.8.6",
- "ratatui",
- "serde_json",
- "signal-hook 0.3.18",
- "tempfile",
- "termirust-cli",
- "termirust-client",
- "termirust-domain",
- "termirust-host-protocol",
- "termirust-session-host",
- "termirust-store",
- "termirust-ui-contract",
- "tokio",
- "tokio-util",
- "uuid",
- "vt100",
-]
-
-[[package]]
-name = "termirust-ui-contract"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "toml 0.9.12+spec-1.1.0",
-]
-
-[[package]]
-name = "termirust-update-trust"
-version = "0.1.0"
-dependencies = [
- "hex",
- "jiff",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "tokio",
- "tokio-util",
- "tough",
- "url",
 ]
 
 [[package]]

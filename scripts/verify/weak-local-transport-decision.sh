@@ -20,8 +20,8 @@ if rg -n -i '\btelnet\b|ConnectProtocol::Serial|icon!\("serial"\)|assets/icons/s
 fi
 rm -f /tmp/termirust-weak-local-surface.txt
 
-cargo test -p termirust-domain ssh_access --locked -- --test-threads=1
-cargo test -p termirust e2e_choose_protocol --locked -- --test-threads=1
+cargo test -p multiplex-domain ssh_access --locked -- --test-threads=1
+cargo test -p multiplex e2e_choose_protocol --locked -- --test-threads=1
 cargo fmt --all -- --check
 git diff --check
 

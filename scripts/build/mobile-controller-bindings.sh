@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-CRATE="termirust-controller-bindings"
+CRATE="multiplex-controller-bindings"
 LIB_STEM="termirust_controller_bindings"
 OUTPUT_DIR="$ROOT_DIR/dist/mobile/controller"
 BUILD_IOS=0
@@ -78,7 +78,7 @@ if [[ "$BUILD_IOS" -eq 1 ]]; then
     exit 1
   }
 fi
-BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/termirust-controller-bindings.XXXXXX")"
+BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/multiplex-controller-bindings.XXXXXX")"
 trap 'rm -rf "$BUILD_ROOT"' EXIT
 GENERATED="$BUILD_ROOT/generated"
 STAGED="$BUILD_ROOT/output"

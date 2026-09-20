@@ -17,11 +17,11 @@ elif [[ $# -eq 4 && "${1:-}" == "--surface" && "${2:-}" == "terminal-chrome" && 
 else
   echo "Usage: $0 --all-ui --no-new-baseline" >&2
   echo "   or: $0 --all-ui --zero-legacy" >&2
-  echo "   or: $0 --paths crates/termirust-desktop/src/ui/a.rs,crates/termirust-desktop/src/ui/b.rs --zero-legacy" >&2
+  echo "   or: $0 --paths crates/multiplex-desktop/src/ui/a.rs,crates/multiplex-desktop/src/ui/b.rs --zero-legacy" >&2
   echo "   or: $0 --surface vault-keys-snippets|settings|agent-canvas --zero-legacy" >&2
   echo "   or: $0 --surface terminal-chrome --zero-legacy-except terminal-grid-metrics" >&2
   exit 2
 fi
 
-cargo run -q -p termirust-ui-contract --bin generate-tokens -- --check
-cargo run -q -p termirust-ui-contract --bin verify-design-tokens -- "$@"
+cargo run -q -p multiplex-ui-contract --bin generate-tokens -- --check
+cargo run -q -p multiplex-ui-contract --bin verify-design-tokens -- "$@"

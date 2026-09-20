@@ -9,5 +9,5 @@ if [[ "${1:-}" != "--inventory" || -z "${2:-}" || "${3:-}" != "--platform" || "$
   exit 2
 fi
 
-cargo run -q -p termirust-ui-contract --bin ui-audit -- run \
+cargo run -q -p multiplex-ui-contract --bin ui-audit -- run \
   --inventory "$2" --platform "$4" --reader "$6"

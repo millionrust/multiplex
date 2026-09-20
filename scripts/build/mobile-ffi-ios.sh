@@ -15,12 +15,12 @@ for target in "${IOS_TARGETS[@]}"; do
 done
 
 for target in "${IOS_TARGETS[@]}"; do
-  cargo build -p termirust-mobile-ffi --release --target "$target"
+  cargo build -p multiplex-mobile-ffi --release --target "$target"
 done
 
 DIST_DIR="$ROOT_DIR/dist/mobile/ios"
 SIM_DIR="$DIST_DIR/simulator"
-HEADER="$ROOT_DIR/crates/termirust-mobile-ffi/include/termirust_mobile.h"
+HEADER="$ROOT_DIR/crates/multiplex-mobile-ffi/include/termirust_mobile.h"
 LIB_NAME="libtermirust_mobile_ffi.a"
 
 rm -rf "$SIM_DIR"

@@ -29,10 +29,10 @@ while (( $(date +%s) < deadline )); do
   started=$(date +%s)
   log=$(mktemp "${TMPDIR:-/tmp}/termirust-soak.XXXXXX")
   status=pass
-  if ! cargo test -q -p termirust-session-host --test lifecycle --locked >"$log" 2>&1 \
-    || ! cargo test -q -p termirust-relay-server --test admission_revocation --locked >>"$log" 2>&1 \
-    || ! cargo test -q -p termirust-relay-server --test hostile_forwarding_limits --locked >>"$log" 2>&1 \
-    || ! cargo test -q -p termirust-controller-listener --test authenticated_bridge --locked >>"$log" 2>&1; then
+  if ! cargo test -q -p multiplex-session-host --test lifecycle --locked >"$log" 2>&1 \
+    || ! cargo test -q -p multiplex-relay-server --test admission_revocation --locked >>"$log" 2>&1 \
+    || ! cargo test -q -p multiplex-relay-server --test hostile_forwarding_limits --locked >>"$log" 2>&1 \
+    || ! cargo test -q -p multiplex-controller-listener --test authenticated_bridge --locked >>"$log" 2>&1; then
     status=fail
   fi
   finished=$(date +%s)

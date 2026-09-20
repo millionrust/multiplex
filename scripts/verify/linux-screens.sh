@@ -45,12 +45,12 @@ shift || true
 ARGS=${*:---all-targets}
 
 CRATES=(
-    termirust-screen-capture
-    termirust-screen-codec
-    termirust-screen-input
-    termirust-screen-protocol
-    termirust-screen-session
-    termirust-screen-video
+    multiplex-screen-capture
+    multiplex-screen-codec
+    multiplex-screen-input
+    multiplex-screen-protocol
+    multiplex-screen-session
+    multiplex-screen-video
 )
 
 if ! docker info >/dev/null 2>&1; then
@@ -86,7 +86,7 @@ if (( DESKTOP )); then
           "$IMAGE" bash -c "
             set -e
             mkdir -p /w && cd /w && tar -xf -
-            cargo $SUBCOMMAND -p termirust $ARGS
+            cargo $SUBCOMMAND -p multiplex $ARGS
           "
     exit
 fi

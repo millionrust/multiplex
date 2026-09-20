@@ -21,7 +21,7 @@ run "Metadata and Host crash recovery" \
 run "Derived-index crash recovery" \
   ./scripts/test/index-repair.sh --fixtures tests/fixtures/health-index --crash-matrix
 run "Relay atomic-state crash recovery" \
-  cargo test -p termirust-relay-server --test crash_recovery --locked
+  cargo test -p multiplex-relay-server --test crash_recovery --locked
 run "Update trust attack and rollback matrix" \
   ./scripts/verify/update-trust-adr.sh docs/decisions/update-trust.md tests/fixtures/update-tuf
 run "Host protocol bounded fuzz smoke" ./scripts/run/fuzz-host-protocol-smoke.sh

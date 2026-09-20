@@ -27,7 +27,7 @@ if [[ $pairs != "1,10,100" || $runs != "10" ]]; then
   exit 2
 fi
 
-cargo run -q -p termirust-relay-server --example relay_bench -- \
+cargo run -q -p multiplex-relay-server --example relay_bench -- \
   --pairs "$pairs" --runs "$runs" --output "$output"
 
 python3 - "$output" <<'PY'
@@ -35,7 +35,7 @@ import json
 import sys
 
 report = json.load(open(sys.argv[1]))
-assert report["schema"] == "termirust-relay-core-benchmark"
+assert report["schema"] == "multiplex-relay-core-benchmark"
 assert report["loopback_only"] is True
 assert report["runs_per_scenario"] == 10
 assert [scenario["pairs"] for scenario in report["scenarios"]] == [1, 10, 100]

@@ -94,7 +94,7 @@ prepare_android_test_native() {
       ;;
   esac
 
-  cargo build --locked -p termirust-controller-bindings --release
+  cargo build --locked -p multiplex-controller-bindings --release
   mkdir -p "$ANDROID_DIR/app/src/test/native/$resource_dir"
   cp "$ROOT_DIR/target/release/$library_name" \
     "$ANDROID_DIR/app/src/test/native/$resource_dir/$library_name"
@@ -105,8 +105,8 @@ require_path "$ANDROID_DIR/gradlew" "Android Gradle wrapper"
 
 cd "$ROOT_DIR"
 
-run_step "Rust shared protocol tests" cargo test -p termirust-protocol
-run_step "Rust mobile FFI tests" cargo test -p termirust-mobile-ffi
+run_step "Rust shared protocol tests" cargo test -p multiplex-protocol
+run_step "Rust mobile FFI tests" cargo test -p multiplex-mobile-ffi
 run_step "Android host Controller binding" prepare_android_test_native
 run_step "Mobile helper script syntax" bash -n \
   scripts/sync/mobile-ffi-artifacts.sh \

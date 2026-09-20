@@ -1,0 +1,14 @@
+[package]
+name = "multiplex-tmux"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "UI-free tmux discovery, session listing, and attach arguments for TermiRust"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+portable-pty = "0.9"
+tempfile = "3.27"

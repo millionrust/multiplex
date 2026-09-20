@@ -1,0 +1,156 @@
+use std::env;
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+
+use multiplex_ui_contract::lint::{
+    scan_ui_tree, verify_baseline, verify_zero_paths, verify_zero_surface,
+    verify_zero_surface_except, write_baseline,
+};
+
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("verify-design-tokens: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> Result<(), String> {
+    let mut write = false;
+    let mut paths = None;
+    let mut surface = None;
+    let mut zero_legacy = false;
+    let mut zero_legacy_exception = None;
+    let mut arguments = env::args().skip(1);
+    while let Some(argument) = arguments.next() {
+        match argument.as_str() {
+            "--all-ui" | "--no-new-baseline" => {}
+            "--paths" => {
+                paths = Some(
+                    arguments
+                        .next()
+                        .ok_or_else(|| "--paths requires a comma-separated value".to_string())?,
+                );
+            }
+            "--surface" => {
+                surface = Some(
+                    arguments
+                        .next()
+                        .ok_or_else(|| "--surface requires a value".to_string())?,
+                );
+            }
+            "--zero-legacy" => zero_legacy = true,
+            "--zero-legacy-except" => {
+                zero_legacy_exception = Some(
+                    arguments
+                        .next()
+                        .ok_or_else(|| "--zero-legacy-except requires a value".to_string())?,
+                );
+            }
+            "--write-baseline" => write = true,
+            "--help" | "-h" => {
+                println!(
+                    "Usage: verify-design-tokens --all-ui --no-new-baseline\n\
+                     Or: verify-design-tokens --paths crates/multiplex-desktop/src/ui/a.rs,crates/multiplex-desktop/src/ui/b.rs --zero-legacy\n\
+                     Or: verify-design-tokens --surface vault-keys-snippets --zero-legacy\n\
+                     Or: verify-design-tokens --surface terminal-chrome --zero-legacy-except terminal-grid-metrics\n\
+                     Baseline maintenance requires TERMIRUST_MAINTENANCE_ALLOW_BASELINE_WRITE=1."
+                );
+                return Ok(());
+            }
+            _ => return Err(format!("unknown argument {argument:?}")),
+        }
+    }
+    let root = workspace_root();
+    let baseline = root.join("design/legacy-visual-literals.toml");
+    if paths.is_some() && surface.is_some() {
+        return Err("--paths and --surface are mutually exclusive".to_string());
+    }
+    if let Some(exception) = zero_legacy_exception.as_deref() {
+        if surface.as_deref() != Some("terminal-chrome") || exception != "terminal-grid-metrics" {
+            return Err(
+                "only terminal-chrome may name the terminal-grid-metrics exception".to_string(),
+            );
+        }
+        zero_legacy = true;
+    }
+    if let Some(surface) = surface {
+        if write || !zero_legacy {
+            return Err("--surface requires --zero-legacy and cannot write a baseline".to_string());
+        }
+        if let Some(exception) = zero_legacy_exception.as_deref() {
+            verify_zero_surface_except(&root, &surface, exception)
+                .map_err(|error| error.to_string())?;
+            println!("verified zero legacy visual literals for {surface} except {exception}");
+        } else {
+            verify_zero_surface(&root, &surface).map_err(|error| error.to_string())?;
+            println!("verified zero legacy visual literals for {surface}");
+        }
+    } else if let Some(paths) = paths {
+        if write || !zero_legacy {
+            return Err("--paths requires --zero-legacy and cannot write a baseline".to_string());
+        }
+        let paths = paths.split(',').map(PathBuf::from).collect::<Vec<_>>();
+        verify_zero_paths(&root, &paths).map_err(|error| error.to_string())?;
+        println!("verified zero scoped legacy visual literals");
+    } else if zero_legacy {
+        let findings = scan_ui_tree(&root).map_err(|error| error.to_string())?;
+        let findings = findings
+            .into_iter()
+            .filter(|finding| !is_named_exception(&root, &finding.file, finding.line))
+            .collect::<Vec<_>>();
+        if !findings.is_empty() {
+            let summary = findings
+                .iter()
+                .take(25)
+                .map(|finding| {
+                    format!(
+                        "{}:{} {}: {}",
+                        finding.file, finding.line, finding.category, finding.excerpt
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Err(format!(
+                "all UI contains {} legacy visual literal(s):\n{summary}",
+                findings.len()
+            ));
+        }
+        println!("verified zero whole-UI legacy visual literals except named exceptions");
+    } else if write {
+        if env::var("TERMIRUST_MAINTENANCE_ALLOW_BASELINE_WRITE").as_deref() != Ok("1") {
+            return Err(
+                "baseline writes are maintenance-only; normal checks may not add exceptions"
+                    .to_string(),
+            );
+        }
+        let count = write_baseline(&root, &baseline).map_err(|error| error.to_string())?;
+        println!("wrote {count} immutable legacy visual literal fingerprints");
+    } else {
+        let count = verify_baseline(&root, &baseline).map_err(|error| error.to_string())?;
+        println!("verified {count} legacy visual literal fingerprints; no new baseline entries");
+    }
+    Ok(())
+}
+
+fn is_named_exception(root: &Path, file: &str, line: usize) -> bool {
+    std::fs::read_to_string(root.join(file))
+        .ok()
+        .and_then(|source| {
+            source
+                .lines()
+                .nth(line.saturating_sub(1))
+                .map(str::to_string)
+        })
+        .is_some_and(|source| source.contains("termirust-ui-exception:"))
+}
+
+fn workspace_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("ui contract crate must live in workspace/crates")
+        .to_path_buf()
+}

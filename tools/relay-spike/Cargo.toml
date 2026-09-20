@@ -1,5 +1,5 @@
 [package]
-name = "termirust-relay-spike"
+name = "multiplex-relay-spike"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
@@ -15,7 +15,7 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
-termirust-controller-security = { version = "=0.1.0", path = "../../crates/termirust-controller-security" }
+multiplex-controller-security = { version = "=0.1.0", path = "../../crates/multiplex-controller-security" }
 zeroize = "=1.8.2"
 
 [[bin]]

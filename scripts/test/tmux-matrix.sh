@@ -23,9 +23,9 @@ for binary in "$@"; do
   }
   version=$("$binary" -V)
   printf '[tmux-matrix] %s (%s)\n' "$version" "$binary"
-  TERMIRUST_TMUX_PATH="$binary" cargo test --locked -p termirust-tmux --tests
+  TERMIRUST_TMUX_PATH="$binary" cargo test --locked -p multiplex-tmux --tests
   TERMIRUST_TMUX_PATH="$binary" cargo test --locked \
-    -p termirust-controller-listener --test tmux_sessions
+    -p multiplex-controller-listener --test tmux_sessions
 done
 
 printf '[tmux-matrix] every tmux build passed\n'

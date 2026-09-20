@@ -30,7 +30,7 @@ IOS_FIXTURE="$IOS_DIR/TermiRustMobileTests/Fixtures/controller-v1.json"
 ANDROID_KOTLIN="$ANDROID_DIR/app/src/main/java/com/termirust/controller/security/termirust_controller_bindings.kt"
 ANDROID_FIXTURE="$ANDROID_DIR/app/src/test/resources/controller-v1.json"
 ANDROID_TEST_NATIVE="$ANDROID_DIR/app/src/test/native"
-FIXTURE="$ROOT_DIR/crates/termirust-controller-security/tests/vectors/controller-v1.json"
+FIXTURE="$ROOT_DIR/crates/multiplex-controller-security/tests/vectors/controller-v1.json"
 
 if [[ "$MODE" == "--write" ]]; then
   if [[ "$DO_IOS" -eq 1 ]]; then

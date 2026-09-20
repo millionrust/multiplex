@@ -6,9 +6,9 @@ TARGET_DIR="$(
   cargo metadata --format-version 1 --no-deps --manifest-path "$ROOT_DIR/Cargo.toml" \
     | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])'
 )"
-HOST_BINARY="$TARGET_DIR/debug/termirust-session-host"
+HOST_BINARY="$TARGET_DIR/debug/multiplex-session-host"
 APP_BUNDLE="$TARGET_DIR/release/bundle/osx/TermiRust.app"
-APP_BINARY="$APP_BUNDLE/Contents/MacOS/termirust"
+APP_BINARY="$APP_BUNDLE/Contents/MacOS/multiplex"
 FIXTURE_ROOT=""
 CONTAINER_NAME=""
 APP_PID=""
@@ -106,11 +106,11 @@ status_line "PASS" "disposable Docker SSH fixture"
 
 status_line "RUN" "separate Host and Controller replay/writer/revocation proof"
 cd "$ROOT_DIR"
-cargo build -p termirust-session-host >/dev/null
+cargo build -p multiplex-session-host >/dev/null
 TERMIRUST_N02_HOST_BIN="$HOST_BINARY" \
 TERMIRUST_N02_SSH_PORT="$SSH_PORT" \
 TERMIRUST_N02_SSH_KEY="$SSH_KEY" \
-  cargo test -p termirust-controller-listener \
+  cargo test -p multiplex-controller-listener \
     --test desktop_host_golden \
     bundled_desktop_host_controller_golden_run -- --exact --nocapture
 status_line "PASS" "separate Host and Controller replay/writer/revocation proof"

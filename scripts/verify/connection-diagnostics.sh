@@ -14,21 +14,21 @@ docker info >/dev/null 2>&1 || {
 }
 
 test -f docs/decisions/connection-diagnostics.md
-rg -q 'MAX_ACTIVE_DIAGNOSTICS: usize = 4' crates/termirust-desktop/src/connection_diagnostics.rs
-rg -q 'MAX_QUEUED_DIAGNOSTICS: usize = 64' crates/termirust-desktop/src/connection_diagnostics.rs
-rg -q 'HostKeyPolicy::RequireExisting' crates/termirust-desktop/src/ssh.rs
-rg -q 'verify_existing' crates/termirust-desktop/src/storage.rs crates/termirust-desktop/src/ssh.rs
-rg -q 'hosts-bulk-diagnose' crates/termirust-desktop/src/ui/app/hosts.rs
+rg -q 'MAX_ACTIVE_DIAGNOSTICS: usize = 4' crates/multiplex-desktop/src/connection_diagnostics.rs
+rg -q 'MAX_QUEUED_DIAGNOSTICS: usize = 64' crates/multiplex-desktop/src/connection_diagnostics.rs
+rg -q 'HostKeyPolicy::RequireExisting' crates/multiplex-desktop/src/ssh.rs
+rg -q 'verify_existing' crates/multiplex-desktop/src/storage.rs crates/multiplex-desktop/src/ssh.rs
+rg -q 'hosts-bulk-diagnose' crates/multiplex-desktop/src/ui/app/hosts.rs
 
 cargo fmt --all -- --check
-cargo test -p termirust connection_diagnostics::tests --locked -- --test-threads=1
-cargo test -p termirust storage::tests::strict_known_host_verification_never_mutates_trust \
+cargo test -p multiplex connection_diagnostics::tests --locked -- --test-threads=1
+cargo test -p multiplex storage::tests::strict_known_host_verification_never_mutates_trust \
   --locked -- --exact --test-threads=1
-cargo test -p termirust ssh::tests::connection_diagnostic_times_out_and_cancels_a_stalled_transport \
+cargo test -p multiplex ssh::tests::connection_diagnostic_times_out_and_cancels_a_stalled_transport \
   --locked -- --exact --test-threads=1
-cargo test -p termirust ssh::tests::docker_ssh_connection_diagnostic_is_strict_read_only_and_recovers \
+cargo test -p multiplex ssh::tests::docker_ssh_connection_diagnostic_is_strict_read_only_and_recovers \
   --locked -- --exact --test-threads=1
-cargo test -p termirust \
+cargo test -p multiplex \
   ui::app::tests::e2e_hosts_diagnose_button_reports_unknown_trust_without_opening_terminal \
   --locked -- --exact --test-threads=1
 git diff --check

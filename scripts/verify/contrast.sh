@@ -9,4 +9,4 @@ if [[ $# -ne 2 || "$2" != "--all-states" ]]; then
   exit 2
 fi
 
-cargo run -q -p termirust-ui-contract --bin ui-audit -- contrast --tokens "$1"
+cargo run -q -p multiplex-ui-contract --bin ui-audit -- contrast --tokens "$1"

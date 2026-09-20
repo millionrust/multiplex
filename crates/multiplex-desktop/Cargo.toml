@@ -1,0 +1,111 @@
+[package]
+name = "multiplex"
+version.workspace = true
+edition = "2024"
+rust-version.workspace = true
+description = "Native desktop SSH client built with GPUI"
+authors = ["TermiRust contributors"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jacobsam/terminal"
+readme = "../../README.md"
+default-run = "multiplex"
+
+[package.metadata.bundle]
+name = "TermiRust"
+identifier = "com.termirust.desktop"
+icon = ["assets/icons/app.png", "assets/icons/app@2x.png"]
+copyright = "Copyright (c) 2025 TermiRust contributors"
+category = "DeveloperTool"
+short_description = "Native desktop SSH client"
+long_description = """
+TermiRust is a native desktop SSH client with vault management,
+SFTP browsing, port forwarding, jump host chains, snippets,
+broadcast input, and more.
+"""
+osx_minimum_system_version = "12.0"
+osx_url_schemes = ["termirust"]
+deb_depends = ["libssl3", "libxkbcommon0"]
+
+# `objc`'s `msg_send!` and `sel!` expand to a `cfg(feature = "cargo-clippy")` check, which this
+# crate has no such feature for, so every macOS interop call raised an unexpected-cfg warning it
+# could do nothing about — eighteen of them, drowning the warnings that are ours. Declaring the
+# value keeps the lint on for every other cfg.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(feature, values("cargo-clippy"))',
+] }
+
+[dependencies]
+aes-gcm-siv = "0.11"
+alacritty_terminal = { version = "0.26.0", default-features = false }
+anyhow = "1.0"
+argon2 = "0.5"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false }
+dirs = "6.0"
+gpui = { version = "0.2.2", features = ["runtime_shaders", "test-support"] }
+gpui-component = "0.5.1"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
+keyring = { version = "3.6.2", default-features = false, features = ["apple-native", "windows-native", "linux-native-sync-persistent", "crypto-rust"] }
+libc = "0.2"
+portable-pty = "0.9"
+qrcode = { version = "0.14", default-features = false }
+rand = "0.8"
+# russh 0.60's key types take an RNG through rand_core 0.10's traits, which rand 0.8's `OsRng`
+# does not implement. Both are the operating system's source; only the trait shape differs. Kept
+# under an alias and used only where russh needs it, rather than moving every call site.
+ssh-rand = { package = "rand", version = "0.10" }
+rfd = "0.15"
+russh = { version = "0.63", default-features = false, features = ["ring", "rsa"] }
+russh-sftp = "2.1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+smallvec = "1.15"
+multiplex-protocol = { version = "0.1.0", path = "../multiplex-protocol" }
+multiplex-domain = { version = "0.1.0", path = "../multiplex-domain" }
+multiplex-diagnostics = { version = "0.1.0", path = "../multiplex-diagnostics" }
+multiplex-client = { version = "0.1.0", path = "../multiplex-client" }
+multiplex-cli = { version = "0.1.0", path = "../multiplex-cli" }
+multiplex-controller-security = { version = "0.1.0", path = "../multiplex-controller-security" }
+multiplex-controller-listener = { version = "0.1.0", path = "../multiplex-controller-listener" }
+multiplex-host-protocol = { version = "0.1.0", path = "../multiplex-host-protocol" }
+multiplex-relay-client = { version = "0.1.0", path = "../multiplex-relay-client" }
+multiplex-screen-capture = { version = "0.1.0", path = "../multiplex-screen-capture" }
+multiplex-screen-codec = { version = "0.1.0", path = "../multiplex-screen-codec" }
+multiplex-screen-host = { version = "0.1.0", path = "../multiplex-screen-host" }
+multiplex-screen-input = { version = "0.1.0", path = "../multiplex-screen-input" }
+multiplex-screen-protocol = { version = "0.1.0", path = "../multiplex-screen-protocol" }
+multiplex-screen-session = { version = "0.1.0", path = "../multiplex-screen-session" }
+multiplex-session-host = { version = "0.1.0", path = "../multiplex-session-host" }
+multiplex-store = { version = "0.1.0", path = "../multiplex-store", features = ["os-keyring"] }
+multiplex-tmux = { version = "0.1.0", path = "../multiplex-tmux" }
+multiplex-ui-contract = { version = "0.1.0", path = "../multiplex-ui-contract" }
+tokio = { version = "1", features = ["io-std", "io-util", "net", "rt", "signal", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+uuid = { version = "1.22", features = ["v4"] }
+zeroize = "=1.9.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block = "0.1"
+objc = "0.2"
+multiplex-accessibility-macos = { version = "0.1.0", path = "../multiplex-accessibility-macos" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+# 4.18 raises MSRV above the workspace contract; keep 4.17 pinned until N14
+# qualification moves the whole workspace together.
+notify-rust = { version = "=4.17.0" }
+
+[dev-dependencies]
+tempfile = "3.27"
+unicode-width = "=0.2.2"
+vt100 = "0.16.2"

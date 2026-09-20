@@ -156,7 +156,7 @@ def main():
                 request = Path(temp) / "request.json"
                 command(adb, "-s", serial, "pull", remote + "/request.json", str(request))
                 fixture = Path(temp) / "desktop-fixture"
-                output = command("cargo", "run", "--locked", "-p", "termirust-replication-bindings",
+                output = command("cargo", "run", "--locked", "-p", "multiplex-replication-bindings",
                                  "--example", "android_enrollment_fixture", "--", str(request), str(fixture),
                                  timeout=600, minimum_free_bytes=16 * 1024**3)
                 print(output.stdout, flush=True)

@@ -25,11 +25,11 @@ fi
 }
 
 cd "$root"
-cargo test -p termirust-cli --test controller_ssh_json
-cargo test -p termirust-cli --test ssh_argv_security
-cargo test -p termirust-client --test ssh_controller_reconnect
-cargo test -p termirust-controller-listener --test pairing_route
-cargo test -p termirust-session-host --test remote_controller_bridge
+cargo test -p multiplex-cli --test controller_ssh_json
+cargo test -p multiplex-cli --test ssh_argv_security
+cargo test -p multiplex-client --test ssh_controller_reconnect
+cargo test -p multiplex-controller-listener --test pairing_route
+cargo test -p multiplex-session-host --test remote_controller_bridge
 
 if rg -n --hidden --glob '*.json' --glob '*.log' \
     'BEGIN (OPENSSH|RSA|EC|DSA) PRIVATE KEY|ABCD-1234|private\.example|operator@' \

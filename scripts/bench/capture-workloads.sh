@@ -28,7 +28,7 @@ export CARGO_INCREMENTAL=0
 # Built once, up front: a build running during a capture is itself a workload, and would land in
 # every number below.
 echo "building capture_stats..."
-cargo build -p termirust-screen-capture --release --example capture_stats >/dev/null
+cargo build -p multiplex-screen-capture --release --example capture_stats >/dev/null
 
 STATS="$ROOT_DIR/target/release/examples/capture_stats"
 [[ -x "$STATS" ]] || { echo "capture_stats was not built at $STATS" >&2; exit 1; }

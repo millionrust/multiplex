@@ -14,7 +14,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
-STATE_DIR="$HOME/Library/Application Support/termirust"
+STATE_DIR="$HOME/Library/Application Support/multiplex"
 STATE_FILE="$STATE_DIR/state.json"
 KNOWN_HOSTS_FILE="$STATE_DIR/known_hosts.json"
 STATE_BACKUP=""
@@ -184,7 +184,7 @@ if [[ "${TERMIRUST_SKIP_RELEASE_BUILD:-0}" != "1" ]]; then
   cargo build --release >/dev/null
 fi
 APP_BUNDLE="$TARGET_DIR/release/bundle/osx/TermiRust.app"
-APP_BINARY="$TARGET_DIR/release/termirust"
+APP_BINARY="$TARGET_DIR/release/multiplex"
 if [[ ! -x "$APP_BINARY" ]]; then
   echo "release app binary not found at $APP_BINARY" >&2
   exit 1
@@ -193,11 +193,11 @@ if [[ ! -d "$APP_BUNDLE" ]]; then
   echo "bundled app not found at $APP_BUNDLE" >&2
   exit 1
 fi
-cp "$APP_BINARY" "$APP_BUNDLE/Contents/MacOS/termirust"
+cp "$APP_BINARY" "$APP_BUNDLE/Contents/MacOS/multiplex"
 
 pkill -x termirust >/dev/null 2>&1 || true
 sleep 1
-"$APP_BUNDLE/Contents/MacOS/termirust" >/tmp/termirust-real-app.out 2>/tmp/termirust-real-app.err &
+"$APP_BUNDLE/Contents/MacOS/multiplex" >/tmp/termirust-real-app.out 2>/tmp/termirust-real-app.err &
 APP_PID=""
 for _ in {1..20}; do
   APP_PID="$(pgrep -x termirust | tail -n 1 || true)"

@@ -7,7 +7,7 @@
 [test-groups]
 # The CLI's integration tests start real durable Hosts, all for the one session id in
 # tests/common/mod.rs. On Linux and macOS a Host's socket lives in a machine-wide directory,
-# /tmp/termirust-<uid>/<session id> (see termirust-client's ipc.rs), because a Unix socket path
+# /tmp/multiplex-<uid>/<session id> (see multiplex-client's ipc.rs), because a Unix socket path
 # cannot be long enough to sit under a test's own temporary directory. Two of these tests running
 # at once therefore meet at the same socket, one test's client reaches the other's Host, and that
 # Host refuses it as PermissionDenied. Inside one binary a process-wide lock keeps them apart;
@@ -16,5 +16,5 @@
 durable-host-session = { max-threads = 1 }
 
 [[profile.default.overrides]]
-filter = 'package(termirust-cli) and kind(test)'
+filter = 'package(multiplex-cli) and kind(test)'
 test-group = 'durable-host-session'

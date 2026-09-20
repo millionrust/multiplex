@@ -9,5 +9,5 @@ if [[ "${1:-}" != "--inventory" || -z "${2:-}" || "${3:-}" != "--themes" || "${4
   exit 2
 fi
 
-cargo run -q -p termirust-ui-contract --bin ui-audit -- visuals \
+cargo run -q -p multiplex-ui-contract --bin ui-audit -- visuals \
   --inventory "$2" --themes "$4" --scales "$6"

@@ -19,5 +19,5 @@ if [[ ! "$bytes" =~ ^[1-9][0-9]*$ || "$profile" != "release" ]]; then
   exit 2
 fi
 
-cargo build -q --release -p termirust-ui-contract --bin bench-terminal-accessibility
+cargo build -q --release -p multiplex-ui-contract --bin bench-terminal-accessibility
 ./target/release/bench-terminal-accessibility --bytes "$bytes"

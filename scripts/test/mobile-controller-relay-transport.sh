@@ -4,7 +4,7 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 BASE_SIMULATOR_ID=${TERMIRUST_IOS_SIMULATOR_ID:-7F76A1D5-5CC3-44DD-8883-DA554B851C99}
 PORT=${TERMIRUST_RELAY_TEST_PORT:-48787}
-FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/termirust-relay-mobile.XXXXXX")
+FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/multiplex-relay-mobile.XXXXXX")
 SERVER_PID=
 HOST_PID=
 TEST_SIMULATOR_ID=
@@ -51,13 +51,13 @@ PIN=$(openssl x509 -in "$FIXTURE/server.pem" -pubkey -noout \
     | openssl base64 -A)
 
 cd "$ROOT_DIR"
-cargo build -p termirust-relay-server --bin termirust-relay --locked
-"$ROOT_DIR/target/debug/termirust-relay" provision \
+cargo build -p multiplex-relay-server --bin multiplex-relay --locked
+"$ROOT_DIR/target/debug/multiplex-relay" provision \
     --state "$FIXTURE/state/relay.json" \
     --endpoint "wss://127.0.0.1:$PORT/relay/v1" \
     --spki-pin "sha256/$PIN" \
     --output-dir "$FIXTURE/packages" >/dev/null
-TERMIRUST_RELAY_TEST_DIAGNOSTICS=1 "$ROOT_DIR/target/debug/termirust-relay" run \
+TERMIRUST_RELAY_TEST_DIAGNOSTICS=1 "$ROOT_DIR/target/debug/multiplex-relay" run \
     --state "$FIXTURE/state/relay.json" \
     --bind "127.0.0.1:$PORT" \
     --cert "$FIXTURE/server-chain.pem" \
@@ -69,7 +69,7 @@ kill -0 "$SERVER_PID" 2>/dev/null || {
     exit 1
 }
 
-cargo run -p termirust-relay-client --example relay_echo_host \
+cargo run -p multiplex-relay-client --example relay_echo_host \
     --features test-support --locked -- \
     "$FIXTURE/packages/host-route.json" "$FIXTURE/ca.der" 33 >"$FIXTURE/host.log" 2>&1 &
 HOST_PID=$!

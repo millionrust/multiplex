@@ -24,14 +24,14 @@ fi
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$root"
 
-cargo test -p termirust-relay-client --all-targets --locked
-cargo test -p termirust-relay-client --test host_controller_e2e --locked
-cargo test -p termirust-relay-client --test reconnect_reconciliation --locked
+cargo test -p multiplex-relay-client --all-targets --locked
+cargo test -p multiplex-relay-client --test host_controller_e2e --locked
+cargo test -p multiplex-relay-client --test reconnect_reconciliation --locked
 
 if [ "$fault_matrix" = true ]; then
-  cargo test -p termirust-relay-client --test hostile_relay_tls_limits --locked
-  cargo test -p termirust-relay-server --test hostile_forwarding_limits --locked
-  cargo test -p termirust-relay-server --test admission_revocation --locked
+  cargo test -p multiplex-relay-client --test hostile_relay_tls_limits --locked
+  cargo test -p multiplex-relay-server --test hostile_forwarding_limits --locked
+  cargo test -p multiplex-relay-server --test admission_revocation --locked
 fi
 
 printf '%s\n' 'desktop relay route verification passed'

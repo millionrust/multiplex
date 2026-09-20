@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use termirust_controller_security::{
+use multiplex_controller_security::{
     CONTROLLER_V1, CapabilitySet, ControllerCapability, PairingMachine, PairingNonce,
     PairingOfferCore, RevocationEpoch, StaticPrivateKey, host_public_key_from_private,
 };
@@ -13,8 +13,8 @@ fn bytes(start: u8) -> [u8; 32] {
 }
 
 pub fn confirmed_pair() -> (
-    termirust_controller_security::ConfirmedPairing,
-    termirust_controller_security::ConfirmedPairing,
+    multiplex_controller_security::ConfirmedPairing,
+    multiplex_controller_security::ConfirmedPairing,
 ) {
     let host_static = StaticPrivateKey::from_fixture_bytes(bytes(0x00));
     let offer = PairingOfferCore {

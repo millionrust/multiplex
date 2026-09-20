@@ -25,32 +25,32 @@ fi
 
 case "$surface" in
   shell-overlays-palette)
-    paths="crates/termirust-desktop/src/ui/shell.rs,crates/termirust-desktop/src/ui/app/chrome.rs,crates/termirust-desktop/src/ui/app/overlay.rs,crates/termirust-desktop/src/ui/app/palette.rs"
+    paths="crates/multiplex-desktop/src/ui/shell.rs,crates/multiplex-desktop/src/ui/app/chrome.rs,crates/multiplex-desktop/src/ui/app/overlay.rs,crates/multiplex-desktop/src/ui/app/palette.rs"
     test_filter="shell_surface"
     description="shell, overlay, and palette"
     ;;
   projects-groups-sessions)
-    paths="crates/termirust-desktop/src/ui/app/projects.rs,crates/termirust-desktop/src/ui/app/session_sidebar.rs,crates/termirust-desktop/src/ui/app/session_library.rs"
+    paths="crates/multiplex-desktop/src/ui/app/projects.rs,crates/multiplex-desktop/src/ui/app/session_sidebar.rs,crates/multiplex-desktop/src/ui/app/session_library.rs"
     test_filter="product_session_surface"
     description="Projects, groups, and Sessions"
     ;;
   presets-runtimes)
-    paths="crates/termirust-desktop/src/ui/app/presets.rs,crates/termirust-desktop/src/ui/app/runtimes.rs,crates/termirust-desktop/src/ui/app/session_sidebar.rs"
+    paths="crates/multiplex-desktop/src/ui/app/presets.rs,crates/multiplex-desktop/src/ui/app/runtimes.rs,crates/multiplex-desktop/src/ui/app/session_sidebar.rs"
     test_filter="preset_runtime_surface"
     description="preset and runtime"
     ;;
   worktrees-artifacts)
-    paths="crates/termirust-desktop/src/ui/app/worktree_launch.rs,crates/termirust-desktop/src/ui/app/artifact_gallery.rs"
+    paths="crates/multiplex-desktop/src/ui/app/worktree_launch.rs,crates/multiplex-desktop/src/ui/app/artifact_gallery.rs"
     test_filter="worktree_artifact_surface"
     description="worktree and artifact"
     ;;
   hosts-connections)
-    paths="crates/termirust-desktop/src/ui/app/hosts.rs,crates/termirust-desktop/src/ui/app/connect.rs,crates/termirust-desktop/src/ui/app/editor.rs"
+    paths="crates/multiplex-desktop/src/ui/app/hosts.rs,crates/multiplex-desktop/src/ui/app/connect.rs,crates/multiplex-desktop/src/ui/app/editor.rs"
     test_filter="host_connection_surface"
     description="Hosts and Connections"
     ;;
   sftp)
-    paths="crates/termirust-desktop/src/ui/app/sftp.rs,crates/termirust-desktop/src/ui/sftp_local.rs"
+    paths="crates/multiplex-desktop/src/ui/app/sftp.rs,crates/multiplex-desktop/src/ui/sftp_local.rs"
     test_filter="sftp_surface"
     description="local and remote SFTP"
     ;;
@@ -65,7 +65,7 @@ case "$surface" in
     description="Settings"
     ;;
   agent-canvas)
-    paths="crates/termirust-desktop/src/ui/app/canvas.rs,crates/termirust-desktop/src/ui/app/workspace.rs"
+    paths="crates/multiplex-desktop/src/ui/app/canvas.rs,crates/multiplex-desktop/src/ui/app/workspace.rs"
     test_filter="agent_canvas_surface"
     description="Agent Canvas"
     ;;
@@ -80,19 +80,19 @@ case "$surface" in
     ;;
 esac
 
-cargo run -q -p termirust-ui-contract --bin generate-tokens -- --check
-cargo run -q -p termirust-ui-contract --bin generate-messages -- --check
+cargo run -q -p multiplex-ui-contract --bin generate-tokens -- --check
+cargo run -q -p multiplex-ui-contract --bin generate-messages -- --check
 if [[ -n "$paths" ]]; then
-  cargo run -q -p termirust-ui-contract --bin verify-design-tokens -- --paths "$paths" --zero-legacy
-  cargo run -q -p termirust-ui-contract --bin verify-localization -- --locales en-US,en-XA,ar-XB --paths "$paths" --zero-legacy
+  cargo run -q -p multiplex-ui-contract --bin verify-design-tokens -- --paths "$paths" --zero-legacy
+  cargo run -q -p multiplex-ui-contract --bin verify-localization -- --locales en-US,en-XA,ar-XB --paths "$paths" --zero-legacy
 else
   if [[ "$surface" == "terminal-chrome" ]]; then
-    cargo run -q -p termirust-ui-contract --bin verify-design-tokens -- --surface "$surface" --zero-legacy-except terminal-grid-metrics
+    cargo run -q -p multiplex-ui-contract --bin verify-design-tokens -- --surface "$surface" --zero-legacy-except terminal-grid-metrics
   else
-    cargo run -q -p termirust-ui-contract --bin verify-design-tokens -- --surface "$surface" --zero-legacy
+    cargo run -q -p multiplex-ui-contract --bin verify-design-tokens -- --surface "$surface" --zero-legacy
   fi
-  cargo run -q -p termirust-ui-contract --bin verify-localization -- --locales en-US,en-XA,ar-XB --surface "$surface" --zero-legacy
+  cargo run -q -p multiplex-ui-contract --bin verify-localization -- --locales en-US,en-XA,ar-XB --surface "$surface" --zero-legacy
 fi
-cargo test -q -p termirust-ui-contract "$test_filter"
+cargo test -q -p multiplex-ui-contract "$test_filter"
 
 echo "verified $description tokens, copy, semantics, states, scale, locale, and theme contracts"

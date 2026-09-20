@@ -13,7 +13,7 @@
 # is on screen being captured -- runs at full speed.
 #
 # Find the port with the app running:
-#   lsof -nP -iTCP -sTCP:LISTEN | grep -i termirust
+#   lsof -nP -iTCP -sTCP:LISTEN | grep -i multiplex
 #
 # SAFETY. These rules outlive the shell that made them. The script therefore:
 #   - keeps everything in a named anchor (`termirust-cond`), so teardown cannot touch other rules;
@@ -97,7 +97,7 @@ while [[ $# -gt 0 ]]; do
     *) echo "unexpected argument: $1" >&2; usage; exit 2 ;;
   esac
 done
-[[ -n "$PORT" ]] || { echo "--port is required; find it with: lsof -nP -iTCP -sTCP:LISTEN | grep -i termirust" >&2; exit 2; }
+[[ -n "$PORT" ]] || { echo "--port is required; find it with: lsof -nP -iTCP -sTCP:LISTEN | grep -i multiplex" >&2; exit 2; }
 
 if [[ -f "$STATE" ]]; then
   echo "conditioning is already active: $(cat "$STATE")" >&2

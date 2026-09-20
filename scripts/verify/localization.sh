@@ -9,5 +9,5 @@ if [[ "${1:-}" != "--locales" || "${2:-}" != "en-US,en-XA,ar-XB" || ( "${3:-}" !
   exit 2
 fi
 
-cargo run -q -p termirust-ui-contract --bin generate-messages -- --check
-cargo run -q -p termirust-ui-contract --bin verify-localization -- "$@"
+cargo run -q -p multiplex-ui-contract --bin generate-messages -- --check
+cargo run -q -p multiplex-ui-contract --bin verify-localization -- "$@"

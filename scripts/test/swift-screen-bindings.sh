@@ -7,7 +7,7 @@ GENERATED="$ARTIFACTS/ios/Sources/TermiRustRemoteScreens.swift"
 FRAMEWORKS="$ARTIFACTS/ios/TermiRustRemoteScreens.xcframework/ios-arm64"
 MODULE_MAP="$FRAMEWORKS/TermiRustRemoteScreensFFI.framework/Modules/module.modulemap"
 NATIVE="$ARTIFACTS/kotlin-test/darwin-aarch64"
-VECTORS="$ROOT_DIR/crates/termirust-screen-bindings/tests/vectors"
+VECTORS="$ROOT_DIR/crates/multiplex-screen-bindings/tests/vectors"
 # Both the session this build records and the version 1 one it must still understand.
 FIXTURES=("$VECTORS/screen-session-v2.json" "$VECTORS/screen-session-v1.json")
 RUNNER="$ROOT_DIR/tests/swift/screen_binding_conformance.swift"

@@ -1,6 +1,6 @@
 mod common;
 
-use termirust_controller_security::{ControllerCapability, ControllerFrameKind, RevocationEpoch};
+use multiplex_controller_security::{ControllerCapability, ControllerFrameKind, RevocationEpoch};
 use termirust_relay_spike::{
     Direction, RelayEnvelopeV1, RelayHarness, connect_fixture_pair, fixture_route,
 };

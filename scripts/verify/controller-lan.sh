@@ -24,9 +24,9 @@ fi
 }
 
 cd "$root"
-cargo test -p termirust-controller-listener --all-targets
-cargo test -p termirust ui::app::remote_devices::network_tests
-cargo clippy -p termirust-controller-listener --all-targets -- -D warnings
-cargo run -q -p termirust-ui-contract --bin generate-messages -- --check
+cargo test -p multiplex-controller-listener --all-targets
+cargo test -p multiplex ui::app::remote_devices::network_tests
+cargo clippy -p multiplex-controller-listener --all-targets -- -D warnings
+cargo run -q -p multiplex-ui-contract --bin generate-messages -- --check
 
 echo "controller LAN verification passed"

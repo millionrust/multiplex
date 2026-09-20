@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IOS_DIR="${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}"
 RESOURCE_PATH="$IOS_DIR/TermiRustMobileTests/Fixtures/controller-v1.json"
 FIXTURE_BINARY="$ROOT_DIR/target/debug/examples/mobile_controller_fixture"
-HOST_BINARY="$ROOT_DIR/target/debug/termirust-session-host"
+HOST_BINARY="$ROOT_DIR/target/debug/multiplex-session-host"
 IOS_DESTINATION="${TERMIRUST_IOS_DESTINATION:-}"
 IOS_DEVELOPMENT_TEAM="${TERMIRUST_IOS_DEVELOPMENT_TEAM:-}"
 FIXTURE_ROOT=""
@@ -119,8 +119,8 @@ fi
 
 status_line RUN "building the production Session Host and live Controller fixture"
 cd "$ROOT_DIR"
-cargo build -p termirust-session-host >/dev/null
-cargo build -p termirust-controller-listener --example mobile_controller_fixture >/dev/null
+cargo build -p multiplex-session-host >/dev/null
+cargo build -p multiplex-controller-listener --example mobile_controller_fixture >/dev/null
 
 FIXTURE_ROOT="$(mktemp -d /tmp/tri.XXXXXX)"
 rmdir "$FIXTURE_ROOT"

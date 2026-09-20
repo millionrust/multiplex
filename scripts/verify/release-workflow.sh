@@ -12,7 +12,7 @@ if grep -F '|| true' "$workflow" >/dev/null; then
   exit 1
 fi
 
-for name in termirust termirust-cli termirust-session-host termirust-mcp termirust-mcp-authorize termirust-relay; do
+for name in termirust multiplex-cli multiplex-session-host multiplex-mcp multiplex-mcp-authorize multiplex-relay; do
   count=$(grep -o "$name" "$workflow" | wc -l | tr -d ' ')
   if [ "$count" -lt 2 ]; then
     printf 'release workflow does not stage required executable: %s\n' "$name" >&2

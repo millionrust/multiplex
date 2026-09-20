@@ -15,8 +15,8 @@ fi
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/termirust-replication-swift.XXXXXX")"
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
-cargo build --locked -p termirust-replication-bindings --lib
-cargo build --locked -p termirust-controller-bindings --features bindgen-cli --bin uniffi-bindgen
+cargo build --locked -p multiplex-replication-bindings --lib
+cargo build --locked -p multiplex-controller-bindings --features bindgen-cli --bin uniffi-bindgen
 TARGET_DIR="$(cargo metadata --locked --no-deps --format-version 1 | python3 -c \
   'import json, sys; print(json.load(sys.stdin)["target_directory"])')/debug"
 

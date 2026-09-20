@@ -1,0 +1,31 @@
+[package]
+name = "multiplex-store"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "Versioned atomic local metadata stores for TermiRust"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = []
+os-keyring = ["multiplex-replication-security/os-keyring"]
+
+[dependencies]
+crc32c = "0.6"
+fs2 = "0.4"
+libc = "0.2"
+same-file = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+multiplex-domain = { version = "0.1.0", path = "../multiplex-domain" }
+multiplex-replication-security = { version = "0.1.0", path = "../multiplex-replication-security" }
+uuid = { version = "1.22", features = ["v4"] }
+zeroize = "=1.9.0"
+
+[dev-dependencies]
+tempfile = "3.27"
+
+[[bench]]
+name = "artifact_ingest"
+harness = false

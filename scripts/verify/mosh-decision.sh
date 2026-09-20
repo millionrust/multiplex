@@ -23,7 +23,7 @@ if rg -n -i '\bmosh([-_ ]?(client|server))?\b' \
 fi
 rm -f /tmp/termirust-mosh-surface.txt
 
-cargo test -p termirust-domain ssh_access --locked -- --test-threads=1
+cargo test -p multiplex-domain ssh_access --locked -- --test-threads=1
 cargo fmt --all -- --check
 git diff --check
 

@@ -20,10 +20,10 @@ on:
       # A command run on the Windows test machine with the test job's build, for a question the
       # whole suite answers too slowly, such as whether a few tests behave differently under one
       # runner than another. Example:
-      # `cargo test -p termirust-browser --lib --all-features --locked`. Empty, as on every push,
+      # `cargo test -p multiplex-browser --lib --all-features --locked`. Empty, as on every push,
       # and the job does not run.
       windows_probe:
-        description: "Command to run on Windows, e.g. cargo test -p termirust-browser --lib --all-features --locked"
+        description: "Command to run on Windows, e.g. cargo test -p multiplex-browser --lib --all-features --locked"
         type: string
         default: ""
 
@@ -188,13 +188,13 @@ jobs:
             pkg-config
 
       - name: Check minimum supported Rust version
-        # termirust-screen-transport is excluded from the all-features pass and checked on its
+        # multiplex-screen-transport is excluded from the all-features pass and checked on its
         # own below: its `iroh` feature is the Stage B QUIC route, off by default, and the QUIC
         # stack it pulls in needs Rust 1.91. The crate itself, as it ships, builds at the MSRV.
         run: |
-          cargo +1.88.0 check --workspace --exclude termirust-slate \
-            --exclude termirust-screen-transport --all-targets --all-features --locked
-          cargo +1.88.0 check -p termirust-screen-transport --all-targets --locked
+          cargo +1.88.0 check --workspace --exclude multiplex-slate \
+            --exclude multiplex-screen-transport --all-targets --all-features --locked
+          cargo +1.88.0 check -p multiplex-screen-transport --all-targets --locked
 
   # Split three ways, because the Windows suite spends almost all of its time running tests one
   # binary at a time: measured on 355cc81, twelve minutes compiling from a warm cache, then
@@ -374,22 +374,22 @@ jobs:
       - name: Build required Windows release executables
         run: >-
           cargo build --release --locked
-          -p termirust
-          -p termirust-cli
-          -p termirust-session-host
-          -p termirust-mcp
-          -p termirust-relay-server
+          -p multiplex
+          -p multiplex-cli
+          -p multiplex-session-host
+          -p multiplex-mcp
+          -p multiplex-relay-server
 
       - name: Verify required Windows release executables
         shell: pwsh
         run: |
           $required = @(
-            "termirust.exe",
-            "termirust-cli.exe",
-            "termirust-session-host.exe",
-            "termirust-mcp.exe",
-            "termirust-mcp-authorize.exe",
-            "termirust-relay.exe"
+            "multiplex.exe",
+            "multiplex-cli.exe",
+            "multiplex-session-host.exe",
+            "multiplex-mcp.exe",
+            "multiplex-mcp-authorize.exe",
+            "multiplex-relay.exe"
           )
           foreach ($name in $required) {
             $path = Join-Path "target/release" $name
@@ -449,7 +449,7 @@ jobs:
       # machine, so they need the host build of the library the APK packages for each ABI.
       - name: Build Controller bindings for Kotlin unit tests
         run: |
-          cargo build --locked --release -p termirust-controller-bindings --lib
+          cargo build --locked --release -p multiplex-controller-bindings --lib
           mkdir -p apps/android/app/src/test/native/linux-x86-64
           cp target/release/libtermirust_controller_bindings.so apps/android/app/src/test/native/linux-x86-64/
 

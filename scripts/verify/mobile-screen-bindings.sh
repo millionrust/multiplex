@@ -24,7 +24,7 @@ if ! diff -u \
   exit 1
 fi
 "$ROOT_DIR/scripts/sync/mobile-screen-bindings.sh" --check
-cargo test --locked -p termirust-screen-bindings --all-targets
+cargo test --locked -p multiplex-screen-bindings --all-targets
 
 # The screen boundary owns pixels and input, never the connection that carries them.
 if rg -n -i 'URLSession|Network\.framework|java\.net\.Socket|okhttp|Keychain|Keystore|analytics' \

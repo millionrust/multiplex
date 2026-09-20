@@ -30,7 +30,7 @@ def cargo_metadata() -> dict:
 
 
 def governed_package(name: str) -> bool:
-    return name in {"termirust-domain", "termirust-store", "termirust-tmux"} or name.endswith("-protocol")
+    return name in {"multiplex-domain", "multiplex-store", "multiplex-tmux"} or name.endswith("-protocol")
 
 
 def dependency_path(

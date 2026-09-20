@@ -1,0 +1,13 @@
+[package]
+name = "multiplex-screen-protocol"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "Transport-neutral control messages and stream framing for TermiRust Remote Screens"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+multiplex-screen-codec = { version = "0.1.0", path = "../multiplex-screen-codec" }
+
+[dev-dependencies]
+proptest = "1.11"

@@ -12,7 +12,7 @@ set -euo pipefail
 binary=$1
 shift
 
-if [[ "$(uname -s)" == "Darwin" && "$(basename "$binary")" == "termirust" && "$binary" != */deps/* ]]; then
+if [[ "$(uname -s)" == "Darwin" && "$(basename "$binary")" == "multiplex" && "$binary" != */deps/* ]]; then
   identity=${TERMIRUST_CODESIGN_IDENTITY:-}
   if [[ -z "$identity" ]]; then
     identity=$(security find-identity -v -p codesigning 2>/dev/null |

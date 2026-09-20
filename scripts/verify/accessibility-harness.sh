@@ -14,13 +14,13 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
-cargo run -q -p termirust-ui-contract --bin generate-messages -- --check
-cargo test -q -p termirust-ui-contract accessibility_lab --locked
-cargo test -q -p termirust-ui-contract semantics --locked
-cargo test -q -p termirust-accessibility-macos --locked
-cargo run -q -p termirust-ui-contract --bin accessibility_snapshot --locked \
+cargo run -q -p multiplex-ui-contract --bin generate-messages -- --check
+cargo test -q -p multiplex-ui-contract accessibility_lab --locked
+cargo test -q -p multiplex-ui-contract semantics --locked
+cargo test -q -p multiplex-accessibility-macos --locked
+cargo run -q -p multiplex-ui-contract --bin accessibility_snapshot --locked \
   | diff -u tests/fixtures/accessibility/semantic-tree.snapshot -
-cargo check -q -p termirust --locked
+cargo check -q -p multiplex --locked
 
 if rg -n "TERMIRUST_AX_SECRET_CANARY_7bd50a" tests/fixtures/accessibility/semantic-tree.snapshot >/dev/null; then
   echo "verify-accessibility-harness: secret canary leaked into semantic snapshot" >&2

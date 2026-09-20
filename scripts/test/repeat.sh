@@ -15,5 +15,5 @@ fi
 
 for ((run = 1; run <= count; run++)); do
   printf '[repeat-test] %d/%d %s\n' "$run" "$count" "$test_name"
-  cargo test -p termirust "$test_name" -- --exact --nocapture
+  cargo test -p multiplex "$test_name" -- --exact --nocapture
 done

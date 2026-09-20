@@ -1,0 +1,10 @@
+[package]
+name = "multiplex-screen-video"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "Hardware video encoding for the TermiRust Remote Screens motion path: low-latency HEVC with long-term references, over VideoToolbox on macOS"
+license = "MIT OR Apache-2.0"
+build = "build.rs"
+
+[dependencies]

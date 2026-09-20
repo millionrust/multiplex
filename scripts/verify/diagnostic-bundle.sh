@@ -18,7 +18,7 @@ expected=tests/fixtures/diagnostics/expected-manifest.json
 
 if rg -n \
   'std::net|tokio::net|TcpStream|UdpSocket|reqwest|hyper::|Command::new|std::process::Command' \
-  crates/termirust-diagnostics/src; then
+  crates/multiplex-diagnostics/src; then
   echo "diagnostics production source contains a network or child-process route" >&2
   exit 1
 fi
@@ -26,7 +26,7 @@ fi
 work=$(mktemp -d /tmp/termirust-diagnostic-bundle.XXXXXX)
 trap 'find "$work" -depth -delete' EXIT
 bundle="$work/bundle.json"
-cargo run -q -p termirust-diagnostics --bin diagnostic_fixture_export --locked -- \
+cargo run -q -p multiplex-diagnostics --bin diagnostic_fixture_export --locked -- \
   "$policy" "$bundle"
 
 python3 - "$policy" "$expected" "$bundle" <<'PY'
@@ -64,5 +64,5 @@ if stat.S_IMODE(bundle_path.stat().st_mode) != 0o600:
     raise SystemExit("exported bundle is not private mode 0600")
 PY
 
-cargo test -q -p termirust-diagnostics --test secret_canary_export --locked
+cargo test -q -p multiplex-diagnostics --test secret_canary_export --locked
 echo "diagnostic bundle schema, zero-canary export, private mode, and no-network source verified"

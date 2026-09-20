@@ -24,7 +24,7 @@ if ! diff -u \
   exit 1
 fi
 "$ROOT_DIR/scripts/sync/mobile-controller-bindings.sh" --check
-cargo test --locked -p termirust-controller-bindings --all-targets
+cargo test --locked -p multiplex-controller-bindings --all-targets
 "$ROOT_DIR/scripts/test/swift-controller-bindings.sh"
 
 if rg -n -i 'URLSession|Network\.framework|java\.net\.Socket|okhttp|terminal parser|vault decrypt|license check|analytics|account service' \

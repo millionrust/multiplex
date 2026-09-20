@@ -32,7 +32,7 @@ for marker in \
 done
 
 rg -Fq 'tough = { version = "=0.24.0", default-features = false }' \
-  crates/termirust-update-trust/Cargo.toml || {
+  crates/multiplex-update-trust/Cargo.toml || {
   echo "tough dependency is not exactly pinned with default features disabled" >&2
   exit 1
 }
@@ -51,7 +51,7 @@ if package["version"] != "0.24.0" or package.get("checksum") != \
     raise SystemExit("locked tough version or checksum does not match the ADR")
 PY
 
-if cargo tree -p termirust-update-trust -e features --locked | \
+if cargo tree -p multiplex-update-trust -e features --locked | \
   rg -q 'tough feature "http"|reqwest'; then
   echo "tough HTTP dependencies entered the resolved verifier graph" >&2
   exit 1
@@ -74,19 +74,19 @@ done
 
 if rg -n -i \
   'reqwest|hyper::|TcpStream|UdpSocket|std::net|tokio::net|Command::new|std::process::Command|open::that' \
-  crates/termirust-update-trust/src; then
+  crates/multiplex-update-trust/src; then
   echo "update-trust production source contains a network, process, or installer surface" >&2
   exit 1
 fi
 
-cargo test -p termirust-update-trust --test tuf_attack_matrix --locked
-cargo test -p termirust-update-trust --test root_rotation_and_atomic_state --locked
+cargo test -p multiplex-update-trust --test tuf_attack_matrix --locked
+cargo test -p multiplex-update-trust --test root_rotation_and_atomic_state --locked
 
-state_dir=$(mktemp -d /tmp/termirust-update-trust.XXXXXX)
+state_dir=$(mktemp -d /tmp/multiplex-update-trust.XXXXXX)
 trap 'find "$state_dir" -depth -delete' EXIT
-cargo run -q -p termirust-update-trust --bin verify_update_repository --locked -- \
+cargo run -q -p multiplex-update-trust --bin verify_update_repository --locked -- \
   "$fixtures/valid-v1" "$state_dir/state.json"
-cargo run -q -p termirust-update-trust --bin verify_update_repository --locked -- \
+cargo run -q -p multiplex-update-trust --bin verify_update_repository --locked -- \
   "$fixtures/valid-v2" "$state_dir/state.json"
 
 python3 - "$state_dir/state.json" <<'PY'

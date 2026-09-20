@@ -8,7 +8,7 @@ ADB="${ADB:-$ANDROID_HOME/platform-tools/adb}"
 EMULATOR="${EMULATOR:-$ANDROID_HOME/emulator/emulator}"
 RESOURCE_PATH="$ANDROID_DIR/app/src/androidTest/assets/controller-live.json"
 FIXTURE_BINARY="$ROOT_DIR/target/debug/examples/mobile_controller_fixture"
-HOST_BINARY="$ROOT_DIR/target/debug/termirust-session-host"
+HOST_BINARY="$ROOT_DIR/target/debug/multiplex-session-host"
 AVD=""
 SERIAL="${ANDROID_SERIAL:-}"
 FIXTURE_ROOT=""
@@ -176,8 +176,8 @@ export ANDROID_SERIAL="$SERIAL"
 
 status_line RUN "building the production Session Host and live Controller fixture"
 cd "$ROOT_DIR"
-cargo build -p termirust-session-host >/dev/null
-cargo build -p termirust-controller-listener --example mobile_controller_fixture >/dev/null
+cargo build -p multiplex-session-host >/dev/null
+cargo build -p multiplex-controller-listener --example mobile_controller_fixture >/dev/null
 
 FIXTURE_ROOT="$(mktemp -d /tmp/tri.XXXXXX)"
 rmdir "$FIXTURE_ROOT"

@@ -535,6 +535,16 @@ No package was added: `windows-sys 0.61.2` was already in the lock file. The edg
 
 `cargo deny check` is green on advisories, bans, licences, and sources after the change.
 
+### Lockfile note: the crates renamed to multiplex (2026-09-20)
+
+Every crate was renamed from `termirust-*` to `multiplex-*`, and the desktop package from
+`termirust` to `multiplex`, so the workspace `Cargo.lock` names them differently and the
+checksum below was repinned. No dependency was added, removed or moved: the change is the
+names of this workspace's own packages and the paths between them. Nothing in this crate
+changed beyond its own name, and no vector byte changed.
+
+`cargo deny check` is green on advisories, bans, licences, and sources after the change.
+
 ## Golden vectors and change control
 
 `crates/termirust-controller-security/tests/vectors/controller-v1.json` stores fixture-only private/public static and ephemeral keys, exact offer/prologue, all three messages, final `h`, SAS, both split transport keys, and first/last legal frames. A conformance run consumes those bytes; it never regenerates missing fields. The verification script checks the fixture plus ADR and lockfile checksums. Any deliberate protocol or dependency change must update this ADR first, regenerate every vector in review, and demonstrate that prior vectors fail under the declared compatibility policy.

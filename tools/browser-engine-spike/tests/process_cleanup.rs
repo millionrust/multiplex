@@ -1,5 +1,5 @@
 use std::path::Path;
-use termirust_browser_engine_spike::run_process_cleanup_probe;
+use multiplex_browser_engine_spike::run_process_cleanup_probe;
 
 #[test]
 fn cancellation_terminates_only_the_owned_process_group_and_cleans_profile() {

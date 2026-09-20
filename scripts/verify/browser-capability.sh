@@ -6,7 +6,7 @@ cd "$root"
 
 printf '%s\n' "==> Browser capability unit and contract tests"
 cargo fmt --all -- --check
-cargo test -p termirust-browser -p termirust-mcp --locked
+cargo test -p multiplex-browser -p multiplex-mcp --locked
 
 browser="${TERMIRUST_BROWSER_EXECUTABLE:-}"
 if [[ -z "$browser" ]]; then
@@ -27,17 +27,17 @@ fi
 if [[ -n "$browser" && -x "$browser" ]]; then
   printf '%s\n' "==> Live isolated-browser containment and cancellation"
   TERMIRUST_BROWSER_EXECUTABLE="$browser" \
-    cargo test -p termirust-browser --locked -- --ignored --nocapture
+    cargo test -p multiplex-browser --locked -- --ignored --nocapture
   printf '%s\n' "PASS: live isolated browser executed"
 else
   printf '%s\n' "SKIPPED(browser): install Chrome/Chromium or set TERMIRUST_BROWSER_EXECUTABLE"
 fi
 
 printf '%s\n' "==> Browser strict Clippy and static security policy"
-cargo clippy -p termirust-browser -p termirust-mcp --all-targets --locked -- -D warnings
+cargo clippy -p multiplex-browser -p multiplex-mcp --all-targets --locked -- -D warnings
 
 if rg -n -- '--no-sandbox|--disable-web-security|--ignore-certificate-errors' \
-  crates/termirust-browser crates/termirust-mcp; then
+  crates/multiplex-browser crates/multiplex-mcp; then
   printf '%s\n' "Browser sandbox or certificate verification must not be disabled." >&2
   exit 1
 fi
@@ -48,7 +48,7 @@ for marker in \
   'MAX_DOWNLOAD_BYTES' \
   'browser_origins' \
   'process_group(0)'; do
-  if ! rg -Fq "$marker" crates/termirust-browser crates/termirust-mcp; then
+  if ! rg -Fq "$marker" crates/multiplex-browser crates/multiplex-mcp; then
     printf 'Missing browser containment marker: %s\n' "$marker" >&2
     exit 1
   fi

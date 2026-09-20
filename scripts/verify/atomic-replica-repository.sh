@@ -2,9 +2,9 @@
 set -eu
 
 cargo fmt --all -- --check
-cargo test -p termirust-replication-security --test secret_custody_contract --locked -- --test-threads=1
-cargo test -p termirust-store --test replication_repository_contract --locked -- --test-threads=1
-cargo clippy -p termirust-replication-security -p termirust-store --all-targets --all-features --locked -- -D warnings
+cargo test -p multiplex-replication-security --test secret_custody_contract --locked -- --test-threads=1
+cargo test -p multiplex-store --test replication_repository_contract --locked -- --test-threads=1
+cargo clippy -p multiplex-replication-security -p multiplex-store --all-targets --all-features --locked -- -D warnings
 python3 scripts/dev/clippy-changed.py
 git diff --check
 

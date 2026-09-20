@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "termirust-videotoolbox-spike"
+name = "multiplex-videotoolbox-spike"
 version = "0.1.0"

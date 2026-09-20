@@ -1,0 +1,28 @@
+[package]
+name = "multiplex-slate"
+version.workspace = true
+edition = "2024"
+# gpui-pre brings smol_str (Rust 1.89) and, on Linux, oo7 (Rust 1.92). The desktop app does
+# not depend on Slate, so the rest of the workspace keeps the 1.88 contract.
+rust-version = "1.92"
+description = "Slate: TermiRust's styled component library on gpui-base"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+gpui = { package = "gpui-pre", version = "0.3.4" }
+gpui-base = "0.6.1"
+multiplex-ui-contract = { version = "0.1.0", path = "../multiplex-ui-contract" }
+
+[dev-dependencies]
+gpui = { package = "gpui-pre", version = "0.3.4", features = ["test-support"] }
+
+[target.'cfg(not(any(target_os = "linux", target_os = "freebsd")))'.dev-dependencies]
+gpui_platform = { package = "gpui-pre-platform", version = "0.3.4", features = ["font-kit", "runtime_shaders"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dev-dependencies]
+gpui_platform = { package = "gpui-pre-platform", version = "0.3.4", features = ["font-kit", "runtime_shaders", "x11", "wayland"] }
+
+[[example]]
+name = "gallery"
+path = "examples/gallery.rs"

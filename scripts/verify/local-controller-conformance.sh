@@ -2,9 +2,9 @@
 set -eu
 
 cargo fmt --all -- --check
-cargo test -p termirust local_controller_conformance --locked
-cargo test -p termirust-tui --test local_controller_conformance --locked -- --test-threads=1
-cargo clippy -p termirust-tui -p termirust-cli -p termirust-domain -p termirust-store --all-targets --locked -- -D warnings
+cargo test -p multiplex local_controller_conformance --locked
+cargo test -p multiplex-tui --test local_controller_conformance --locked -- --test-threads=1
+cargo clippy -p multiplex-tui -p multiplex-cli -p multiplex-domain -p multiplex-store --all-targets --locked -- -D warnings
 python3 scripts/dev/clippy-changed.py
 git diff --check
 

@@ -14,8 +14,8 @@ esac
 cd "$root"
 python3 scripts/verify/remote-route-acceptance.py
 ./scripts/sync/terminal-conformance-fixture.sh --check
-cargo test -p termirust-domain controller_route --locked
-cargo test -p termirust controller::route_coordinator::tests::shared_acceptance --locked
+cargo test -p multiplex-domain controller_route --locked
+cargo test -p multiplex controller::route_coordinator::tests::shared_acceptance --locked
 
 CONTROLLER_ROUTE_FIXTURE="$root/tests/fixtures/controller-routes/route-selection-v1.json" \
 CONTROLLER_ROUTE_ACCEPTANCE_FIXTURE="$root/tests/fixtures/controller-routes/remote-route-acceptance-v1.json" \

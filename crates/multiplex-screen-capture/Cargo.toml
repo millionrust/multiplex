@@ -1,0 +1,31 @@
+[package]
+name = "multiplex-screen-capture"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "Display capture with damage for TermiRust Remote Screens: a platform-neutral source trait, a replay source, and the macOS ScreenCaptureKit backend"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+multiplex-screen-codec = { version = "0.1.0", path = "../multiplex-screen-codec" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = "0.24"
+screencapturekit = { version = "=10.0.3", default-features = false }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    # DXGI_OUTPUT_DESC carries an HMONITOR, so the output description only exists with Gdi.
+    "Win32_Graphics_Gdi",
+] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Wayland gives no way to capture without the portal, and the portal hands back a PipeWire node.
+ashpd = { version = "0.13", default-features = false, features = ["async-io", "screencast"] }
+async-io = "2"
+pipewire = "0.8"

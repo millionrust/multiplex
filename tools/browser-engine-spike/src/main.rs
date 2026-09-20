@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use termirust_browser_engine_spike::{
+use multiplex_browser_engine_spike::{
     SpikeError, generate_fixture_only_report, run_child, write_report_atomic,
 };
 

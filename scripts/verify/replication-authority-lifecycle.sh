@@ -2,10 +2,10 @@
 set -eu
 
 cargo fmt --all -- --check
-cargo test -p termirust-replication-security --test authority_lifecycle_contract --locked -- --test-threads=1
-cargo test -p termirust-replication-security --lib --locked -- authority::tests --test-threads=1
-cargo test -p termirust-domain --test replication_contract --locked -- --test-threads=1
-cargo clippy -p termirust-domain -p termirust-replication-security --all-targets --locked -- -D warnings
+cargo test -p multiplex-replication-security --test authority_lifecycle_contract --locked -- --test-threads=1
+cargo test -p multiplex-replication-security --lib --locked -- authority::tests --test-threads=1
+cargo test -p multiplex-domain --test replication_contract --locked -- --test-threads=1
+cargo clippy -p multiplex-domain -p multiplex-replication-security --all-targets --locked -- -D warnings
 python3 scripts/dev/clippy-changed.py
 git diff --check
 

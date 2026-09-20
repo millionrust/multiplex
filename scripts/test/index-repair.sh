@@ -51,13 +51,13 @@ assert len(policy["crash_points"]) == 5
 PY
 
 if rg -n 'std::process|Command::new|TcpStream|UdpSocket|reqwest|russh|HostCommand' \
-  crates/termirust-store/src/health.rs crates/termirust-domain/src/indexes.rs; then
+  crates/multiplex-store/src/health.rs crates/multiplex-domain/src/indexes.rs; then
   echo "Health/index implementation contains a forbidden network or process capability." >&2
   exit 1
 fi
 
-cargo test -p termirust-store --test health_scan
-cargo test -p termirust-store --test derived_index_rebuild_crash_matrix
-cargo test -p termirust-domain --test index_determinism
+cargo test -p multiplex-store --test health_scan
+cargo test -p multiplex-store --test derived_index_rebuild_crash_matrix
+cargo test -p multiplex-domain --test index_determinism
 
 echo "Index repair verification passed."

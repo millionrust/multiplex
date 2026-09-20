@@ -1,9 +1,9 @@
-use serde_json::{Value, json};
-use termirust_domain::{
+use multiplex_domain::{
     ActivityAggregate, HostedSession, HostedSessionId, HostedSessionState, OutputSequence,
     PositionKey, PresetId, ProjectId, Revision, SessionMutation, SessionTitle, TitleSource,
 };
-use termirust_store::SessionSnapshot;
+use multiplex_store::SessionSnapshot;
+use serde_json::{Value, json};
 
 const FIXTURE: &str = include_str!("../fixtures/controller/local-session-mutation-v1.json");
 const MAX_FIXTURE_BYTES: usize = 16 * 1024;
