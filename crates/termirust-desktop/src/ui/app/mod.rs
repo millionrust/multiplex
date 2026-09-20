@@ -43,7 +43,7 @@ mod worktree_launch;
 
 pub(crate) use types::{
     ConnectDialogMode, ConnectProtocol, DropZone, EditorMenu, HostsSort, HostsViewMode,
-    ToolbarMenu, WorkspaceRuntimeTone, WorkspaceViewMode,
+    ToolbarMenu, WorkspaceViewMode,
 };
 
 use activity_center::ActivityCenterState;
@@ -167,8 +167,8 @@ use crate::ui::snippet::{
 };
 use crate::ui::theme;
 use crate::ui::util::{
-    current_unix_millis, format_count_label, format_relative_time, format_tag_values, is_word_char,
-    merge_tag_values, non_empty_string, parse_tag_values,
+    current_unix_millis, format_relative_time, format_tag_values, is_word_char, merge_tag_values,
+    non_empty_string, parse_tag_values,
 };
 
 // The terminal grid derives line height from user font metrics; this is the named
@@ -1253,8 +1253,6 @@ struct WorkspaceIndicators {
     connecting_panes: usize,
     error_panes: usize,
     closed_panes: usize,
-    split_count: usize,
-    unread_events: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -3763,21 +3761,6 @@ impl TermiRustApp {
     }
 
     // termirust-ui-surface:vault-keys-snippets:start
-    fn run_snippet_command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(snippet_id) = self
-            .saved
-            .snippets
-            .iter()
-            .find(|snippet| snippet.command == command)
-            .map(|snippet| snippet.id.clone())
-        else {
-            self.error_message = localization::snippet_error_stale();
-            cx.notify();
-            return;
-        };
-        self.insert_saved_snippet(&snippet_id, window, cx);
-    }
-
     fn insert_saved_snippet(
         &mut self,
         snippet_id: &str,
@@ -6934,11 +6917,6 @@ impl TermiRustApp {
         self.pane(workspace.active_pane_id)
     }
 
-    fn active_pane_mut(&mut self) -> Option<&mut SessionPane> {
-        let pane_id = self.active_workspace()?.active_pane_id;
-        self.pane_mut(pane_id)
-    }
-
     fn pane_workspace_id(&self, pane_id: u64) -> Option<u64> {
         self.workspaces
             .iter()
@@ -10042,17 +10020,6 @@ impl TermiRustApp {
         self.split_active_workspace(SplitAxis::Horizontal, window, cx);
     }
 
-    fn start_multiplayer_for_workspace(&mut self, workspace_id: u64, cx: &mut Context<Self>) {
-        self.open_workspace_tab_menu = None;
-        if let Some(workspace) = self.workspace_mut(workspace_id) {
-            workspace.broadcast_input = true;
-        }
-        self.status_message =
-            localization::static_message(MessageId::WorkspaceBroadcastStartedStatus);
-        self.error_message.clear();
-        cx.notify();
-    }
-
     fn toggle_workspace_broadcast(&mut self, workspace_id: u64, cx: &mut Context<Self>) {
         let mut now_on = false;
         if let Some(workspace) = self.workspace_mut(workspace_id) {
@@ -10714,27 +10681,6 @@ impl TermiRustApp {
         pane.selection = None;
         pane.dragging_selection = false;
         self.sync_terminal_grid(pane_id, cx);
-    }
-
-    fn scroll_active_pane_top(&mut self, cx: &mut Context<Self>) {
-        if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
-            if let Some(pane) = self.pane_mut(pane_id) {
-                let max_scrollback = pane.terminal.max_scrollback();
-                pane.terminal.set_scrollback(max_scrollback);
-            }
-            self.sync_terminal_grid(pane_id, cx);
-            cx.notify();
-        }
-    }
-
-    fn scroll_active_pane_bottom(&mut self, cx: &mut Context<Self>) {
-        if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
-            if let Some(pane) = self.pane_mut(pane_id) {
-                pane.terminal.reset_scrollback();
-            }
-            self.sync_terminal_grid(pane_id, cx);
-            cx.notify();
-        }
     }
 
     fn copy_active_selection(&mut self, cx: &mut Context<Self>) -> bool {
@@ -14272,53 +14218,6 @@ fn nav_section_key(section: NavSection) -> u64 {
     }
 }
 
-fn workspace_runtime_summary(
-    indicators: WorkspaceIndicators,
-) -> Option<(String, WorkspaceRuntimeTone)> {
-    let mut parts = Vec::new();
-    if indicators.error_panes > 0 {
-        parts.push(format_count_label(
-            indicators.error_panes,
-            "Error",
-            "Errors",
-        ));
-    }
-    if indicators.connecting_panes > 0 {
-        parts.push(format_count_label(
-            indicators.connecting_panes,
-            "Connecting",
-            "Connecting",
-        ));
-    }
-    if indicators.live_panes > 0 {
-        parts.push(format_count_label(indicators.live_panes, "Live", "Live"));
-    }
-    if indicators.closed_panes > 0 {
-        parts.push(format_count_label(
-            indicators.closed_panes,
-            "Closed",
-            "Closed",
-        ));
-    }
-
-    let tone = if indicators.error_panes > 0 {
-        WorkspaceRuntimeTone::Error
-    } else if indicators.connecting_panes > 0 {
-        WorkspaceRuntimeTone::Connecting
-    } else if indicators.live_panes > 0 {
-        WorkspaceRuntimeTone::Live
-    } else if indicators.closed_panes > 0 {
-        WorkspaceRuntimeTone::Closed
-    } else {
-        return None;
-    };
-
-    Some((
-        parts.into_iter().take(2).collect::<Vec<_>>().join(" • "),
-        tone,
-    ))
-}
-
 fn merge_port_forward_rules(
     current: &[PortForwardRule],
     inherited: &[PortForwardRule],
@@ -14390,11 +14289,10 @@ mod tests {
         DropZone, HostsSort, HostsViewMode, KeyLifecycleDialog, KeychainTab,
         MAX_COALESCED_TERMINAL_OUTPUT_BYTES, MAX_SPLIT_PANES, NavSection, OutputSuggestionContext,
         PathSuggestionContext, SessionLibraryView, SplitNode, TermiRustApp, WorkspaceIndicators,
-        WorkspaceRuntimeTone, WorkspaceViewMode, apply_group_defaults_to_draft,
-        collect_autocomplete_candidates, collect_command_palette_candidates,
-        drain_coalesced_ssh_events, dropped_paths_text, extract_snippet_prompt_names,
-        shell_command_requires_continuation, startup_bytes_for_request,
-        substitute_snippet_placeholders, substitute_snippet_prompts, workspace_runtime_summary,
+        WorkspaceViewMode, apply_group_defaults_to_draft, collect_autocomplete_candidates,
+        collect_command_palette_candidates, drain_coalesced_ssh_events, dropped_paths_text,
+        extract_snippet_prompt_names, shell_command_requires_continuation,
+        startup_bytes_for_request, substitute_snippet_placeholders, substitute_snippet_prompts,
     };
     use crate::connection_diagnostics::{DiagnosticFailureKind, DiagnosticStage};
     use crate::credentials;
@@ -16157,43 +16055,6 @@ mod tests {
             item.command == "docker compose up -d"
                 && item.detail == "Start compose services in the background"
         }));
-    }
-
-    #[test]
-    fn workspace_runtime_summary_prioritizes_errors_and_connecting_states() {
-        let summary = workspace_runtime_summary(WorkspaceIndicators {
-            live_panes: 2,
-            connecting_panes: 1,
-            error_panes: 1,
-            closed_panes: 0,
-            split_count: 4,
-            unread_events: 0,
-        });
-
-        assert_eq!(
-            summary,
-            Some((
-                "1 Error • 1 Connecting".to_string(),
-                WorkspaceRuntimeTone::Error
-            ))
-        );
-    }
-
-    #[test]
-    fn workspace_runtime_summary_reports_live_and_closed_counts() {
-        let summary = workspace_runtime_summary(WorkspaceIndicators {
-            live_panes: 2,
-            connecting_panes: 0,
-            error_panes: 0,
-            closed_panes: 1,
-            split_count: 3,
-            unread_events: 0,
-        });
-
-        assert_eq!(
-            summary,
-            Some(("2 Live • 1 Closed".to_string(), WorkspaceRuntimeTone::Live))
-        );
     }
 
     #[test]
@@ -21006,15 +20867,10 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    let command = app
-                        .saved
-                        .snippets
-                        .iter()
-                        .find(|snippet| snippet.id == snippet_id)
-                        .expect("saved snippet should exist")
-                        .command
-                        .clone();
-                    app.run_snippet_command(&command, window, cx);
+                    // Pinning says the snippet appears in the workspace quick actions, so it
+                    // has to be there, and inserting it is what pressing it does.
+                    assert!(app.render_pinned_snippet_actions(cx).is_some());
+                    app.insert_saved_snippet(&snippet_id, window, cx);
                 })
             })
             .expect("window update should succeed");
@@ -21047,6 +20903,7 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.set_saved_snippet_pinned(&snippet_id, false, window, cx);
+                    assert!(app.render_pinned_snippet_actions(cx).is_none());
                     app.remove_selected_snippet(window, cx);
                 })
             })

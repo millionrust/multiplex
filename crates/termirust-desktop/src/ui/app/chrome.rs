@@ -21,11 +21,7 @@ use crate::ui::theme;
 
 impl TermiRustApp {
     pub(super) fn workspace_indicators(&self, workspace: &WorkspaceTab) -> WorkspaceIndicators {
-        let mut indicators = WorkspaceIndicators {
-            split_count: workspace.pane_ids.len(),
-            unread_events: workspace.unread_events,
-            ..WorkspaceIndicators::default()
-        };
+        let mut indicators = WorkspaceIndicators::default();
 
         for pane_id in &workspace.pane_ids {
             if let Some(pane) = self.pane(*pane_id) {

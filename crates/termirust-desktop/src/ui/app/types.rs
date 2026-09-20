@@ -51,14 +51,6 @@ pub enum ConnectProtocol {
     Ssh,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum WorkspaceRuntimeTone {
-    Live,
-    Connecting,
-    Error,
-    Closed,
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum WorkspaceViewMode {
     #[default]

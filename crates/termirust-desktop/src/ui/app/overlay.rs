@@ -118,6 +118,39 @@ impl TermiRustApp {
         )
     }
 
+    /// The snippets pinned to the workspace, as buttons that insert one into the active pane.
+    /// Pinning a snippet tells the user it will appear in the workspace quick actions, so this
+    /// is where it appears. Nothing is drawn while none are pinned.
+    pub(super) fn render_pinned_snippet_actions(&self, cx: &Context<Self>) -> Option<Div> {
+        let snippets = self.pinned_snippet_quick_actions();
+        if snippets.is_empty() || self.active_pane().is_none() {
+            return None;
+        }
+        Some(
+            h_flex()
+                .w_full()
+                .px(px(theme::SHELL_BANNER_HORIZONTAL))
+                .py(px(theme::SPACE_1))
+                .gap_2()
+                .items_center()
+                .flex_wrap()
+                .bg(theme::with_alpha(theme::success(), 0.08))
+                .border_b_1()
+                .border_color(theme::with_alpha(theme::success(), 0.25))
+                .children(snippets.into_iter().map(|snippet| {
+                    let snippet_id = snippet.id.clone();
+                    Button::new(SharedString::from(format!("pinned-snippet-{}", snippet.id)))
+                        .small()
+                        .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                        .label(snippet.label.clone())
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.insert_saved_snippet(&snippet_id, window, cx);
+                        }))
+                        .into_any_element()
+                })),
+        )
+    }
+
     /// What the line being typed into the active pane could become, above the terminal, with
     /// the chosen suggestion marked. Nothing is drawn until there is something to suggest, so a
     /// pane nobody is typing into looks as it always has. Up and Down choose, Enter accepts,

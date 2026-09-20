@@ -353,10 +353,6 @@ pub fn card_hover_subtle() -> Hsla {
     with_alpha(hover(), 0.5)
 }
 
-pub fn pane_focus_glow() -> Hsla {
-    with_alpha(accent(), 0.15)
-}
-
 pub fn soft_border() -> Hsla {
     token_color(current_design_tokens().color_border_subtle())
 }

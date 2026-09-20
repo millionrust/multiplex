@@ -1781,7 +1781,6 @@ static_message!(group_move_up_action, GroupMoveUpActionArgs);
 static_message!(group_move_down_action, GroupMoveDownActionArgs);
 static_message!(group_remove_action, GroupRemoveActionArgs);
 static_message!(group_remove_title, GroupRemoveTitleArgs);
-static_message!(group_move_session_action, GroupMoveSessionActionArgs);
 static_message!(group_move_to_root_action, GroupMoveToRootActionArgs);
 static_message!(group_organization_updated, GroupOrganizationUpdatedArgs);
 static_message!(group_undo_action, GroupUndoActionArgs);
@@ -1888,11 +1887,9 @@ static_message!(preset_move_up_action, PresetMoveUpActionArgs);
 static_message!(preset_move_down_action, PresetMoveDownActionArgs);
 static_message!(preset_accept_action, PresetAcceptActionArgs);
 static_message!(preset_status_supported, PresetStatusSupportedArgs);
-static_message!(preset_status_unknown, PresetStatusUnknownArgs);
 static_message!(preset_status_unsupported, PresetStatusUnsupportedArgs);
 static_message!(preset_status_missing, PresetStatusMissingArgs);
 static_message!(preset_status_permission, PresetStatusPermissionArgs);
-static_message!(preset_status_timeout, PresetStatusTimeoutArgs);
 static_message!(preset_status_failed, PresetStatusFailedArgs);
 static_message!(preset_status_risky, PresetStatusRiskyArgs);
 static_message!(preset_status_disabled, PresetStatusDisabledArgs);
@@ -2103,7 +2100,6 @@ pub fn preset_argument_count(count: usize) -> String {
 static_message!(new_session_action, NewSessionActionArgs);
 static_message!(new_session_title, NewSessionTitleArgs);
 static_message!(new_session_warning, NewSessionWarningArgs);
-static_message!(new_session_legacy_warning, NewSessionLegacyWarningArgs);
 static_message!(new_session_durable_copy, NewSessionDurableCopyArgs);
 static_message!(new_session_project_field, NewSessionProjectFieldArgs);
 static_message!(new_session_preset_field, NewSessionPresetFieldArgs);
@@ -2176,7 +2172,6 @@ static_message!(
     new_session_validation_cancelled,
     NewSessionValidationCancelledArgs
 );
-static_message!(new_session_terminal_error, NewSessionTerminalErrorArgs);
 static_message!(
     new_session_exited_before_ready,
     NewSessionExitedBeforeReadyArgs
@@ -2253,10 +2248,6 @@ static_message!(
 static_message!(
     session_library_resume_action,
     SessionLibraryResumeActionArgs
-);
-static_message!(
-    session_library_resume_unavailable,
-    SessionLibraryResumeUnavailableArgs
 );
 static_message!(session_resume_title, SessionResumeTitleArgs);
 static_message!(session_resume_notice, SessionResumeNoticeArgs);

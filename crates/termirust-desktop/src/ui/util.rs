@@ -101,14 +101,6 @@ pub fn format_size(bytes: u64) -> String {
     }
 }
 
-pub fn format_count_label(count: usize, singular: &str, plural: &str) -> String {
-    if count == 1 {
-        format!("1 {singular}")
-    } else {
-        format!("{count} {plural}")
-    }
-}
-
 pub fn non_empty_string(value: &str) -> Option<String> {
     let value = value.trim();
     if value.is_empty() {

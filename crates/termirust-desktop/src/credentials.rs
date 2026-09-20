@@ -3,6 +3,9 @@ use anyhow::{Context, Result};
 #[cfg(not(test))]
 use keyring::{Entry, Error as KeyringError};
 
+/// Only the real keyring names a service; the tests stand in for it, and naming one there
+/// would be an unused name.
+#[cfg(not(test))]
 const SERVICE_NAME: &str = "com.termirust.password";
 
 pub fn secure_store_label() -> &'static str {

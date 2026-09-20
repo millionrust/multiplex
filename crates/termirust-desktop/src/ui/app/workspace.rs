@@ -1493,6 +1493,9 @@ impl TermiRustApp {
             .when_some(self.render_paste_confirmation(cx), |this, banner| {
                 this.child(banner)
             })
+            .when_some(self.render_pinned_snippet_actions(cx), |this, actions| {
+                this.child(actions)
+            })
             .when_some(self.render_autocomplete_suggestions(), |this, bar| {
                 this.child(bar)
             })

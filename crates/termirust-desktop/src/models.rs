@@ -3013,6 +3013,9 @@ pub struct CanvasRepairReport {
     pub removed_edges: usize,
 }
 
+/// Whether a repair changed anything, which is what the tests for it ask. The app itself
+/// saves the repaired state either way.
+#[cfg(test)]
 impl CanvasRepairReport {
     pub fn changed(self) -> bool {
         self.viewport_repairs > 0
