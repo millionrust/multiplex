@@ -24,7 +24,7 @@ use multiplex_ui_contract::{
 };
 
 use super::project_coordinator::{WorktreeInspectionRequest, WorktreePlanRequest};
-use super::{TermiRustApp, theme};
+use super::{MultiplexApp, theme};
 use crate::storage::managed_agent_worktree_dir;
 use crate::ui::localization;
 use crate::worktree_launch::{WorktreeCancellation, WorktreeInspection, generated_worktree_branch};
@@ -45,7 +45,7 @@ pub(super) struct WorktreeLaunchUiState {
     pub recovering: bool,
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn worktree_semantic_snapshot(
         &self,
         cx: &Context<Self>,

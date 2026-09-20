@@ -14,7 +14,7 @@ case "$(uname -s)" in
   *) suffix= ;;
 esac
 
-for name in termirust multiplex-cli multiplex-session-host multiplex-mcp multiplex-mcp-authorize multiplex-relay; do
+for name in multiplex multiplex-cli multiplex-session-host multiplex-mcp multiplex-mcp-authorize multiplex-relay; do
   path="$directory/$name$suffix"
   if [ ! -f "$path" ]; then
     printf 'missing required release executable: %s\n' "$path" >&2

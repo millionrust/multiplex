@@ -36,7 +36,7 @@ class MobileVaultImporter(
         inspectEncryptedEnvelope(bytes)
         val plaintext = try {
             decryptor?.decrypt(bytes, passphrase)
-                ?: error("This build is missing TermiRust shared vault crypto. Install the mobile crypto library before importing encrypted vaults.")
+                ?: error("This build is missing Multiplex shared vault crypto. Install the mobile crypto library before importing encrypted vaults.")
         } finally {
             passphrase.fill('\u0000')
         }

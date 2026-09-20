@@ -1,6 +1,6 @@
 # Shared Mobile Vault Crypto FFI
 
-TermiRust mobile vault encryption lives in Rust so desktop, iOS, and Android use one implementation for Argon2id key derivation and AES-256-GCM-SIV decryption.
+Multiplex mobile vault encryption lives in Rust so desktop, iOS, and Android use one implementation for Argon2id key derivation and AES-256-GCM-SIV decryption.
 
 ## Crate
 
@@ -19,7 +19,7 @@ crates/termirust-mobile-ffi/include/termirust_mobile.h
 Primary function:
 
 ```c
-TermiRustMobileResult termirust_mobile_decrypt_vault_json(
+MultiplexMobileResult termirust_mobile_decrypt_vault_json(
     const uint8_t *encrypted_json_ptr,
     size_t encrypted_json_len,
     const uint8_t *passphrase_ptr,
@@ -70,16 +70,16 @@ scripts/build/mobile-ffi-ios.sh
 The script installs missing Rust iOS targets, builds the device and simulator static libraries, and writes:
 
 ```text
-dist/mobile/ios/TermiRustMobileCrypto.xcframework
+dist/mobile/ios/MultiplexMobileCrypto.xcframework
 ```
 
 Copy or sync that generated framework into the iOS application before
 opening Xcode. Prefer the sync helper above, or run:
 
 ```bash
-rm -rf apps/ios/Frameworks/TermiRustMobileCrypto.xcframework
+rm -rf apps/ios/Frameworks/MultiplexMobileCrypto.xcframework
 cp -R \
-  dist/mobile/ios/TermiRustMobileCrypto.xcframework \
+  dist/mobile/ios/MultiplexMobileCrypto.xcframework \
   apps/ios/Frameworks/
 ```
 
@@ -144,7 +144,7 @@ If `termirust-e2e-sshd:local` already exists locally, the smoke scripts reuse it
 
 After mobile linking:
 
-- Import an encrypted vault exported by desktop TermiRust.
+- Import an encrypted vault exported by desktop Multiplex.
 - Confirm mobile lists the same hosts.
 - Confirm persistent tmux settings are present on the imported host.
 - Confirm a wrong passphrase returns an error and no host data.

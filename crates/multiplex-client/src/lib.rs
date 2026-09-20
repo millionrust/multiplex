@@ -1,4 +1,4 @@
-//! Local, bounded client for the TermiRust Host protocol.
+//! Local, bounded client for the Multiplex Host protocol.
 
 mod attach_model;
 mod client;

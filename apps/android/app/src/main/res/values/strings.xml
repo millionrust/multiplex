@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">TermiRust</string>
+    <string name="app_name">Multiplex</string>
     <string name="controller_fleet">Controller Fleet</string>
     <string name="pair_host">Pair Host</string>
     <string name="details">Details</string>
@@ -8,14 +8,14 @@
     <string name="forget_on_device">Forget on This Device</string>
     <string name="cancel">Cancel</string>
     <string name="no_paired_hosts">No Paired Hosts</string>
-    <string name="pair_private_network_hint">Pair with TermiRust Desktop on the same private network.</string>
+    <string name="pair_private_network_hint">Pair with Multiplex Desktop on the same private network.</string>
     <string name="paired_hosts">Paired Hosts</string>
     <string name="host_accessibility">Host %1$s</string>
     <string name="controller_selected">Selected</string>
     <string name="loading_sessions">Loading sessions…</string>
     <string name="open_terminals">Open Terminals</string>
     <string name="previous_sessions">Previous Sessions</string>
-    <string name="no_open_terminals">Open a local or SSH terminal in TermiRust Desktop, then refresh.</string>
+    <string name="no_open_terminals">Open a local or SSH terminal in Multiplex Desktop, then refresh.</string>
     <string name="cached_updated">Cached read-only data · updated %1$s</string>
     <string name="retry">Retry</string>
     <string name="cached">Cached</string>
@@ -28,7 +28,7 @@
     <string name="session_origin_unknown">Session</string>
     <string name="session_control_available">Control available</string>
     <string name="compare_security_code">Compare Security Code</string>
-    <string name="pairing_offer_hint">Paste the pairing offer shown by TermiRust Desktop.</string>
+    <string name="pairing_offer_hint">Paste the pairing offer shown by Multiplex Desktop.</string>
     <string name="pairing_new_offer_required">A new pairing offer is required. Generate one on the Host, then scan or paste it below.</string>
     <string name="scan_qr_code">Scan QR Code</string>
     <string name="paste_offer">Paste Offer</string>
@@ -46,7 +46,7 @@
     <string name="continue_action">Continue</string>
     <string name="codes_match">Codes Match</string>
     <string name="pair_computer">Pair a Computer</string>
-    <string name="pair_computer_hint">On your computer, open TermiRust and choose Pair phone. Then choose the computer here.</string>
+    <string name="pair_computer_hint">On your computer, open Multiplex and choose Pair phone. Then choose the computer here.</string>
     <string name="discovered_computers">Computers on This Network</string>
     <string name="searching_computers">Looking for computers on this network…</string>
     <string name="pair_discovered_computer_accessibility">Pair with %1$s</string>
@@ -89,7 +89,7 @@
     <string name="time_hours">%1$d hr ago</string>
     <string name="time_days">%1$d d ago</string>
     <string name="scan_pairing_code">Scan Pairing Code</string>
-    <string name="camera_scan_hint">Point the camera at the QR code shown by TermiRust Desktop.</string>
+    <string name="camera_scan_hint">Point the camera at the QR code shown by Multiplex Desktop.</string>
     <string name="camera_permission_hint">Camera access is needed only while scanning. You can also paste the pairing offer instead.</string>
     <string name="allow_camera">Allow Camera</string>
     <string name="detach">Detach</string>
@@ -111,7 +111,7 @@
     <string name="terminal_no_offline_screen">No retained screen is available while this Host is offline.</string>
     <string name="terminal_render_failed">Terminal output could not be rendered safely.</string>
     <string name="terminal_no_output">No terminal output.</string>
-    <string name="terminal_privacy_cover">Terminal hidden while TermiRust is inactive</string>
+    <string name="terminal_privacy_cover">Terminal hidden while Multiplex is inactive</string>
     <string name="terminal_privacy_accessibility">Terminal content hidden for privacy</string>
     <string name="terminal_output_accessibility">Terminal output for %1$s. %2$s</string>
     <string name="decrease_terminal_text">Decrease terminal text size</string>
@@ -163,7 +163,7 @@
     <string name="edit">Edit</string>
     <string name="save">Save</string>
     <string name="configure_ssh_controller">Configure Controller over SSH</string>
-    <string name="ssh_controller_configuration_help">This route runs the fixed TermiRust Controller bridge on a host you already trust. Pair on your private network first. Secrets stay in Android Keystore.</string>
+    <string name="ssh_controller_configuration_help">This route runs the fixed Multiplex Controller bridge on a host you already trust. Pair on your private network first. Secrets stay in Android Keystore.</string>
     <string name="ssh_host">SSH host or IP</string>
     <string name="ssh_port">SSH port</string>
     <string name="ssh_username">SSH username</string>
@@ -172,11 +172,11 @@
     <string name="password">Password</string>
     <string name="openssh_private_key">OpenSSH private key</string>
     <string name="remove_ssh_controller_route">Remove SSH Controller route</string>
-    <string name="remove_ssh_controller_route_help">Its credential and configuration will be deleted from this device. TermiRust will not switch to another route automatically.</string>
+    <string name="remove_ssh_controller_route_help">Its credential and configuration will be deleted from this device. Multiplex will not switch to another route automatically.</string>
     <string name="configure_relay_controller">Configure Self-hosted Relay</string>
     <string name="relay_controller_configuration_help">Paste the connection package created by your relay operator. The relay carries only encrypted Controller frames, and the admission credential stays in Android Keystore.</string>
     <string name="paste_relay_controller_package">Paste controller package</string>
-    <string name="invalid_relay_controller_package">The clipboard does not contain a valid TermiRust controller relay package.</string>
+    <string name="invalid_relay_controller_package">The clipboard does not contain a valid Multiplex controller relay package.</string>
     <string name="relay_endpoint">WSS endpoint</string>
     <string name="relay_spki_pin">SPKI pin (sha256/&#8230;)</string>
     <string name="relay_route_id">Route ID (Base64)</string>
@@ -191,7 +191,7 @@
     <string name="route_error_confirmation">Confirm before changing the connection route.</string>
     <string name="route_error_unavailable">That Controller route is not configured on this device.</string>
     <string name="route_error_selected">That route is already selected.</string>
-    <string name="route_error_degraded">The selected route failed. Retry it explicitly; TermiRust did not switch routes.</string>
+    <string name="route_error_degraded">The selected route failed. Retry it explicitly; Multiplex did not switch routes.</string>
     <string name="route_error_configuration_invalid">Check the SSH endpoint, port, username, host-key pin, and credential.</string>
     <string name="route_error_generic">The connection route could not be changed.</string>
     <string name="enrollment_title">Enrollment</string>

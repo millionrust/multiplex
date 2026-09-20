@@ -1,4 +1,4 @@
-use crate::{TermiRustMobileResult, error_result, read_bytes, success_result};
+use crate::{MultiplexMobileResult, error_result, read_bytes, success_result};
 use serde::Serialize;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use vt100::{Color, MouseProtocolEncoding, MouseProtocolMode, Parser, Screen};
@@ -8,7 +8,7 @@ const MAX_ROWS: u16 = 1_000;
 const MAX_SCROLLBACK_ROWS: usize = 50_000;
 const MAX_PROCESS_BYTES: usize = 1024 * 1024;
 
-pub struct TermiRustMobileTerminal {
+pub struct MultiplexMobileTerminal {
     parser: Parser,
     scrollback_rows: usize,
 }
@@ -60,12 +60,12 @@ pub extern "C" fn termirust_mobile_terminal_create(
     columns: u16,
     rows: u16,
     scrollback_rows: usize,
-) -> *mut TermiRustMobileTerminal {
+) -> *mut MultiplexMobileTerminal {
     catch_unwind(AssertUnwindSafe(|| {
         validated_dimensions(columns, rows, scrollback_rows).map_or(
             std::ptr::null_mut(),
             |(columns, rows, scrollback_rows)| {
-                Box::into_raw(Box::new(TermiRustMobileTerminal {
+                Box::into_raw(Box::new(MultiplexMobileTerminal {
                     parser: Parser::new(rows, columns, scrollback_rows),
                     scrollback_rows,
                 }))
@@ -77,14 +77,14 @@ pub extern "C" fn termirust_mobile_terminal_create(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn termirust_mobile_terminal_process(
-    terminal: *mut TermiRustMobileTerminal,
+    terminal: *mut MultiplexMobileTerminal,
     input_ptr: *const u8,
     input_len: usize,
-) -> TermiRustMobileResult {
+) -> MultiplexMobileResult {
     ffi_result(|| {
         let terminal = terminal_mut(terminal)?;
         if input_len > MAX_PROCESS_BYTES {
-            return Err("TermiRust mobile terminal frame exceeded 1 MiB.".to_string());
+            return Err("Multiplex mobile terminal frame exceeded 1 MiB.".to_string());
         }
         let input = read_bytes(input_ptr, input_len, "terminal input")?;
         terminal.parser.process(input);
@@ -94,7 +94,7 @@ pub extern "C" fn termirust_mobile_terminal_process(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn termirust_mobile_terminal_feed(
-    terminal: *mut TermiRustMobileTerminal,
+    terminal: *mut MultiplexMobileTerminal,
     input_ptr: *const u8,
     input_len: usize,
 ) -> bool {
@@ -116,10 +116,10 @@ pub extern "C" fn termirust_mobile_terminal_feed(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn termirust_mobile_terminal_resize(
-    terminal: *mut TermiRustMobileTerminal,
+    terminal: *mut MultiplexMobileTerminal,
     columns: u16,
     rows: u16,
-) -> TermiRustMobileResult {
+) -> MultiplexMobileResult {
     ffi_result(|| {
         let terminal = terminal_mut(terminal)?;
         let (columns, rows, _) = validated_dimensions(columns, rows, terminal.scrollback_rows)?;
@@ -130,13 +130,13 @@ pub extern "C" fn termirust_mobile_terminal_resize(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn termirust_mobile_terminal_snapshot(
-    terminal: *mut TermiRustMobileTerminal,
-) -> TermiRustMobileResult {
+    terminal: *mut MultiplexMobileTerminal,
+) -> MultiplexMobileResult {
     ffi_result(|| snapshot_json(terminal_mut(terminal)?))
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_terminal_destroy(terminal: *mut TermiRustMobileTerminal) {
+pub extern "C" fn termirust_mobile_terminal_destroy(terminal: *mut MultiplexMobileTerminal) {
     if terminal.is_null() {
         return;
     }
@@ -145,19 +145,19 @@ pub extern "C" fn termirust_mobile_terminal_destroy(terminal: *mut TermiRustMobi
     }));
 }
 
-fn ffi_result(operation: impl FnOnce() -> Result<Vec<u8>, String>) -> TermiRustMobileResult {
+fn ffi_result(operation: impl FnOnce() -> Result<Vec<u8>, String>) -> MultiplexMobileResult {
     match catch_unwind(AssertUnwindSafe(operation)) {
         Ok(Ok(bytes)) => success_result(bytes),
         Ok(Err(error)) => error_result(&error),
-        Err(_) => error_result("TermiRust mobile terminal operation panicked."),
+        Err(_) => error_result("Multiplex mobile terminal operation panicked."),
     }
 }
 
 fn terminal_mut<'a>(
-    terminal: *mut TermiRustMobileTerminal,
-) -> Result<&'a mut TermiRustMobileTerminal, String> {
+    terminal: *mut MultiplexMobileTerminal,
+) -> Result<&'a mut MultiplexMobileTerminal, String> {
     if terminal.is_null() {
-        return Err("TermiRust mobile terminal handle was null.".to_string());
+        return Err("Multiplex mobile terminal handle was null.".to_string());
     }
     Ok(unsafe { &mut *terminal })
 }
@@ -183,12 +183,12 @@ fn validated_dimensions(
     Ok((columns, rows, scrollback_rows))
 }
 
-fn snapshot_json(terminal: &TermiRustMobileTerminal) -> Result<Vec<u8>, String> {
+fn snapshot_json(terminal: &MultiplexMobileTerminal) -> Result<Vec<u8>, String> {
     serde_json::to_vec(&snapshot(terminal))
         .map_err(|error| format!("Unable to encode mobile terminal snapshot: {error}"))
 }
 
-fn snapshot(terminal: &TermiRustMobileTerminal) -> TerminalSnapshot {
+fn snapshot(terminal: &MultiplexMobileTerminal) -> TerminalSnapshot {
     let screen = terminal.parser.screen();
     let (rows, columns) = screen.size();
     let viewport_rows = usize::from(rows);
@@ -377,7 +377,7 @@ mod tests {
 
     #[test]
     fn stateful_terminal_handles_full_screen_editing_and_modes() {
-        let mut terminal = TermiRustMobileTerminal {
+        let mut terminal = MultiplexMobileTerminal {
             parser: Parser::new(4, 12, 8),
             scrollback_rows: 8,
         };
@@ -400,7 +400,7 @@ mod tests {
 
     #[test]
     fn snapshot_preserves_styles_unicode_and_mouse_modes() {
-        let mut terminal = TermiRustMobileTerminal {
+        let mut terminal = MultiplexMobileTerminal {
             parser: Parser::new(2, 8, 2),
             scrollback_rows: 2,
         };
@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn high_output_feed_retains_bounded_scrollback_and_compact_snapshots() {
-        let mut terminal = TermiRustMobileTerminal {
+        let mut terminal = MultiplexMobileTerminal {
             parser: Parser::new(24, 80, 2_000),
             scrollback_rows: 2_000,
         };
@@ -472,7 +472,7 @@ mod tests {
         assert_eq!(fixture.schema_version, 1);
         for case in fixture.cases {
             for split in 0..=case.input.len() {
-                let mut terminal = TermiRustMobileTerminal {
+                let mut terminal = MultiplexMobileTerminal {
                     parser: Parser::new(case.rows, case.columns, case.scrollback),
                     scrollback_rows: case.scrollback,
                 };
@@ -488,7 +488,7 @@ mod tests {
         }
     }
 
-    fn interactive_expected(terminal: &TermiRustMobileTerminal) -> InteractiveExpected {
+    fn interactive_expected(terminal: &MultiplexMobileTerminal) -> InteractiveExpected {
         let snapshot = snapshot(terminal);
         InteractiveExpected {
             lines: snapshot.lines,

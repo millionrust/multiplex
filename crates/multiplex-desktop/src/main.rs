@@ -29,7 +29,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::models::SavedWindowBounds;
 use crate::storage::{load_local_ssh_hosts, load_saved_state};
-use crate::ui::TermiRustApp;
+use crate::ui::MultiplexApp;
 
 const SESSION_HOST_MODE: &str = "--session-host";
 const CONTROLLER_LISTENER_MODE: &str = "--controller-listener";
@@ -327,7 +327,7 @@ fn main() {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 display_id: restore_display_id,
                 titlebar: Some(TitlebarOptions {
-                    title: Some("TermiRust".into()),
+                    title: Some("Multiplex".into()),
                     appears_transparent: true,
                     traffic_light_position: Some(point(px(-200.), px(8.))),
                 }),
@@ -335,7 +335,7 @@ fn main() {
                 ..Default::default()
             },
             |window, cx| {
-                let view = cx.new(|cx| TermiRustApp::new(initial_state.clone(), window, cx));
+                let view = cx.new(|cx| MultiplexApp::new(initial_state.clone(), window, cx));
                 cx.new(|cx| Root::new(view, window, cx))
             },
         )

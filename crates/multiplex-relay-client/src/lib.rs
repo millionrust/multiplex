@@ -1,4 +1,4 @@
-//! Outbound, route-pinned relay transport for TermiRust Controller-v1 streams.
+//! Outbound, route-pinned relay transport for Multiplex Controller-v1 streams.
 //!
 //! Relay admission is only an outer transport gate. Callers must still run the complete
 //! Controller-v1 authentication and authorization protocol over [`RelayByteStream`].

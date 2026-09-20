@@ -13,9 +13,9 @@ enum MobileVaultImportError: Error, Equatable, LocalizedError {
         case .unsupportedSchema(let version):
             return "Unsupported mobile vault schema version \(version)."
         case .encryptedVaultRequiresSharedCrypto:
-            return "This build is missing TermiRust shared vault crypto. Install the mobile crypto framework before importing encrypted vaults."
+            return "This build is missing Multiplex shared vault crypto. Install the mobile crypto framework before importing encrypted vaults."
         case .invalidVault:
-            return "The selected file is not a valid TermiRust mobile vault."
+            return "The selected file is not a valid Multiplex mobile vault."
         case .revokedSourceDevice(let deviceId):
             return "This mobile vault was exported by a revoked device (\(deviceId)). Import blocked."
         case .revokedLocalDevice(let deviceId):

@@ -256,7 +256,7 @@ fn render_devices_header(
         Paragraph::new(vec![
             Line::from(vec![
                 Span::styled(
-                    localize(options.locale, "TermiRust Devices"),
+                    localize(options.locale, "Multiplex Devices"),
                     emphasis(options, true),
                 ),
                 Span::raw("  "),
@@ -1722,7 +1722,7 @@ mod tests {
     fn devices_screen_reflows_and_masks_user_identity_for_recording() {
         let model = devices_model();
         let wide = rendered_devices(140, 30, &model, RenderOptions::default());
-        assert!(wide.contains("TermiRust Devices"));
+        assert!(wide.contains("Multiplex Devices"));
         assert!(wide.contains("Paired devices"));
         assert!(wide.contains("Device details"));
         assert!(wide.contains("PRIVATE PHONE"));

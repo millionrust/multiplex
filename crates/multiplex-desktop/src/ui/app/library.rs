@@ -1,5 +1,5 @@
 //! Library secondary pages: Keychain (Keys + Identities), Vaults, Known
-//! Hosts, Logs, Snippets, and Settings. All methods are part of `TermiRustApp`.
+//! Hosts, Logs, Snippets, and Settings. All methods are part of `MultiplexApp`.
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -18,8 +18,8 @@ use crate::models::{
 };
 use crate::replication::{desktop_replication_root, replication_is_configured};
 use crate::ui::app::{
-    ICON_GRID, ICON_KEY, ICON_KEYBOARD, ICON_PALETTE, ICON_SHIELD_CHECK, KeychainTab, NavSection,
-    TermiRustApp, app_icon, platform_shortcut_label,
+    ICON_GRID, ICON_KEY, ICON_KEYBOARD, ICON_PALETTE, ICON_SHIELD_CHECK, KeychainTab, MultiplexApp,
+    NavSection, app_icon, platform_shortcut_label,
 };
 use crate::ui::localization;
 use crate::ui::theme;
@@ -29,7 +29,7 @@ fn library_copy(id: MessageId) -> String {
     localization::message_id(id).unwrap_or_default()
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     // termirust-ui-surface:vault-keys-snippets:start
     fn keychain_tab_control(&self, cx: &Context<Self>) -> Div {
         let tab = self.keychain_tab;

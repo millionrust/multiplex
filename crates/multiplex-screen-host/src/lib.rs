@@ -400,7 +400,7 @@ impl ScreenHostHandle {
         inner.flush()
     }
 
-    /// Publishes where TermiRust terminal panes sit, so attached viewers draw them from text.
+    /// Publishes where Multiplex terminal panes sit, so attached viewers draw them from text.
     pub fn set_panes(&self, surface: u32, panes: Vec<PanePlacement>) {
         let mut inner = self.inner.lock().expect("screen host mutex");
         inner.session.set_panes(surface, panes);

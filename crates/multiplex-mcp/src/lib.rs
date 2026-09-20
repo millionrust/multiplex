@@ -1,4 +1,4 @@
-//! Local, capability-scoped, read-only MCP access to TermiRust.
+//! Local, capability-scoped, read-only MCP access to Multiplex.
 
 mod actions;
 mod backend;

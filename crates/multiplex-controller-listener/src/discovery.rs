@@ -54,7 +54,7 @@ pub fn bonjour_advertisement(
     interfaces.sort();
     interfaces.dedup();
     Some(BonjourAdvertisement {
-        instance: format!("TermiRust {}", id[..6].to_ascii_uppercase()),
+        instance: format!("Multiplex {}", id[..6].to_ascii_uppercase()),
         host_name: format!("termirust-{id}.local."),
         interfaces,
         addresses: lan
@@ -190,7 +190,7 @@ mod tests {
         );
         assert_eq!(advertisement.port, 55_000);
         assert_eq!(advertisement.host_name, format!("termirust-{id}.local."));
-        assert!(advertisement.instance.starts_with("TermiRust "));
+        assert!(advertisement.instance.starts_with("Multiplex "));
         assert_eq!(
             advertisement.properties,
             [("v".to_owned(), "1".to_owned()), ("id".to_owned(), id)]

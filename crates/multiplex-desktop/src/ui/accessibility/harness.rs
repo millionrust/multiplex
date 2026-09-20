@@ -26,7 +26,7 @@ pub fn run() {
     let title = Localizer::try_new(configuration.locale.tag())
         .unwrap_or_else(|_| Localizer::english())
         .format_static(MessageId::AccessibilityLabTitle)
-        .unwrap_or_else(|_| "TermiRust".to_string());
+        .unwrap_or_else(|_| "Multiplex".to_string());
     let application = Application::new().with_assets(crate::assets::Assets);
     application.run(move |cx| {
         gpui_component::init(cx);

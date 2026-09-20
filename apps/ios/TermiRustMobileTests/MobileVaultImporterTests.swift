@@ -60,7 +60,7 @@ final class MobileVaultImporterTests: XCTestCase {
       "sync": {"revision": null, "last_synced_at_millis": null},
       "devices": [{
         "device_id": "desktop-1",
-        "label": "TermiRust Desktop",
+        "label": "Multiplex Desktop",
         "platform": "desktop",
         "public_key": null,
         "paired_at_millis": 1,

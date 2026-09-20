@@ -33,7 +33,7 @@ class TmuxBootstrap(private val host: MobileHost) {
                 $create
               fi
             else
-              printf 'TermiRust mobile persistent sessions require tmux on this host. Install tmux, then reconnect.\n' >&2
+              printf 'Multiplex mobile persistent sessions require tmux on this host. Install tmux, then reconnect.\n' >&2
               exec "${'$'}{SHELL:-/bin/sh}"
             fi
         """.trimIndent()

@@ -332,11 +332,11 @@ mod tests {
         request.persistent_session_name = Some("tr-prod".to_string());
 
         let script = startup_text(&request, None);
-        assert!(script.contains("TermiRust Persistent Session could not start"));
+        assert!(script.contains("Multiplex Persistent Session could not start"));
         assert!(script.contains("Install tmux on the remote machine, then reconnect:"));
         assert!(script.contains("brew install tmux"));
         assert!(script.contains("sudo apt-get update && sudo apt-get install -y tmux"));
-        assert!(script.contains("TermiRust opened a normal shell for now."));
+        assert!(script.contains("Multiplex opened a normal shell for now."));
         assert!(script.contains("printf '\\033[2J\\033[H'"));
         assert!(script.contains("exec \"${SHELL:-/bin/sh}\""));
     }

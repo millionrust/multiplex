@@ -157,7 +157,7 @@ impl ScreenGeometry {
     }
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     /// Opens a workspace tab watching `address`, at the computer's full detail.
     ///
     /// The tab owns the session, so closing the tab closes the connection: watching somebody

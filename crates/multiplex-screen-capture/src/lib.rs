@@ -1,4 +1,4 @@
-//! Display capture for TermiRust Remote Screens.
+//! Display capture for Multiplex Remote Screens.
 //!
 //! A [`FrameSource`] delivers opaque BGRA frames with the damage the operating system reported.
 //! Frames that did not change are not delivered. When a frame had to be dropped because the

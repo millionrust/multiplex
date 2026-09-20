@@ -329,13 +329,13 @@ fn build_mobile_vault_export(
         .iter_mut()
         .find(|device| device.device_id == source_device_id)
     {
-        device.label = "TermiRust Desktop".to_string();
+        device.label = "Multiplex Desktop".to_string();
         device.platform = Some("desktop".to_string());
         device.revoked_at_millis = None;
     } else {
         devices.push(MobileDeviceRecord::active_desktop(
             source_device_id.clone(),
-            "TermiRust Desktop",
+            "Multiplex Desktop",
         ));
     }
 
@@ -1860,7 +1860,7 @@ Host app-prod
             .iter()
             .find(|device| device.device_id == "desktop-1")
             .expect("desktop device should export");
-        assert_eq!(desktop_device.label, "TermiRust Desktop");
+        assert_eq!(desktop_device.label, "Multiplex Desktop");
         assert_eq!(desktop_device.platform.as_deref(), Some("desktop"));
         assert_eq!(desktop_device.revoked_at_millis, None);
         let ios_device = mobile

@@ -995,7 +995,7 @@ fn unix_seconds() -> u64 {
         .as_secs()
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     /// Saves the screen-sharing choice and applies it to the listener.
     pub(super) fn update_remote_screen_sharing(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.saved.settings.remote_screen_sharing = enabled;
@@ -1066,7 +1066,7 @@ impl TermiRustApp {
 
     /// The other half of pairing: computers this Mac may connect to, as their device.
     ///
-    /// Everything above this is TermiRust as a host. Without this section the desktop can only be
+    /// Everything above this is Multiplex as a host. Without this section the desktop can only be
     /// watched, never watch.
     fn render_watched_computers_section(&self, cx: &Context<Self>) -> AnyElement {
         let (_, _, _, pairing, failure) = self.remote_devices.watched_form();
@@ -2212,7 +2212,7 @@ impl TermiRustApp {
         std::env::var("HOSTNAME")
             .ok()
             .filter(|name| !name.is_empty())
-            .unwrap_or_else(|| "TermiRust desktop".to_owned())
+            .unwrap_or_else(|| "Multiplex desktop".to_owned())
     }
 
     fn begin_controller_pairing(&mut self, cx: &mut Context<Self>) {

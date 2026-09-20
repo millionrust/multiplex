@@ -722,7 +722,7 @@ fn recovery_for_client_error(
     match error.code {
         ClientErrorCode::ProtocolIncompatible => (
             multiplex_domain::HostedSessionState::Incompatible,
-            "Host protocol is incompatible; update TermiRust before retrying",
+            "Host protocol is incompatible; update Multiplex before retrying",
         ),
         ClientErrorCode::PermissionDenied
         | ClientErrorCode::WrongSession

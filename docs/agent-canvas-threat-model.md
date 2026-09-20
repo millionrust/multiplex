@@ -3,7 +3,7 @@
 Status: v1 release baseline
 
 The Agent Canvas launches developer tools with access to repositories and can
-move reviewed text between processes. Its trust boundary includes TermiRust,
+move reviewed text between processes. Its trust boundary includes Multiplex,
 local provider children, remote SSH hosts, repository content, and provider
 output. Repository files, terminal output, provider JSON, and context are all
 untrusted.
@@ -39,7 +39,7 @@ active canvas references, and active terminals. It never uses force removal.
 
 Context links are pull/review operations, not continuous streams. Snapshots are
 wrapped in an explicit untrusted-data boundary and are never interpreted by
-TermiRust as commands. The user can edit or cancel the preview. Interactive
+Multiplex as commands. The user can edit or cancel the preview. Interactive
 delivery goes through multiline paste confirmation.
 
 ### Secret disclosure
@@ -74,7 +74,7 @@ host identities and refuses cross-host use.
 ### Remote compromise and persistence confusion
 
 Remote interactive and structured agents reuse the existing SSH and TOFU
-boundaries. TermiRust does not install a remote helper or provider executable.
+boundaries. Multiplex does not install a remote helper or provider executable.
 Structured jobs run over owned non-PTY exec channels, keep stdout and stderr
 separate, and terminate through that exact channel rather than a supplied PID.
 tmux persistence and agent orchestration remain separate; canvas state cannot

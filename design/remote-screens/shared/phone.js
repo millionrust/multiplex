@@ -171,7 +171,7 @@
       function lock() {
         const l = $('[data-lock]', phone);
         l.hidden = false;
-        RS.dropFor(4200, device + ' locked. TermiRust keeps the last picture and closes the connection to save battery.');
+        RS.dropFor(4200, device + ' locked. Multiplex keeps the last picture and closes the connection to save battery.');
         setTimeout(() => { l.hidden = true; RS.done('lock'); }, 3000);
       }
 

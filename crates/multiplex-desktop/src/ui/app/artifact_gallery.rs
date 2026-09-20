@@ -32,7 +32,7 @@ use multiplex_ui_contract::{
 };
 use smallvec::SmallVec;
 
-use super::{TermiRustApp, theme};
+use super::{MultiplexApp, theme};
 use crate::artifact_preview::{ArtifactPreview, build_preview};
 use crate::models::SavedAppAttachedSession;
 use crate::storage::app_dir;
@@ -249,7 +249,7 @@ impl ArtifactGalleryState {
     }
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn sftp_library_tab_active(&self) -> bool {
         self.artifact_gallery.files_tab == FilesLibraryTab::Sftp
     }

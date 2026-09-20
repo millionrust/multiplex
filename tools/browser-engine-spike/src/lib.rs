@@ -785,7 +785,7 @@ pub fn generate_fixture_only_report(
                 "The two Rust controller repositories publish releases but no repository SECURITY.md was found at the pinned commits."
                     .to_string(),
             ],
-            review_owner: "TermiRust desktop maintainers".to_string(),
+            review_owner: "Multiplex desktop maintainers".to_string(),
             review_date: "2026-11-27".to_string(),
         },
     })

@@ -23,7 +23,7 @@ final class ControllerPairingFleetTests: XCTestCase {
             let challenge = try await connection.beginPairing(
                 offerText: config.offerText,
                 hostName: "Live Rust Host",
-                deviceName: "TermiRust XCTest",
+                deviceName: "Multiplex XCTest",
                 deviceID: deviceID
             )
             let hostSAS = try await control.waitForValue(command: "sas")

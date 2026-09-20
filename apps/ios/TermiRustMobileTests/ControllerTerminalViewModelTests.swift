@@ -21,7 +21,7 @@ final class ControllerTerminalViewModelTests: XCTestCase {
         let session = ControllerSessionSummary(
             id: UUID(),
             title: "Tests",
-            project: "TermiRust",
+            project: "Multiplex",
             group: nil,
             lifecycle: "live",
             activity: "busy",

@@ -174,7 +174,7 @@ final class ControllerTerminalViewModel: ObservableObject, Identifiable {
             return
         }
         guard supportsWriterControl else {
-            writerMessage = "This phone is view-only. In TermiRust on your Mac, open Devices, choose Allow input for this phone, then reconnect."
+            writerMessage = "This phone is view-only. In Multiplex on your Mac, open Devices, choose Allow input for this phone, then reconnect."
             return
         }
         if canRequestControl {
@@ -739,7 +739,7 @@ final class ControllerTerminalViewModel: ObservableObject, Identifiable {
         if let error = error as? ReadOnlyAttachFailure {
             return connectionMessage(for: error)
         }
-        return "Could not reach this terminal. Keep TermiRust open on the Mac, check Wi-Fi, then tap Retry."
+        return "Could not reach this terminal. Keep Multiplex open on the Mac, check Wi-Fi, then tap Retry."
     }
 
     private static func connectionMessage(for error: ReadOnlyAttachFailure) -> String {

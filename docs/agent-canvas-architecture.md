@@ -6,7 +6,7 @@ Date: 2026-07-15
 
 ## Context
 
-TermiRust currently renders each workspace as a recursive split tree. Each leaf
+Multiplex currently renders each workspace as a recursive split tree. Each leaf
 references a `SessionPane`, and each pane owns one local or SSH terminal
 runtime. Workspace restoration serializes restorable connections and maps the
 split tree to pane indices.
@@ -132,7 +132,7 @@ geometry, dangling edges, and dependency cycles.
 
 ### Embed or port NodeTerm
 
-Rejected because it conflicts with TermiRust's native architecture and creates
+Rejected because it conflicts with Multiplex's native architecture and creates
 licensing risk.
 
 ### Replace split layout with a canvas

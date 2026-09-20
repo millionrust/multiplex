@@ -1,6 +1,6 @@
 # Read-only MCP
 
-`termirust-mcp` gives a local MCP host bounded access to TermiRust's typed Projects, connection
+`termirust-mcp` gives a local MCP host bounded access to Multiplex's typed Projects, connection
 presets, Sessions, runtime state, semantic transcripts, artifact metadata, and explicitly approved
 actions. Its default surface is inspect-only. It uses the MCP `2025-11-25` stdio transport and does
 not listen on a network socket.
@@ -12,7 +12,7 @@ cargo build --release -p termirust-mcp --locked
 ```
 
 The executable is `target/release/termirust-mcp` (`termirust-mcp.exe` on Windows). Distribution
-packages must install it beside the TermiRust CLI and Session Host. An MCP client configuration
+packages must install it beside the Multiplex CLI and Session Host. An MCP client configuration
 uses the executable's installed absolute path:
 
 ```json
@@ -28,7 +28,7 @@ uses the executable's installed absolute path:
 }
 ```
 
-Set `TERMIRUST_CONFIG_DIR` in the same `env` object only when TermiRust itself was started with a
+Set `TERMIRUST_CONFIG_DIR` in the same `env` object only when Multiplex itself was started with a
 non-default configuration directory. Do not point it at a copied or untrusted data directory.
 
 ## Capabilities
@@ -86,7 +86,7 @@ termirust-mcp-authorize revoke
 
 Every mutating call requires a new UUID `command_id`. Reuse that exact ID only when retrying the
 same uncertain call; changing the operation or arguments under an existing ID fails closed.
-TermiRust never automatically retries mutations. Launch and resume derive their successor Session
+Multiplex never automatically retries mutations. Launch and resume derive their successor Session
 identity from the command ID, Host input/cancel preserve it through the Host idempotency contract,
 and completed results are retained in a bounded local receipt store.
 

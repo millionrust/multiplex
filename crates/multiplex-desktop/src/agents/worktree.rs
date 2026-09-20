@@ -336,7 +336,7 @@ mod tests {
     fn repository() -> PathBuf {
         let path = temp_directory("worktree-repo");
         git(&path, &["init", "-q"]);
-        git(&path, &["config", "user.name", "TermiRust Test"]);
+        git(&path, &["config", "user.name", "Multiplex Test"]);
         git(&path, &["config", "user.email", "test@termirust.invalid"]);
         fs::write(path.join("README.md"), "base\n").unwrap();
         git(&path, &["add", "README.md"]);

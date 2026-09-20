@@ -443,7 +443,7 @@ impl TmuxSession {
     /// Arguments that attach one more client to this session. `ignore-size` keeps the
     /// client out of window sizing, so a phone never reflows the desktop layout. The client
     /// flags force UTF-8, because the Session Host starts the client without a locale, and
-    /// declare 24-bit color and synchronized updates, both of which TermiRust's own terminals
+    /// declare 24-bit color and synchronized updates, both of which Multiplex's own terminals
     /// support.
     pub fn attach_arguments(&self) -> Vec<String> {
         appearance::client_flags(&[

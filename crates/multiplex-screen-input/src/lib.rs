@@ -1,4 +1,4 @@
-//! Pointer and keyboard injection for TermiRust Remote Screens.
+//! Pointer and keyboard injection for Multiplex Remote Screens.
 //!
 //! An [`Injector`] turns the input a viewer sends into operating-system events. It holds the
 //! single writer lease: only the device that holds control can inject, and when control moves to

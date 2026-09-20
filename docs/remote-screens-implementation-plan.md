@@ -13,7 +13,7 @@ Every path is relative to the repository root.
 
 ## 1. Goal and non-goals
 
-**Goal.** From the phone, or from a second TermiRust desktop, a person sees every paired
+**Goal.** From the phone, or from a second Multiplex desktop, a person sees every paired
 computer on one Devices screen with a live thumbnail of each, opens one, and gets an
 interactive view of its whole desktop: pointer, keyboard, all displays folded into one
 canvas with a minimap, plus the text terminals that already work today. It has to stay
@@ -33,9 +33,9 @@ model and routes that already exist.
 2. About 80% of desktop content is text and flat UI (Microsoft's figure for RDP
    sessions). Text compresses losslessly to a few KB per changed tile and repeats
    constantly, so a content-hash tile cache turns most updates into an 8-byte reference.
-3. TermiRust's own terminals are already synced as text over the Controller. A terminal
+3. Multiplex's own terminals are already synced as text over the Controller. A terminal
    pane costs ~100 bytes per changed line as text and ~10–50 KB as pixels. The pixel
-   path therefore never carries TermiRust terminal panes; it composes them client-side
+   path therefore never carries Multiplex terminal panes; it composes them client-side
    from the text stream.
 
 **Licensing.** The whole feature, including the low-latency machinery (hardware video
@@ -46,7 +46,7 @@ licence. There is no paid tier and no private module.
 
 - Remote audio, file transfer (SFTP exists), clipboard sync beyond text, multi-viewer
   collaboration, recording. Each is a later, separate goal.
-- Being a general VNC/RDP client. We connect TermiRust hosts to TermiRust clients only.
+- Being a general VNC/RDP client. We connect Multiplex hosts to Multiplex clients only.
 - A browser client. The transport choice keeps that door open (see 5.4) but it is not in
   scope.
 - Replacing the existing Controller channel, relay, or the text terminal path. Screens
@@ -264,7 +264,7 @@ lossless SCC](https://arxiv.org/pdf/2312.14491).
   to 1 MiB, `controller_snapshot_bytes()` in `crates/termirust-desktop/src/terminal.rs`
   for mid-session attach, and a `vt100` emulator on the phone in
   `crates/termirust-mobile-ffi/src/terminal.rs`.
-- **Mobile apps** with a Controller layer (`apps/ios/TermiRustMobile/Controller/*`:
+- **Mobile apps** with a Controller layer (`apps/ios/MultiplexMobile/Controller/*`:
   discovery, connection actor, retry policy, read-only attach, writer control) and an
   Android equivalent. No video decode anywhere yet.
 - **A relay reconnect policy** (`crates/termirust-relay-client/src/reconnect.rs`:
@@ -288,12 +288,12 @@ A **surface** is one thing a client can subscribe to. Two kinds:
 | `PixelSurface` | a display, the unified canvas of all displays, or one window | tile updates + optional video region (4.3) | see 4.8 |
 
 The client composes them: the unified desktop canvas is a `PixelSurface`, and where a
-TermiRust terminal pane sits on screen the host publishes a **pane placement** (pane
+Multiplex terminal pane sits on screen the host publishes a **pane placement** (pane
 session id, rectangle on the canvas, cell size) so the client draws that rectangle from
 the text stream and the host **masks those tiles out of the pixel path**. Result: a
-desktop full of TermiRust terminals costs almost nothing over the pixel path, and the
+desktop full of Multiplex terminals costs almost nothing over the pixel path, and the
 phone renders terminal text at its own resolution, sharp, with its own font. When the
-client lacks the pane's text stream (not attached, or a non-TermiRust terminal) the tiles
+client lacks the pane's text stream (not attached, or a non-Multiplex terminal) the tiles
 are sent as pixels like anything else.
 
 The Devices dashboard subscribes to every paired host's canvas at the **thumbnail
@@ -503,7 +503,7 @@ client. They become measurements in milestone 1's bench and gates in section 6.
 | Watching a video region (Stage B) | 1.5–4 Mbps | 300 kbps–2 Mbps, adaptive |
 | Watching a video region (Stage A, lossy tiles at 8/s) | 1.5–4 Mbps | ≤ 600 kbps, visibly choppy |
 | Devices thumbnail, per host | n/a | ≤ 5 KB/s |
-| TermiRust terminal panes | as pixels | text path, ~100 B per changed line |
+| Multiplex terminal panes | as pixels | text path, ~100 B per changed line |
 
 Latency targets (input to glass, P95, on the 100 ms / 1% / 5 Mbps profile): Stage A
 under RTT + 150 ms; Stage B under RTT + 40 ms.
@@ -537,7 +537,7 @@ with video as a region-level special case. We follow them.
 ### 5.2 Text terminals never go through pixels
 
 Already decided by the existing product; here it becomes the mask in 4.1. It is also the
-answer to "why not just use Workbench": TermiRust knows which rectangles are terminals.
+answer to "why not just use Workbench": Multiplex knows which rectangles are terminals.
 
 ### 5.3 QUIC (iroh) for Stage B; Stage A rides the Controller channel
 

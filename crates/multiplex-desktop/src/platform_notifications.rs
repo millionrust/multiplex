@@ -285,11 +285,11 @@ mod native {
             let Some(superclass) = Class::get("NSObject") else {
                 return;
             };
-            let class = match Class::get("TermiRustNotificationDelegate") {
+            let class = match Class::get("MultiplexNotificationDelegate") {
                 Some(class) => class,
                 None => {
                     let Some(mut declaration) =
-                        ClassDecl::new("TermiRustNotificationDelegate", superclass)
+                        ClassDecl::new("MultiplexNotificationDelegate", superclass)
                     else {
                         return;
                     };
@@ -462,7 +462,7 @@ mod native {
                 previous.close();
             }
             let handle = Notification::new()
-                .appname("TermiRust")
+                .appname("Multiplex")
                 .summary(request.title())
                 .body(request.body())
                 .show()

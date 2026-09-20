@@ -77,7 +77,7 @@ class EnrollmentPickerTest {
     private fun choose(filename: String) {
         awaitPicker()
         tapSystem("Show roots")
-        tapSystem("TermiRust fixture")
+        tapSystem("Multiplex fixture")
         tapSystem(filename)
     }
     private fun capture(label: String) {

@@ -114,7 +114,7 @@ Pure Rust, no platform code, fully testable in CI.
   checks, one encoder per subscription with flow control, previews, refinement, motion region
   messages, input gated on control, and resume across connections. Wiring capture threads and
   drawing into the desktop app happens in 2.12 and 2.13.
-- [x] 2.9 `feat(screen-session): mask TermiRust terminal panes and publish their placement`
+- [x] 2.9 `feat(screen-session): mask Multiplex terminal panes and publish their placement`
   Protocol and session logic: the host publishes pane placements (hosted session id, rectangle,
   cell size) and, for panes the viewer says it draws from text, fills them with one colour before
   encoding, so typing in them costs next to nothing. Placements precede the masked pixels, follow a
@@ -166,7 +166,7 @@ Pure Rust, no platform code, fully testable in CI.
   thread that owns the event source. Checked on this Mac: the worker is the same signed binary
   under the same identifier as the app, so macOS treats them as one client and does not prompt
   twice. It records the grant against the process it holds *responsible* — the app that started
-  TermiRust — so a shipped `.app` is prompted for by its own name, while the LaunchAgent, which
+  Multiplex — so a shipped `.app` is prompted for by its own name, while the LaunchAgent, which
   launchd starts with no responsible parent, needs its own grant. Evidence, and the two defects
   that only the real app showed, are in
   [RS3-remote-screens-stage-a.md](engineering-evidence/RS3-remote-screens-stage-a.md).
@@ -202,7 +202,7 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   control, and a preview stays separate from the full view.
   Build, sync and determinism scripts mirror the Controller ones, and the decisions are in
   `docs/decisions/screen-bindings.md`. The iOS half was built on this Mac: an `.xcframework` for
-  device and simulator plus `TermiRustRemoteScreens.swift`. The Android half needs NDK 27.1 on the
+  device and simulator plus `MultiplexRemoteScreens.swift`. The Android half needs NDK 27.1 on the
   machine that runs it.
   Swift replays the same recorded session Rust does (`scripts/test/swift-screen-bindings.sh`,
   fixtures under `crates/termirust-screen-bindings/tests/vectors/`) and rebuilds a
@@ -551,7 +551,7 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   background service exists to stop being true. Both now get the same provider.
   The permission finding from the `(device)` investigation is what makes this more than a one-line
   change. macOS records a grant against the responsible process, and a LaunchAgent has no
-  responsible parent, so granting TermiRust Screen Recording does **not** cover the service.
+  responsible parent, so granting Multiplex Screen Recording does **not** cover the service.
   Without the grant ScreenCaptureKit returns frames of a blank desktop rather than failing, so
   `controller-service status` now says so, names the label to allow, and says why the app's own
   grant was not enough.

@@ -16,7 +16,7 @@ use crate::ui::app::global_search::{
     category_label, global_search_failure_message, search_status_label,
 };
 use crate::ui::app::palette::{PaletteAction, PaletteCategory};
-use crate::ui::app::{TermiRustApp, primary_shortcut_label};
+use crate::ui::app::{MultiplexApp, primary_shortcut_label};
 use crate::ui::autocomplete::AutocompleteSource;
 use crate::ui::localization;
 use crate::ui::theme;
@@ -25,7 +25,7 @@ use crate::ui::theme;
 /// terminal over.
 const VISIBLE_AUTOCOMPLETE_SUGGESTIONS: usize = 5;
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn render_snippet_prompts_panel(&self, cx: &Context<Self>) -> Option<Div> {
         let prompts = self.pending_snippet_prompts.as_ref()?;
         let preview: SharedString = prompts

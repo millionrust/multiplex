@@ -12,7 +12,7 @@ use gpui_component::{Disableable, IconName, Sizable, StyledExt as _, h_flex, v_f
 use multiplex_ui_contract::MessageId;
 use zeroize::Zeroizing;
 
-use super::{TermiRustApp, app_icon};
+use super::{MultiplexApp, app_icon};
 use crate::models::{DEFAULT_VAULT_ID, IdentitySource, SavedIdentity, identity_id_for_path};
 use crate::sftp::{
     AuthorizedKeyAction, AuthorizedKeyEvent, AuthorizedKeyOutcome, GeneratedKeyVerification,
@@ -37,7 +37,7 @@ pub(super) struct KeyLifecycleInputs {
 }
 
 impl KeyLifecycleInputs {
-    pub(super) fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+    pub(super) fn new(window: &mut Window, cx: &mut Context<MultiplexApp>) -> Self {
         Self {
             label: cx.new(|cx| {
                 InputState::new(window, cx).placeholder(key_copy(MessageId::KeyLabelPlaceholder))
@@ -93,7 +93,7 @@ pub(super) enum KeyLifecycleDialog {
     },
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn open_key_generation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         Self::set_input_value(&self.key_lifecycle_inputs.label, "", window, cx);
         Self::set_input_value(&self.key_lifecycle_inputs.comment, "", window, cx);

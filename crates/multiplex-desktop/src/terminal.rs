@@ -271,7 +271,7 @@ impl TerminalState {
         if names == 0 && schemes == 0 {
             return;
         }
-        let name = format!("\x1bP>|TermiRust {}\x1b\\", env!("CARGO_PKG_VERSION"));
+        let name = format!("\x1bP>|Multiplex {}\x1b\\", env!("CARGO_PKG_VERSION"));
         // 1 is a dark background, 2 a light one.
         let scheme = if dark_background() {
             "\x1b[?997;1n"
@@ -963,7 +963,7 @@ mod tests {
         assert!(reply_to(b"\x1b[c").starts_with("\x1b[?"));
         assert!(reply_to(b"\x1b[>c").starts_with("\x1b[>"));
         // Named, so tmux stops asking who this is every few seconds.
-        assert!(reply_to(b"\x1b[>q").starts_with("\x1bP>|TermiRust "));
+        assert!(reply_to(b"\x1b[>q").starts_with("\x1bP>|Multiplex "));
         // Light or dark, which a program picks its palette from.
         let scheme = reply_to(b"\x1b[?996n");
         assert!(
@@ -975,7 +975,7 @@ mod tests {
         for expected in [
             "\x1b[?",
             "\x1b[>0",
-            "TermiRust ",
+            "Multiplex ",
             "?2026;2$y",
             "]10;rgb:",
             "]11;rgb:",
@@ -1043,7 +1043,7 @@ mod tests {
         terminal.process_bytes(b"q");
         let reply = String::from_utf8(terminal.take_pty_replies()).expect("replies are text");
         assert!(
-            reply.starts_with("\x1bP>|TermiRust "),
+            reply.starts_with("\x1bP>|Multiplex "),
             "expected a name, got {reply:?}"
         );
     }
@@ -1079,7 +1079,7 @@ mod tests {
         // What a pane tells a program about itself.
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
-        command.env("TERM_PROGRAM", "TermiRust");
+        command.env("TERM_PROGRAM", "Multiplex");
         command.env_remove("TMUX");
         let mut child = pty
             .slave
@@ -1754,7 +1754,7 @@ mod tests {
         // What a local pane tells a program about itself.
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
-        command.env("TERM_PROGRAM", "TermiRust");
+        command.env("TERM_PROGRAM", "Multiplex");
         // tmux refuses to start a session from inside one, and these tests are often run from a
         // terminal this app has already wrapped.
         command.env_remove("TMUX");

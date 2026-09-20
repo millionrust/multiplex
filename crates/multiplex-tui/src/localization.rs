@@ -37,7 +37,7 @@ pub enum TextId {
 
 pub fn text(locale: TuiLocale, id: TextId) -> String {
     let english = match id {
-        TextId::AppTitle => "TermiRust Fleet",
+        TextId::AppTitle => "Multiplex Fleet",
         TextId::Projects => "Projects",
         TextId::Sessions => "Sessions",
         TextId::Inspector => "Inspector",

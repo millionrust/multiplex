@@ -215,7 +215,7 @@ async fn run_server(options: Vec<(String, String)>) -> Result<(), String> {
         _ => return Err("--cert and --key must be provided together".to_owned()),
     }
     .map_err(relay_error)?;
-    println!("TermiRust relay listening on {}", handle.websocket_url());
+    println!("Multiplex relay listening on {}", handle.websocket_url());
     println!("The relay stores route verifiers only and never stores forwarded frames.");
     tokio::signal::ctrl_c()
         .await
@@ -389,7 +389,7 @@ fn redacted_io(error: std::io::Error) -> String {
 }
 
 fn print_help() {
-    println!("TermiRust ciphertext relay operator\n");
+    println!("Multiplex ciphertext relay operator\n");
     println!("Provision:");
     println!(
         "  termirust-relay provision --state PATH --endpoint wss://HOST/relay/v1 --spki-pin sha256/BASE64 --output-dir DIR"

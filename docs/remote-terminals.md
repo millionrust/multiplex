@@ -22,9 +22,9 @@ So the question is never "how do we capture the terminals that are already open"
 answers work:
 
 - **A multiplexer.** A shell started inside `tmux` belongs to the tmux server, which is
-  built to serve several clients. TermiRust attaches as one more client.
+  built to serve several clients. Multiplex attaches as one more client.
 - **The session host.** `termirust-session-host` owns a PTY in its own process, keeps a
-  replayable journal, and outlives the app. This is what TermiRust's own durable
+  replayable journal, and outlives the app. This is what Multiplex's own durable
   sessions already use.
 
 Terminals open *before* you turn this on stay unreachable. Open them again and they are
@@ -44,7 +44,7 @@ reachable from then on.
   a user-only pointer file the running app publishes.
 - **tmux sessions**, when "Show tmux sessions" is on: every session on your default tmux
   server appears in the phone's session list as a live terminal, including sessions
-  TermiRust did not create, on every route. Watching and typing work; a
+  Multiplex did not create, on every route. Watching and typing work; a
   tmux session is never resized or ended by the phone. Requires tmux 3.2 or later.
 - **Setup for new terminals**, which starts new tabs in Terminal, Zed, iTerm2, Ghostty,
   WezTerm, and the VS Code terminal inside tmux. Previewed, applied, and removed from the
@@ -122,7 +122,7 @@ itself from a terminal that answers its questions:
   never paints half of one. Without it, a program that redraws constantly, such as a coding
   agent's spinner, flickers. Terminal.app has no such support and is left as it was.
 
-The phone attaches with both features, since TermiRust's own terminals support them.
+The phone attaches with both features, since Multiplex's own terminals support them.
 
 tmux key bindings belong to the whole server, so each binding checks the session name and keeps
 tmux's default behavior in every other session. Applying the setup also updates sessions already
@@ -134,7 +134,7 @@ clears it.
 `~/.config/termirust/tmux.conf`, shared by every shell:
 
 ```tmux
-# Managed by TermiRust for the tmux sessions it starts (named termirust-*). Turn off "Open new terminals in tmux" in TermiRust to remove it.
+# Managed by Multiplex for the tmux sessions it starts (named termirust-*). Turn off "Open new terminals in tmux" in Multiplex to remove it.
 set-option status off
 set-option mouse on
 set-option -q -w copy-mode-position-format ''
@@ -148,7 +148,7 @@ One app-owned init file per shell, safe to delete —
 `~/.config/termirust/shell-init.zsh` for zsh (and `shell-init.bash` for bash):
 
 ```zsh
-# Managed by TermiRust. Turn off "Open new terminals in tmux" in TermiRust, or delete this file and the marked block in your shell startup file.
+# Managed by Multiplex. Turn off "Open new terminals in tmux" in Multiplex, or delete this file and the marked block in your shell startup file.
 if [[ -o interactive && -z "$TMUX" && -z "$TERMIRUST_NO_WRAP" ]]; then
   case "$TERM_PROGRAM" in
     Apple_Terminal|zed|iTerm.app|ghostty|WezTerm|vscode)
@@ -200,12 +200,12 @@ No `~/.tmux.conf` change is needed. The phone attaches with
 Not built yet. There is no tmux, and PowerShell cannot replace itself with another process
 the way a POSIX shell can, so the session host has to own the terminal from the start.
 
-The intended setup adds a Windows Terminal profile whose command line is a TermiRust shim,
+The intended setup adds a Windows Terminal profile whose command line is a Multiplex shim,
 and optionally makes it the default profile:
 
 ```json
 {
-  "name": "PowerShell (TermiRust)",
+  "name": "PowerShell (Multiplex)",
   "commandline": "termirust.exe shell -- pwsh.exe -NoLogo",
   "startingDirectory": "%USERPROFILE%",
   "icon": "ms-appx:///ProfileIcons/pwsh.png"
@@ -223,11 +223,11 @@ tmux sessions survive the app, but something has to accept Controller connection
 - **Controller-over-SSH** needs nothing extra: `sshd` starts the bridge for each connection,
   so tmux sessions are reachable whenever the computer is on.
 - **Self-hosted relay** needs `termirust relay-host run` running.
-- **Local network (macOS):** under "Keep reachable when TermiRust is closed", choose
+- **Local network (macOS):** under "Keep reachable when Multiplex is closed", choose
   **Run in background**. This installs a per-user LaunchAgent,
   `~/Library/LaunchAgents/com.termirust.desktop.controller-service.plist`, which runs
   `termirust controller-service run` at login. It serves already-paired devices on every private
-  address; pairing a new device still needs the app. When you open TermiRust, the service
+  address; pairing a new device still needs the app. When you open Multiplex, the service
   hands the route to the app, and takes it back when the app quits. The same commands work
   from a terminal: `termirust controller-service install|remove|status`.
 - **Windows:** not built yet; the intended setup is a per-user scheduled task at logon.

@@ -272,7 +272,7 @@ async fn download_async(
         .proxy(proxy)
         .redirect(reqwest::redirect::Policy::none())
         .timeout(OPERATION_TIMEOUT)
-        .user_agent("TermiRust isolated browser")
+        .user_agent("Multiplex isolated browser")
         .build()
         .map_err(|_| BrowserError::Unavailable)?;
     let mut current = url::Url::parse(&initial_url).map_err(|_| BrowserError::InvalidPolicy)?;

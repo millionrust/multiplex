@@ -25,7 +25,7 @@ use crate::ui::util::current_unix_millis;
 use crate::ui::{localization, theme};
 
 use super::session_coordinator::SessionActivityObserver;
-use super::{NavSection, TermiRustApp};
+use super::{MultiplexApp, NavSection};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ActivityCenterFailure {
@@ -348,7 +348,7 @@ impl ActivityCenterState {
             }
         };
         let identifier = platform_identifier(record, delivery);
-        let Ok(request) = PlatformNotificationRequest::new(&identifier, "TermiRust", &body) else {
+        let Ok(request) = PlatformNotificationRequest::new(&identifier, "Multiplex", &body) else {
             return;
         };
         let _ = self.platform.deliver(&request);
@@ -445,7 +445,7 @@ fn localized_activity_age(created_at_millis: u64, now_millis: u64) -> String {
     localization::activity_age_years((days / 365) as usize)
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn process_activity_activation(
         &mut self,
         window: &mut Window,

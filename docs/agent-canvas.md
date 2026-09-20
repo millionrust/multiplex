@@ -1,6 +1,6 @@
 # Agent Canvas
 
-The Agent Canvas is a native TermiRust workspace layout for local terminals,
+The Agent Canvas is a native Multiplex workspace layout for local terminals,
 saved SSH hosts, and coding-agent sessions. It reuses the existing terminal,
 SSH, restore, and tmux runtimes; changing layout does not reconnect a pane.
 
@@ -50,7 +50,7 @@ panel the user can:
 
 Broadcast Input sends typed and pasted bytes to every connected terminal pane
 in the workspace, so review the target list before enabling it. `Disconnect
-All` closes TermiRust's SSH clients and disables automatic reconnect for those
+All` closes Multiplex's SSH clients and disables automatic reconnect for those
 panes. It does not kill persistent tmux sessions on the remote hosts; reconnect
 reattaches through each saved host's normal tmux bootstrap. Closing the fleet
 panel has no effect on any connection.
@@ -68,10 +68,10 @@ receive context, or participate in dependency runs.
 
 `Persistent Local Terminal` attaches to an app-named local tmux session with
 tmux's attach-or-create behavior. The session and its processes survive closing
-the node or TermiRust, and workspace restore reattaches to the same name.
+the node or Multiplex, and workspace restore reattaches to the same name.
 Closing one of these nodes uses the same explicit Detach, Disconnect, or
 confirmed Kill choices as a persistent SSH node. If local tmux is unavailable,
-TermiRust does not open a broken node; it shows platform-specific installation
+Multiplex does not open a broken node; it shows platform-specific installation
 guidance instead. Ordinary `Local Terminal` remains the default and does not
 require tmux.
 
@@ -125,7 +125,7 @@ on a selected saved SSH host. Codex supports in-session approvals and thread
 continuity. The one-shot Claude and Gemini headless adapters support
 cancellation but do not claim interactive approval responses or session resume.
 
-TermiRust never installs a provider CLI. The creation panel reports the resolved
+Multiplex never installs a provider CLI. The creation panel reports the resolved
 executable or gives provider-specific installation guidance. An official
 provider executable whose version check fails is shown as unusable with the
 captured diagnostic. Use `Check again` after installing or repairing it outside
@@ -137,7 +137,7 @@ arguments. Custom executables receive an argument array and remain interactive.
 
 ## Isolated worktrees
 
-Write-capable local agents default to `Isolated worktree`. TermiRust creates a
+Write-capable local agents default to `Isolated worktree`. Multiplex creates a
 linked Git worktree and a unique `termirust/agent/...` branch under its app data
 directory. `Shared directory` and `Read only` require an explicit selection.
 
@@ -151,7 +151,7 @@ whose agent node has been closed. Its actions can:
 - explicitly mark the worktree and branch to keep;
 - remove it only when it is unused, clean, and has no later commits.
 
-TermiRust does not force-remove dirty worktrees, delete useful branches, or
+Multiplex does not force-remove dirty worktrees, delete useful branches, or
 manage repositories with submodules automatically. Close all canvas agents and
 terminals using a worktree before cleanup.
 
@@ -159,7 +159,7 @@ terminals using a worktree before cleanup.
 
 The arrow action on two nodes creates a directed context link. Select the source
 first and target second. Linking does not send data. Select the target and use
-`Review context`; TermiRust creates a bounded, redacted preview that can be
+`Review context`; Multiplex creates a bounded, redacted preview that can be
 edited or cancelled. Structured targets receive the confirmed prompt directly.
 Interactive targets use the existing guarded multiline-paste confirmation.
 
@@ -189,9 +189,9 @@ The existing `detach_others` option remains opt-in.
 Remote structured Codex, Claude Code, and Gemini sessions use a non-PTY SSH exec
 channel and the saved profile's authentication, jump-host chain, TOFU pinning,
 keepalive, and explicit environment entries. Before every process launch,
-TermiRust checks the provider executable and version and verifies the working
+Multiplex checks the provider executable and version and verifies the working
 directory is readable and searchable. Failures remain in the node with the
-provider's installation or repair guidance. TermiRust does not install or
+provider's installation or repair guidance. Multiplex does not install or
 upload anything.
 
 tmux startup actions are deliberately disabled for structured SSH processes;
@@ -268,7 +268,7 @@ for ownership decisions. Recorded automated and manual release coverage is in
 10. In a disposable Git repository, launch two isolated agents and verify their
    branch and path differ. Mark one complete, mark the other to keep, then
    inspect and remove only a clean unused one.
-11. Restart TermiRust and verify geometry, groups, notes, links, and fleet nodes
+11. Restart Multiplex and verify geometry, groups, notes, links, and fleet nodes
    restore while structured processes remain stopped until `Restart` is
    selected.
 12. On a disposable saved SSH host, choose `Structured`, `Read only`, and an

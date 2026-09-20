@@ -73,7 +73,7 @@ pub fn render_failure(error: &CliError, json: bool, terminal_width: usize) -> Ve
 fn render_human(data: &CliData, warnings: &[String], width: usize) -> String {
     let mut output = match data {
         CliData::Status(status) => format!(
-            "TermiRust CLI status\nCLI version: {}\nJSON schema: {}\nHost protocol: {} to {}\nStore: {}\nHost control: {}",
+            "Multiplex CLI status\nCLI version: {}\nJSON schema: {}\nHost protocol: {} to {}\nStore: {}\nHost control: {}",
             status.cli_version,
             status.json_schema_version,
             status.protocol_minimum,
@@ -404,7 +404,7 @@ fn render_human(data: &CliData, warnings: &[String], width: usize) -> String {
             text
         }
         CliData::Help(data) => {
-            let mut text = "TermiRust one-shot local CLI\n\nCommands:".to_string();
+            let mut text = "Multiplex one-shot local CLI\n\nCommands:".to_string();
             for command in &data.commands {
                 text.push_str("\n  ");
                 text.push_str(command);

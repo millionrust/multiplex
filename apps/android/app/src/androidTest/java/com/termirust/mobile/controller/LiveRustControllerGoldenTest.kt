@@ -57,7 +57,7 @@ class LiveRustControllerGoldenTest {
                 connection.beginPairing(
                     offerText = config.offerText,
                     hostName = "Live Rust Host",
-                    deviceName = "TermiRust Android Test",
+                    deviceName = "Multiplex Android Test",
                     deviceId = UUID.randomUUID(),
                 )
             }

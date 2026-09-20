@@ -1,4 +1,4 @@
-//! Platform-free tile codec for TermiRust Remote Screens.
+//! Platform-free tile codec for Multiplex Remote Screens.
 //!
 //! A remote screen is a surface split into 64×64 tiles. Only tiles whose pixels changed are
 //! encoded, each in the cheapest form that reproduces it: skipped, a solid colour, a reference to

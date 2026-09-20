@@ -1,4 +1,4 @@
-//! Watching and driving a TermiRust computer's screen from a phone.
+//! Watching and driving a Multiplex computer's screen from a phone.
 //!
 //! The phone already owns the Controller connection through `multiplex-controller-bindings`;
 //! this boundary owns what rides inside its screen frames. Feed it the bytes of every screen
@@ -71,7 +71,7 @@ pub struct ScreenRect {
     pub height: u32,
 }
 
-/// Where a TermiRust terminal pane sits, for clients that draw it from its text instead.
+/// Where a Multiplex terminal pane sits, for clients that draw it from its text instead.
 #[derive(Clone, Debug, Eq, PartialEq, uniffi::Record)]
 pub struct ScreenPane {
     /// The hosted session id, as 16 bytes.

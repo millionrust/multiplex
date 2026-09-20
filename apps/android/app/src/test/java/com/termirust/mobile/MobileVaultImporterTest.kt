@@ -83,7 +83,7 @@ class MobileVaultImporterTest {
           "sync": {"revision": null, "last_synced_at_millis": null},
           "devices": [{
             "device_id": "desktop-1",
-            "label": "TermiRust Desktop",
+            "label": "Multiplex Desktop",
             "platform": "desktop",
             "public_key": null,
             "paired_at_millis": 1,
@@ -241,7 +241,7 @@ class MobileVaultImporterTest {
         }.exceptionOrNull()
 
         assertEquals(
-            "This build is missing TermiRust shared vault crypto. Install the mobile crypto library before importing encrypted vaults.",
+            "This build is missing Multiplex shared vault crypto. Install the mobile crypto library before importing encrypted vaults.",
             error?.message,
         )
     }
@@ -380,14 +380,14 @@ class MobileVaultImporterTest {
             ),
         )
         val viewModel = MobileHostViewModel(
-            secretStore = FailingSecretStore("Unlock this device before using TermiRust mobile SSH credentials."),
+            secretStore = FailingSecretStore("Unlock this device before using Multiplex mobile SSH credentials."),
         )
 
         viewModel.selectHost(host)
         viewModel.saveCredentialForSelectedHost("super-secret")
 
         assertEquals(
-            "Unlock this device before using TermiRust mobile SSH credentials.",
+            "Unlock this device before using Multiplex mobile SSH credentials.",
             viewModel.status.value,
         )
     }

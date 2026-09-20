@@ -37,7 +37,7 @@ use super::session_coordinator::PendingArchiveAction;
 use super::session_library::{SessionLibraryFilter, SessionLibraryRecovery, SessionLibraryView};
 use super::session_resume::{resume_error_message, session_resume_projection};
 use super::transcript_export::transcript_export_projection;
-use super::{TermiRustApp, theme};
+use super::{MultiplexApp, theme};
 use crate::models::{SavedAppAttachedSession, SavedSessionPlacement};
 use crate::storage::save_saved_state;
 use crate::ui::localization;
@@ -76,7 +76,7 @@ struct PendingOrganizationUndo {
     expires_at: Instant,
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn repair_session_group_references(&mut self) {
         let valid_groups = self
             .project_library

@@ -12,7 +12,7 @@ if grep -F '|| true' "$workflow" >/dev/null; then
   exit 1
 fi
 
-for name in termirust multiplex-cli multiplex-session-host multiplex-mcp multiplex-mcp-authorize multiplex-relay; do
+for name in multiplex multiplex-cli multiplex-session-host multiplex-mcp multiplex-mcp-authorize multiplex-relay; do
   count=$(grep -o "$name" "$workflow" | wc -l | tr -d ' ')
   if [ "$count" -lt 2 ]; then
     printf 'release workflow does not stage required executable: %s\n' "$name" >&2
@@ -23,7 +23,7 @@ done
 grep -F 'if-no-files-found: error' "$workflow" >/dev/null
 grep -F 'sha256' "$workflow" >/dev/null
 grep -F 'macos-15-intel' "$workflow" >/dev/null
-grep -F 'output-file: dist/TermiRust-${{ matrix.target.name }}.spdx.json' "$workflow" >/dev/null
+grep -F 'output-file: dist/Multiplex-${{ matrix.target.name }}.spdx.json' "$workflow" >/dev/null
 grep -F 'uses: actions/attest@v4' "$workflow" >/dev/null
 grep -F 'draft: true' "$workflow" >/dev/null
 if grep -F 'macos-13' "$workflow" >/dev/null; then

@@ -6,11 +6,11 @@ use multiplex_ui_contract::{
     stable_vault_key_snippet_value,
 };
 
-use super::{KeyLifecycleDialog, KeychainTab, NavSection, TermiRustApp};
+use super::{KeyLifecycleDialog, KeychainTab, MultiplexApp, NavSection};
 use crate::models::{DEFAULT_VAULT_ID, SavedIdentity, SavedSnippet};
 use crate::sftp::AuthorizedKeyAction;
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn vault_key_snippet_semantic_snapshot(
         &self,
         _cx: &App,

@@ -134,7 +134,7 @@ impl AttachFailure {
         match self {
             Self::Gap => "Output history has a sequence gap; retry the attachment.",
             Self::PermissionDenied => "The local Host rejected this client identity.",
-            Self::Incompatible => "The local Host protocol is incompatible; update TermiRust.",
+            Self::Incompatible => "The local Host protocol is incompatible; update Multiplex.",
             Self::ResourceLimit => "The Host response exceeded a bounded terminal limit.",
             Self::ProtocolViolation => "The local Host returned inconsistent terminal state.",
             Self::Unavailable => "The durable Host is unavailable; press r to retry.",

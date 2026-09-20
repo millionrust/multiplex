@@ -218,7 +218,7 @@ mod unix {
         match UnixStream::connect(path) {
             Ok(_) => Err(std::io::Error::new(
                 ErrorKind::AddrInUse,
-                "another TermiRust instance owns the pairing endpoint",
+                "another Multiplex instance owns the pairing endpoint",
             )),
             Err(error)
                 if matches!(

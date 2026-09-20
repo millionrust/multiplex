@@ -1,4 +1,4 @@
-//! A paired device, from the command line, for checking a running TermiRust against a real Mac.
+//! A paired device, from the command line, for checking a running Multiplex against a real Mac.
 //!
 //! The mobile fixture is the computer; this is the phone. It pairs with the six-digit code
 //! Devices shows, then watches this computer's screen and drives it. It answers questions the

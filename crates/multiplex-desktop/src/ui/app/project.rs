@@ -199,7 +199,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         for arguments in [
             vec!["init", "-q"],
-            vec!["config", "user.name", "TermiRust Test"],
+            vec!["config", "user.name", "Multiplex Test"],
             vec!["config", "user.email", "test@termirust.invalid"],
         ] {
             assert!(

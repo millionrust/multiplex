@@ -7,7 +7,7 @@ use gpui_component::button::{Button, ButtonVariants as _};
 use gpui_component::{Disableable as _, IconName, Sizable as _, StyledExt as _, h_flex, v_flex};
 use multiplex_cli::{CLI_JSON_SCHEMA_VERSION, cli_installation_status};
 
-use super::TermiRustApp;
+use super::MultiplexApp;
 use crate::ui::localization;
 use crate::ui::theme;
 
@@ -54,7 +54,7 @@ impl CliStatusPresentation {
     }
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn render_cli_settings_card(&self, cx: &Context<Self>) -> Div {
         let status = std::env::current_exe()
             .ok()

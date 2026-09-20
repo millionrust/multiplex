@@ -86,15 +86,15 @@ impl CliPaths {
             .ok_or_else(|| {
                 CliError::new(
                     ErrorCode::Unavailable,
-                    "TermiRust configuration directory is unavailable",
-                    "Set TERMIRUST_CONFIG_DIR to the existing TermiRust data directory.",
+                    "Multiplex configuration directory is unavailable",
+                    "Set TERMIRUST_CONFIG_DIR to the existing Multiplex data directory.",
                 )
             })?;
         let current = std::env::current_exe().map_err(|_| {
             CliError::new(
                 ErrorCode::Unavailable,
                 "CLI installation path is unavailable",
-                "Reinstall TermiRust and try again.",
+                "Reinstall Multiplex and try again.",
             )
         })?;
         let host_executable = std::env::var_os("TERMIRUST_SESSION_HOST_BIN")
@@ -2216,7 +2216,7 @@ impl LocalCommandService {
         if self.paths.metadata_root.join(FORMAT_FILE_NAME).is_file() {
             Ok(())
         } else {
-            Err(unavailable("TermiRust metadata store is unavailable"))
+            Err(unavailable("Multiplex metadata store is unavailable"))
         }
     }
 
@@ -2404,7 +2404,7 @@ impl SshControllerCommandExecutor for UnavailableSshController {
         Err(CliError::new(
             ErrorCode::Unavailable,
             "remote SSH Controller service is unavailable",
-            "Install a compatible TermiRust CLI and session Host, then retry the same route.",
+            "Install a compatible Multiplex CLI and session Host, then retry the same route.",
         ))
     }
 }
@@ -2419,7 +2419,7 @@ impl HostLauncher for ProcessHostLauncher {
         cancellation: &Cancellation,
     ) -> Result<HostLaunchOutcome, CliError> {
         let host_executable = fs::canonicalize(host_executable)
-            .map_err(|_| unavailable("TermiRust session Host companion is unavailable"))?;
+            .map_err(|_| unavailable("Multiplex session Host companion is unavailable"))?;
         let mut child = Command::new(host_executable)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -2987,7 +2987,7 @@ fn map_store(error: StoreError) -> CliError {
     match error {
         StoreError::StoreNewer { .. } => CliError::new(
             ErrorCode::Incompatible,
-            "TermiRust metadata was written by a newer version",
+            "Multiplex metadata was written by a newer version",
             "Upgrade the CLI. The newer metadata was not modified.",
         ),
         StoreError::Io {
@@ -2996,7 +2996,7 @@ fn map_store(error: StoreError) -> CliError {
         }
         | StoreError::Domain(multiplex_domain::ProjectError::PermissionDenied) => CliError::new(
             ErrorCode::PermissionDenied,
-            "permission to access local TermiRust metadata was denied",
+            "permission to access local Multiplex metadata was denied",
             "Check ownership and user-only permissions, then retry.",
         ),
         StoreError::Io {
@@ -3005,14 +3005,14 @@ fn map_store(error: StoreError) -> CliError {
         } if operation.starts_with("lock ") => CliError::new(
             ErrorCode::Timeout,
             "local metadata remained busy for two seconds",
-            "Wait for the current TermiRust operation to finish, then retry once.",
+            "Wait for the current Multiplex operation to finish, then retry once.",
         ),
         StoreError::TooLarge { .. }
         | StoreError::Domain(multiplex_domain::ProjectError::ResourceLimit { .. })
         | StoreError::PresetDomain(multiplex_domain::PresetError::ResourceLimit { .. })
         | StoreError::SessionDomain(SessionStateError::ResourceLimit { .. }) => CliError::new(
             ErrorCode::ResourceLimit,
-            "a local TermiRust resource limit was reached",
+            "a local Multiplex resource limit was reached",
             "Reduce retained records or use a narrower command.",
         ),
         StoreError::SessionDomain(SessionStateError::StaleRevision { actual, .. }) => {
@@ -3033,7 +3033,7 @@ fn map_store(error: StoreError) -> CliError {
         }
         StoreError::Corrupt { .. } | StoreError::UnsafeEntry { .. } => CliError::new(
             ErrorCode::Unavailable,
-            "local TermiRust metadata is unsafe or corrupt",
+            "local Multiplex metadata is unsafe or corrupt",
             "Open Storage and recovery in the desktop application.",
         ),
         StoreError::SessionDomain(SessionStateError::StopRequiredBeforeArchive) => validation(
@@ -3086,13 +3086,13 @@ fn map_controller_device_store(error: ControllerDeviceStoreError) -> CliError {
             CliError::new(
                 ErrorCode::ResourceLimit,
                 "the Controller device authority reached a resource limit",
-                "Inspect paired devices in TermiRust desktop before retrying.",
+                "Inspect paired devices in Multiplex desktop before retrying.",
             )
         }
         ControllerDeviceStoreError::Corrupt => CliError::new(
             ErrorCode::Incompatible,
             "Controller device metadata is corrupt",
-            "Use TermiRust desktop recovery tools. The metadata was not modified.",
+            "Use Multiplex desktop recovery tools. The metadata was not modified.",
         ),
         ControllerDeviceStoreError::Io {
             kind: std::io::ErrorKind::PermissionDenied,
@@ -3105,7 +3105,7 @@ fn map_controller_device_store(error: ControllerDeviceStoreError) -> CliError {
         ControllerDeviceStoreError::Io { .. } => CliError::new(
             ErrorCode::OperationFailed,
             "Controller device metadata could not be read or updated",
-            "Inspect paired-device status in TermiRust desktop before retrying.",
+            "Inspect paired-device status in Multiplex desktop before retrying.",
         ),
         ControllerDeviceStoreError::Domain(error) => map_controller_device_domain(error),
     }
@@ -3120,13 +3120,13 @@ fn map_controller_device_domain(error: ControllerDeviceError) -> CliError {
             CliError::new(
                 ErrorCode::ResourceLimit,
                 "the Controller device authority reached a resource limit",
-                "Inspect paired devices in TermiRust desktop before retrying.",
+                "Inspect paired devices in Multiplex desktop before retrying.",
             )
         }
         _ => CliError::new(
             ErrorCode::Incompatible,
             "Controller device authority validation failed",
-            "Inspect Controller device status in TermiRust desktop. No mutation was retried.",
+            "Inspect Controller device status in Multiplex desktop. No mutation was retried.",
         ),
     }
 }
@@ -3145,7 +3145,7 @@ pub(crate) fn map_client(error: ClientError) -> CliError {
         ClientErrorCode::ProtocolIncompatible => CliError::new(
             ErrorCode::Incompatible,
             "local session Host protocol is incompatible",
-            "Upgrade TermiRust and inspect the session again.",
+            "Upgrade Multiplex and inspect the session again.",
         ),
         ClientErrorCode::PermissionDenied | ClientErrorCode::InvalidIdentity => CliError::new(
             ErrorCode::PermissionDenied,
@@ -3234,10 +3234,10 @@ fn map_process(error: std::io::Error) -> CliError {
         CliError::new(
             ErrorCode::PermissionDenied,
             "permission to start the local session Host was denied",
-            "Check the TermiRust installation permissions.",
+            "Check the Multiplex installation permissions.",
         )
     } else {
-        unavailable("TermiRust session Host companion is unavailable")
+        unavailable("Multiplex session Host companion is unavailable")
     }
 }
 
@@ -3249,7 +3249,7 @@ fn unavailable(message: &str) -> CliError {
     CliError::new(
         ErrorCode::Unavailable,
         message,
-        "Open TermiRust desktop and inspect local status, then retry.",
+        "Open Multiplex desktop and inspect local status, then retry.",
     )
 }
 
@@ -3446,7 +3446,7 @@ fn map_directory_io(error: std::io::Error) -> CliError {
         CliError::new(
             ErrorCode::PermissionDenied,
             "permission to prepare durable session storage was denied",
-            "Check local TermiRust data ownership and permissions.",
+            "Check local Multiplex data ownership and permissions.",
         )
     } else {
         operation("unable to prepare durable session storage")

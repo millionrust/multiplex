@@ -12,7 +12,7 @@ not been completed.
 
 | Requirement | Status | Current evidence | Remaining evidence |
 | --- | --- | --- | --- |
-| Existing TermiRust behavior and tests pass | Proved | `cargo test -q`: 315 passed, 0 failed, 3 opt-in live checks ignored; Docker SSH, SFTP, forwarding, jump-host, restore, remote tmux, and live local tmux tests ran. | None for automated regression scope. |
+| Existing Multiplex behavior and tests pass | Proved | `cargo test -q`: 315 passed, 0 failed, 3 opt-in live checks ignored; Docker SSH, SFTP, forwarding, jump-host, restore, remote tmux, and live local tmux tests ran. | None for automated regression scope. |
 | Old state loads without action and defaults to Split | Proved | Model migration tests cover legacy defaults, round trips, repair, and future-schema fallback. | Human opening a real pre-feature state file remains in the release matrix. |
 | Split remains the default and keeps its runtime identity | Proved | GPUI layout-switch and over-capacity chooser tests retain pane IDs and hidden sessions. | Human baseline comparison remains. |
 | Canvas reuses existing terminal runtimes | Proved | `CanvasNodeKind` references pane IDs; GPUI tests verify local and SSH panes coexist and mode switching does not respawn them. | None for ownership design. |
@@ -44,7 +44,7 @@ Claude and Gemini one-shot headless adapters:
 - Gemini documents that an `ask_user` policy decision becomes `deny` in
   non-interactive mode.
 
-TermiRust keeps both capabilities false rather than auto-approving, scraping a
+Multiplex keeps both capabilities false rather than auto-approving, scraping a
 terminal prompt, or inventing an unsupported wire response.
 
 ### Native accessibility semantics

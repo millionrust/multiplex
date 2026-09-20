@@ -6,11 +6,11 @@ Use this checklist before a client demo or release candidate. The goal is to pro
 
 - A reachable SSH host from the desktop and mobile device or simulator.
 - `tmux` installed on the SSH host.
-- A saved TermiRust desktop host with persistent tmux enabled.
-- A known-host pin for that SSH endpoint in desktop TermiRust.
+- A saved Multiplex desktop host with persistent tmux enabled.
+- A known-host pin for that SSH endpoint in desktop Multiplex.
 - iOS and Android applications checked out under `apps/ios` and
-  `apps/android` in the TermiRust repository.
-- A mobile vault exported from desktop TermiRust after approving each test device.
+  `apps/android` in the Multiplex repository.
+- A mobile vault exported from desktop Multiplex after approving each test device.
 - The same current mobile vault imported on iOS and Android.
 - The host credential saved in iOS Keychain or Android Keystore-backed storage.
 
@@ -20,7 +20,7 @@ Run these before manual SSH testing:
 
 ```bash
 cd /Users/jacob/Projects/terminal/apps/ios
-xcodebuild test -project TermiRustMobile.xcodeproj -scheme TermiRustMobile -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+xcodebuild test -project MultiplexMobile.xcodeproj -scheme MultiplexMobile -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 
 cd /Users/jacob/Projects/terminal
 ANDROID_HOME="$HOME/Library/Android/sdk" ./apps/android/gradlew \
@@ -53,9 +53,9 @@ Pass: both commands print tmux information.
 
 Fail: install tmux on the target host, then retry.
 
-## Prepare Desktop TermiRust
+## Prepare Desktop Multiplex
 
-1. Open the saved host in TermiRust.
+1. Open the saved host in Multiplex.
 2. Enable persistent session for the host.
 3. Set a deterministic session name, for example:
 
@@ -63,7 +63,7 @@ Fail: install tmux on the target host, then retry.
 mobile-demo
 ```
 
-4. Connect from desktop TermiRust.
+4. Connect from desktop Multiplex.
 5. In the terminal, run:
 
 ```bash
@@ -85,7 +85,7 @@ Pass: output is `desktop-sees-this`.
 
 1. Open the iOS app.
 2. Tap `Copy Pairing Request`.
-3. In desktop TermiRust Settings, paste that JSON into `Mobile Pairing Request`.
+3. In desktop Multiplex Settings, paste that JSON into `Mobile Pairing Request`.
 4. Click `Approve Mobile Device`.
 5. Repeat the same flow from Android.
 6. Confirm both devices appear under `Approved Mobile Devices`.
@@ -101,7 +101,7 @@ Pass: desktop reports exported host, identity, vault, and known-host counts.
 
 Fail:
 
-- If known-host count is `0`, connect to the host once from desktop so TermiRust pins the host key, then export again.
+- If known-host count is `0`, connect to the host once from desktop so Multiplex pins the host key, then export again.
 - If a phone says it is not approved, copy its pairing request, approve it on desktop, and export a fresh mobile vault.
 
 ## Verify iOS
@@ -210,7 +210,7 @@ Fail: the app reconnects without asking for the credential.
 
 Run this before team rollout or a client demo that includes device management.
 
-1. In desktop TermiRust Settings, find the test phone under `Approved Mobile Devices`.
+1. In desktop Multiplex Settings, find the test phone under `Approved Mobile Devices`.
 2. Click `Revoke`.
 3. Export a fresh mobile vault.
 4. Import that vault on the revoked phone.

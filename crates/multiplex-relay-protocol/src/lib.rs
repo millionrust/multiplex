@@ -1,4 +1,4 @@
-//! Canonical outer protocol for the optional TermiRust ciphertext relay.
+//! Canonical outer protocol for the optional Multiplex ciphertext relay.
 //!
 //! This crate owns no sockets, storage, terminal types, Controller plaintext, or user interface.
 //! Relay operators are outside the Controller-v1 content trust boundary.

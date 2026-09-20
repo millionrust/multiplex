@@ -68,7 +68,7 @@ pub fn provider_descriptor(provider: AgentProvider) -> AgentProviderDescriptor {
             provider,
             executable: None,
             version_argument: "--version",
-            install_guidance: "Choose an installed executable. TermiRust will not install or run it through a shell.",
+            install_guidance: "Choose an installed executable. Multiplex will not install or run it through a shell.",
             launch_modes: AgentLaunchModes {
                 interactive_pty: true,
                 remote: true,

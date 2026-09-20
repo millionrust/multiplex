@@ -41,6 +41,9 @@ pub const DIFF_CONTEXT_LINES: usize = 2;
 const CONFIG_DIRECTORY: &str = ".config/termirust";
 /// The app-owned tmux configuration wrapped tabs source, shared by every shell.
 const TMUX_CONFIG_FILE: &str = "tmux.conf";
+/// The first line of the file this app writes, and how it recognises its own. It still says
+/// TermiRust: an installed copy has already written this line into shell startup files, and
+/// what those files say moves with the rest of the installed identity and its migration.
 const INIT_FILE_HEADER: &str = "# Managed by TermiRust. Turn off \"Open new terminals in tmux\" in TermiRust, or delete this file and the marked block in your shell startup file.";
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -103,7 +106,7 @@ impl fmt::Display for IntegrationError {
             Self::Io(kind) => write!(formatter, "file operation failed: {kind}"),
             Self::Changed(_) => formatter.write_str("a file changed after it was previewed"),
             Self::MalformedBlock(_) => {
-                formatter.write_str("a startup file has an unterminated TermiRust block")
+                formatter.write_str("a startup file has an unterminated Multiplex block")
             }
             Self::NotAFile(_) => formatter.write_str("a startup file is not a regular file"),
         }
@@ -306,14 +309,14 @@ impl ShellIntegration {
         }
     }
 
-    /// Brings TermiRust's own tmux configuration up to this version, when it is installed and
+    /// Brings Multiplex's own tmux configuration up to this version, when it is installed and
     /// still names itself managed in its first line. Returns whether the file was rewritten.
     ///
     /// Every new wrapped tab sources this file, and key bindings are global to the tmux server,
     /// so a server brought up to date while the file stays old is put back the next time a tab
     /// opens. That is how a click in a scrolled-back tab kept leaving copy mode and dropping the
     /// reader at the bottom long after it had been fixed: the file only changed through a repair
-    /// in Settings that nothing prompted anyone to find. This file is TermiRust's alone and says
+    /// in Settings that nothing prompted anyone to find. This file is Multiplex's alone and says
     /// so; the user's shell startup files still change only through a reviewed plan, and a
     /// configuration file whose first line is no longer ours is left as it is.
     pub fn refresh_managed_config(&self) -> Result<bool, IntegrationError> {
@@ -669,7 +672,7 @@ mod tests {
         let (_home, integration) = home();
         let path = integration.tmux_config_path();
         fs::create_dir_all(path.parent().unwrap()).unwrap();
-        // As TermiRust wrote it on 2026-09-15, when a click in a scrolled-back tab still left
+        // As Multiplex wrote it on 2026-09-15, when a click in a scrolled-back tab still left
         // copy mode and dropped the reader at the bottom.
         let older = [
             appearance::CONFIGURATION_FILE_HEADER,
@@ -694,7 +697,7 @@ mod tests {
         assert!(!integration.refresh_managed_config().unwrap());
         assert!(!path.exists());
 
-        // Taken over: its first line is no longer TermiRust's.
+        // Taken over: its first line is no longer Multiplex's.
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         let theirs = "# mine now\nset -g status on\n";
         fs::write(&path, theirs).unwrap();

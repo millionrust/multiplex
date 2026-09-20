@@ -26,7 +26,7 @@ actor PairedHostStore {
             appropriateFor: nil,
             create: true
         )
-        let directory = support.appendingPathComponent("TermiRust/Controller", isDirectory: true)
+        let directory = support.appendingPathComponent("Multiplex/Controller", isDirectory: true)
         try FileManager.default.createDirectory(
             at: directory,
             withIntermediateDirectories: true,

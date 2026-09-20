@@ -17,7 +17,7 @@ use multiplex_store::ContinuityRepository;
 
 use super::hosted_session::{DurableContinuityCommit, DurableLaunch, DurableSessionPaths};
 use super::session_coordinator::SessionStartRequest;
-use super::{AppAttachedPaneState, TermiRustApp, theme};
+use super::{AppAttachedPaneState, MultiplexApp, theme};
 use crate::models::{ConnectRequest, LocalShellConfig, SavedAppAttachedSession, SavedDurableHost};
 use crate::storage::{app_dir, project_store_dir, save_saved_state};
 use crate::ui::localization;
@@ -106,7 +106,7 @@ pub(super) fn session_resume_projection(
     }
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn open_session_resume(
         &mut self,
         source_session_id: HostedSessionId,

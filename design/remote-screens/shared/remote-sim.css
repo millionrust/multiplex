@@ -1,6 +1,6 @@
 /* Remote Screens prototype: the remote computer's pixels and the simulation chrome shared by
    desktop.html, ios.html and android.html. Scene colours are fixed; they are the remote
-   Mac's own pixels, not TermiRust UI. */
+   Mac's own pixels, not Multiplex UI. */
 
 .rs-host { position: absolute; inset: 0; overflow: hidden; background: #07080A; touch-action: none; }
 .rs-host.cover, .rs-host.static { cursor: default; }

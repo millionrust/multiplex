@@ -13,7 +13,7 @@ pub(super) struct ReplicationSettingsInputs {
 }
 
 impl ReplicationSettingsInputs {
-    pub(super) fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+    pub(super) fn new(window: &mut Window, cx: &mut Context<MultiplexApp>) -> Self {
         Self {
             owner_request: cx.new(|cx| {
                 InputState::new(window, cx)
@@ -67,7 +67,7 @@ pub(super) struct ReplicationLifecycleState {
     pub deletion_review: Option<DesktopReplicationDeletionReview>,
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     fn replication_folder(&self) -> anyhow::Result<std::path::PathBuf> {
         self.saved
             .settings

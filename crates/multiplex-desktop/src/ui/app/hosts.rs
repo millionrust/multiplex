@@ -1,6 +1,6 @@
 //! Hosts library page: host tile/list cards, top toolbar (search + NEW HOST
 //! split menu + Grid/Tag/Sort/Avatar dropdowns), the absolute overlay layer
-//! and the page wrapper. All methods are part of `TermiRustApp`.
+//! and the page wrapper. All methods are part of `MultiplexApp`.
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -16,7 +16,7 @@ use crate::connection_diagnostics::MAX_DIAGNOSTIC_BATCH;
 use crate::models::{AuthMode, HostProfile, ProfileSource};
 use crate::ui::app::{
     ConnectionDiagnosticStatus, EditorMenu, HostsSort, HostsViewMode, ICON_CALENDAR, ICON_GRID,
-    ICON_KEY, ICON_PENCIL, ICON_TAG, ICON_VAULT, TermiRustApp, ToolbarMenu, app_icon,
+    ICON_KEY, ICON_PENCIL, ICON_TAG, ICON_VAULT, MultiplexApp, ToolbarMenu, app_icon,
 };
 use crate::ui::localization;
 use crate::ui::theme;
@@ -32,7 +32,7 @@ const PROVIDER_AWS: &str = "AWS";
 const PROVIDER_DIGITAL_OCEAN: &str = "DigitalOcean";
 const PROVIDER_AZURE: &str = "Azure";
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn host_connection_semantic_snapshot(
         &self,
         cx: &App,
@@ -2272,7 +2272,7 @@ impl TermiRustApp {
                                 #[cfg(not(test))]
                                 let _ = std::process::Command::new("open")
                                     .arg(format!(
-                                        "mailto:?subject=Join%20me%20on%20TermiRust&body=I%27m%20using%20TermiRust%20at%20{invite_email}"
+                                        "mailto:?subject=Join%20me%20on%20Multiplex&body=I%27m%20using%20Multiplex%20at%20{invite_email}"
                                     ))
                                     .spawn();
                                 #[cfg(test)]

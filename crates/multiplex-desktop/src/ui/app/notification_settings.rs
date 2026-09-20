@@ -2,7 +2,7 @@ use multiplex_domain::{NotificationMode, PermissionState};
 
 use super::*;
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn render_notification_settings_card(&self, cx: &Context<Self>) -> Div {
         let policy = self.activity_center.policy();
         let permission = match policy.permission {

@@ -43,12 +43,12 @@ TERMIRUST_RUN_LIVE_AGENT_TESTS=1 cargo test live_gemini_headless_smoke -- --igno
 | --- | --- | --- |
 | Codex CLI 0.144.4 | Pass | Authenticated app-server completed a read-only, no-tools marker request in 5.27s. |
 | Claude Code 2.1.126 | Account blocked | The adapter launched and normalized the provider error, but the organization disables subscription access to Claude Code. An API key or administrator change is required. |
-| Gemini CLI | Not exercised | The executable is not installed on this machine; TermiRust's missing-provider guidance remains covered deterministically. |
+| Gemini CLI | Not exercised | The executable is not installed on this machine; Multiplex's missing-provider guidance remains covered deterministically. |
 
 ## Native launch smoke
 
 `cargo run` built and launched `target/debug/termirust`. CoreGraphics reported
-one on-screen TermiRust window with bounds `1175x946`; the process remained alive
+one on-screen Multiplex window with bounds `1175x946`; the process remained alive
 until it was intentionally interrupted. macOS denied automated `screencapture`,
 so no screenshot or automated click-through is claimed.
 

@@ -31,7 +31,7 @@ struct ControllerRootView: View {
                     ContentUnavailableView {
                         Label("No Paired Hosts", systemImage: "desktopcomputer")
                     } description: {
-                        Text("Pair with TermiRust Desktop on the same private network.")
+                        Text("Pair with Multiplex Desktop on the same private network.")
                     } actions: {
                         Button("Pair a Computer") { showingPairing = true }
                             .buttonStyle(.borderedProminent)
@@ -522,7 +522,7 @@ private struct ControllerSessionFleetView: View {
     private var emptyMessage: LocalizedStringKey {
         state.isCachedReadOnly
             ? "No terminals were saved in the last complete snapshot."
-            : "Open a local or SSH terminal in TermiRust Desktop, then refresh."
+            : "Open a local or SSH terminal in Multiplex Desktop, then refresh."
     }
 }
 
@@ -637,7 +637,7 @@ private struct RelayControllerConfigurationView: View {
                         .autocorrectionDisabled()
                 }
                 Section {
-                    Text("Saving an edit requires entering the admission credential again. TermiRust never switches routes automatically.")
+                    Text("Saving an edit requires entering the admission credential again. Multiplex never switches routes automatically.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -712,7 +712,7 @@ private struct RelayControllerConfigurationView: View {
             credential = package.admissionCredential
             localError = nil
         } catch {
-            localError = "The clipboard does not contain a valid TermiRust controller relay package."
+            localError = "The clipboard does not contain a valid Multiplex controller relay package."
         }
     }
 }
@@ -769,7 +769,7 @@ private struct SSHControllerConfigurationView: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Use SSH only to carry the encrypted TermiRust Controller protocol. Pair on your private network first; routes never switch automatically.")
+                    Text("Use SSH only to carry the encrypted Multiplex Controller protocol. Pair on your private network first; routes never switch automatically.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -836,7 +836,7 @@ private struct SSHControllerConfigurationView: View {
                 Button("Remove Route", role: .destructive, action: onRemove)
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Its credential and configuration will be deleted from this device. TermiRust will not switch to another route automatically.")
+                Text("Its credential and configuration will be deleted from this device. Multiplex will not switch to another route automatically.")
             }
         }
     }
@@ -1143,7 +1143,7 @@ private struct PairComputerChooserView: View {
                 if browser.computers.isEmpty {
                     if browser.isUnavailable {
                         Label(
-                            "Allow Local Network access for TermiRust in Settings to find computers.",
+                            "Allow Local Network access for Multiplex in Settings to find computers.",
                             systemImage: "wifi.exclamationmark"
                         )
                         .font(.footnote)
@@ -1182,7 +1182,7 @@ private struct PairComputerChooserView: View {
             } header: {
                 Text("Computers on This Network")
             } footer: {
-                Text("In TermiRust on your computer, choose Pair phone to show a six-digit code.")
+                Text("In Multiplex on your computer, choose Pair phone to show a six-digit code.")
             }
             Section {
                 TextField("mac.tailnet.ts.net:55123", text: $viewModel.pairingAddressText)
@@ -1377,7 +1377,7 @@ private struct PairOfferView: View {
                             .padding(.vertical, 12)
                             .textSelection(.enabled)
                             .accessibilityLabel("Security code \(challenge.sas.map(String.init).joined(separator: " "))")
-                        Text("Only continue when this exact code is visible in TermiRust Desktop.")
+                        Text("Only continue when this exact code is visible in Multiplex Desktop.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -1486,7 +1486,7 @@ private struct PairOfferView: View {
                                     .foregroundStyle(Color.slateDone)
                             }
                         }
-                        Text("In TermiRust Desktop, open Settings, Remote Devices, Add Controller, then copy the pairing offer here.")
+                        Text("In Multiplex Desktop, open Settings, Remote Devices, Add Controller, then copy the pairing offer here.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                         if let scannerFailure {

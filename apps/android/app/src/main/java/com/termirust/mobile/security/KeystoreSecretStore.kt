@@ -94,18 +94,18 @@ class KeystoreSecretStore(
     private fun requireSecureDeviceLock() {
         val keyguard = context.getSystemService(KeyguardManager::class.java)
         check(keyguard?.isDeviceSecure == true) {
-            "Set a device PIN, password, or pattern before storing TermiRust mobile SSH credentials."
+            "Set a device PIN, password, or pattern before storing Multiplex mobile SSH credentials."
         }
     }
 
     private fun userFacingKeystoreError(error: Throwable): Throwable =
         when (error) {
             is UserNotAuthenticatedException -> IllegalStateException(
-                "Unlock this device with PIN, password, pattern, or biometrics before using TermiRust mobile SSH credentials.",
+                "Unlock this device with PIN, password, pattern, or biometrics before using Multiplex mobile SSH credentials.",
                 error,
             )
             is KeyPermanentlyInvalidatedException -> IllegalStateException(
-                "The Android secure lock changed. Remove and save this TermiRust mobile credential again.",
+                "The Android secure lock changed. Remove and save this Multiplex mobile credential again.",
                 error,
             )
             else -> error

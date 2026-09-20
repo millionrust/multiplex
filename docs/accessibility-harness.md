@@ -1,6 +1,6 @@
 # Accessibility Laboratory
 
-The laboratory is an isolated development view for validating TermiRust's semantic tree,
+The laboratory is an isolated development view for validating Multiplex's semantic tree,
 keyboard focus contract, and macOS VoiceOver adapter. It does not claim whole-product WCAG
 conformance and it does not alter saved application data.
 

@@ -144,7 +144,7 @@ impl ManagementFailure {
         Self {
             code: "unavailable",
             summary: "Local Session management is unavailable.".into(),
-            recovery: "Install the TermiRust CLI and session Host, then refresh.".into(),
+            recovery: "Install the Multiplex CLI and session Host, then refresh.".into(),
             conflict_revision: None,
         }
     }
@@ -769,8 +769,8 @@ impl LocalManagementExecutor {
     pub fn new(config_root: PathBuf) -> Result<Self, ManagementFailure> {
         let executable = std::env::current_exe().map_err(|_| {
             ManagementFailure::validation(
-                "TermiRust installation path is unavailable.",
-                "Reinstall TermiRust and retry.",
+                "Multiplex installation path is unavailable.",
+                "Reinstall Multiplex and retry.",
             )
         })?;
         let host_executable = std::env::var_os("TERMIRUST_SESSION_HOST_BIN")

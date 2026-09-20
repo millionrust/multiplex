@@ -296,7 +296,7 @@ pub fn run_command(arguments: &[String]) -> Result<(), ServiceError> {
         Some("run") if arguments.len() == 1 => run_foreground(),
         Some("install") if arguments.len() == 1 => {
             install()?;
-            println!("TermiRust will keep paired devices connected after you quit the app.");
+            println!("Multiplex will keep paired devices connected after you quit the app.");
             Ok(())
         }
         Some("remove") if arguments.len() == 1 => {
@@ -504,7 +504,7 @@ mod tests {
     /// The service's screen recording grant is its own, not the app's.
     ///
     /// This does not assert which way the answer goes — that depends on what this machine has
-    /// been granted — but on what is said about it. A person who granted TermiRust Screen
+    /// been granted — but on what is said about it. A person who granted Multiplex Screen
     /// Recording has every reason to believe that covered the background service too, so the
     /// message has to name the service and say why the app's grant is not enough.
     #[test]
@@ -736,7 +736,7 @@ fn screen_capture_line() -> Option<String> {
     Some(format!(
         "Screens are not shared yet: macOS has not granted this service Screen Recording. \
          Open System Settings > Privacy & Security > Screen & System Audio Recording and allow \
-         {LAUNCH_AGENT_LABEL}. Granting it to TermiRust itself does not cover the service, \
+         {LAUNCH_AGENT_LABEL}. Granting it to Multiplex itself does not cover the service, \
          because macOS records the grant against whichever process asked."
     ))
 }

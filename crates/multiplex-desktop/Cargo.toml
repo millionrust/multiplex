@@ -4,21 +4,21 @@ version.workspace = true
 edition = "2024"
 rust-version.workspace = true
 description = "Native desktop SSH client built with GPUI"
-authors = ["TermiRust contributors"]
+authors = ["Multiplex contributors"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jacobsam/terminal"
 readme = "../../README.md"
 default-run = "multiplex"
 
 [package.metadata.bundle]
-name = "TermiRust"
+name = "Multiplex"
 identifier = "com.termirust.desktop"
 icon = ["assets/icons/app.png", "assets/icons/app@2x.png"]
-copyright = "Copyright (c) 2025 TermiRust contributors"
+copyright = "Copyright (c) 2025 Multiplex contributors"
 category = "DeveloperTool"
 short_description = "Native desktop SSH client"
 long_description = """
-TermiRust is a native desktop SSH client with vault management,
+Multiplex is a native desktop SSH client with vault management,
 SFTP browsing, port forwarding, jump host chains, snippets,
 broadcast input, and more.
 """

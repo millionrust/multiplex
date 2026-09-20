@@ -340,7 +340,7 @@ fn start_codex_transport(
             "params": {
                 "clientInfo": {
                     "name": "termirust",
-                    "title": "TermiRust",
+                    "title": "Multiplex",
                     "version": env!("CARGO_PKG_VERSION")
                 },
                 "capabilities": {"experimentalApi": false}

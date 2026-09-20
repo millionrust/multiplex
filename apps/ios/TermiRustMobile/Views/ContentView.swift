@@ -101,7 +101,7 @@ struct ContentView: View {
                     .foregroundStyle(.white)
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text("TermiRust")
+                Text("Multiplex")
                     .font(.headline.weight(.bold))
                 Text(viewModel.hosts.isEmpty ? "Import vault to begin" : "\(viewModel.hosts.count) Connections")
                     .font(.caption)
@@ -140,7 +140,7 @@ struct ContentView: View {
                         .foregroundStyle(.white)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("TermiRust")
+                    Text("Multiplex")
                         .font(.title2.weight(.bold))
                     Text("Mobile terminal")
                         .font(.caption)

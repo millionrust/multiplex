@@ -205,7 +205,7 @@ impl UinputSink {
         }
 
         let mut name = [0_u8; 80];
-        let label = b"TermiRust Remote Screen";
+        let label = b"Multiplex Remote Screen";
         name[..label.len()].copy_from_slice(label);
         let setup = UinputSetup {
             id: InputId {

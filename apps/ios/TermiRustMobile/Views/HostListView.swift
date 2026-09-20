@@ -20,7 +20,7 @@ struct HostListView: View {
                 .padding(16)
             }
         }
-        .navigationTitle("TermiRust")
+        .navigationTitle("Multiplex")
         .navigationBarTitleDisplayMode(.inline)
         .fileImporter(
             isPresented: $showingImporter,
@@ -48,7 +48,7 @@ struct HostListView: View {
                     .foregroundStyle(.white)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text("TermiRust")
+                Text("Multiplex")
                     .font(.title2.weight(.bold))
                 Text("Mobile terminal")
                     .font(.caption)

@@ -1,15 +1,15 @@
-# TermiRust Mobile Terminal Access Architecture
+# Multiplex Mobile Terminal Access Architecture
 
 ## Decision
 
-TermiRust mobile access starts with direct SSH from each client to the target
+Multiplex mobile access starts with direct SSH from each client to the target
 host. Desktop, iOS, and Android all attach to the same named tmux session on the
 target host.
 
 ```text
-Desktop TermiRust --\
-iOS TermiRust -------+-- SSH -- target host -- tmux named session
-Android TermiRust --/
+Desktop Multiplex --\
+iOS Multiplex -------+-- SSH -- target host -- tmux named session
+Android Multiplex --/
 ```
 
 The desktop app is not a relay in the first mobile release. A gateway can be
@@ -119,7 +119,7 @@ device, increments sync revision, and refuses revoked devices. The request
 itself must never contain SSH passwords, private keys, vault passphrases, or raw
 vault keys.
 
-Desktop TermiRust exposes the first approval step in Settings: paste the mobile
+Desktop Multiplex exposes the first approval step in Settings: paste the mobile
 pairing request, approve the device record, then export a new encrypted mobile
 vault. That export includes the approved device and any persisted mobile
 device-key records. Until device-specific wrapping is fully connected, the
@@ -197,7 +197,7 @@ Known-host pinning must be part of the mobile MVP:
 - If a known-host pin is present but the server key differs, connection is a
   hard stop and shows a clear warning.
 - Mobile-side trust-on-first-use can be added later, but the MVP keeps host-key
-  approval centralized in desktop TermiRust so phones do not train users to
+  approval centralized in desktop Multiplex so phones do not train users to
   accept unknown production host keys on small screens.
 
 ## Persistent Tmux Behavior
@@ -221,7 +221,7 @@ private-network access is mandatory for day one.
 Future gateway shape:
 
 ```text
-Mobile/Desktop -- HTTPS/WebSocket or overlay network -- TermiRust Gateway -- SSH -- target host -- tmux
+Mobile/Desktop -- HTTPS/WebSocket or overlay network -- Multiplex Gateway -- SSH -- target host -- tmux
 ```
 
 Gateway responsibilities:

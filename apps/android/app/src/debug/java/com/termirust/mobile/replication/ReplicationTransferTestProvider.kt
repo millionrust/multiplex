@@ -21,7 +21,7 @@ class ReplicationTransferTestProvider : DocumentsProvider() {
             }.forEach { folder -> addRow(columns.map { column -> when (column) {
                 Root.COLUMN_ROOT_ID -> folder.name
                 Root.COLUMN_DOCUMENT_ID -> folder.name + ":root"
-                Root.COLUMN_TITLE -> "TermiRust fixture"
+                Root.COLUMN_TITLE -> "Multiplex fixture"
                 Root.COLUMN_FLAGS -> Root.FLAG_LOCAL_ONLY
                 Root.COLUMN_MIME_TYPES -> "application/json"
                 else -> null
@@ -47,7 +47,7 @@ class ReplicationTransferTestProvider : DocumentsProvider() {
             Document.COLUMN_DOCUMENT_ID -> id
             Document.COLUMN_MIME_TYPE -> if (directory) Document.MIME_TYPE_DIR else "application/json"
             Document.COLUMN_DISPLAY_NAME -> when {
-                directory -> "TermiRust fixture"
+                directory -> "Multiplex fixture"
                 id.endsWith(":bundle") -> "Enrollment bundle.json"
                 id.endsWith(":replica") -> "Encrypted hosts.json"
                 else -> id

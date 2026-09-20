@@ -6,14 +6,14 @@ use multiplex_ui_contract::{
     SettingsSemanticSnapshot, SettingsSurfaceState, search_settings,
 };
 
-use super::{NavSection, TermiRustApp};
+use super::{MultiplexApp, NavSection};
 use crate::models::ThemePreset;
 use crate::ui::localization;
 
 const SETTINGS_MIN_SESSION_LOG_LIMIT: i64 = 50;
 const SETTINGS_MAX_SESSION_LOG_LIMIT: i64 = 1_000;
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn settings_semantic_snapshot(&self, cx: &App) -> Option<SettingsSemanticSnapshot> {
         if self.nav_section != NavSection::Settings {
             return None;

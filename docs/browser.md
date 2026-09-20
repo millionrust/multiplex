@@ -1,6 +1,6 @@
 # Isolated Browser Capability
 
-TermiRust can capture visible page text, viewport screenshots, and bounded downloads for an
+Multiplex can capture visible page text, viewport screenshots, and bounded downloads for an
 existing Session through its local MCP server. The feature is disabled by default. It does not
 appear in `all`, because `all` deliberately means all read-only MCP capabilities.
 
@@ -9,7 +9,7 @@ appear in `all`, because `all` deliberately means all read-only MCP capabilities
 - Every browser operation needs an explicit MCP startup capability, a short-lived local approval,
   the exact Session ID, a fresh command UUID, and an exact HTTP(S) origin.
 - Page text and screenshots run in a separate headless Chrome/Chromium process group with a new
-  owner-only profile. TermiRust clears the process environment and never opens the user's normal
+  owner-only profile. Multiplex clears the process environment and never opens the user's normal
   browser profile, cookies, password store, extensions, or credentials.
 - An owned loopback proxy resolves and pins approved hostnames, rejects private, loopback,
   link-local, multicast, documentation, benchmark, and metadata addresses, and caps traffic.
@@ -27,7 +27,7 @@ safe. Approve only origins needed for the current task.
 
 ## Enable
 
-A supported user-installed Chrome or Chromium executable is required. TermiRust does not bundle a
+A supported user-installed Chrome or Chromium executable is required. Multiplex does not bundle a
 browser. Set `TERMIRUST_BROWSER_EXECUTABLE` in the MCP server environment only when automatic
 detection cannot find it.
 

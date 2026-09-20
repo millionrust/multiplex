@@ -211,10 +211,10 @@ pub fn build_remote_structured_command(
     let directory_arg = shell_single_quote(working_directory);
     let guidance = shell_single_quote(descriptor.install_guidance);
     let version_error = shell_single_quote(&format!(
-        "TermiRust found {executable}, but its version check failed. Update or repair the CLI and select Check again."
+        "Multiplex found {executable}, but its version check failed. Update or repair the CLI and select Check again."
     ));
     let directory_error = shell_single_quote(&format!(
-        "TermiRust cannot access remote working directory: {working_directory}"
+        "Multiplex cannot access remote working directory: {working_directory}"
     ));
     let mut lines = Vec::new();
     for (key, value) in environment {

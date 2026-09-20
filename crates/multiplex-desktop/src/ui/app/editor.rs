@@ -15,7 +15,7 @@ use multiplex_ui_contract::MessageId;
 
 use crate::models::{AuthMode, ThemePreset};
 use crate::ui::app::{
-    EditorMenu, ICON_KEY, ICON_PANEL_COLLAPSE_RIGHT, ICON_TAG, NavSection, TermiRustApp, app_icon,
+    EditorMenu, ICON_KEY, ICON_PANEL_COLLAPSE_RIGHT, ICON_TAG, MultiplexApp, NavSection, app_icon,
 };
 use crate::ui::localization;
 use crate::ui::theme;
@@ -24,7 +24,7 @@ fn editor_message(id: MessageId) -> String {
     localization::message_id(id).unwrap_or_default()
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn open_editor_for_new_host(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.nav_section = NavSection::Hosts;
         self.clear_profile_form(window, cx);

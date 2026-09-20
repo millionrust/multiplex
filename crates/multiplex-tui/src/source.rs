@@ -79,8 +79,8 @@ impl LocalFleetSource {
         .ok_or(FleetLoadError {
             diagnostic: TuiDiagnostic {
                 code: "config-unavailable",
-                summary: "TermiRust data is unavailable",
-                recovery: "Set TERMIRUST_CONFIG_DIR to the existing TermiRust data directory.",
+                summary: "Multiplex data is unavailable",
+                recovery: "Set TERMIRUST_CONFIG_DIR to the existing Multiplex data directory.",
             },
             recovery_required: false,
         })?;
@@ -248,13 +248,13 @@ fn map_store_error(error: StoreError) -> FleetLoadError {
     let (code, summary, recovery, recovery_required) = match error {
         StoreError::StoreNewer { .. } => (
             "store-newer",
-            "This data requires a newer TermiRust version",
-            "Update TermiRust, then press r to refresh.",
+            "This data requires a newer Multiplex version",
+            "Update Multiplex, then press r to refresh.",
             true,
         ),
         StoreError::Corrupt { .. } => (
             "store-corrupt",
-            "TermiRust metadata could not be read safely",
+            "Multiplex metadata could not be read safely",
             "Open desktop diagnostics before attempting recovery.",
             true,
         ),
@@ -263,19 +263,19 @@ fn map_store_error(error: StoreError) -> FleetLoadError {
             ..
         } => (
             "permission-denied",
-            "TermiRust metadata permission was denied",
+            "Multiplex metadata permission was denied",
             "Restore read access to the existing data directory, then press r.",
             false,
         ),
         StoreError::Io { .. } => (
             "store-unavailable",
-            "TermiRust metadata is unavailable",
+            "Multiplex metadata is unavailable",
             "Open the desktop app once or verify TERMIRUST_CONFIG_DIR, then press r.",
             false,
         ),
         StoreError::UnsafeEntry { .. } | StoreError::TooLarge { .. } => (
             "unsafe-metadata",
-            "TermiRust metadata failed a safety check",
+            "Multiplex metadata failed a safety check",
             "Inspect desktop diagnostics; the TUI will not rewrite this data.",
             true,
         ),
@@ -286,7 +286,7 @@ fn map_store_error(error: StoreError) -> FleetLoadError {
         | StoreError::SessionDomain(_)
         | StoreError::WorktreeDomain(_) => (
             "invalid-metadata",
-            "TermiRust metadata is inconsistent",
+            "Multiplex metadata is inconsistent",
             "Inspect desktop diagnostics; the TUI will not repair this data.",
             true,
         ),

@@ -16,7 +16,7 @@ import java.net.InetAddress
 import java.net.UnknownHostException
 import java.security.MessageDigest
 
-/** A computer announcing the TermiRust Controller listener on the local network. */
+/** A computer announcing the Multiplex Controller listener on the local network. */
 data class DiscoveredController(
     val serviceName: String,
     val discoveryId: String,
@@ -75,7 +75,7 @@ internal object ControllerNetworkAddresses {
     }
 
     // The same label the desktop announces over Bonjour.
-    fun defaultHostName(discoveryId: String): String = "TermiRust ${discoveryId.take(6).uppercase()}"
+    fun defaultHostName(discoveryId: String): String = "Multiplex ${discoveryId.take(6).uppercase()}"
 
     fun parseEndpoint(text: String): ControllerEndpoint {
         val value = text.trim()

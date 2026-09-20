@@ -1,6 +1,6 @@
 # Local Diagnostics
 
-TermiRust keeps a bounded local record of allowlisted operational metadata. The
+Multiplex keeps a bounded local record of allowlisted operational metadata. The
 diagnostics path is intentionally separate from terminal scrollback, session
 history, and application state.
 
@@ -39,7 +39,7 @@ terminal or PTY. A later safe record reports only the aggregate dropped count.
 
 On Unix platforms the diagnostics directory is mode `0700` and files are mode
 `0600`. Files use fixed non-identifying names. The ownership marker prevents
-Clear from deleting paths that are not managed by TermiRust.
+Clear from deleting paths that are not managed by Multiplex.
 
 ## Preview and export
 
@@ -66,11 +66,11 @@ shares that file independently.
 - **Dropping events**: terminal work remains unaffected. Lower activity or leave
   diagnostics enabled until the queue returns to Healthy.
 - **Disk or permission error**: verify free space and access to the app data
-  directory, then restart TermiRust if initialization failed.
+  directory, then restart Multiplex if initialization failed.
 - **Source changed**: run Preview export again.
 - **Privacy scan failed**: no bundle was published. Keep the source files for
   engineering investigation; do not bypass the scanner.
-- **Destination exists**: choose a new filename. TermiRust will not overwrite it.
+- **Destination exists**: choose a new filename. Multiplex will not overwrite it.
 
 Clear is best effort. Removed bytes may remain in filesystem snapshots, backups,
 or storage media and are not described as securely erased.

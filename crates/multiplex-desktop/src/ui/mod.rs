@@ -13,7 +13,7 @@ pub mod status;
 pub mod theme;
 pub mod util;
 
-pub use app::TermiRustApp;
+pub use app::MultiplexApp;
 
 #[cfg(test)]
 mod recovery {

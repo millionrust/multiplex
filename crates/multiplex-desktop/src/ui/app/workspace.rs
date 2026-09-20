@@ -1,6 +1,6 @@
 //! Workspace shell rendering: search bar, autocomplete bar, files (SFTP)
 //! view, terminal pane (cells/rows), workspace body and shell wrapper.
-//! All methods are part of `TermiRustApp`.
+//! All methods are part of `MultiplexApp`.
 
 use std::time::Duration;
 
@@ -18,9 +18,9 @@ use gpui_component::{Disableable as _, Icon, IconName, Sizable, StyledExt as _, 
 
 use crate::models::{ConnectionKind, WorkspaceLayoutMode};
 use crate::ui::app::{
-    ConnectDialogMode, DividerRect, DropZone, SessionPane, SplitAxis, TERMINAL_INNER_PADDING_X,
-    TERMINAL_INNER_PADDING_Y, TermiRustApp, WORKSPACE_PADDING, WORKSPACE_SEARCH_ROW_HEIGHT,
-    WorkspaceTabDrag, WorkspaceViewMode,
+    ConnectDialogMode, DividerRect, DropZone, MultiplexApp, SessionPane, SplitAxis,
+    TERMINAL_INNER_PADDING_X, TERMINAL_INNER_PADDING_Y, WORKSPACE_PADDING,
+    WORKSPACE_SEARCH_ROW_HEIGHT, WorkspaceTabDrag, WorkspaceViewMode,
 };
 use crate::ui::localization;
 use crate::ui::path::{format_file_size, remote_parent_path};
@@ -29,7 +29,7 @@ use gpui_component::ActiveTheme as _;
 use multiplex_domain::{HostedSessionState, SessionLaunchRoute};
 use multiplex_ui_contract::{MessageId, TerminalSemanticSnapshot};
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn terminal_semantic_snapshot(&self) -> Option<TerminalSemanticSnapshot> {
         let workspace = self.active_workspace()?;
         if workspace.layout_mode != WorkspaceLayoutMode::Split

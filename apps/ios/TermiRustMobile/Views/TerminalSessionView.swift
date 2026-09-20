@@ -138,7 +138,7 @@ struct TerminalSessionView: View {
         VStack(spacing: 12) {
             Image(systemName: "eye.slash")
                 .font(.title2)
-            Text("Direct SSH terminal hidden while TermiRust is inactive")
+            Text("Direct SSH terminal hidden while Multiplex is inactive")
                 .font(.headline)
                 .multilineTextAlignment(.center)
         }

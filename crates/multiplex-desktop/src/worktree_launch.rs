@@ -839,7 +839,7 @@ mod tests {
     fn repository() -> tempfile::TempDir {
         let fixture = tempfile::tempdir().unwrap();
         git(fixture.path(), &["init", "-q", "-b", "main"]);
-        git(fixture.path(), &["config", "user.name", "TermiRust Test"]);
+        git(fixture.path(), &["config", "user.name", "Multiplex Test"]);
         git(
             fixture.path(),
             &["config", "user.email", "test@termirust.invalid"],

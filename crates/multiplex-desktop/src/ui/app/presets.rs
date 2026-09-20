@@ -28,7 +28,7 @@ use super::runtimes::{
     capability_summary, detection_status_label, executable_basename, runtime_capability_label,
     runtime_capability_message, runtime_label,
 };
-use super::{TermiRustApp, theme};
+use super::{MultiplexApp, theme};
 use crate::agents::{
     CliDiscovery, DiscoveryCancellation, RuntimeDiscoveryEntry, RuntimeDiscoveryReport,
     discovery_path_snapshot, known_runtime_descriptors,
@@ -141,7 +141,7 @@ impl PresetLibraryState {
     }
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn open_new_preset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         Self::set_input_value(&self.preset_label_input, String::new(), window, cx);
         Self::set_input_value(&self.preset_executable_input, String::new(), window, cx);
@@ -2093,7 +2093,7 @@ fn preset_runtime_checkbox(
     }
 }
 
-fn new_argument_input(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Entity<InputState> {
+fn new_argument_input(window: &mut Window, cx: &mut Context<MultiplexApp>) -> Entity<InputState> {
     cx.new(|cx| InputState::new(window, cx).placeholder("--literal-argument"))
 }
 

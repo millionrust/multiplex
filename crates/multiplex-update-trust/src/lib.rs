@@ -1,4 +1,4 @@
-//! Bounded TUF metadata verification with atomic TermiRust trust state.
+//! Bounded TUF metadata verification with atomic Multiplex trust state.
 //!
 //! This crate deliberately has no network, installer, process, UI, or target-download API.
 
@@ -385,7 +385,7 @@ fn validate_monotonic(
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct TermiRustTargetMetadata {
+struct MultiplexTargetMetadata {
     schema_version: u32,
     version: String,
     channel: UpdateChannel,
@@ -409,7 +409,7 @@ fn parse_target(
         .get("termirust")
         .cloned()
         .ok_or_else(|| TrustError::new(TrustErrorCode::InvalidMetadata))?;
-    let metadata: TermiRustTargetMetadata = serde_json::from_value(custom)
+    let metadata: MultiplexTargetMetadata = serde_json::from_value(custom)
         .map_err(|_| TrustError::new(TrustErrorCode::InvalidMetadata))?;
     if metadata.schema_version != 1
         || metadata.version.is_empty()

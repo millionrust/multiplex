@@ -13,14 +13,14 @@ use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::models::{AuthMode, HostProfile, WorkspaceLayoutMode};
 use crate::ui::app::{
-    CanvasWorkspaceState, ConnectDialogMode, ConnectFailure, ConnectProtocol, NavSection,
-    SplitNode, TermiRustApp, WorkspaceTab, WorkspaceViewMode,
+    CanvasWorkspaceState, ConnectDialogMode, ConnectFailure, ConnectProtocol, MultiplexApp,
+    NavSection, SplitNode, WorkspaceTab, WorkspaceViewMode,
 };
 use crate::ui::localization;
 use crate::ui::theme;
 use multiplex_ui_contract::MessageId;
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn open_connect_dialog_tab(
         &mut self,
         profile_id: &str,

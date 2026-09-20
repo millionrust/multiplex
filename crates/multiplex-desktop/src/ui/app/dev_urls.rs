@@ -12,7 +12,7 @@ use multiplex_domain::{
     DevUrlCandidate, HostInstanceId, HostedSessionId, LocalDevUrl, OpenUrlError,
 };
 
-use super::{SessionPane, TermiRustApp};
+use super::{MultiplexApp, SessionPane};
 use crate::platform_open_url::{PlatformOpenUrl, system_platform_open_url};
 use crate::ui::{localization, theme};
 
@@ -41,7 +41,7 @@ struct DevUrlHeaderProjection {
 }
 
 impl DevUrlUiState {
-    pub(super) fn open_default(cx: &mut Context<TermiRustApp>) -> Self {
+    pub(super) fn open_default(cx: &mut Context<MultiplexApp>) -> Self {
         Self {
             platform: system_platform_open_url(),
             pending: None,
@@ -59,7 +59,7 @@ impl DevUrlUiState {
     }
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn request_dev_url_open(
         &mut self,
         pane_id: u64,

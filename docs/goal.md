@@ -1,20 +1,20 @@
-# TermiRust Native Agent Canvas and Orchestration - Implementation Goal
+# Multiplex Native Agent Canvas and Orchestration - Implementation Goal
 
 ## 1. Role and mission
 
-You are a senior Rust, GPUI, terminal, SSH, and agent-integration engineer working inside the existing TermiRust repository.
+You are a senior Rust, GPUI, terminal, SSH, and agent-integration engineer working inside the existing Multiplex repository.
 
-Implement a production-quality native **Agent Canvas** inside TermiRust. The canvas must let a user place multiple local terminals, SSH terminals, and coding-agent sessions on a pan-and-zoom workspace, connect them with explicit context or dependency links, and coordinate coding work without damaging the existing terminal product.
+Implement a production-quality native **Agent Canvas** inside Multiplex. The canvas must let a user place multiple local terminals, SSH terminals, and coding-agent sessions on a pan-and-zoom workspace, connect them with explicit context or dependency links, and coordinate coding work without damaging the existing terminal product.
 
-This is not a request to clone or embed NodeTerm. Use NodeTerm only as product research. Build an original, clean-room implementation that follows TermiRust's native Rust/GPUI architecture, visual language, state model, security model, and existing terminal runtime.
+This is not a request to clone or embed NodeTerm. Use NodeTerm only as product research. Build an original, clean-room implementation that follows Multiplex's native Rust/GPUI architecture, visual language, state model, security model, and existing terminal runtime.
 
-The result must feel like one coherent TermiRust feature, not a second application inserted into it.
+The result must feel like one coherent Multiplex feature, not a second application inserted into it.
 
 ## 2. Client outcome
 
 The client should be able to:
 
-1. Open any TermiRust workspace in either `Split` or `Canvas` layout.
+1. Open any Multiplex workspace in either `Split` or `Canvas` layout.
 2. Add local terminals, saved SSH hosts, and coding-agent nodes to the canvas.
 3. Drag and resize nodes without breaking terminal text selection, scrolling, keyboard input, or mouse reporting.
 4. Pan and zoom a large workspace while retaining a stable spatial layout after restart.
@@ -47,7 +47,7 @@ NodeTerm is currently licensed under BUSL-1.1 with restrictions relevant to comp
 - Do not copy NodeTerm source code, tests, CSS, assets, strings, internal type names, or implementation-specific algorithms.
 - Do not add NodeTerm as a dependency, submodule, bundled component, or runtime service.
 - Do not reproduce its branding or UI pixel-for-pixel.
-- Derive requirements only from public behavior and independently design the TermiRust implementation.
+- Derive requirements only from public behavior and independently design the Multiplex implementation.
 - Record any new third-party dependency, its license, and why it is necessary.
 - Prefer no new graph/canvas dependency for the first implementation. GPUI already exposes low-level `canvas`, `PathBuilder`, and `Window::paint_path` APIs.
 
@@ -88,7 +88,7 @@ NodeTerm demonstrates that a spatial terminal workspace can be useful: terminals
 - Agent status should come from structured events or explicit hooks, not prompt/output heuristics.
 - Session persistence, canvas persistence, and task orchestration are separate concerns.
 
-TermiRust should adopt those product lessons but implement them independently.
+Multiplex should adopt those product lessons but implement them independently.
 
 ### 4.2 GPUI rendering
 
@@ -120,7 +120,7 @@ Provider direction:
 
 ACP is a public JSON-RPC protocol designed to connect coding agents and clients. It has a Rust library and uses protocol-version and capability negotiation.
 
-- Design TermiRust's normalized agent event model so a future ACP adapter can map into it cleanly.
+- Design Multiplex's normalized agent event model so a future ACP adapter can map into it cleanly.
 - Do not make ACP mandatory for the initial release.
 - Do not force Codex, Claude, or Gemini through an unofficial adapter when their official structured interface is more direct and better supported.
 - If ACP is added later, negotiate `protocolVersion` and capabilities. Never infer wire compatibility from a package version alone.
@@ -138,10 +138,10 @@ Git worktrees provide separate working directories, indexes, and `HEAD` state wh
 
 ### 4.6 tmux and SSH
 
-TermiRust already implements tmux persistence for SSH profiles. Reuse that behavior:
+Multiplex already implements tmux persistence for SSH profiles. Reuse that behavior:
 
 - A canvas node is a view and placement record. It does not own a second tmux implementation.
-- Closing or hiding a canvas node must distinguish detaching the TermiRust client from killing the tmux session.
+- Closing or hiding a canvas node must distinguish detaching the Multiplex client from killing the tmux session.
 - Multiple clients may attach to one tmux session. `detach_others` remains an explicit opt-in because it disconnects other clients.
 - Structured remote orchestration is separate from an interactive SSH terminal. It requires the provider CLI or helper to exist on the remote host and must not be silently installed.
 
@@ -601,7 +601,7 @@ Use a bounded channel for events. Define behavior when the consumer is slow. Nev
 - Generate or vendor version-matched schemas using official Codex schema generation, and record the Codex version used.
 - Treat unknown notification fields as forward-compatible where safe.
 - Keep request IDs correlated and reject malformed responses without crashing the app.
-- Surface approval requests in TermiRust UI. Never approve automatically unless a narrowly scoped user policy explicitly permits the exact category.
+- Surface approval requests in Multiplex UI. Never approve automatically unless a narrowly scoped user policy explicitly permits the exact category.
 - On child exit, mark the run disconnected/failed with actionable diagnostics.
 - Do not mix app-server JSON stdout with terminal rendering.
 - If the user wants the full Codex TUI, create a separate interactive PTY node using the existing terminal runtime.
@@ -610,10 +610,10 @@ Use a bounded channel for events. Define behavior when the consumer is slow. Nev
 
 - Prefer an official structured interface: Agent SDK boundary or `claude -p` with streaming JSON output.
 - Keep stderr separate and parse only documented stdout events.
-- Map permission/tool requests to TermiRust approvals.
+- Map permission/tool requests to Multiplex approvals.
 - If hooks are used for an interactive Claude TUI, show the exact hook configuration and scope before installing.
 - Support user, project, or local scope deliberately; default to the least invasive scope.
-- Keep a manifest of TermiRust-installed hooks so uninstall is exact and does not remove user hooks.
+- Keep a manifest of Multiplex-installed hooks so uninstall is exact and does not remove user hooks.
 - Never enable bypass-permissions mode by default.
 
 ### 10.3 Gemini adapter
@@ -644,9 +644,9 @@ For the client-demo implementation:
 
 1. User creates `Source -> Target` context link.
 2. User selects `Send context` from the edge or target node.
-3. TermiRust builds a preview.
+3. Multiplex builds a preview.
 4. User reviews or edits the preview.
-5. TermiRust submits it through the target's structured adapter or pastes it through the existing guarded paste path for interactive agents.
+5. Multiplex submits it through the target's structured adapter or pastes it through the existing guarded paste path for interactive agents.
 6. The edge records only safe metadata such as last-send timestamp and status, not the full context.
 
 ### 11.2 Snapshot sources
@@ -673,7 +673,7 @@ Do not silently include:
 - Apply byte and message-count limits before preview.
 - Normalize invalid UTF-8 safely.
 - Redact common secret patterns and clearly mark redactions.
-- Treat all imported context as untrusted data, not instructions from TermiRust.
+- Treat all imported context as untrusted data, not instructions from Multiplex.
 - Wrap handoff text with source identity, timestamp, scope, and an explicit boundary.
 - Do not execute commands found in context.
 
@@ -1030,7 +1030,7 @@ Tests:
 - Forward-compatible unknown event handling.
 - Exit code and process-loss mapping.
 - Hook install does not overwrite unrelated user configuration.
-- Hook uninstall removes only TermiRust-owned entries.
+- Hook uninstall removes only Multiplex-owned entries.
 
 Commits:
 
@@ -1172,7 +1172,7 @@ Perform and record this matrix before declaring v1 complete:
 
 Do not call the feature done until all of the following are true:
 
-- Existing TermiRust features and tests still pass.
+- Existing Multiplex features and tests still pass.
 - Old state files load with no user action.
 - Split layout remains the default and behaves unchanged.
 - Canvas sessions reuse existing terminal runtimes instead of duplicating them.
@@ -1230,4 +1230,4 @@ These sources were reviewed on 2026-07-15. Recheck official documentation during
 
 Implement this in order. Do not jump directly to autonomous orchestration before the canvas, persistence, terminal interaction, process safety, and structured event boundaries are correct. When the current codebase disagrees with a proposed type name or file placement, preserve the existing architecture and document the adjustment. When a provider's current official protocol disagrees with this document, follow the current official protocol, add compatibility tests, and record the change.
 
-The standard is not a flashy prototype. The standard is a dependable TermiRust capability that a client can use on real repositories and remote systems without losing terminal sessions, code, credentials, or trust.
+The standard is not a flashy prototype. The standard is a dependable Multiplex capability that a client can use on real repositories and remote systems without losing terminal sessions, code, credentials, or trust.

@@ -1,5 +1,5 @@
 //! SFTP page renderers (local file browser + connect-host empty state and
-//! host picker). All methods are part of the `TermiRustApp` impl.
+//! host picker). All methods are part of the `MultiplexApp` impl.
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -15,14 +15,14 @@ use multiplex_ui_contract::{
     SftpSurfaceState, stable_sftp_value,
 };
 
-use crate::ui::app::TermiRustApp;
+use crate::ui::app::MultiplexApp;
 use crate::ui::app::types::WorkspaceViewMode;
 use crate::ui::localization;
 use crate::ui::sftp_local::{read_local_dir, read_local_dir_result};
 use crate::ui::theme;
 use crate::ui::util::{format_modified_time, format_size};
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn sftp_semantic_snapshot(&self, cx: &App) -> Option<SftpSemanticSnapshot> {
         if let Some(workspace) = self
             .active_workspace()

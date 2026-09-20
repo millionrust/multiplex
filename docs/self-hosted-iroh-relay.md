@@ -89,7 +89,7 @@ Run it under whatever supervises long-running services on that machine. A system
 
 ```ini
 [Unit]
-Description=iroh relay for TermiRust Remote Screens
+Description=iroh relay for Multiplex Remote Screens
 After=network-online.target
 
 [Service]
@@ -107,7 +107,7 @@ ReadWritePaths=/etc/iroh-relay/certs
 WantedBy=multi-user.target
 ```
 
-## Point TermiRust at it
+## Point Multiplex at it
 
 On the computer being watched and on each phone, in **Settings → Remote Devices → Screens**, set
 the relay URL to `https://screens.example.com`. Devices that cannot reach it fall back to a direct

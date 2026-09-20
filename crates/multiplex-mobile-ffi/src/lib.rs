@@ -9,17 +9,17 @@ mod terminal;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct TermiRustMobileByteBuffer {
+pub struct MultiplexMobileByteBuffer {
     pub ptr: *mut u8,
     pub len: usize,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct TermiRustMobileResult {
+pub struct MultiplexMobileResult {
     pub ok: bool,
-    pub data: TermiRustMobileByteBuffer,
-    pub error: TermiRustMobileByteBuffer,
+    pub data: MultiplexMobileByteBuffer,
+    pub error: MultiplexMobileByteBuffer,
 }
 
 #[unsafe(no_mangle)]
@@ -28,7 +28,7 @@ pub extern "C" fn termirust_mobile_decrypt_vault_json(
     encrypted_json_len: usize,
     passphrase_ptr: *const u8,
     passphrase_len: usize,
-) -> TermiRustMobileResult {
+) -> MultiplexMobileResult {
     match catch_unwind(AssertUnwindSafe(|| {
         decrypt_vault_json(
             encrypted_json_ptr,
@@ -38,7 +38,7 @@ pub extern "C" fn termirust_mobile_decrypt_vault_json(
         )
     })) {
         Ok(result) => result,
-        Err(_) => error_result("TermiRust mobile vault decryptor panicked."),
+        Err(_) => error_result("Multiplex mobile vault decryptor panicked."),
     }
 }
 
@@ -49,23 +49,23 @@ pub extern "C" fn termirust_mobile_render_terminal_utf8(
     columns: u16,
     rows: u16,
     scrollback_rows: usize,
-) -> TermiRustMobileResult {
+) -> MultiplexMobileResult {
     match catch_unwind(AssertUnwindSafe(|| {
         render_terminal_utf8(input_ptr, input_len, columns, rows, scrollback_rows)
     })) {
         Ok(result) => result,
-        Err(_) => error_result("TermiRust mobile terminal renderer panicked."),
+        Err(_) => error_result("Multiplex mobile terminal renderer panicked."),
     }
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_free_result(result: TermiRustMobileResult) {
+pub extern "C" fn termirust_mobile_free_result(result: MultiplexMobileResult) {
     termirust_mobile_free_buffer(result.data);
     termirust_mobile_free_buffer(result.error);
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_free_buffer(buffer: TermiRustMobileByteBuffer) {
+pub extern "C" fn termirust_mobile_free_buffer(buffer: MultiplexMobileByteBuffer) {
     if buffer.ptr.is_null() || buffer.len == 0 {
         return;
     }
@@ -80,7 +80,7 @@ fn decrypt_vault_json(
     encrypted_json_len: usize,
     passphrase_ptr: *const u8,
     passphrase_len: usize,
-) -> TermiRustMobileResult {
+) -> MultiplexMobileResult {
     let encrypted_json = match read_utf8(encrypted_json_ptr, encrypted_json_len, "vault JSON") {
         Ok(value) => value,
         Err(error) => return error_result(&error),
@@ -102,7 +102,7 @@ fn render_terminal_utf8(
     columns: u16,
     rows: u16,
     scrollback_rows: usize,
-) -> TermiRustMobileResult {
+) -> MultiplexMobileResult {
     let input = match read_bytes(input_ptr, input_len, "terminal input") {
         Ok(value) => value,
         Err(error) => return error_result(&error),
@@ -158,11 +158,11 @@ fn terminal_rows_text(parser: &Parser) -> Vec<String> {
 
 fn read_utf8<'a>(ptr: *const u8, len: usize, label: &str) -> Result<&'a str, String> {
     if ptr.is_null() {
-        return Err(format!("TermiRust mobile {label} pointer was null."));
+        return Err(format!("Multiplex mobile {label} pointer was null."));
     }
 
     let bytes = unsafe { slice::from_raw_parts(ptr, len) };
-    str::from_utf8(bytes).map_err(|_| format!("TermiRust mobile {label} was not valid UTF-8."))
+    str::from_utf8(bytes).map_err(|_| format!("Multiplex mobile {label} was not valid UTF-8."))
 }
 
 pub(crate) fn read_bytes<'a>(ptr: *const u8, len: usize, label: &str) -> Result<&'a [u8], String> {
@@ -170,29 +170,29 @@ pub(crate) fn read_bytes<'a>(ptr: *const u8, len: usize, label: &str) -> Result<
         if len == 0 {
             return Ok(&[]);
         }
-        return Err(format!("TermiRust mobile {label} pointer was null."));
+        return Err(format!("Multiplex mobile {label} pointer was null."));
     }
 
     Ok(unsafe { slice::from_raw_parts(ptr, len) })
 }
 
-pub(crate) fn success_result(bytes: Vec<u8>) -> TermiRustMobileResult {
-    TermiRustMobileResult {
+pub(crate) fn success_result(bytes: Vec<u8>) -> MultiplexMobileResult {
+    MultiplexMobileResult {
         ok: true,
         data: into_buffer(bytes),
         error: empty_buffer(),
     }
 }
 
-pub(crate) fn error_result(message: &str) -> TermiRustMobileResult {
-    TermiRustMobileResult {
+pub(crate) fn error_result(message: &str) -> MultiplexMobileResult {
+    MultiplexMobileResult {
         ok: false,
         data: empty_buffer(),
         error: into_buffer(message.as_bytes().to_vec()),
     }
 }
 
-fn into_buffer(bytes: Vec<u8>) -> TermiRustMobileByteBuffer {
+fn into_buffer(bytes: Vec<u8>) -> MultiplexMobileByteBuffer {
     if bytes.is_empty() {
         return empty_buffer();
     }
@@ -201,11 +201,11 @@ fn into_buffer(bytes: Vec<u8>) -> TermiRustMobileByteBuffer {
     let mut boxed = bytes.into_boxed_slice();
     let ptr = boxed.as_mut_ptr();
     std::mem::forget(boxed);
-    TermiRustMobileByteBuffer { ptr, len }
+    MultiplexMobileByteBuffer { ptr, len }
 }
 
-fn empty_buffer() -> TermiRustMobileByteBuffer {
-    TermiRustMobileByteBuffer {
+fn empty_buffer() -> MultiplexMobileByteBuffer {
+    MultiplexMobileByteBuffer {
         ptr: std::ptr::null_mut(),
         len: 0,
     }
@@ -213,7 +213,7 @@ fn empty_buffer() -> TermiRustMobileByteBuffer {
 
 #[cfg(target_os = "android")]
 mod android_jni {
-    use crate::TermiRustMobileResult;
+    use crate::MultiplexMobileResult;
     use jni::JNIEnv;
     use jni::objects::{JByteArray, JClass};
     use jni::sys::{jboolean, jbyteArray, jlong};
@@ -616,11 +616,11 @@ mod android_jni {
         })
     }
 
-    fn terminal_handle(handle: jlong) -> *mut super::terminal::TermiRustMobileTerminal {
-        handle as usize as *mut super::terminal::TermiRustMobileTerminal
+    fn terminal_handle(handle: jlong) -> *mut super::terminal::MultiplexMobileTerminal {
+        handle as usize as *mut super::terminal::MultiplexMobileTerminal
     }
 
-    fn mobile_result_to_java(env: &mut JNIEnv<'_>, result: TermiRustMobileResult) -> jbyteArray {
+    fn mobile_result_to_java(env: &mut JNIEnv<'_>, result: MultiplexMobileResult) -> jbyteArray {
         let response = if result.ok {
             let bytes = unsafe { slice::from_raw_parts(result.data.ptr, result.data.len) };
             env.byte_array_from_slice(bytes)
@@ -649,7 +649,7 @@ mod android_jni {
 pub extern "C" fn termirust_mobile_relay_client_hello(
     route_id_ptr: *const u8,
     route_id_len: usize,
-) -> TermiRustMobileResult {
+) -> MultiplexMobileResult {
     relay::ffi_result(|| relay::client_hello(route_id_ptr, route_id_len))
 }
 
@@ -663,7 +663,7 @@ pub extern "C" fn termirust_mobile_relay_admission_proof(
     now_unix_seconds: u64,
     challenge_ptr: *const u8,
     challenge_len: usize,
-) -> TermiRustMobileResult {
+) -> MultiplexMobileResult {
     relay::ffi_result(|| {
         relay::admission_proof(
             route_id_ptr,
@@ -682,7 +682,7 @@ pub extern "C" fn termirust_mobile_relay_admission_proof(
 pub extern "C" fn termirust_mobile_relay_admission_connection_id(
     result_ptr: *const u8,
     result_len: usize,
-) -> TermiRustMobileResult {
+) -> MultiplexMobileResult {
     relay::ffi_result(|| relay::admission_connection_id(result_ptr, result_len))
 }
 
@@ -693,7 +693,7 @@ pub extern "C" fn termirust_mobile_relay_encode_envelope(
     sequence: u64,
     payload_ptr: *const u8,
     payload_len: usize,
-) -> TermiRustMobileResult {
+) -> MultiplexMobileResult {
     relay::ffi_result(|| {
         relay::encode_envelope(
             route_id_ptr,
@@ -712,7 +712,7 @@ pub extern "C" fn termirust_mobile_relay_decode_envelope(
     expected_sequence: u64,
     envelope_ptr: *const u8,
     envelope_len: usize,
-) -> TermiRustMobileResult {
+) -> MultiplexMobileResult {
     relay::ffi_result(|| {
         relay::decode_envelope(
             route_id_ptr,
@@ -786,7 +786,7 @@ mod tests {
         assert!(!result.ok);
         assert_eq!(
             buffer_to_str(result.error),
-            "TermiRust mobile vault JSON pointer was null."
+            "Multiplex mobile vault JSON pointer was null."
         );
 
         termirust_mobile_free_result(result);
@@ -805,7 +805,7 @@ mod tests {
         termirust_mobile_free_result(result);
     }
 
-    fn buffer_to_str(buffer: TermiRustMobileByteBuffer) -> &'static str {
+    fn buffer_to_str(buffer: MultiplexMobileByteBuffer) -> &'static str {
         let bytes = unsafe { slice::from_raw_parts(buffer.ptr, buffer.len) };
         str::from_utf8(bytes).expect("valid UTF-8")
     }

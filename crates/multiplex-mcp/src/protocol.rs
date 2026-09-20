@@ -467,10 +467,10 @@ impl McpServer {
             "capabilities": { "tools": { "listChanged": false } },
             "serverInfo": {
                 "name": SERVER_NAME,
-                "title": "TermiRust Local Control",
+                "title": "Multiplex Local Control",
                 "version": env!("CARGO_PKG_VERSION"),
             },
-            "instructions": "Bounded TermiRust inspection is read-only by default. Terminal byte streams are never exposed as inspection output. Every mutation requires an explicit startup capability plus a current, scoped, local approval policy.",
+            "instructions": "Bounded Multiplex inspection is read-only by default. Terminal byte streams are never exposed as inspection output. Every mutation requires an explicit startup capability plus a current, scoped, local approval policy.",
         }))
     }
 
@@ -1298,14 +1298,14 @@ impl ToolDefinition {
 const TOOL_DEFINITIONS: [ToolDefinition; 19] = [
     ToolDefinition {
         name: "termirust_status",
-        title: "Inspect TermiRust status",
+        title: "Inspect Multiplex status",
         description: "Read bounded store and Host-control availability metadata.",
         capability: Capability::InspectStatus,
         arguments: ToolArguments::Empty,
     },
     ToolDefinition {
         name: "termirust_list_projects",
-        title: "List TermiRust projects",
+        title: "List Multiplex projects",
         description: "List a bounded page of Project metadata without exposing filesystem paths.",
         capability: Capability::ReadProjects,
         arguments: ToolArguments::Empty,
@@ -1319,14 +1319,14 @@ const TOOL_DEFINITIONS: [ToolDefinition; 19] = [
     },
     ToolDefinition {
         name: "termirust_list_sessions",
-        title: "List TermiRust sessions",
+        title: "List Multiplex sessions",
         description: "List bounded Session metadata and activity, with optional Project and lifecycle filters.",
         capability: Capability::ReadSessions,
         arguments: ToolArguments::SessionList,
     },
     ToolDefinition {
         name: "termirust_get_session",
-        title: "Inspect one TermiRust session",
+        title: "Inspect one Multiplex session",
         description: "Read one Session metadata record. Terminal output is never included.",
         capability: Capability::ReadSessions,
         arguments: ToolArguments::Session,
@@ -1354,7 +1354,7 @@ const TOOL_DEFINITIONS: [ToolDefinition; 19] = [
     },
     ToolDefinition {
         name: "termirust_launch_session",
-        title: "Launch a TermiRust Session",
+        title: "Launch a Multiplex Session",
         description: "Launch one reviewed Project preset with a stable command ID. Requires a current Project-scoped local approval.",
         capability: Capability::LaunchSessions,
         arguments: ToolArguments::Launch,

@@ -1,4 +1,4 @@
-use crate::{TermiRustMobileResult, error_result, read_bytes, success_result};
+use crate::{MultiplexMobileResult, error_result, read_bytes, success_result};
 use multiplex_relay_protocol::{
     ADMISSION_LIFETIME_SECONDS, RelayAdmissionChallenge, RelayAdmissionCredential,
     RelayAdmissionResult, RelayClientHello, RelayConnectionSequence, RelayDiagnosticCode,
@@ -11,11 +11,11 @@ const CREDENTIAL_BYTES: usize = 32;
 
 pub(crate) fn ffi_result(
     operation: impl FnOnce() -> Result<Vec<u8>, String>,
-) -> TermiRustMobileResult {
+) -> MultiplexMobileResult {
     match catch_unwind(AssertUnwindSafe(operation)) {
         Ok(Ok(bytes)) => success_result(bytes),
         Ok(Err(error)) => error_result(&error),
-        Err(_) => error_result("TermiRust mobile relay protocol panicked."),
+        Err(_) => error_result("Multiplex mobile relay protocol panicked."),
     }
 }
 
@@ -51,7 +51,7 @@ pub(crate) fn admission_proof(
         challenge_len,
         "relay challenge",
     )?)
-    .map_err(|_| "TermiRust mobile relay challenge was malformed.".to_owned())?;
+    .map_err(|_| "Multiplex mobile relay challenge was malformed.".to_owned())?;
     if challenge.route_id != route_id
         || challenge.role != RelayEndpointRole::Controller
         || challenge.verifier != credential.verifier()
@@ -62,7 +62,7 @@ pub(crate) fn admission_proof(
             .saturating_sub(now_unix_seconds)
             > ADMISSION_LIFETIME_SECONDS
     {
-        return Err("TermiRust mobile relay challenge did not match this route.".to_owned());
+        return Err("Multiplex mobile relay challenge did not match this route.".to_owned());
     }
     Ok(credential.prove(&challenge).encode().to_vec())
 }
@@ -76,16 +76,16 @@ pub(crate) fn admission_connection_id(
         result_len,
         "relay admission result",
     )?)
-    .map_err(|_| "TermiRust mobile relay admission result was malformed.".to_owned())?;
+    .map_err(|_| "Multiplex mobile relay admission result was malformed.".to_owned())?;
     if result.diagnostic != RelayDiagnosticCode::Ready {
         return Err(format!(
-            "TermiRust mobile relay admission failed: {}.",
+            "Multiplex mobile relay admission failed: {}.",
             result.diagnostic.as_str()
         ));
     }
     let connection_id = result
         .connection_id
-        .ok_or_else(|| "TermiRust mobile relay admission omitted its connection ID.".to_owned())?;
+        .ok_or_else(|| "Multiplex mobile relay admission omitted its connection ID.".to_owned())?;
     Ok(connection_id.0.to_be_bytes().to_vec())
 }
 
@@ -104,7 +104,7 @@ pub(crate) fn encode_envelope(
         payload,
     )
     .map(|envelope| envelope.encode())
-    .map_err(|_| "TermiRust mobile relay payload exceeded its bound.".to_owned())
+    .map_err(|_| "Multiplex mobile relay payload exceeded its bound.".to_owned())
 }
 
 pub(crate) fn decode_envelope(
@@ -117,12 +117,12 @@ pub(crate) fn decode_envelope(
     let route_id = route_id(route_id_ptr, route_id_len)?;
     let envelope =
         RelayEnvelopeV1::decode(read_bytes(envelope_ptr, envelope_len, "relay envelope")?)
-            .map_err(|_| "TermiRust mobile relay envelope was malformed.".to_owned())?;
+            .map_err(|_| "Multiplex mobile relay envelope was malformed.".to_owned())?;
     if envelope.route_id() != route_id
         || envelope.direction() != RelayDirection::HostToController
         || envelope.sequence() != RelayConnectionSequence(expected_sequence)
     {
-        return Err("TermiRust mobile relay envelope route or sequence did not match.".to_owned());
+        return Err("Multiplex mobile relay envelope route or sequence did not match.".to_owned());
     }
     Ok(envelope.ciphertext().to_vec())
 }
@@ -139,7 +139,7 @@ fn fixed_bytes<const N: usize>(ptr: *const u8, len: usize, label: &str) -> Resul
     let bytes = read_bytes(ptr, len, label)?;
     bytes
         .try_into()
-        .map_err(|_| format!("TermiRust mobile {label} must contain exactly {N} bytes."))
+        .map_err(|_| format!("Multiplex mobile {label} must contain exactly {N} bytes."))
 }
 
 #[cfg(test)]

@@ -287,12 +287,12 @@ fn build_command(request: &ConnectRequest, shell: &LocalShellConfig) -> Result<B
     })
 }
 
-/// The value TermiRust's shells see in `TERM_PROGRAM`.
-pub const TERMINAL_PROGRAM: &str = "TermiRust";
+/// The value Multiplex's shells see in `TERM_PROGRAM`.
+pub const TERMINAL_PROGRAM: &str = "Multiplex";
 
 /// Names this app as the terminal, replacing whatever `TERM_PROGRAM` it was launched with.
 /// Otherwise a shell started from Zed or iTerm2 would believe it runs there, and the
-/// startup file that opens new terminals in tmux would wrap TermiRust's own tabs.
+/// startup file that opens new terminals in tmux would wrap Multiplex's own tabs.
 fn identify_terminal_program(command: &mut CommandBuilder) {
     command.env("TERM_PROGRAM", TERMINAL_PROGRAM);
     command.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
@@ -433,11 +433,11 @@ fn probe_tmux_candidates_with(
 
 pub fn local_tmux_install_guidance() -> &'static str {
     if cfg!(target_os = "macos") {
-        "Install tmux with Homebrew (`brew install tmux`), then restart TermiRust."
+        "Install tmux with Homebrew (`brew install tmux`), then restart Multiplex."
     } else if cfg!(target_os = "linux") {
-        "Install tmux with your system package manager, then restart TermiRust."
+        "Install tmux with your system package manager, then restart Multiplex."
     } else {
-        "Install tmux and make sure it is available in PATH, then restart TermiRust."
+        "Install tmux and make sure it is available in PATH, then restart Multiplex."
     }
 }
 
@@ -654,7 +654,7 @@ mod tests {
         assert!(
             !multiplex_tmux::shell_integration::WRAPPED_TERMINAL_PROGRAMS
                 .contains(&TERMINAL_PROGRAM),
-            "TermiRust panes are reachable without tmux and must not be wrapped"
+            "Multiplex panes are reachable without tmux and must not be wrapped"
         );
     }
 

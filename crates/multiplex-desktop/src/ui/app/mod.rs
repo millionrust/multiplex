@@ -438,7 +438,7 @@ struct DraftInputs {
 }
 
 impl DraftInputs {
-    fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<MultiplexApp>) -> Self {
         Self {
             label: cx.new(|cx| {
                 InputState::new(window, cx)
@@ -573,7 +573,7 @@ struct VaultMemberInputs {
 }
 
 impl SnippetInputs {
-    fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<MultiplexApp>) -> Self {
         Self {
             label: cx.new(|cx| {
                 InputState::new(window, cx).placeholder(localization::static_message(
@@ -596,7 +596,7 @@ impl SnippetInputs {
 
 // termirust-ui-surface:settings:start
 impl SettingsInputs {
-    fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<MultiplexApp>) -> Self {
         Self {
             search: cx.new(|cx| {
                 InputState::new(window, cx).placeholder(localization::static_message(
@@ -684,7 +684,7 @@ impl SettingsInputs {
 // termirust-ui-surface:settings:end
 
 impl VaultInputs {
-    fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<MultiplexApp>) -> Self {
         Self {
             label: cx.new(|cx| {
                 InputState::new(window, cx).placeholder(localization::static_message(
@@ -701,7 +701,7 @@ impl VaultInputs {
 }
 
 impl VaultMemberInputs {
-    fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<MultiplexApp>) -> Self {
         Self {
             name: cx.new(|cx| {
                 InputState::new(window, cx).placeholder(localization::static_message(
@@ -718,7 +718,7 @@ impl VaultMemberInputs {
 }
 
 impl ShellInputs {
-    fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<MultiplexApp>) -> Self {
         Self {
             host_search: cx.new(|cx| {
                 InputState::new(window, cx).placeholder(localization::static_message(
@@ -1401,7 +1401,7 @@ struct ConnectionDiagnosticRow {
     control: Option<DiagnosticControl>,
 }
 
-pub struct TermiRustApp {
+pub struct MultiplexApp {
     saved: SavedState,
     inputs: DraftInputs,
     shell_inputs: ShellInputs,
@@ -1583,7 +1583,7 @@ pub struct TermiRustApp {
     _window_bounds_save_task: Option<Task<()>>,
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     fn take_dialog_path_for_tests() -> Option<std::path::PathBuf> {
         #[cfg(test)]
         {
@@ -13660,7 +13660,7 @@ impl TermiRustApp {
     }
 }
 
-impl Render for TermiRustApp {
+impl Render for MultiplexApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let palette_result_count = if self.show_command_palette {
             self.command_palette_candidates(cx).len()
@@ -13829,7 +13829,7 @@ impl Render for TermiRustApp {
     }
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     fn handle_command_palette_key(
         &mut self,
         event: &KeyDownEvent,
@@ -14287,9 +14287,9 @@ mod tests {
     use super::{
         AutocompleteSource, ConnectDialogMode, ConnectionDiagnosticRow, ConnectionDiagnosticStatus,
         DropZone, HostsSort, HostsViewMode, KeyLifecycleDialog, KeychainTab,
-        MAX_COALESCED_TERMINAL_OUTPUT_BYTES, MAX_SPLIT_PANES, NavSection, OutputSuggestionContext,
-        PathSuggestionContext, SessionLibraryView, SplitNode, TermiRustApp, WorkspaceViewMode,
-        apply_group_defaults_to_draft, collect_autocomplete_candidates,
+        MAX_COALESCED_TERMINAL_OUTPUT_BYTES, MAX_SPLIT_PANES, MultiplexApp, NavSection,
+        OutputSuggestionContext, PathSuggestionContext, SessionLibraryView, SplitNode,
+        WorkspaceViewMode, apply_group_defaults_to_draft, collect_autocomplete_candidates,
         collect_command_palette_candidates, drain_coalesced_ssh_events, dropped_paths_text,
         extract_snippet_prompt_names, shell_command_requires_continuation,
         startup_bytes_for_request, substitute_snippet_placeholders, substitute_snippet_prompts,
@@ -15041,7 +15041,7 @@ mod tests {
             environment: Vec::new(),
         };
 
-        let (runtime, stored) = TermiRustApp::consume_agent_forwarding_approval(request);
+        let (runtime, stored) = MultiplexApp::consume_agent_forwarding_approval(request);
         assert!(
             runtime
                 .auth
@@ -15203,13 +15203,13 @@ mod tests {
     fn open_test_app_with_state(
         cx: &mut TestAppContext,
         initial_state: SavedState,
-    ) -> (Entity<TermiRustApp>, WindowHandle<Root>) {
+    ) -> (Entity<MultiplexApp>, WindowHandle<Root>) {
         let mut app_entity = None;
         let window = cx.update(|cx| {
             gpui_component::init(cx);
             gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
             cx.open_window(Default::default(), |window, cx| {
-                let app = cx.new(|cx| TermiRustApp::new(initial_state.clone(), window, cx));
+                let app = cx.new(|cx| MultiplexApp::new(initial_state.clone(), window, cx));
                 app_entity = Some(app.clone());
                 cx.new(|cx| Root::new(app, window, cx))
             })
@@ -15219,7 +15219,7 @@ mod tests {
         (app_entity.expect("app entity should exist"), window)
     }
 
-    fn open_test_app(cx: &mut TestAppContext) -> (Entity<TermiRustApp>, WindowHandle<Root>) {
+    fn open_test_app(cx: &mut TestAppContext) -> (Entity<MultiplexApp>, WindowHandle<Root>) {
         open_test_app_with_state(cx, SavedState::default())
     }
 
@@ -15380,9 +15380,9 @@ mod tests {
 
     fn wait_for_app_state<R>(
         cx: &mut TestAppContext,
-        app: &Entity<TermiRustApp>,
+        app: &Entity<MultiplexApp>,
         timeout: Duration,
-        mut check: impl FnMut(&mut TermiRustApp) -> Option<R>,
+        mut check: impl FnMut(&mut MultiplexApp) -> Option<R>,
     ) -> R {
         let deadline = Instant::now() + timeout;
         loop {
@@ -15436,7 +15436,7 @@ mod tests {
     /// Waits until a pane has stopped receiving its shell's startup output. Output clears the
     /// pane's selection, so a test that selects text while the prompt is still arriving loses the
     /// selection before it can copy it.
-    fn wait_for_quiet_pane(cx: &mut TestAppContext, app: &Entity<TermiRustApp>, pane_id: u64) {
+    fn wait_for_quiet_pane(cx: &mut TestAppContext, app: &Entity<MultiplexApp>, pane_id: u64) {
         let deadline = Instant::now() + Duration::from_secs(10);
         let mut last: Option<String> = None;
         let mut settled = 0;
@@ -15471,7 +15471,7 @@ mod tests {
     /// one again is harmless.
     fn run_probe_until(
         cx: &mut TestAppContext,
-        app: &Entity<TermiRustApp>,
+        app: &Entity<MultiplexApp>,
         pane_id: u64,
         command: &str,
         status: &str,
@@ -15501,9 +15501,9 @@ mod tests {
     fn wait_for_window_app_state<R>(
         cx: &mut TestAppContext,
         window: WindowHandle<Root>,
-        app: &Entity<TermiRustApp>,
+        app: &Entity<MultiplexApp>,
         timeout: Duration,
-        mut check: impl FnMut(&mut TermiRustApp) -> Option<R>,
+        mut check: impl FnMut(&mut MultiplexApp) -> Option<R>,
     ) -> R {
         let deadline = Instant::now() + timeout;
         loop {
@@ -17085,7 +17085,7 @@ mod tests {
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.canvas_note_editor_input,
                         "Release checklist\nRun tests before deploy",
                         window,
@@ -18122,7 +18122,7 @@ mod tests {
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.canvas_project_editor_input,
                         "edited through canvas\n",
                         window,
@@ -18146,7 +18146,7 @@ mod tests {
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.canvas_project_editor_input,
                         "stale overwrite attempt\n",
                         window,
@@ -18174,7 +18174,7 @@ mod tests {
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.canvas_project_editor_input,
                         "edited through canvas\n",
                         window,
@@ -18289,19 +18289,19 @@ mod tests {
                     app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
                     app.open_agent_creation(AgentProvider::CustomCli, window, cx);
                     app.set_agent_worktree_policy(SavedWorktreePolicy::SharedDirectory, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.agent_executable,
                         executable.display().to_string(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.agent_working_directory,
                         fixture_directory.display().to_string(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.agent_arguments,
                         format!(
                             "argument with spaces\n$(touch {})\nsingle'quote",
@@ -18542,19 +18542,19 @@ sleep 1
                     app.open_agent_creation(AgentProvider::Codex, window, cx);
                     app.set_agent_backend(AgentBackendKind::Structured, cx);
                     app.set_agent_worktree_policy(SavedWorktreePolicy::SharedDirectory, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.agent_executable,
                         executable.display().to_string(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.agent_working_directory,
                         fixture_directory.display().to_string(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.agent_initial_prompt,
                         "perform the test",
                         window,
@@ -18815,19 +18815,19 @@ sleep 1
                         cx,
                     );
                     app.set_agent_worktree_policy(SavedWorktreePolicy::ReadOnly, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.agent_executable,
                         executable,
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.agent_working_directory,
                         "/home/termirust",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.agent_initial_prompt,
                         "perform remote test",
                         window,
@@ -18876,19 +18876,19 @@ sleep 1
                         cx,
                     );
                     app.set_agent_worktree_policy(SavedWorktreePolicy::ReadOnly, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.agent_executable,
                         executable,
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.agent_working_directory,
                         "/home/termirust",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.agent_initial_prompt,
                         "target initial prompt",
                         window,
@@ -18934,7 +18934,7 @@ sleep 1
                         .read(cx)
                         .value()
                         .to_string();
-                    assert!(preview.contains("[TermiRust context handoff]"));
+                    assert!(preview.contains("[Multiplex context handoff]"));
                     assert!(preview.contains("remote structured response"));
                     app.send_context_handoff(cx);
                     assert!(app.error_message.is_empty());
@@ -18945,7 +18945,7 @@ sleep 1
         let deadline = Instant::now() + remote_deadline;
         while Instant::now() < deadline {
             if server
-                .exec("grep -q '\\[TermiRust context handoff\\]' /tmp/termirust-ui-remote-prompts")
+                .exec("grep -q '\\[Multiplex context handoff\\]' /tmp/termirust-ui-remote-prompts")
                 .is_ok()
             {
                 return;
@@ -19430,7 +19430,7 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.host_search,
                         search_value,
                         window,
@@ -19493,11 +19493,11 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(&app.inputs.label, "docker-e2e", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.host, "127.0.0.1", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, "55971", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.username, "termirust", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.label, "docker-e2e", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.host, "127.0.0.1", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, "55971", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.username, "termirust", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         "termirust-pass",
                         window,
@@ -19538,10 +19538,10 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(&app.inputs.label, "docker-e2e", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.host, "127.0.0.1", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, "55971", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.username, "termirust", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.label, "docker-e2e", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.host, "127.0.0.1", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, "55971", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.username, "termirust", window, cx);
                     app.build_request_for_current_draft(cx)
                         .expect_err("blank password should be rejected")
                         .to_string()
@@ -19595,11 +19595,11 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::PrivateKey, cx);
-                    TermiRustApp::set_input_value(&app.inputs.label, "E2E Host", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.host, "127.0.0.1", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, "2222", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.username, "termirust", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.label, "E2E Host", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.host, "127.0.0.1", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, "2222", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.username, "termirust", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.key_path,
                         "/tmp/fake_id_ed25519",
                         window,
@@ -19691,36 +19691,36 @@ sleep 1
                         .cloned()
                         .expect("ops identity should exist");
                     app.use_identity(&identity, window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.group, "Ops", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.username, "deploy", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.tags, "prod, blue", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.jump_host, "Bastion", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.group, "Ops", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.username, "deploy", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.tags, "prod, blue", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.jump_host, "Bastion", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.startup_directory,
                         "/srv/app",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.startup_command,
                         "echo ready",
                         window,
                         cx,
                     );
                     app.set_draft_port_forward_kind(PortForwardKind::Local, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.forward_local_port,
                         "41000",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.forward_remote_host,
                         "127.0.0.1",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.forward_remote_port,
                         "8080",
                         window,
@@ -19729,7 +19729,7 @@ sleep 1
                     app.add_draft_port_forward_rule(window, cx);
                     app.save_group_defaults_from_draft(cx);
                     app.clear_profile_form(window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.group, "Ops", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.group, "Ops", window, cx);
                     app.apply_group_defaults_to_editor(window, cx);
                 })
             })
@@ -19825,7 +19825,7 @@ sleep 1
                     app.bulk_assign_selected_hosts_group(window, cx);
                     app.bulk_set_selected_hosts_favorite(true, window, cx);
                     app.clear_host_batch_selection(cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.host_search,
                         "Gamma",
                         window,
@@ -19892,21 +19892,21 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.label,
                         "Docker Password Host",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         username.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         password.clone(),
                         window,
@@ -19999,26 +19999,26 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(&app.inputs.label, "Docker Bastion", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.label, "Docker Bastion", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.host,
                         bastion_host.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.port,
                         bastion_port.to_string(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         username.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         password.clone(),
                         window,
@@ -20028,27 +20028,27 @@ sleep 1
 
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::PrivateKey, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.label,
                         "Docker Via Saved Jump",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.host, "127.0.0.1", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, "22", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.host, "127.0.0.1", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, "22", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         username.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.key_path,
                         target_key_path.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.jump_host,
                         "Docker Bastion",
                         window,
@@ -20163,40 +20163,40 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.label,
                         "Docker Local Forward",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         username.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         password.clone(),
                         window,
                         cx,
                     );
                     app.set_draft_port_forward_kind(PortForwardKind::Local, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.forward_local_port,
                         local_port.to_string(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.forward_remote_host,
                         "127.0.0.1",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.forward_remote_port,
                         "39101",
                         window,
@@ -20254,28 +20254,28 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.label,
                         "Docker Dynamic Forward",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         username.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         password.clone(),
                         window,
                         cx,
                     );
                     app.set_draft_port_forward_kind(PortForwardKind::Dynamic, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.forward_local_port,
                         local_port.to_string(),
                         window,
@@ -20351,40 +20351,40 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.label,
                         "Docker Remote Forward",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         username.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         password.clone(),
                         window,
                         cx,
                     );
                     app.set_draft_port_forward_kind(PortForwardKind::Remote, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.forward_local_port,
                         local_port.to_string(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.forward_remote_host,
                         "127.0.0.1",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.forward_remote_port,
                         remote_port.to_string(),
                         window,
@@ -20447,39 +20447,39 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.label,
                         "Saved Startup Host",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         username.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         password.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.startup_directory,
                         "/home/termirust/e2e-saved-startup",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.startup_command,
                         "printf 'saved-startup-ok\\n' > startup.txt",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.environment,
                         "DEPLOY_ENV=prod\nFEATURE_FLAG=on",
                         window,
@@ -20549,27 +20549,27 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.label,
                         "Saved Files Host",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         username.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         password.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.startup_directory,
                         "/home/termirust/e2e-saved-files",
                         window,
@@ -20615,7 +20615,7 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.default_ssh_startup_directory,
                         "/home/termirust/e2e-default-startup",
                         window,
@@ -20625,27 +20625,27 @@ sleep 1
 
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.label,
                         "Default Startup Dir Host",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         username.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         password.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.startup_command,
                         "printf 'default-startup-dir-ok\\n' > inherited.txt",
                         window,
@@ -20691,13 +20691,13 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.local_shell_program,
                         crate::test_support::test_shell_program(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.local_shell_cwd,
                         local_dir.display().to_string(),
                         window,
@@ -20774,10 +20774,10 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.pick_key_file(window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.label, "Docker Key Host", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.label, "Docker Key Host", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         username.clone(),
                         window,
@@ -20857,14 +20857,14 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.snippet_inputs.label,
                         "E2E Snippet",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.snippet_inputs.group, "Ops", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.snippet_inputs.group, "Ops", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.snippet_inputs.command,
                         snippet_command,
                         window,
@@ -21019,7 +21019,7 @@ sleep 1
                         .as_ref()
                         .expect("snippet prompts should be active");
                     let first = prompts.fields.first().expect("prompt field should exist");
-                    TermiRustApp::set_input_value(&first.input, "hello-from-prompt", window, cx);
+                    MultiplexApp::set_input_value(&first.input, "hello-from-prompt", window, cx);
                     app.confirm_snippet_prompts(cx);
                 })
             })
@@ -21160,13 +21160,13 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.snippet_inputs.label,
                         "Toolbar Snippet",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.snippet_inputs.command,
                         "echo toolbar-snippet",
                         window,
@@ -21325,8 +21325,8 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.activate_library_section(NavSection::Vaults, window, cx);
-                    TermiRustApp::set_input_value(&app.vault_inputs.label, "Ops Vault", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.vault_inputs.label, "Ops Vault", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.vault_inputs.description,
                         "Shared ops access",
                         window,
@@ -21408,7 +21408,7 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.activate_library_section(NavSection::Vaults, window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.vault_inputs.label,
                         "Shared Vault",
                         window,
@@ -21425,13 +21425,13 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.vault_member_inputs.name,
                         "Alex Rivera",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.vault_member_inputs.email,
                         "alex@example.com",
                         window,
@@ -21597,7 +21597,7 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.toggle_workspace_search(window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.terminal_search,
                         "match",
                         window,
@@ -21752,7 +21752,7 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.toggle_command_palette(window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.command_palette,
                         "palette-replay-ok",
                         window,
@@ -21815,8 +21815,8 @@ sleep 1
         window_a
             .update(cx, |_, window, cx| {
                 app_a.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(&app.vault_inputs.label, "Ops Vault", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.vault_inputs.label, "Ops Vault", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.vault_inputs.description,
                         "Shared ops access",
                         window,
@@ -21845,13 +21845,13 @@ sleep 1
         window_a
             .update(cx, |_, window, cx| {
                 app_a.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.vault_member_inputs.name,
                         "Alex Rivera",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.vault_member_inputs.email,
                         "alex@example.com",
                         window,
@@ -21860,9 +21860,9 @@ sleep 1
                     app.save_vault_member(window, cx);
 
                     app.snippet_vault_id = Some(vault_id.clone());
-                    TermiRustApp::set_input_value(&app.snippet_inputs.label, "Deploy", window, cx);
-                    TermiRustApp::set_input_value(&app.snippet_inputs.group, "Ops", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.snippet_inputs.label, "Deploy", window, cx);
+                    MultiplexApp::set_input_value(&app.snippet_inputs.group, "Ops", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.snippet_inputs.command,
                         "echo deploy",
                         window,
@@ -21874,11 +21874,11 @@ sleep 1
                     app.draft_vault_id = Some(vault_id.clone());
                     app.selected_vault_id = Some(vault_id.clone());
                     app.set_auth_mode(AuthMode::PrivateKey, cx);
-                    TermiRustApp::set_input_value(&app.inputs.label, "Vault Host", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.host, "10.0.0.5", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, "22", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.username, "deploy", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.label, "Vault Host", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.host, "10.0.0.5", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, "22", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.username, "deploy", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.key_path,
                         "/tmp/fake_sync_key",
                         window,
@@ -21886,20 +21886,20 @@ sleep 1
                     );
                     app.save_profile(window, cx);
 
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.sync_folder_input,
                         sync_dir.display().to_string(),
                         window,
                         cx,
                     );
                     app.save_sync_folder_input(window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.export_backup_passphrase,
                         "sync-pass",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.export_backup_confirm,
                         "sync-pass",
                         window,
@@ -21917,14 +21917,14 @@ sleep 1
         window_b
             .update(cx, |_, window, cx| {
                 app_b.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.sync_folder_input,
                         sync_dir.display().to_string(),
                         window,
                         cx,
                     );
                     app.save_sync_folder_input(window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.import_backup_passphrase,
                         "sync-pass",
                         window,
@@ -22009,29 +22009,29 @@ sleep 1
                     app.pick_sync_folder(window, cx);
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::PrivateKey, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.label,
                         "Sync Picked Host",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.host, "10.0.0.9", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, "22", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.username, "deploy", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.host, "10.0.0.9", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, "22", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.username, "deploy", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.key_path,
                         "/tmp/fake_sync_picker_key",
                         window,
                         cx,
                     );
                     app.save_profile(window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.export_backup_passphrase,
                         "sync-picker-pass",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.export_backup_confirm,
                         "sync-picker-pass",
                         window,
@@ -22058,7 +22058,7 @@ sleep 1
                             .as_millis() as u64
                             + 60_000,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.import_backup_passphrase,
                         "sync-picker-pass",
                         window,
@@ -22203,18 +22203,18 @@ sleep 1
                 app_a.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::PrivateKey, cx);
-                    TermiRustApp::set_input_value(&app.inputs.label, "Export Host", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.host, "192.168.1.10", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, "22", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.username, "deploy", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.label, "Export Host", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.host, "192.168.1.10", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, "22", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.username, "deploy", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.key_path,
                         "/tmp/export_key",
                         window,
                         cx,
                     );
                     app.set_draft_persistent_session(true, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.persistent_session_name,
                         "mobile-demo",
                         window,
@@ -22222,14 +22222,14 @@ sleep 1
                     );
                     app.save_profile(window, cx);
 
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.snippet_inputs.label,
                         "Export Snippet",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.snippet_inputs.group, "Ops", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.snippet_inputs.group, "Ops", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.snippet_inputs.command,
                         "echo exported",
                         window,
@@ -22239,13 +22239,13 @@ sleep 1
 
                     assert!(app.export_portable_data_to_path(&export_path, cx));
 
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.export_backup_passphrase,
                         "backup-pass",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.export_backup_confirm,
                         "backup-pass",
                         window,
@@ -22254,7 +22254,7 @@ sleep 1
                     queue_dialog_path(Some(encrypted_path.clone()));
                     app.export_encrypted_portable_data(window, cx);
 
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.mobile_pairing_request,
                         r#"{
                           "schema_version": 1,
@@ -22277,13 +22277,13 @@ sleep 1
                             .is_some()
                     );
 
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.export_backup_passphrase,
                         "backup-pass",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.export_backup_confirm,
                         "backup-pass",
                         window,
@@ -22333,7 +22333,7 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app_b.update(cx, |app, cx| {
                     assert!(app.import_portable_data_from_path(&export_path, window, cx));
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.import_backup_passphrase,
                         "backup-pass",
                         window,
@@ -23477,7 +23477,7 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.start_workspace_rename(window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.tab_rename_input,
                         "Renamed Workspace",
                         window,
@@ -23506,7 +23506,7 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.start_pane_rename(second_pane_id, window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.pane_rename_input,
                         "Renamed Pane",
                         window,
@@ -23854,14 +23854,14 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.label, "Broken Host", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.label, "Broken Host", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.host,
                         "nonexistent.invalid.example",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.port, "22", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, "22", window, cx);
                     app.open_choose_protocol_tab_from_draft(window, cx);
                 })
             })
@@ -23919,14 +23919,14 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.label, "Broken Host", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.label, "Broken Host", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.host,
                         "nonexistent.invalid.example",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.port, "22", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, "22", window, cx);
                     app.open_choose_protocol_tab_from_draft(window, cx);
                 })
             })
@@ -23986,14 +23986,14 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.label, "Broken Host", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.label, "Broken Host", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.host,
                         "nonexistent.invalid.example",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.port, "22", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, "22", window, cx);
                     app.open_choose_protocol_tab_from_draft(window, cx);
                 })
             })
@@ -24905,19 +24905,19 @@ sleep 1
                     app.activate_library_section(NavSection::Hosts, window, cx);
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         password_canary,
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.host,
                         "private.example.test",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.username, "deploy", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.username, "deploy", window, cx);
 
                     let snapshot = app
                         .host_connection_semantic_snapshot(cx)
@@ -25246,9 +25246,9 @@ sleep 1
                     let label = app.preset_label_input.clone();
                     let executable = app.preset_executable_input.clone();
                     let argument = app.preset_argument_inputs[0].clone();
-                    TermiRustApp::set_input_value(&label, "Risk review", window, cx);
-                    TermiRustApp::set_input_value(&executable, "codex", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&label, "Risk review", window, cx);
+                    MultiplexApp::set_input_value(&executable, "codex", window, cx);
+                    MultiplexApp::set_input_value(
                         &argument,
                         "--dangerously-bypass-approvals-and-sandbox",
                         window,
@@ -26215,7 +26215,7 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.open_group_editor(project_id, None, window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.group_name_input,
                         localization::group_editor_new_title(),
                         window,
@@ -27291,25 +27291,25 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.key_lifecycle_inputs.label,
                         "Generated UI Key",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.key_lifecycle_inputs.comment,
                         "ui-test@example.test",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.key_lifecycle_inputs.passphrase,
                         "ui-key-passphrase",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.key_lifecycle_inputs.passphrase_confirm,
                         "ui-key-passphrase",
                         window,
@@ -27369,19 +27369,19 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.open_key_generation(window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.key_lifecycle_inputs.passphrase,
                         "must-not-remain",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.key_lifecycle_inputs.passphrase_confirm,
                         "must-not-remain",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.key_lifecycle_inputs.deployment_passphrase,
                         "must-not-remain",
                         window,
@@ -27456,13 +27456,13 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.activate_library_section(NavSection::Keychain, window, cx);
                     app.open_key_generation(window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.key_lifecycle_inputs.label,
                         "Rendered Lifecycle Key",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.key_lifecycle_inputs.comment,
                         "rendered-lifecycle@example.test",
                         window,
@@ -27880,21 +27880,21 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.label,
                         "Keychain Password Host",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         username.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         password.clone(),
                         window,
@@ -28284,7 +28284,7 @@ sleep 1
                     app.update_confirm_multiline_paste(false, cx);
                     app.update_copy_on_select(true, cx);
 
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.terminal_font_family,
                         "Monaco",
                         window,
@@ -28292,7 +28292,7 @@ sleep 1
                     );
                     app.save_terminal_font_family(window, cx);
 
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.default_ssh_startup_directory,
                         "/srv/default",
                         window,
@@ -28300,13 +28300,13 @@ sleep 1
                     );
                     app.save_default_ssh_startup_directory(cx);
 
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.local_shell_program,
                         "/bin/zsh",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.local_shell_cwd,
                         "/tmp/termirust-shell",
                         window,
@@ -28402,19 +28402,19 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.activate_library_section(NavSection::Settings, window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.export_backup_passphrase,
                         "super-secret-value",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.sync_folder_input,
                         "/Users/private/project",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.search,
                         "super-secret-value",
                         window,
@@ -28444,7 +28444,7 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.search,
                         "font family",
                         window,
@@ -28627,7 +28627,7 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(&app.settings_inputs.search, "paste", window, cx);
+                    MultiplexApp::set_input_value(&app.settings_inputs.search, "paste", window, cx);
                 })
             })
             .expect("window update should succeed");
@@ -28671,13 +28671,13 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.activate_library_section(NavSection::Settings, window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.local_shell_program,
                         "/bin/bash",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.settings_inputs.local_shell_cwd,
                         "/tmp/settings-click-shell",
                         window,
@@ -28912,28 +28912,28 @@ sleep 1
                     app.set_auth_mode(AuthMode::Password, cx);
                     app.toggle_draft_profile_favorite(true, cx);
                     app.draft_color_tag = Some(HostColorTag::Blue);
-                    TermiRustApp::set_input_value(&app.inputs.label, "Metadata Host", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.label, "Metadata Host", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.description,
                         "Important production host",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.environment,
                         "DEPLOY_ENV=prod\nROLE=web",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         username.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         password.clone(),
                         window,
@@ -29430,7 +29430,7 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.host_search,
                         search_value,
                         window,
@@ -29499,7 +29499,7 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.bulk_group,
                         "Batch",
                         window,
@@ -30331,9 +30331,9 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.label, "Dialog Host", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.host, "dialog.example", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.username, "ops-user", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.label, "Dialog Host", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.host, "dialog.example", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.username, "ops-user", window, cx);
                     app.save_profile(window, cx);
                 })
             })
@@ -30392,31 +30392,31 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::LocalAgent, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.label,
                         "Agent Forward UI",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.host,
                         server.host().to_string(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.port,
                         server.port.to_string(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         server.username().to_string(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.identity_agent,
                         agent.socket_path().display().to_string(),
                         window,
@@ -30538,38 +30538,38 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.label,
                         "Dialog Proto Host",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.host,
                         server.host().to_string(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.port,
                         server.port.to_string(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         server.username().to_string(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         server.password().to_string(),
                         window,
                         cx,
                     );
                     app.open_choose_protocol_tab_from_draft(window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.protocol_ssh_port,
                         server.port.to_string(),
                         window,
@@ -30596,38 +30596,38 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.label,
                         "Dialog Proto Host",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.host,
                         server.host().to_string(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.port,
                         server.port.to_string(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         server.username().to_string(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         server.password().to_string(),
                         window,
                         cx,
                     );
                     app.open_choose_protocol_tab_from_draft(window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.protocol_ssh_port,
                         server.port.to_string(),
                         window,
@@ -30680,16 +30680,16 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(&app.inputs.label, "Click Save Host", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.label, "Click Save Host", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         username.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         password.clone(),
                         window,
@@ -30713,7 +30713,7 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.open_connect_dialog_tab(&profile_id, window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.connect_username,
                         "termirust",
                         window,
@@ -30768,16 +30768,16 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(&app.inputs.label, "Recent Host", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.label, "Recent Host", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         username.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         password.clone(),
                         window,
@@ -30953,16 +30953,16 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.label,
                         "Dialog Save Host",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.username, "stale-user", window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.username, "stale-user", window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         password.clone(),
                         window,
@@ -30986,7 +30986,7 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.open_connect_dialog_tab(&profile_id, window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.connect_username,
                         username.clone(),
                         window,
@@ -31026,19 +31026,19 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.label,
                         "Dialog Close Host",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.host,
                         "close-dialog.example",
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(&app.inputs.username, "ops-user", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.username, "ops-user", window, cx);
                     app.save_profile(window, cx);
                 })
             })
@@ -31107,16 +31107,16 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(&app.inputs.label, "Protocol Host", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(&app.inputs.label, "Protocol Host", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    MultiplexApp::set_input_value(
                         &app.inputs.username,
                         username.clone(),
                         window,
                         cx,
                     );
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.inputs.password,
                         password.clone(),
                         window,
@@ -31156,7 +31156,7 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.shell_inputs.protocol_ssh_port,
                         port.to_string(),
                         window,

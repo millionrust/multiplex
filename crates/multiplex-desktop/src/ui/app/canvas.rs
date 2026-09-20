@@ -41,7 +41,7 @@ use crate::models::{
     WorkspaceLayoutMode, default_persistent_session_name_from_id,
 };
 use crate::ssh::SessionCommand;
-use crate::ui::app::{TermiRustApp, WorkspaceViewMode};
+use crate::ui::app::{MultiplexApp, WorkspaceViewMode};
 use crate::ui::keys::TerminalCellPos;
 use crate::ui::localization;
 use crate::ui::render_terminal::{SelectionRange, display_terminal_text, selection_contains};
@@ -1501,7 +1501,7 @@ fn point_from_pixels(position: Point<gpui::Pixels>) -> CanvasPoint {
     CanvasPoint::new(position.x.into(), position.y.into())
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn agent_canvas_semantic_snapshot(&self) -> Option<AgentCanvasSemanticSnapshot> {
         let workspace = self.active_workspace()?;
         if workspace.layout_mode != WorkspaceLayoutMode::Canvas {
@@ -3677,7 +3677,7 @@ impl TermiRustApp {
                 arguments.push(prompt.to_string());
             }
             AgentProvider::CustomCli => anyhow::bail!(
-                "Launch the Custom CLI first, then send its initial prompt in the terminal. TermiRust does not guess a custom prompt flag."
+                "Launch the Custom CLI first, then send its initial prompt in the terminal. Multiplex does not guess a custom prompt flag."
             ),
             AgentProvider::GroqApi => anyhow::bail!("Groq API agents are not available yet"),
         }
@@ -3710,10 +3710,10 @@ impl TermiRustApp {
             .unwrap_or(".");
         let directory = shell_single_quote(working_directory);
         let directory_error = shell_single_quote(&format!(
-            "TermiRust could not use remote working directory: {working_directory}"
+            "Multiplex could not use remote working directory: {working_directory}"
         ));
         let version_error = shell_single_quote(&format!(
-            "TermiRust found {executable}, but its version check failed. Update or repair the CLI before reconnecting."
+            "Multiplex found {executable}, but its version check failed. Update or repair the CLI before reconnecting."
         ));
         Ok(format!(
             "if ! command -v {executable} >/dev/null 2>&1; then printf '%s\\n' {guidance} >&2; exec \"${{SHELL:-/bin/sh}}\"; fi\nif ! {executable} {version_argument} >/dev/null 2>&1; then printf '%s\\n' {version_error} >&2; exec \"${{SHELL:-/bin/sh}}\"; fi\nif [ ! -d {directory} ] || [ ! -r {directory} ] || [ ! -x {directory} ]; then printf '%s\\n' {directory_error} >&2; exec \"${{SHELL:-/bin/sh}}\"; fi\nif ! cd -- {directory}; then printf '%s\\n' {directory_error} >&2; exec \"${{SHELL:-/bin/sh}}\"; fi\nexec {command}",
@@ -9811,7 +9811,7 @@ impl TermiRustApp {
                                 )
                             } else {
                                 format!(
-                                    "Session {session_label} can keep running on the SSH host after TermiRust disconnects."
+                                    "Session {session_label} can keep running on the SSH host after Multiplex disconnects."
                                 )
                             }),
                     )
@@ -10890,7 +10890,7 @@ mod tests {
         AgentExecutableStatus, AgentRunState, CANVAS_DEFAULT_NODE_HEIGHT,
         CANVAS_DEFAULT_NODE_WIDTH, CanvasCoordinator, CanvasLinkMutation,
         CanvasLinkMutationDecision, CanvasNode, CanvasNodeKind, CanvasPoint, CanvasRect,
-        CanvasTransform, CanvasWorkspaceState, TermiRustApp, agent_creation_can_launch,
+        CanvasTransform, CanvasWorkspaceState, MultiplexApp, agent_creation_can_launch,
         agent_state_after_queue, agent_state_needs_attention, canvas_minimap_geometry,
         canvas_node_render_rect, canvas_orchestration_scope, canvas_rect_is_visible,
         canvas_reveal_delta, compact_activity_detail, default_agent_backend,
@@ -11613,7 +11613,7 @@ mod tests {
             worktree: SavedWorktreePolicy::SharedDirectory,
             ..SavedAgentDefinition::default()
         };
-        let script = TermiRustApp::remote_agent_startup_script(&definition, "review this")
+        let script = MultiplexApp::remote_agent_startup_script(&definition, "review this")
             .expect("remote bootstrap should be generated");
 
         let executable_check = script.find("command -v 'codex'").unwrap();
@@ -11639,7 +11639,7 @@ mod tests {
             worktree: SavedWorktreePolicy::SharedDirectory,
             ..SavedAgentDefinition::default()
         };
-        let script = TermiRustApp::remote_agent_startup_script(&definition, "")
+        let script = MultiplexApp::remote_agent_startup_script(&definition, "")
             .expect("custom remote bootstrap should be generated");
 
         assert!(script.contains("'custom agent; touch /tmp/no'"));

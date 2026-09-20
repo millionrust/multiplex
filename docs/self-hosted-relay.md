@@ -1,19 +1,19 @@
 # Self-Hosted Relay
 
-TermiRust's optional relay lets a mobile Controller reach a TermiRust Host when a direct
+Multiplex's optional relay lets a mobile Controller reach a Multiplex Host when a direct
 private-network or Controller-over-SSH route is unavailable. The relay is an outbound,
 ciphertext-only transport: Controller-v1 authentication, capabilities, replay protection,
 and writer leases remain end to end between the mobile app and Host.
 
 Use a private-network route when possible. Operate the relay yourself only when you need it;
-TermiRust does not require a public relay service or an account.
+Multiplex does not require a public relay service or an account.
 
 ## Requirements
 
 - a machine that can run `termirust-relay` continuously;
 - a DNS name and trusted TLS certificate for use outside one machine;
-- the TermiRust desktop/Host binary on the computer whose Sessions you want to control; and
-- the TermiRust iOS/iPadOS or Android app.
+- the Multiplex desktop/Host binary on the computer whose Sessions you want to control; and
+- the Multiplex iOS/iPadOS or Android app.
 
 The relay process intentionally binds only to a loopback address. For LAN or internet access,
 put a TLS reverse proxy such as Caddy in front of `127.0.0.1:7878`.
@@ -68,7 +68,7 @@ target/release/termirust-relay provision \
 
 This creates two different secret files:
 
-- `host-route.json` is only for the TermiRust Host computer.
+- `host-route.json` is only for the Multiplex Host computer.
 - `controller-route.json` is only for one mobile Controller.
 
 Do not email, log, commit, or place either package in a shared folder. Transfer each directly
@@ -91,7 +91,7 @@ per-user service manager and stop it with `Ctrl-C` during foreground testing.
 
 ## Import The Mobile Route
 
-1. Open **Devices** in the TermiRust mobile app.
+1. Open **Devices** in the Multiplex mobile app.
 2. Open the paired Host and choose **Self-hosted relay**.
 3. Copy the complete contents of `controller-route.json` on the phone.
 4. Tap **Paste route package**, review the endpoint and pin, then save.
@@ -121,7 +121,7 @@ target/release/termirust-relay run \
   --key server-key.pem
 ```
 
-The relay accepts only the fixed `/relay/v1` WebSocket route, exact TermiRust Origin and
+The relay accepts only the fixed `/relay/v1` WebSocket route, exact Multiplex Origin and
 subprotocol, valid role-specific admission proofs, current route epoch, ordered envelopes, and
 bounded frames/queues. It does not persist forwarded frames or have the keys needed to decrypt
 Controller traffic.

@@ -662,7 +662,7 @@ impl<V: TicketVerifier> HostSession<V> {
         self.control
     }
 
-    /// Publishes where TermiRust terminal panes sit on `surface`, replacing the previous list.
+    /// Publishes where Multiplex terminal panes sit on `surface`, replacing the previous list.
     /// Panes the viewer has attached to are masked out of its pixel stream from the next frame.
     ///
     /// Publish only panes no other window covers, since a covered part would be hidden from the

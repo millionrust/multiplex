@@ -399,7 +399,7 @@ struct ControllerReadOnlyTerminalView: View {
     private var privacyCover: some View {
         ZStack {
             Color(uiColor: .systemBackground)
-            Label("Terminal hidden while TermiRust is inactive", systemImage: "eye.slash")
+            Label("Terminal hidden while Multiplex is inactive", systemImage: "eye.slash")
                 .font(.headline)
                 .multilineTextAlignment(.center)
                 .padding(24)

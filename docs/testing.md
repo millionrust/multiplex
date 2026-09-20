@@ -419,7 +419,7 @@ TERMIRUST_SKIP_RELEASE_BUILD=1 ./scripts/test/real-app-ssh-ax.sh
 
 That narrower smoke path:
 
-- builds `TermiRust.app` with `cargo bundle --release`
+- builds `Multiplex.app` with `cargo bundle --release`
 - starts the Docker SSH fixture from `tests/fixtures/ssh-server/`
 - seeds a temporary restorable SSH workspace that uses the fixture key
 - launches the real bundled desktop app

@@ -9,7 +9,7 @@ use multiplex_domain::{
     SearchResult, SearchStatus,
 };
 
-use super::TermiRustApp;
+use super::MultiplexApp;
 use super::palette::{
     CommandPaletteCandidate, PaletteAction, PaletteCategory, command_palette_result_id,
 };
@@ -153,7 +153,7 @@ impl GlobalSearchState {
     }
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn refresh_global_search_index(&mut self) {
         let next_revisions = SearchSourceRevisions {
             projects: self

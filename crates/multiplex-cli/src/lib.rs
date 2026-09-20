@@ -1,4 +1,4 @@
-//! Stable, bounded, one-shot local command surface for TermiRust.
+//! Stable, bounded, one-shot local command surface for Multiplex.
 
 mod args;
 mod contract;
@@ -146,7 +146,7 @@ pub fn run_parsed(
                 Err(CliError::new(
                     ErrorCode::OperationFailed,
                     "command service is unavailable",
-                    "Retry the command after TermiRust is installed correctly.",
+                    "Retry the command after Multiplex is installed correctly.",
                 ))
             },
             |service| service.execute(invocation.command, cancellation),

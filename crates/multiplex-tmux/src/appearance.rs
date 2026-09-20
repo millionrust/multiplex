@@ -20,7 +20,7 @@ const TYPED_KEY_FORMAT: &str = "#{==:#{mouse_x},}";
 /// The selection and copy-mode highlight in wrapped sessions.
 pub const SELECTION_STYLE: &str = "bg=#3b4252,fg=default";
 
-/// The first line of the tmux configuration file TermiRust writes. It is how a later version
+/// The first line of the tmux configuration file Multiplex writes. It is how a later version
 /// recognises the file as its own to bring up to date, rather than one the user has taken over.
 pub(crate) const CONFIGURATION_FILE_HEADER: &str = "# Managed by TermiRust for the tmux sessions it starts (named termirust-*). Turn off \"Open new terminals in tmux\" in TermiRust to remove it.";
 
@@ -236,7 +236,7 @@ impl WrappedSessionAppearance {
     pub fn configuration_file(&self) -> String {
         let mut lines = vec![
             CONFIGURATION_FILE_HEADER.to_owned(),
-            "# Options below apply to the session sourcing this file. Key bindings are global to the tmux server, so each one keeps tmux's default outside TermiRust's sessions.".to_owned(),
+            "# Options below apply to the session sourcing this file. Key bindings are global to the tmux server, so each one keeps tmux's default outside Multiplex's sessions.".to_owned(),
         ];
         lines.extend(
             Self::session_options()

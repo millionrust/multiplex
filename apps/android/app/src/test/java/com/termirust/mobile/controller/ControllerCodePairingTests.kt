@@ -56,7 +56,7 @@ class ControllerCodePairingTests {
         val id = ControllerNetworkAddresses.discoveryId(ByteArray(32) { 7 })
 
         assertEquals("595b48412448eddcfbd8434a5a598a54", id)
-        assertEquals("TermiRust 595B48", ControllerNetworkAddresses.defaultHostName(id))
+        assertEquals("Multiplex 595B48", ControllerNetworkAddresses.defaultHostName(id))
     }
 
     @Test

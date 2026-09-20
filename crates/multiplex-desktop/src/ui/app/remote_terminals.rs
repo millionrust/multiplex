@@ -233,15 +233,15 @@ fn availability_message(availability: TmuxAvailability) -> Option<String> {
     }
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     /// Brings wrapped tabs up to date with this version of the app, once at launch.
     ///
     /// The key bindings a wrapped tab relies on are global to a tmux server, so a server an
     /// earlier version started keeps that version's behavior — a click in a tab scrolled back,
     /// for one, used to leave copy mode and drop the reader at the bottom. Updating the server
-    /// alone is not enough, and was the whole of this once: every new tab sources TermiRust's
+    /// alone is not enough, and was the whole of this once: every new tab sources Multiplex's
     /// tmux configuration file, so an old file put the old bindings back the next time a tab
-    /// opened. The file is brought up to date first, then the server. That file is TermiRust's
+    /// opened. The file is brought up to date first, then the server. That file is Multiplex's
     /// own and says so; the user's shell startup files still change only through a reviewed plan.
     pub(super) fn refresh_wrapped_tmux_behavior(&mut self, cx: &mut Context<Self>) {
         // Tests never reach for the developer's own tmux server or files.

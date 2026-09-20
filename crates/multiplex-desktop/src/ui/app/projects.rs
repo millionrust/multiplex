@@ -17,7 +17,7 @@ use multiplex_store::{
 };
 use multiplex_ui_contract::{AccessibleRowId, reconcile_collection_selection};
 
-use super::{TermiRustApp, theme};
+use super::{MultiplexApp, theme};
 use crate::storage::project_store_dir;
 use crate::ui::localization;
 
@@ -147,7 +147,7 @@ impl ProjectLibraryState {
     }
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn render_sessions_view(&self, cx: &Context<Self>) -> AnyElement {
         let content = match &self.project_library.load_state {
             ProjectLibraryLoadState::Loading => v_flex()

@@ -22,7 +22,7 @@ use super::project_coordinator::{
     ProjectLaunchResolution, ProjectLaunchReviewError, ProjectLaunchReviewInput,
 };
 use super::session_coordinator::SessionStartRequest;
-use super::{AppAttachedPaneState, PendingPaste, TermiRustApp, theme};
+use super::{AppAttachedPaneState, MultiplexApp, PendingPaste, theme};
 use crate::agents::build_app_attached_launch_config;
 use crate::models::{ConnectRequest, SavedAppAttachedSession, SavedDurableHost};
 use crate::storage::{app_dir, save_saved_state};
@@ -41,7 +41,7 @@ pub(super) struct NewSessionState {
     pub spawned_pane_id: Option<u64>,
 }
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn open_new_session_with_preset(
         &mut self,
         project_id: ProjectId,
@@ -1028,8 +1028,8 @@ mod tests {
 
     fn wait_for_app_state<R>(
         cx: &mut TestAppContext,
-        app: &gpui::Entity<TermiRustApp>,
-        mut check: impl FnMut(&mut TermiRustApp) -> Option<R>,
+        app: &gpui::Entity<MultiplexApp>,
+        mut check: impl FnMut(&mut MultiplexApp) -> Option<R>,
     ) -> R {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         loop {
@@ -1048,12 +1048,12 @@ mod tests {
         }
     }
 
-    fn open_test_app(cx: &mut TestAppContext) -> (gpui::Entity<TermiRustApp>, WindowHandle<Root>) {
+    fn open_test_app(cx: &mut TestAppContext) -> (gpui::Entity<MultiplexApp>, WindowHandle<Root>) {
         let mut app_entity = None;
         let window = cx.update(|cx| {
             gpui_component::init(cx);
             cx.open_window(Default::default(), |window, cx| {
-                let app = cx.new(|cx| TermiRustApp::new(SavedState::default(), window, cx));
+                let app = cx.new(|cx| MultiplexApp::new(SavedState::default(), window, cx));
                 app_entity = Some(app.clone());
                 cx.new(|cx| Root::new(app, window, cx))
             })
@@ -1237,7 +1237,7 @@ mod tests {
                         durability: Durability::Full,
                     });
                     app.open_new_session(project.id, window, cx);
-                    TermiRustApp::set_input_value(
+                    MultiplexApp::set_input_value(
                         &app.new_session_initial_input,
                         initial_input.clone(),
                         window,

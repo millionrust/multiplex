@@ -1,4 +1,4 @@
-# TermiRust
+# Multiplex
 
 Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `alacritty_terminal`.
 
@@ -91,8 +91,8 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   `run/`, `dev/`. Every script resolves the repo root two levels up.
 - `design/` and `locales/` are consumed by `multiplex-ui-contract`. `design/` also
   holds the Slate design references: `slate-design-system.html` (every token,
-  component spec, and the Rust handoff) and `termirust-design-system.html` (the
-  interactive TermiRust prototype). `docs/` holds
+  component spec, and the Rust handoff) and `multiplex-design-system.html` (the
+  interactive Multiplex prototype). `docs/` holds
   guides, ADRs under `decisions/`, and evidence under `completion-evidence/` and
   `engineering-evidence/`; `tools/` holds excluded spike workspaces; `dist/` is
   ignored build output.
@@ -106,7 +106,7 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 - [crates/multiplex-desktop/src/assets.rs](crates/multiplex-desktop/src/assets.rs)
   - Embedded SVG asset source for the app chrome and custom Phosphor-style icons.
 - `crates/multiplex-desktop/src/ui/app/` — main application state and UI, split across modules:
-  - [mod.rs](crates/multiplex-desktop/src/ui/app/mod.rs) — `TermiRustApp` state, event loop, recursive split tree, window-bounds persistence.
+  - [mod.rs](crates/multiplex-desktop/src/ui/app/mod.rs) — `MultiplexApp` state, event loop, recursive split tree, window-bounds persistence.
   - [chrome.rs](crates/multiplex-desktop/src/ui/app/chrome.rs) — top chrome: tab strip, traffic lights, tab context menu.
   - [workspace.rs](crates/multiplex-desktop/src/ui/app/workspace.rs) — terminal pane rendering, split layout, SFTP files view.
   - [editor.rs](crates/multiplex-desktop/src/ui/app/editor.rs) / [hosts.rs](crates/multiplex-desktop/src/ui/app/hosts.rs) / [library.rs](crates/multiplex-desktop/src/ui/app/library.rs) — host editor and library.

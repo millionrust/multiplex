@@ -240,10 +240,10 @@ pub struct Viewport {
     pub scale_milli: u16,
 }
 
-/// A TermiRust terminal session, by its hosted session id.
+/// A Multiplex terminal session, by its hosted session id.
 pub type PaneSession = [u8; 16];
 
-/// Where a TermiRust terminal pane sits on a surface. A viewer attached to the pane's text stream
+/// Where a Multiplex terminal pane sits on a surface. A viewer attached to the pane's text stream
 /// draws the rectangle from that stream; the host sends it no pixels there.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PanePlacement {

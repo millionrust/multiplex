@@ -15,7 +15,7 @@ enum SecretStoreError: Error, LocalizedError {
         case .accessControlUnavailable:
             return "Unable to require device authentication for Keychain storage."
         case .authenticationRequired:
-            return "Unlock this device with passcode or biometrics before using TermiRust mobile SSH credentials."
+            return "Unlock this device with passcode or biometrics before using Multiplex mobile SSH credentials."
         case .unhandledStatus(let status):
             return "Keychain operation failed with status \(status)."
         }
@@ -66,7 +66,7 @@ final class KeychainSecretStore: SecretStoring {
 
     func readSecret(account: String) throws -> String? {
         let context = LAContext()
-        context.localizedReason = "Unlock TermiRust mobile SSH credential."
+        context.localizedReason = "Unlock Multiplex mobile SSH credential."
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

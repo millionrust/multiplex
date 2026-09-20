@@ -377,7 +377,7 @@ private fun ProductHeader(
             Text(">", color = TerminalForeground, fontWeight = FontWeight.Bold)
         }
         Column {
-            Text("TermiRust", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Multiplex", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(
                 subtitle,
                 style = MaterialTheme.typography.bodySmall,
@@ -834,7 +834,7 @@ private fun DirectSshPrivacyCover() {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            "Direct SSH terminal hidden while TermiRust is inactive",
+            "Direct SSH terminal hidden while Multiplex is inactive",
             style = MaterialTheme.typography.titleMedium,
             color = PrimaryText,
             modifier = Modifier.padding(24.dp),

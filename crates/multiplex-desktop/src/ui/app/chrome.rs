@@ -1,4 +1,4 @@
-//! Top tab bar (chrome) + library sidebar. All methods are part of `TermiRustApp`.
+//! Top tab bar (chrome) + library sidebar. All methods are part of `MultiplexApp`.
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -13,13 +13,13 @@ use gpui_component::{Icon, IconName, Root, Sizable as _, StyledExt as _, h_flex,
 
 use crate::models::WorkspaceLayoutMode;
 use crate::ui::app::{
-    NavSection, TermiRustApp, WorkspaceIndicators, WorkspaceTab, WorkspaceTabDrag,
+    MultiplexApp, NavSection, WorkspaceIndicators, WorkspaceTab, WorkspaceTabDrag,
     WorkspaceTabDragPreview, nav_section_key,
 };
 use crate::ui::localization;
 use crate::ui::theme;
 
-impl TermiRustApp {
+impl MultiplexApp {
     pub(super) fn workspace_indicators(&self, workspace: &WorkspaceTab) -> WorkspaceIndicators {
         let mut indicators = WorkspaceIndicators::default();
 
@@ -525,7 +525,7 @@ impl TermiRustApp {
                 let state = initial_state.clone();
                 let request = request_for_window.clone();
                 let view = cx.new(|cx| {
-                    let mut app = TermiRustApp::new(state, window, cx);
+                    let mut app = MultiplexApp::new(state, window, cx);
                     if let Some((_, pane_id)) =
                         app.open_request_workspace(request.clone(), window, cx)
                     {

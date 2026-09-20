@@ -23,7 +23,7 @@ fn main() -> ExitCode {
 }
 
 fn run(arguments: Vec<String>) -> Result<String, &'static str> {
-    let paths = CliPaths::discover().map_err(|_| "TermiRust configuration is unavailable")?;
+    let paths = CliPaths::discover().map_err(|_| "Multiplex configuration is unavailable")?;
     let store = ActionPolicyStore::new(paths.config_root().join("mcp"));
     match arguments.as_slice() {
         [command] if command == "revoke" => {

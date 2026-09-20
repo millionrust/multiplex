@@ -1,4 +1,4 @@
-//! Slate gallery: every component and state, in a working TermiRust shell.
+//! Slate gallery: every component and state, in a working Multiplex shell.
 //!
 //! ```text
 //! cargo run -p multiplex-slate --example gallery

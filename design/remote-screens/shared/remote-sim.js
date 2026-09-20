@@ -2,7 +2,7 @@
  *
  * It simulates one remote Mac ("mac-studio") whose screen keeps changing: a clock, streaming
  * terminal output, an agent waiting for approval, a playing video, a chat on a second display.
- * Every change is turned into what TermiRust would send: skipped pixels, 64×64 tiles, cached
+ * Every change is turned into what Multiplex would send: skipped pixels, 64×64 tiles, cached
  * tiles, terminal text, or a motion stream. A network profile drives the degradation steps.
  * Pages mount views of the scene and bind their own UI to the events below.
  */
@@ -134,7 +134,7 @@
     return '<div class="rd" data-display="main" style="left:' + x + 'px;top:' + y + 'px;width:1512px;height:982px">' +
       '<div class="rd-menubar"><b>■</b><b>Zed</b><span>File</span><span>Edit</span><span>Selection</span><span>View</span><span>Go</span><span>Window</span><span>Help</span><div class="r"><span>Wi-Fi</span><span>100%</span><span>Tue 15 Sep <span data-live="clock"></span></span></div></div>' +
       '<div class="rd-win" style="left:36px;top:52px;width:830px;height:560px"><div class="rd-tb"><i></i><i></i><i></i><span>termirust — classify.rs</span></div><div class="rd-editor-body"><div class="rd-tree"><div>termirust</div><div class="d2">crates</div><div class="d3">termirust-screen-capture</div><div class="d3 sel">termirust-screen-codec</div><div class="d3">termirust-screen-host</div><div class="d3">termirust-screen-transport</div><div class="d3">termirust-controller-listener</div><div class="d3">termirust-desktop</div><div class="d2">docs</div><div class="d2">design</div><div class="d2">tests</div><div>Cargo.toml</div></div><pre class="rd-code">' + CODE + '</pre></div></div>' +
-      '<div class="rd-win term" style="left:890px;top:60px;width:590px;height:450px"><div class="rd-tb"><i></i><i></i><i></i><span>TermiRust</span></div><div class="rd-term-body"><div class="rd-pane"><div class="hd">zsh — termirust</div><div data-live="pane1"></div></div><div class="rd-pane"><div class="hd">agent — screen-codec worktree</div><div data-live="pane2"></div></div></div></div>' +
+      '<div class="rd-win term" style="left:890px;top:60px;width:590px;height:450px"><div class="rd-tb"><i></i><i></i><i></i><span>Multiplex</span></div><div class="rd-term-body"><div class="rd-pane"><div class="hd">zsh — termirust</div><div data-live="pane1"></div></div><div class="rd-pane"><div class="hd">agent — screen-codec worktree</div><div data-live="pane2"></div></div></div></div>' +
       '<div class="rd-win" style="left:470px;top:560px;width:780px;height:340px"><div class="rd-tb"><i></i><i></i><i></i><span>Relay metrics — Safari</span></div><div class="rd-browser-body"><div class="rd-panel"><h6>Throughput, last hour</h6><div class="big"><span data-live="throughput"></span> Mbps</div><svg viewBox="0 0 300 120" width="100%" height="150"><path data-live="chart" d="" fill="none" stroke="#2A64C8" stroke-width="2.5"/><path d="M0 119.5H300" stroke="#DADDE2"/></svg></div><div class="rd-video" data-hit="video"><div class="frame"></div><div class="shade"></div><div class="play" data-live="play">❚❚</div><div class="bar"><i data-live="videobar"></i></div></div></div></div>' +
       '<div class="rd-dock">' + DOCK.map(c => '<i style="background:' + c + '"></i>').join('') + '</div></div>';
   }

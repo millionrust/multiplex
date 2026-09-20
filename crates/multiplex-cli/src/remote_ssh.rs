@@ -555,7 +555,7 @@ where
             context.private_key,
             context.ephemeral_key,
             context.device_id,
-            "TermiRust CLI".into(),
+            "Multiplex CLI".into(),
             confirm_sas,
             prepare_registration,
         )
@@ -1091,7 +1091,7 @@ async fn execute_route(
             result.map_err(|_| CliError::new(
                 ErrorCode::Timeout,
                 "remote Controller route timed out",
-                "Check SSH connectivity and the remote TermiRust bridge, then retry read-only commands.",
+                "Check SSH connectivity and the remote Multiplex bridge, then retry read-only commands.",
             ))?
         }
         () = wait_for_cancellation(cancellation) => Err(CliError::new(
@@ -1579,7 +1579,7 @@ fn profile_storage_denied() -> CliError {
     CliError::new(
         ErrorCode::PermissionDenied,
         "unable to save the SSH Controller profile securely",
-        "Check the TermiRust configuration directory permissions and retry pairing.",
+        "Check the Multiplex configuration directory permissions and retry pairing.",
     )
 }
 
@@ -1645,19 +1645,19 @@ fn classify_route_error(error: CliError, stderr: &[u8]) -> CliError {
         CliError::new(
             ErrorCode::HostKeyUnknown,
             "SSH Host key is not trusted yet",
-            "Verify and add the Host key with the system ssh client, then retry. TermiRust never auto-accepts it.",
+            "Verify and add the Host key with the system ssh client, then retry. Multiplex never auto-accepts it.",
         )
     } else if stderr.contains("permission denied") {
         CliError::new(
             ErrorCode::AuthenticationDenied,
             "SSH authentication was denied",
-            "Verify the system SSH agent/default key and remote OS account outside TermiRust.",
+            "Verify the system SSH agent/default key and remote OS account outside Multiplex.",
         )
     } else if stderr.contains("command not found") || stderr.contains("not found") {
         CliError::new(
             ErrorCode::BridgeUnavailable,
-            "remote TermiRust Controller bridge is unavailable",
-            "Install the compatible TermiRust binary for the remote OS user and retry.",
+            "remote Multiplex Controller bridge is unavailable",
+            "Install the compatible Multiplex binary for the remote OS user and retry.",
         )
     } else {
         error
@@ -1722,7 +1722,7 @@ fn map_listener(error: ListenerError) -> CliError {
         ListenerErrorCode::HostUnavailable => CliError::new(
             ErrorCode::Unavailable,
             "authoritative remote Host is unavailable",
-            "Keep the remote TermiRust Host running and retry.",
+            "Keep the remote Multiplex Host running and retry.",
         ),
         ListenerErrorCode::Io => CliError::new(
             ErrorCode::Unavailable,
@@ -1766,7 +1766,7 @@ fn map_keyring(error: KeyringError) -> CliError {
         KeyringError::NoStorageAccess(_) => CliError::new(
             ErrorCode::PermissionDenied,
             "Controller device key access was denied",
-            "Unlock the system credential store and allow TermiRust access.",
+            "Unlock the system credential store and allow Multiplex access.",
         ),
         KeyringError::BadEncoding(_) => secret_invalid(),
         _ => secret_unavailable(),
@@ -1809,7 +1809,7 @@ fn route_unavailable() -> CliError {
     CliError::new(
         ErrorCode::Unavailable,
         "unable to start the strict SSH Controller route",
-        "Verify system OpenSSH and the remote TermiRust installation.",
+        "Verify system OpenSSH and the remote Multiplex installation.",
     )
 }
 
@@ -1817,7 +1817,7 @@ fn protocol_failure() -> CliError {
     CliError::new(
         ErrorCode::Incompatible,
         "remote Controller protocol response was invalid",
-        "Update TermiRust on both systems and pair again if the Host identity changed.",
+        "Update Multiplex on both systems and pair again if the Host identity changed.",
     )
 }
 

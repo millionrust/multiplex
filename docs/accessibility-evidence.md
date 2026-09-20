@@ -1,6 +1,6 @@
 # Desktop accessibility and localization audit
 
-This document records the frozen Goal 21.1.6 audit of TermiRust desktop application chrome on one
+This document records the frozen Goal 21.1.6 audit of Multiplex desktop application chrome on one
 Apple-silicon macOS development machine. It is engineering evidence, not a VPAT, legal
 certification, supported-platform declaration, or claim of complete WCAG conformance.
 
@@ -51,7 +51,7 @@ no frozen case was changed during this audit.
 
 The evidence supports only this statement: on the recorded macOS development environment, the
 migrated semantic contracts, generated English and pseudo-locales, privacy projections, and listed
-token contrast pairs pass automated checks for the frozen application baseline. TermiRust must not
+token contrast pairs pass automated checks for the frozen application baseline. Multiplex must not
 claim whole-product WCAG 2.2 AA, complete VoiceOver support, complete localization, or complete
 200/400% visual reflow until Goals 21.1.7 through 21.1.10 are completed and their findings close.
 

@@ -1,4 +1,4 @@
-//! Slate, TermiRust's styled component library.
+//! Slate, Multiplex's styled component library.
 //!
 //! Slate sits on `gpui-base`, which owns behavior (focus, keyboard, overlays,
 //! accessibility), and on the generated token contract in

@@ -1,6 +1,6 @@
 # Store Health and Derived-Index Repair
 
-TermiRust's **Settings > Health** workflow separates diagnosis from repair. A scan is
+Multiplex's **Settings > Health** workflow separates diagnosis from repair. A scan is
 explicit and read-only. It checks the store format, authoritative record readability and
 hashes, and the two supported derived indexes.
 
@@ -40,7 +40,7 @@ A named repair follows this state machine:
 5. `Complete`: reopen the published index and verify it before removing the journal.
 
 Cancellation is supported before publishing and removes the temporary file. A source
-change makes the plan stale and publishes nothing. On restart, TermiRust only cleans up
+change makes the plan stale and publishes nothing. On restart, Multiplex only cleans up
 temporary files covered by its exact ownership marker and completes verification of a
 journaled publish.
 

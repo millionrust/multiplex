@@ -101,7 +101,7 @@ mod macos {
 
     type Id = *mut Object;
     type MessageResolver = Arc<dyn Fn(MessageId) -> Option<String> + Send + Sync>;
-    const ELEMENT_BASE_CLASS: &str = "TermiRustAccessibilityElementBase";
+    const ELEMENT_BASE_CLASS: &str = "MultiplexAccessibilityElementBase";
     const BRIDGE_IVAR: &str = "termirustBridgeId";
     const GENERATION_IVAR: &str = "termirustGeneration";
     const NODE_IVAR: &str = "termirustNodeId";
@@ -430,7 +430,7 @@ mod macos {
         if let Some(class) = classes.get(&actions) {
             return Ok(*class);
         }
-        let name = format!("TermiRustAccessibilityElement{actions:016x}");
+        let name = format!("MultiplexAccessibilityElement{actions:016x}");
         let mut declaration = ClassDecl::new(&name, superclass).ok_or_else(bridge_unavailable)?;
         unsafe {
             if actions & (1_u64 << (SemanticAction::Activate as u8)) != 0 {

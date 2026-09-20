@@ -2,7 +2,7 @@ import Combine
 import Foundation
 @preconcurrency import Network
 
-/// A TermiRust Host announcing itself with Bonjour on this network. Finding one is not trusting
+/// A Multiplex Host announcing itself with Bonjour on this network. Finding one is not trusting
 /// it: pairing still needs the code, and the announcement carries no secret.
 struct ControllerDiscoveredComputer: Identifiable, Hashable, Sendable {
     let discoveryID: String
