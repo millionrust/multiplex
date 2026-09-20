@@ -63,10 +63,10 @@ def main() -> int:
     roots = sorted(
         package_id
         for package_id, name in package_names.items()
-        if name.startswith("termirust-") and governed_package(name)
+        if name.startswith("multiplex-") and governed_package(name)
     )
     if not roots:
-        print("No governed TermiRust packages found.", file=sys.stderr)
+        print("No governed Multiplex packages found.", file=sys.stderr)
         return 1
 
     failures = []

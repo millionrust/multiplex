@@ -445,13 +445,13 @@ fn default_host_executable() -> Result<PathBuf, String> {
         .is_some_and(|name| name == "deps")
         && let Some(debug_dir) = current.parent().and_then(Path::parent)
     {
-        let packaged = debug_dir.join(format!("termirust{}", std::env::consts::EXE_SUFFIX));
+        let packaged = debug_dir.join(format!("multiplex{}", std::env::consts::EXE_SUFFIX));
         return if packaged.is_file() {
             Ok(packaged)
         } else {
             Err(format!(
                 "the durable Host binary {} has not been built, and a unit test launches it rather \
-                 than itself; build it first with `cargo build -p termirust`, or run the suite \
+                 than itself; build it first with `cargo build -p multiplex`, or run the suite \
                  with --all-targets, which builds it",
                 packaged.display()
             ))

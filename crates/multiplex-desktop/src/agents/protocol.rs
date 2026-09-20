@@ -29,10 +29,11 @@ impl AgentRunState {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Who said something in an agent transcript. The providers speak for the user and the
+/// assistant only; a system role would need a provider that sends one.
 pub enum AgentRole {
     User,
     Assistant,
-    System,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

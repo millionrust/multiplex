@@ -71,7 +71,6 @@ fn role_label(role: AgentRole) -> &'static str {
     match role {
         AgentRole::User => "User",
         AgentRole::Assistant => "Assistant",
-        AgentRole::System => "Tool",
     }
 }
 

@@ -14288,8 +14288,8 @@ mod tests {
         AutocompleteSource, ConnectDialogMode, ConnectionDiagnosticRow, ConnectionDiagnosticStatus,
         DropZone, HostsSort, HostsViewMode, KeyLifecycleDialog, KeychainTab,
         MAX_COALESCED_TERMINAL_OUTPUT_BYTES, MAX_SPLIT_PANES, NavSection, OutputSuggestionContext,
-        PathSuggestionContext, SessionLibraryView, SplitNode, TermiRustApp, WorkspaceIndicators,
-        WorkspaceViewMode, apply_group_defaults_to_draft, collect_autocomplete_candidates,
+        PathSuggestionContext, SessionLibraryView, SplitNode, TermiRustApp, WorkspaceViewMode,
+        apply_group_defaults_to_draft, collect_autocomplete_candidates,
         collect_command_palette_candidates, drain_coalesced_ssh_events, dropped_paths_text,
         extract_snippet_prompt_names, shell_command_requires_continuation,
         startup_bytes_for_request, substitute_snippet_placeholders, substitute_snippet_prompts,
@@ -15418,6 +15418,12 @@ mod tests {
                             runtime.transcript.len()
                         )
                     }));
+                    // What the app last told the user, which is what a test waiting on a
+                    // message needs and no pane row shows.
+                    dump.push(format!(
+                        "status={:?} error={:?}",
+                        app.status_message, app.error_message
+                    ));
                     dump
                 });
                 panic!("timed out waiting for app state: {terminal_dump:#?}");
@@ -17494,6 +17500,13 @@ mod tests {
                 fleet_host_profile("prod-a", "Prod A", "Production", 65101, true),
                 fleet_host_profile("prod-b", "Prod B", "Production", 65102, true),
             ],
+            // These hosts are not there to be reached, and a reconnect attempt puts its own
+            // countdown in the status line, which is where the answer to the click below
+            // appears. On a loaded runner the countdown got there first.
+            settings: crate::models::AppSettings {
+                auto_reconnect_attempts: 0,
+                ..crate::models::AppSettings::default()
+            },
             ..SavedState::default()
         };
         let (app, window) = open_test_app_with_state(cx, saved);
@@ -17549,8 +17562,24 @@ mod tests {
             let workspace = app.active_workspace().unwrap();
             assert_eq!(workspace.pane_ids.len(), 3);
             assert_eq!(workspace.canvas.nodes.len(), 3);
-            assert!(app.status_message.contains("already on this canvas"));
         });
+
+        // And the app says why. Asked of the action the button runs, and read in the same
+        // update: the status line is shared with the sessions, and these hosts answer every
+        // connection with a refusal, so anything read after the next turn of the event loop
+        // is whichever message came last rather than the answer to this.
+        let refusal = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.add_saved_host_group_to_canvas("Production", window, cx);
+                    app.status_message.clone()
+                })
+            })
+            .expect("window update should succeed");
+        assert!(
+            refusal.contains("already on this canvas"),
+            "the app answered {refusal:?}"
+        );
 
         let workspace_id = app.read_with(cx, |app, _| app.active_workspace_id.unwrap());
         app.update(cx, |app, cx| app.disconnect_workspace(workspace_id, cx));

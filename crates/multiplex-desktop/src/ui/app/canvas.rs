@@ -3088,7 +3088,7 @@ impl TermiRustApp {
         cx.notify();
     }
 
-    fn add_saved_host_group_to_canvas(
+    pub(super) fn add_saved_host_group_to_canvas(
         &mut self,
         group_label: &str,
         window: &mut Window,
