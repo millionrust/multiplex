@@ -97,6 +97,7 @@ impl ControllerBackendFactory for HostBackendFactory {
             desktop_pane_bridge: None,
             live_commands: HashSet::new(),
             live_attach: false,
+            console_root: multiplex_store::console_sessions_root(self.sessions.data_root()),
             tmux: TmuxConnectionState::new(self.tmux_sessions.clone()),
         }))
     }
@@ -188,6 +189,9 @@ struct HostConnectionBackend {
     desktop_pane_bridge: Option<DesktopPaneBridgeClient>,
     live_commands: HashSet<multiplex_domain::CommandId>,
     live_attach: bool,
+    /// Where `multiplex-cli shell` records the sessions it starts. Their Hosts serve under the
+    /// same runtime parent as durable sessions, so they attach by the durable path.
+    console_root: PathBuf,
     // Declared last so hosts are released after this connection's clients disconnect.
     tmux: TmuxConnectionState,
 }
@@ -681,9 +685,20 @@ impl HostConnectionBackend {
             .map(|session| self.tmux_session_summary(session, &live_capabilities))
             .collect::<Vec<_>>();
         shadowing_ids.extend(tmux_sessions.iter().map(|session| session.session_id));
+        let console_sessions =
+            multiplex_store::live_console_sessions(&self.console_root, &self.runtime_parent);
+        let console_revision = console_listing_revision(&console_sessions);
+        let session_capabilities = controller_session_capabilities(self.capabilities);
+        let mut console_sessions = console_sessions
+            .iter()
+            .filter(|session| !shadowing_ids.contains(&session.record.session_id))
+            .map(|session| console_session_summary(session, &session_capabilities))
+            .collect::<Vec<_>>();
+        shadowing_ids.extend(console_sessions.iter().map(|session| session.session_id));
         sessions.retain(|session| !shadowing_ids.contains(&session.session_id));
-        // Live terminals first, then tmux sessions, then durable history.
+        // Live terminals first, then tmux and shell sessions, then durable history.
         live_sessions.append(&mut tmux_sessions);
+        live_sessions.append(&mut console_sessions);
         live_sessions.append(&mut sessions);
         let sessions = live_sessions;
         let mut revision = durable_revision
@@ -692,6 +707,7 @@ impl HostConnectionBackend {
         if self.tmux.source.is_some() {
             revision = revision.wrapping_mul(31).wrapping_add(tmux_revision);
         }
+        revision = revision.wrapping_mul(31).wrapping_add(console_revision);
         let revision = revision.max(1);
         if expected_revision.is_some_and(|expected| expected != revision) {
             return Ok(vec![ControllerResponse::Error {
@@ -836,6 +852,13 @@ impl HostConnectionBackend {
         read_host_metadata(&self.sessions.session_data_path(session_id))
             .ok()
             .map(|metadata| metadata.activity.generation)
+            .or_else(|| {
+                multiplex_store::console_session_generation(
+                    &self.console_root,
+                    &self.runtime_parent,
+                    session_id,
+                )
+            })
             .ok_or_else(|| ListenerError::new(ListenerErrorCode::HostUnavailable))
     }
 
@@ -844,6 +867,43 @@ impl HostConnectionBackend {
             .get_mut(&session_id)
             .ok_or_else(|| ListenerError::new(ListenerErrorCode::HostUnavailable))
     }
+}
+
+/// The runtime paired devices see for a shell `multiplex-cli shell` started.
+pub const CONSOLE_RUNTIME_ID: &str = "shell";
+
+fn console_session_summary(
+    session: &multiplex_store::LiveConsoleSession,
+    capabilities: &[ControllerSessionCapability],
+) -> ControllerSessionSummary {
+    ControllerSessionSummary {
+        session_id: session.record.session_id,
+        host_instance_id: None,
+        origin: ControllerSessionOrigin::Terminal,
+        runtime: Some(CONSOLE_RUNTIME_ID.to_owned()),
+        capabilities: capabilities.to_vec(),
+        title: session.record.title(),
+        project: None,
+        group: None,
+        lifecycle: lifecycle_code(HostedSessionState::Live).to_owned(),
+        activity: activity_code(ActivityState::Unknown).to_owned(),
+        occupant_generation: Some(session.generation),
+        last_output_sequence: multiplex_domain::OutputSequence::ZERO,
+        has_writer: false,
+        unread: false,
+    }
+}
+
+/// Changes whenever a shell session starts, ends, or is replaced, so a device paging the list
+/// sees one consistent snapshot.
+fn console_listing_revision(sessions: &[multiplex_store::LiveConsoleSession]) -> u64 {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for session in sessions {
+        session.record.session_id.to_string().hash(&mut hasher);
+        session.generation.get().hash(&mut hasher);
+    }
+    hasher.finish()
 }
 
 fn controller_session_capabilities(
@@ -939,6 +999,154 @@ mod tests {
         DesktopPaneBridgeServer, DesktopPaneRegistration, DesktopPaneRegistry, DesktopPaneTransport,
     };
 
+    /// A shell `multiplex-cli shell` started is a Session Host the listener never launched and a
+    /// record beside the durable sessions; a paired device lists it and attaches to it like any.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_shell_the_launcher_started_is_listed_and_attached() {
+        let fixture = tempfile::tempdir().unwrap();
+        // A Unix socket path has about a hundred bytes; stay out of the long temporary folder.
+        #[cfg(unix)]
+        let runtime = tempfile::Builder::new()
+            .prefix("mx-cs-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        #[cfg(not(unix))]
+        let runtime = tempfile::tempdir().unwrap();
+        let project_root = fixture.path().join("projects");
+        let data_root = fixture.path().join("durable-sessions");
+        let sessions = SessionRepository::open(project_root.clone(), data_root.clone()).unwrap();
+        let projects = ProjectRepository::open(project_root).unwrap();
+        let console_root = multiplex_store::console_sessions_root(&data_root);
+        let session_id = HostedSessionId::new();
+        let session_dir = console_root.join(session_id.to_string());
+        std::fs::create_dir_all(&session_dir).unwrap();
+
+        #[cfg(unix)]
+        let (program, arguments, environment) = (
+            std::path::PathBuf::from("/bin/sh"),
+            vec![
+                "-c".to_owned(),
+                "echo SHELL_SESSION_MARKER; while :; do sleep 1; done".to_owned(),
+            ],
+            std::collections::BTreeMap::from([("PATH".to_owned(), "/usr/bin:/bin".to_owned())]),
+        );
+        #[cfg(windows)]
+        let (program, arguments, environment) = {
+            let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".to_owned());
+            (
+                std::path::PathBuf::from(&root).join(r"System32\cmd.exe"),
+                vec![
+                    "/d".to_owned(),
+                    "/q".to_owned(),
+                    "/k".to_owned(),
+                    "echo SHELL_SESSION_MARKER".to_owned(),
+                ],
+                std::collections::BTreeMap::from([("SystemRoot".to_owned(), root)]),
+            )
+        };
+        let host = multiplex_session_host::start(multiplex_session_host::LaunchDescriptor {
+            format_version: multiplex_session_host::LaunchDescriptor::FORMAT_VERSION,
+            session_id,
+            host_instance_id: multiplex_domain::HostInstanceId::new(),
+            expected_occupant_generation: None,
+            runtime_root: runtime.path().join(session_id.to_string()),
+            session_dir: session_dir.clone(),
+            executable: std::fs::canonicalize(program).unwrap(),
+            runtime_detection: None,
+            arguments,
+            environment,
+            cwd: Some(fixture.path().to_path_buf()),
+            columns: 80,
+            rows: 24,
+            journal_limits: multiplex_store::JournalLimits::default(),
+            stop_deadlines: multiplex_session_host::StopDeadlines::default(),
+        })
+        .await
+        .unwrap();
+        multiplex_store::write_console_session(
+            &session_dir,
+            &multiplex_store::ConsoleSessionRecord {
+                schema_version: multiplex_store::ConsoleSessionRecord::SCHEMA_VERSION,
+                session_id,
+                program: "sh".to_owned(),
+                working_directory: fixture.path().join("work"),
+                started_at: 1,
+            },
+        )
+        .unwrap();
+
+        let mut backend = HostConnectionBackend {
+            sessions,
+            projects,
+            runtime_parent: runtime.path().to_path_buf(),
+            capabilities: ControllerCapabilities::default()
+                .with(ControllerCapability::ObserveSessions)
+                .with(ControllerCapability::AttachOutput)
+                .with(ControllerCapability::SendInput),
+            clients: HashMap::new(),
+            active_attach: None,
+            pending_output: VecDeque::new(),
+            desktop_pane_bridge_endpoint: None,
+            desktop_pane_bridge: None,
+            live_commands: HashSet::new(),
+            live_attach: false,
+            console_root,
+            tmux: TmuxConnectionState::new(None),
+        };
+        let responses = backend
+            .list_sessions(CommandId::new(), 0, 100, None)
+            .await
+            .unwrap();
+        let [ControllerResponse::Sessions { sessions, .. }] = responses.as_slice() else {
+            panic!("expected one session page");
+        };
+        let listed = sessions
+            .iter()
+            .find(|session| session.session_id == session_id)
+            .expect("the shell session is listed");
+        assert_eq!(listed.title, "sh in work");
+        assert_eq!(listed.runtime.as_deref(), Some(CONSOLE_RUNTIME_ID));
+        let generation = listed
+            .occupant_generation
+            .expect("a live shell has a generation");
+
+        let cancel = CancellationToken::new();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let attach = ControllerCommandEnvelope::new(
+                CommandId::new(),
+                1,
+                1,
+                ControllerCommand::Attach {
+                    session_id,
+                    occupant_generation: generation,
+                    from_sequence: multiplex_domain::OutputSequence::ZERO,
+                    columns: 80,
+                    rows: 24,
+                },
+            );
+            backend.command_context(&attach, &cancel).await.unwrap();
+            let responses = backend.execute(attach, &cancel).await.unwrap();
+            let printed = responses.iter().any(|response| {
+                matches!(
+                    response,
+                    ControllerResponse::Output { bytes, .. }
+                        if String::from_utf8_lossy(bytes).contains("SHELL_SESSION_MARKER")
+                )
+            });
+            if printed {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the shell's output never reached the device"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        drop(backend);
+        drop(host);
+    }
+
     /// Reaches a live desktop pane through the bridge, which serves only over a same-user Unix
     /// socket. Off Unix there is no bridge to reach.
     #[cfg(unix)]
@@ -983,6 +1191,7 @@ mod tests {
             desktop_pane_bridge: None,
             live_commands: HashSet::new(),
             live_attach: false,
+            console_root: fixture.path().join("console-sessions"),
             tmux: TmuxConnectionState::new(None),
         };
 
@@ -1055,6 +1264,7 @@ mod tests {
             desktop_pane_bridge: None,
             live_commands: HashSet::new(),
             live_attach: false,
+            console_root: fixture.path().join("console-sessions"),
             tmux: TmuxConnectionState::new(None),
         };
         let cancel = CancellationToken::new();

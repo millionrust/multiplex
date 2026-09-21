@@ -29,10 +29,7 @@ pub use local::{
 pub use local_attach::LocalSessionAttachExecutor;
 pub use remote_ssh::SystemSshControllerExecutor;
 pub use render::{RenderOptions, render_failure, render_success};
-pub use shell::{
-    CONSOLE_SESSION_RECORD, CONSOLE_SESSIONS_DIR, ConsoleSessionRecord, SHELL_SESSION_ENV,
-    ShellLauncher,
-};
+pub use shell::{SHELL_SESSION_ENV, ShellLauncher};
 
 #[derive(Clone, Default)]
 pub struct Cancellation {

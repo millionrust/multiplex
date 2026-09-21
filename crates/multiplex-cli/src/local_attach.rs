@@ -21,14 +21,90 @@ const LIVE_POLL_INTERVAL: Duration = Duration::from_millis(40);
 /// session can wait longer.
 const SHELL_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
+/// How long after the last keystroke a shell window lets go of the writer lease, so a paired device
+/// can take over a terminal nobody is typing into.
+const SHELL_LEASE_IDLE: Duration = Duration::from_millis(1_500);
+
 /// How an interactive attach behaves.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AttachStyle {
     /// `session attach`: announces itself, and Ctrl-C detaches.
     Inspect,
     /// `shell`: the window is the terminal. Nothing is announced, Ctrl-C goes to the program,
-    /// and only Ctrl-] then d detaches, leaving the session running.
+    /// and only Ctrl-] then d detaches, leaving the session running. The window holds the writer
+    /// lease only while it is typed in, so a paired device can take a terminal nobody here is
+    /// using, and keys typed while a device holds it ring the bell instead of mixing in.
     Shell,
+}
+
+/// The writer lease as a shell window holds it: taken on the first keystroke, let go when the
+/// typing stops.
+struct ShellLease {
+    held: bool,
+    last_used: std::time::Instant,
+}
+
+impl ShellLease {
+    fn new() -> Self {
+        Self {
+            held: false,
+            last_used: std::time::Instant::now(),
+        }
+    }
+
+    /// Whether this window may write now, taking the lease when nobody holds it.
+    async fn take(&mut self, client: &mut HostClient, cancel: &CancellationToken) -> bool {
+        if !self.held {
+            self.held = client
+                .set_writer_lease(CommandId::new(), true, cancel)
+                .await
+                .unwrap_or(false);
+        }
+        if self.held {
+            self.last_used = std::time::Instant::now();
+        }
+        self.held
+    }
+
+    async fn release_if_idle(&mut self, client: &mut HostClient, cancel: &CancellationToken) {
+        if self.held && self.last_used.elapsed() >= SHELL_LEASE_IDLE {
+            let _ = client
+                .set_writer_lease(CommandId::new(), false, cancel)
+                .await;
+            self.held = false;
+        }
+    }
+}
+
+/// Sends what was typed in a shell window, or rings the bell when a paired device is typing.
+async fn send_shell_input(
+    client: &mut HostClient,
+    lease: &mut ShellLease,
+    bytes: Vec<u8>,
+    stdout: &mut impl Write,
+    cancel: &CancellationToken,
+) -> Result<(), CliError> {
+    if bytes.is_empty() {
+        return Ok(());
+    }
+    if bytes.len() > MAX_INTERACTIVE_INPUT_BYTES {
+        return Err(CliError::new(
+            ErrorCode::ResourceLimit,
+            "interactive terminal input exceeds the 16 KiB limit",
+            "Send a smaller input payload.",
+        ));
+    }
+    if lease.take(client, cancel).await {
+        match client.input(CommandId::new(), bytes, cancel).await {
+            Ok(true) => return Ok(()),
+            Ok(false) => lease.held = false,
+            Err(error) => return Err(map_input_after_dispatch(error)),
+        }
+    }
+    stdout
+        .write_all(b"\x07")
+        .and_then(|()| stdout.flush())
+        .map_err(|_| output_unavailable())
 }
 const MAX_INTERACTIVE_INPUT_BYTES: usize = 16 * 1024;
 
@@ -105,7 +181,8 @@ pub(crate) async fn run_attach(
     let async_cancel = CancellationToken::new();
     let mut nonce = [0_u8; 32];
     rand::rngs::OsRng.fill_bytes(&mut nonce);
-    let options = if validated.request.request_control {
+    // A shell window starts without the lease and takes it when typed in.
+    let options = if validated.request.request_control && style == AttachStyle::Inspect {
         ConnectOptions::local(session_id, nonce)
     } else {
         ConnectOptions::local_read_only(session_id, nonce)
@@ -127,7 +204,8 @@ pub(crate) async fn run_attach(
         &async_cancel,
     )
     .await?;
-    if validated.request.request_control && !state.has_writer_lease {
+    if style == AttachStyle::Inspect && validated.request.request_control && !state.has_writer_lease
+    {
         client.disconnect();
         return Err(CliError::new(
             ErrorCode::InteractionRequired,
@@ -171,6 +249,8 @@ pub(crate) async fn run_attach(
     let mut columns = validated.request.columns;
     let mut rows = validated.request.rows;
     let mut leader = false;
+    let mut lease = ShellLease::new();
+    let shell = style == AttachStyle::Shell;
 
     loop {
         tokio::select! {
@@ -189,22 +269,26 @@ pub(crate) async fn run_attach(
                             if matches!(key.code, KeyCode::Char('d' | 'D')) && key.modifiers.is_empty() {
                                 break;
                             }
-                            if validated.request.request_control {
+                            if shell {
+                                send_shell_input(&mut client, &mut lease, vec![0x1d], &mut stdout, &async_cancel).await?;
+                            } else if validated.request.request_control {
                                 send_input(&mut client, vec![0x1d], &async_cancel).await?;
                             }
                         } else if is_leader_key(&key) {
                             leader = true;
                             continue;
                         }
-                        if validated.request.request_control {
+                        if shell || validated.request.request_control {
                             let mut bytes = Vec::with_capacity(8);
                             append_key_bytes(&mut bytes, key)?;
-                            if !bytes.is_empty() {
+                            if shell {
+                                send_shell_input(&mut client, &mut lease, bytes, &mut stdout, &async_cancel).await?;
+                            } else if !bytes.is_empty() {
                                 send_input(&mut client, bytes, &async_cancel).await?;
                             }
                         }
                     }
-                    TerminalEvent::Paste(value) if validated.request.request_control => {
+                    TerminalEvent::Paste(value) if shell || validated.request.request_control => {
                         if value.len() > MAX_INTERACTIVE_INPUT_BYTES {
                             return Err(CliError::new(
                                 ErrorCode::ResourceLimit,
@@ -212,7 +296,22 @@ pub(crate) async fn run_attach(
                                 "Paste a smaller payload or send it in separate chunks.",
                             ));
                         }
-                        send_input(&mut client, value.into_bytes(), &async_cancel).await?;
+                        if shell {
+                            send_shell_input(&mut client, &mut lease, value.into_bytes(), &mut stdout, &async_cancel).await?;
+                        } else {
+                            send_input(&mut client, value.into_bytes(), &async_cancel).await?;
+                        }
+                    }
+                    // A shell window that is resized while a device writes keeps the device's
+                    // size; the window's own takes effect the next time it is typed in.
+                    TerminalEvent::Resize(next_columns, next_rows) if shell => {
+                        columns = next_columns.clamp(1, 1_000);
+                        rows = next_rows.clamp(1, 1_000);
+                        if lease.take(&mut client, &async_cancel).await {
+                            let _ = client
+                                .resize(CommandId::new(), u32::from(columns), u32::from(rows), &async_cancel)
+                                .await;
+                        }
                     }
                     TerminalEvent::Resize(next_columns, next_rows) if validated.request.request_control => {
                         columns = next_columns.clamp(1, 1_000);
@@ -245,7 +344,9 @@ pub(crate) async fn run_attach(
                     &async_cancel,
                 ).await?;
                 let lifecycle = decode_host_lifecycle(state.lifecycle)?;
-                if validated.request.request_control && !state.has_writer_lease {
+                if shell {
+                    lease.release_if_idle(&mut client, &async_cancel).await;
+                } else if validated.request.request_control && !state.has_writer_lease {
                     return Err(CliError::new(
                         ErrorCode::InteractionRequired,
                         "the Session writer lease was lost during attach",

@@ -185,6 +185,11 @@ impl SessionRepository {
         &self.root
     }
 
+    /// The folder each durable session's data lives under.
+    pub fn data_root(&self) -> &Path {
+        &self.data_root
+    }
+
     pub fn session_data_path(&self, id: HostedSessionId) -> PathBuf {
         self.data_root.join(id.to_string())
     }

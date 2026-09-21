@@ -18,8 +18,9 @@ use std::path::{Path, PathBuf};
 
 use multiplex_domain::{HostInstanceId, HostedSessionId, OutputSequence};
 use multiplex_session_host::{LaunchDescriptor, StopDeadlines};
-use multiplex_store::JournalLimits;
-use serde::{Deserialize, Serialize};
+use multiplex_store::{
+    CONSOLE_SESSIONS_DIR, ConsoleSessionRecord, JournalLimits, write_console_session,
+};
 
 use crate::local::{CliPaths, HostAttachRequest, HostLauncher as _, ProcessHostLauncher};
 use crate::local_attach::{AttachStyle, run_attach};
@@ -28,39 +29,6 @@ use crate::{Cancellation, CliError, ErrorCode};
 /// Set in every shell this starts, so a profile that runs the launcher again from inside one
 /// runs the program plainly instead of nesting a session in a session.
 pub const SHELL_SESSION_ENV: &str = "MULTIPLEX_SHELL_SESSION";
-/// Where the launcher records its sessions, under the configuration root, and the Controller
-/// listener lists them from.
-pub const CONSOLE_SESSIONS_DIR: &str = "console-sessions";
-/// The record a launcher leaves beside each session's journal.
-pub const CONSOLE_SESSION_RECORD: &str = "console-session.json";
-
-/// What paired devices are told about a session the launcher started.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct ConsoleSessionRecord {
-    pub schema_version: u16,
-    pub session_id: HostedSessionId,
-    /// The shell, as a person would name it: `pwsh`, `cmd`, `zsh`.
-    pub program: String,
-    pub working_directory: PathBuf,
-    pub started_at: u64,
-}
-
-impl ConsoleSessionRecord {
-    pub const SCHEMA_VERSION: u16 = 1;
-
-    /// "pwsh in projects", the way a tab would be named.
-    pub fn title(&self) -> String {
-        match self
-            .working_directory
-            .file_name()
-            .and_then(|name| name.to_str())
-        {
-            Some(folder) => format!("{} in {folder}", self.program),
-            None => self.program.clone(),
-        }
-    }
-}
-
 pub struct ShellLauncher {
     paths: CliPaths,
 }
@@ -154,7 +122,7 @@ impl ShellLauncher {
                 .map(|elapsed| elapsed.as_secs())
                 .unwrap_or_default(),
         };
-        write_record(&session_dir, &record)?;
+        write_console_session(&session_dir, &record).map_err(|_| unavailable_storage())?;
 
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -255,12 +223,6 @@ fn run_directly(program: &str, arguments: &[String]) -> Result<i32, CliError> {
         })
 }
 
-fn write_record(session_dir: &Path, record: &ConsoleSessionRecord) -> Result<(), CliError> {
-    let bytes = serde_json::to_vec_pretty(record).map_err(|_| unavailable_storage())?;
-    std::fs::write(session_dir.join(CONSOLE_SESSION_RECORD), bytes)
-        .map_err(|_| unavailable_storage())
-}
-
 fn unavailable_storage() -> CliError {
     CliError::new(
         ErrorCode::Unavailable,
@@ -274,38 +236,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_session_is_titled_by_its_shell_and_folder() {
-        let record = ConsoleSessionRecord {
-            schema_version: ConsoleSessionRecord::SCHEMA_VERSION,
-            session_id: HostedSessionId::new(),
-            program: "pwsh".to_owned(),
-            working_directory: PathBuf::from("projects").join("multiplex"),
-            started_at: 0,
-        };
-        assert_eq!(record.title(), "pwsh in multiplex");
-    }
-
-    #[test]
     fn a_program_is_named_without_its_path_or_extension() {
         assert_eq!(display_name("pwsh.exe"), "pwsh");
         assert_eq!(display_name("/bin/zsh"), "zsh");
-    }
-
-    #[test]
-    fn a_record_survives_a_round_trip() {
-        let record = ConsoleSessionRecord {
-            schema_version: ConsoleSessionRecord::SCHEMA_VERSION,
-            session_id: HostedSessionId::new(),
-            program: "zsh".to_owned(),
-            working_directory: PathBuf::from("home"),
-            started_at: 42,
-        };
-        let temp = tempfile::tempdir().unwrap();
-        write_record(temp.path(), &record).unwrap();
-        let read: ConsoleSessionRecord = serde_json::from_slice(
-            &std::fs::read(temp.path().join(CONSOLE_SESSION_RECORD)).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(read, record);
     }
 }
