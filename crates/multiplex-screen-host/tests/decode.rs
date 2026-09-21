@@ -73,7 +73,7 @@ fn difference(left: &FrameBuffer, right: &FrameBuffer, rect: Rect) -> u64 {
     for y in rect.y..rect.bottom() {
         let a = left.row_span(y, rect);
         let b = right.row_span(y, rect);
-        for (a, b) in a.chunks_exact(4).zip(b.chunks_exact(4)) {
+        for (a, b) in a.as_chunks::<4>().0.iter().zip(b.as_chunks::<4>().0) {
             total += (0..3).map(|at| a[at].abs_diff(b[at]) as u64).sum::<u64>();
         }
     }

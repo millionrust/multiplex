@@ -30,7 +30,7 @@ pub fn classify(frame: &Frame<'_>, rect: Rect) -> TileClass {
     for y in rect.y..rect.bottom() {
         let row = frame.row_span(y, rect);
         let mut previous: Option<[u8; 3]> = None;
-        for pixel in row.chunks_exact(BYTES_PER_PIXEL) {
+        for pixel in row.as_chunks::<BYTES_PER_PIXEL>().0 {
             let color = [pixel[0], pixel[1], pixel[2]];
             if palette.len() <= MAX_PALETTE_COLORS
                 && last != Some(color)

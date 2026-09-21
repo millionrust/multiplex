@@ -76,7 +76,9 @@ impl FrameBuffer {
     pub fn new(size: Size) -> Self {
         let mut pixels = vec![0; size.width() as usize * size.height() as usize * BYTES_PER_PIXEL];
         pixels
-            .chunks_exact_mut(BYTES_PER_PIXEL)
+            .as_chunks_mut::<BYTES_PER_PIXEL>()
+            .0
+            .iter_mut()
             .for_each(|pixel| pixel[3] = 0xFF);
         Self { size, pixels }
     }
@@ -135,8 +137,10 @@ impl FrameBuffer {
         for y in rect.y..rect.bottom() {
             let start = y as usize * stride + rect.x as usize * BYTES_PER_PIXEL;
             self.pixels[start..start + rect.width as usize * BYTES_PER_PIXEL]
-                .chunks_exact_mut(BYTES_PER_PIXEL)
-                .for_each(|pixel| pixel.copy_from_slice(&bgra));
+                .as_chunks_mut::<BYTES_PER_PIXEL>()
+                .0
+                .iter_mut()
+                .for_each(|pixel| *pixel = bgra);
         }
         Ok(())
     }
@@ -213,7 +217,14 @@ mod tests {
     #[test]
     fn framebuffer_writes_and_fills_inside_bounds_only() {
         let mut buffer = FrameBuffer::new(Size::new(4, 4).unwrap());
-        assert!(buffer.pixels().chunks_exact(4).all(|p| p == [0, 0, 0, 255]));
+        assert!(
+            buffer
+                .pixels()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|p| *p == [0, 0, 0, 255])
+        );
         buffer
             .fill_rect(Rect::new(1, 1, 2, 2), [1, 2, 3, 255])
             .unwrap();

@@ -23,7 +23,8 @@ pub fn downscale(frame: &Frame<'_>, factor: u32) -> FrameBuffer {
             for y in top..bottom {
                 let row = frame.row(y);
                 for pixel in row[left * BYTES_PER_PIXEL..right * BYTES_PER_PIXEL]
-                    .chunks_exact(BYTES_PER_PIXEL)
+                    .as_chunks::<BYTES_PER_PIXEL>()
+                    .0
                 {
                     sum.iter_mut()
                         .zip(pixel)

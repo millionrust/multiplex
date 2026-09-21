@@ -48,7 +48,7 @@ fn palette_form(frame: &Frame<'_>, rect: Rect) -> Option<Vec<u8>> {
     let mut runs: Vec<u8> = Vec::new();
     let mut current: Option<(u8, u8)> = None;
     for y in rect.y..rect.bottom() {
-        for pixel in frame.row_span(y, rect).chunks_exact(BYTES_PER_PIXEL) {
+        for pixel in frame.row_span(y, rect).as_chunks::<BYTES_PER_PIXEL>().0 {
             let color = [pixel[0], pixel[1], pixel[2]];
             let index = match palette.iter().position(|entry| *entry == color) {
                 Some(index) => index as u8,
@@ -88,7 +88,7 @@ fn delta_form(frame: &Frame<'_>, rect: Rect) -> Vec<u8> {
         let row = frame.row_span(y, rect);
         let first = [row[0], row[1], row[2]];
         let mut left = above;
-        for pixel in row.chunks_exact(BYTES_PER_PIXEL) {
+        for pixel in row.as_chunks::<BYTES_PER_PIXEL>().0 {
             let color = [pixel[0], pixel[1], pixel[2]];
             raw.extend([
                 color[0].wrapping_sub(left[0]),
@@ -112,7 +112,7 @@ fn decode_palette(body: &[u8], pixels: usize, out: &mut Vec<u8>) -> Result<(), C
     if runs.len() % 2 != 0 {
         return Err(CodecError::CorruptPayload);
     }
-    for run in runs.chunks_exact(2) {
+    for run in runs.as_chunks::<2>().0 {
         let (index, length) = (run[0] as usize, run[1] as usize);
         if index >= count
             || length == 0
@@ -143,7 +143,7 @@ fn decode_delta(
     let mut above = [0u8; 3];
     for row in body.chunks_exact(width * 3) {
         let mut left = above;
-        for (column, residual) in row.chunks_exact(3).enumerate() {
+        for (column, residual) in row.as_chunks::<3>().0.iter().enumerate() {
             let color = [
                 left[0].wrapping_add(residual[0]),
                 left[1].wrapping_add(residual[1]),

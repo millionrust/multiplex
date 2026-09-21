@@ -100,7 +100,7 @@ pub fn decode_lossy(payload: &[u8], width: u32, height: u32) -> Result<Vec<u8>, 
     let mut colors = Vec::with_capacity(blocks_wide * blocks_high);
     for row in raw[1..].chunks_exact(blocks_wide * 3) {
         let mut left = [0u8; 3];
-        for residual in row.chunks_exact(3) {
+        for residual in row.as_chunks::<3>().0 {
             let code = [
                 left[0].wrapping_add(residual[0]),
                 left[1].wrapping_add(residual[1]),
@@ -149,8 +149,10 @@ mod tests {
 
     fn psnr(a: &[u8], b: &[u8]) -> f64 {
         let (sum, n) = a
-            .chunks_exact(4)
-            .zip(b.chunks_exact(4))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(b.as_chunks::<4>().0)
             .flat_map(|(p, q)| (0..3).map(move |i| f64::from(p[i]) - f64::from(q[i])))
             .fold((0.0, 0.0), |(s, n), d| (s + d * d, n + 1.0));
         10.0 * (255.0 * 255.0 / (sum / n).max(1e-9)).log10()

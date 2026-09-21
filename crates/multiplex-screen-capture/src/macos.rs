@@ -153,7 +153,10 @@ fn copy_frame(sample: &CMSampleBuffer, started: Instant) -> Option<CapturedFrame
     let mut pixels = bytes.to_vec();
     // Captured desktops are opaque; force alpha so tile hashes match decoded pixels.
     for row in pixels.chunks_mut(stride) {
-        for pixel in row[..width as usize * BYTES_PER_PIXEL].chunks_exact_mut(BYTES_PER_PIXEL) {
+        for pixel in row[..width as usize * BYTES_PER_PIXEL]
+            .as_chunks_mut::<BYTES_PER_PIXEL>()
+            .0
+        {
             pixel[3] = 0xFF;
         }
     }

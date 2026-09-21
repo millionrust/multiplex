@@ -402,7 +402,14 @@ mod tests {
                 );
                 assert_eq!(picture.bgra.len(), 320 * 192 * 4);
                 // Opaque: the source was opaque and the decoder was asked for BGRA.
-                assert!(picture.bgra.chunks_exact(4).all(|pixel| pixel[3] == 255));
+                assert!(
+                    picture
+                        .bgra
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .all(|pixel| pixel[3] == 255)
+                );
                 pictures += 1;
             }
         }
@@ -438,8 +445,10 @@ mod tests {
         // is the source and not noise or a blank frame.
         let difference: u64 = picture
             .bgra
-            .chunks_exact(4)
-            .zip(source.chunks_exact(4))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(source.as_chunks::<4>().0)
             .map(|(decoded, original)| {
                 (0..3)
                     .map(|at| decoded[at].abs_diff(original[at]) as u64)
