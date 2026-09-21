@@ -16,6 +16,10 @@ use crate::runtime::{BrowserCancellation, BrowserError};
 
 const START_TIMEOUT: Duration = Duration::from_secs(15);
 const STOP_TIMEOUT: Duration = Duration::from_secs(3);
+/// How long removing the profile keeps trying. Chromium's helper processes share its process
+/// group and can still be writing into the profile for a moment after the browser itself exits,
+/// which makes a single removal fail with the directory not empty.
+const PROFILE_REMOVAL_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub(crate) struct OwnedBrowserProcess {
     child: Child,
@@ -147,7 +151,26 @@ impl OwnedBrowserProcess {
             }
         }
         let _ = self.child.wait();
-        self.profile.take();
+        if let Some(profile) = self.profile.take() {
+            remove_profile(profile);
+        }
+    }
+}
+
+/// Removes the ephemeral profile, retrying while helper processes that outlived the browser
+/// finish writing into it. `TempDir`'s own removal gives up silently on the first failure.
+fn remove_profile(profile: TempDir) {
+    let path = profile.keep();
+    let started = Instant::now();
+    loop {
+        match fs::remove_dir_all(&path) {
+            Ok(()) => return,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+            Err(_) if started.elapsed() < PROFILE_REMOVAL_TIMEOUT => {
+                thread::sleep(Duration::from_millis(20));
+            }
+            Err(_) => return,
+        }
     }
 }
 
