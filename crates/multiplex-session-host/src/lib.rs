@@ -1,9 +1,9 @@
 mod descriptor;
 mod error;
 mod framing;
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 mod host;
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 #[path = "host_unsupported.rs"]
 mod host;
 pub mod process_observation;

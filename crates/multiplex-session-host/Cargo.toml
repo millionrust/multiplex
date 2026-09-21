@@ -21,6 +21,16 @@ tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-threa
 tokio-util = { version = "0.7", features = ["rt"] }
 vt100 = "0.16"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_JobObjects",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+] }
+
 [dev-dependencies]
 tempfile = "3.27"
 multiplex-client = { version = "0.0.2", path = "../multiplex-client" }

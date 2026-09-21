@@ -1,17 +1,9 @@
 use std::collections::{HashMap, VecDeque};
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
-
-#[cfg(unix)]
-use std::os::fd::AsRawFd as _;
-#[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt as _;
-#[cfg(unix)]
-use std::os::unix::fs::{FileTypeExt as _, MetadataExt as _, PermissionsExt as _};
 
 use multiplex_domain::{
     ActivityAggregate, ActivityConfidence, ActivityEvidence, ActivityEvidenceKind,
@@ -33,11 +25,28 @@ use multiplex_store::{
     TerminalSnapshot, load_snapshot, read_host_metadata,
 };
 use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
-use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{Mutex, Notify, RwLock, Semaphore, mpsc, oneshot};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
+
+// Transport, directory trust, slot locks, and process control: everything else is shared.
+#[cfg(unix)]
+#[path = "host_platform_unix.rs"]
+mod platform;
+#[cfg(windows)]
+#[path = "host_platform_windows.rs"]
+mod platform;
+
+use platform::{HostStream, OwnedProcess, RuntimeHostSlot, UserOnlyListener};
+
+/// The three steps a stop takes, gentlest first.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StopSignal {
+    Interrupt,
+    Terminate,
+    Kill,
+}
 
 use crate::descriptor::LaunchDescriptor;
 use crate::framing::HostWireStream;
@@ -138,7 +147,7 @@ struct RuntimeState {
     process_token: ProcessToken,
     occupant_generation: OccupantGeneration,
     runtime_recognition: Option<RuntimeRecognition>,
-    process_group: i32,
+    process: OwnedProcess,
     master: StdMutex<Box<dyn MasterPty + Send>>,
     writer: StdMutex<Box<dyn Write + Send>>,
     journal: Mutex<JournalStore>,
@@ -205,40 +214,30 @@ impl RuntimeState {
         *self.writer_lease.lock().await == Some(connection_id)
     }
 
-    fn signal_owned(&self, signal: i32) -> Result<(), HostError> {
+    fn signal_owned(&self, signal: StopSignal) -> Result<(), HostError> {
         if !self
             .process_token
             .belongs_to(self.descriptor.host_instance_id)
-            || self.process_token.platform_identity() != self.process_group as u64
+            || self.process_token.platform_identity() != self.process.identity()
         {
             return Err(HostError::new(HostErrorCode::ProcessIdentityUnavailable));
         }
-        #[cfg(unix)]
-        {
-            let result = unsafe { libc::kill(-self.process_group, signal) };
-            if result == 0 {
-                Ok(())
-            } else {
-                let error = io::Error::last_os_error();
-                // No process left to signal means the process this stops is already gone. The
-                // watcher may not have marked it exited yet, and failing on that timing reports a
-                // stop that worked as an error to whoever asked for it.
-                if error.raw_os_error() == Some(libc::ESRCH) {
-                    Ok(())
-                } else {
-                    Err(HostError::io(error))
-                }
-            }
+        // A console program on Windows takes no signal as an interrupt; Ctrl+C typed into its
+        // pseudo-console is what a person pressing it sends, and what it handles.
+        #[cfg(windows)]
+        if signal == StopSignal::Interrupt {
+            let mut writer = self
+                .writer
+                .lock()
+                .map_err(|_| HostError::new(HostErrorCode::Io))?;
+            writer.write_all(&[0x03]).map_err(HostError::io)?;
+            return writer.flush().map_err(HostError::io);
         }
-        #[cfg(not(unix))]
-        {
-            let _ = signal;
-            Err(HostError::new(HostErrorCode::ProcessIdentityUnavailable))
-        }
+        self.process.signal(signal)
     }
 
     fn force_kill_owned(&self) -> Result<(), HostError> {
-        self.signal_owned(libc::SIGKILL)
+        self.signal_owned(StopSignal::Kill)
     }
 
     async fn stop_owned(&self, force: bool) -> Result<(), HostError> {
@@ -252,7 +251,7 @@ impl RuntimeState {
                 .wait_for_exit(self.descriptor.stop_deadlines.total())
                 .await;
         }
-        self.signal_owned(libc::SIGINT)?;
+        self.signal_owned(StopSignal::Interrupt)?;
         if self
             .wait_for_exit(self.descriptor.stop_deadlines.interrupt())
             .await
@@ -260,7 +259,7 @@ impl RuntimeState {
         {
             return Ok(());
         }
-        self.signal_owned(libc::SIGTERM)?;
+        self.signal_owned(StopSignal::Terminate)?;
         let terminate_window = self
             .descriptor
             .stop_deadlines
@@ -494,14 +493,13 @@ pub async fn start_with_cancel(
     let process_id = child
         .process_id()
         .ok_or_else(|| HostError::new(HostErrorCode::ProcessIdentityUnavailable))?;
-    let process_group = pair
-        .master
-        .process_group_leader()
-        .ok_or_else(|| HostError::new(HostErrorCode::ProcessIdentityUnavailable))?;
-    if process_group <= 0 || u32::try_from(process_group).ok() != Some(process_id) {
-        let _ = child.kill();
-        return Err(HostError::new(HostErrorCode::ProcessIdentityUnavailable));
-    }
+    let process = match OwnedProcess::from_spawn(process_id, pair.master.as_ref()) {
+        Ok(process) => process,
+        Err(error) => {
+            let _ = child.kill();
+            return Err(error);
+        }
+    };
     let reader = pair
         .master
         .try_clone_reader()
@@ -512,7 +510,7 @@ pub async fn start_with_cancel(
         .map_err(|_| HostError::new(HostErrorCode::PtyUnavailable))?;
     let process_token = ProcessToken::new(
         descriptor.host_instance_id,
-        process_group as u64,
+        process.identity(),
         occupant_generation.get(),
     );
     let runtime_recognition = recognition_for_launch(&descriptor, process_token);
@@ -522,7 +520,7 @@ pub async fn start_with_cancel(
         process_token,
         occupant_generation,
         runtime_recognition,
-        process_group,
+        process,
         master: StdMutex::new(pair.master),
         writer: StdMutex::new(writer),
         journal: Mutex::new(journal),
@@ -641,7 +639,7 @@ async fn run_host(
                 break status;
             }
             if Instant::now() >= deadline {
-                let leader_alive = unsafe { libc::kill(state.process_group, 0) } == 0;
+                let leader_alive = state.process.leader_alive();
                 let stage = if leader_alive {
                     "child_wait_timeout_leader_alive"
                 } else {
@@ -692,50 +690,6 @@ fn host_permits() -> Arc<Semaphore> {
 struct HostCapacityGuards {
     _process: tokio::sync::OwnedSemaphorePermit,
     _runtime: RuntimeHostSlot,
-}
-
-struct RuntimeHostSlot {
-    file: File,
-}
-
-impl RuntimeHostSlot {
-    fn acquire(runtime_root: &Path) -> Result<Self, HostError> {
-        for slot in 0..MAX_LIVE_HOSTS {
-            let path = runtime_root.join(format!("{HOST_SLOT_PREFIX}{slot:02}.lock"));
-            let file = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
-                .mode(0o600)
-                .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
-                .open(path)
-                .map_err(HostError::io)?;
-            file.set_permissions(fs::Permissions::from_mode(0o600))
-                .map_err(HostError::io)?;
-            let metadata = file.metadata().map_err(HostError::io)?;
-            if !metadata.is_file()
-                || metadata.uid() != unsafe { libc::geteuid() }
-                || metadata.permissions().mode() & 0o777 != 0o600
-            {
-                return Err(HostError::new(HostErrorCode::PermissionDenied));
-            }
-            let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
-            if result == 0 {
-                return Ok(Self { file });
-            }
-            let error = io::Error::last_os_error();
-            if error.kind() != io::ErrorKind::WouldBlock {
-                return Err(HostError::io(error));
-            }
-        }
-        Err(HostError::new(HostErrorCode::ResourceLimit))
-    }
-}
-
-impl Drop for RuntimeHostSlot {
-    fn drop(&mut self) {
-        let _: i32 = unsafe { libc::flock(self.file.as_raw_fd(), libc::LOCK_UN) };
-    }
 }
 
 async fn join_task(task: JoinHandle<Result<(), HostError>>) -> Result<(), HostError> {
@@ -1004,96 +958,6 @@ fn recognition_for_launch(
     })
 }
 
-struct UserOnlyListener {
-    listener: UnixListener,
-    socket_path: PathBuf,
-    socket_device: u64,
-    socket_inode: u64,
-    expected_uid: u32,
-}
-
-impl UserOnlyListener {
-    fn bind(
-        runtime_root: &Path,
-        session_id: multiplex_domain::HostedSessionId,
-    ) -> Result<Self, HostError> {
-        prepare_runtime_root(runtime_root)?;
-        let endpoint_name = opaque_endpoint_name(session_id);
-        let socket_path = runtime_root.join(&endpoint_name);
-        match fs::symlink_metadata(&socket_path) {
-            Ok(_) => return Err(HostError::new(HostErrorCode::PermissionDenied)),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => return Err(HostError::io(error)),
-        }
-        let listener = UnixListener::bind(&socket_path).map_err(HostError::io)?;
-        #[cfg(unix)]
-        fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600))
-            .map_err(HostError::io)?;
-        let metadata = fs::symlink_metadata(&socket_path).map_err(HostError::io)?;
-        if !metadata.file_type().is_socket()
-            || metadata.permissions().mode() & 0o777 != 0o600
-            || metadata.uid() != unsafe { libc::geteuid() }
-        {
-            return Err(HostError::new(HostErrorCode::PermissionDenied));
-        }
-        Ok(Self {
-            listener,
-            socket_path,
-            socket_device: metadata.dev(),
-            socket_inode: metadata.ino(),
-            expected_uid: unsafe { libc::geteuid() },
-        })
-    }
-
-    /// The next connection from this user, or `None` for one refused on its own: a peer that is not
-    /// this user, or one already gone before it could be asked who it is. Neither says anything
-    /// about the listener, and failing on them would turn every client away.
-    async fn accept(&self) -> Result<Option<UnixStream>, HostError> {
-        let (stream, _) = match self.listener.accept().await {
-            Ok(accepted) => accepted,
-            Err(error) if error.kind() == io::ErrorKind::ConnectionAborted => return Ok(None),
-            Err(error) => return Err(HostError::io(error)),
-        };
-        match stream.peer_cred() {
-            Ok(credentials) if credentials.uid() == self.expected_uid => Ok(Some(stream)),
-            _ => Ok(None),
-        }
-    }
-}
-
-impl Drop for UserOnlyListener {
-    fn drop(&mut self) {
-        if let Ok(metadata) = fs::symlink_metadata(&self.socket_path)
-            && metadata.file_type().is_socket()
-            && metadata.dev() == self.socket_device
-            && metadata.ino() == self.socket_inode
-        {
-            let _ = fs::remove_file(&self.socket_path);
-        }
-    }
-}
-
-fn prepare_runtime_root(root: &Path) -> Result<(), HostError> {
-    match fs::symlink_metadata(root) {
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
-            return Err(HostError::new(HostErrorCode::PermissionDenied));
-        }
-        Ok(_) => {}
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            fs::create_dir_all(root).map_err(HostError::io)?;
-        }
-        Err(error) => return Err(HostError::io(error)),
-    }
-    fs::set_permissions(root, fs::Permissions::from_mode(0o700)).map_err(HostError::io)?;
-    let metadata = fs::symlink_metadata(root).map_err(HostError::io)?;
-    if metadata.uid() != unsafe { libc::geteuid() }
-        || metadata.permissions().mode() & 0o777 != 0o700
-    {
-        return Err(HostError::new(HostErrorCode::PermissionDenied));
-    }
-    Ok(())
-}
-
 async fn accept_loop(
     listener: UserOnlyListener,
     state: Arc<RuntimeState>,
@@ -1164,7 +1028,7 @@ async fn accept_loop(
 }
 
 async fn serve_connection(
-    stream: UnixStream,
+    stream: HostStream,
     state: Arc<RuntimeState>,
     connection_id: u64,
     cancel: CancellationToken,
@@ -1415,7 +1279,7 @@ async fn serve_connection(
                     MutationRequest {
                         command_bytes: &request.command_id,
                         payload: &envelope.payload,
-                        apply: || state.signal_owned(libc::SIGINT),
+                        apply: || state.signal_owned(StopSignal::Interrupt),
                     },
                     &cancel,
                 )
@@ -1581,7 +1445,7 @@ fn wire_attention_reason(
 }
 
 async fn serve_attach(
-    stream: &mut HostWireStream<UnixStream>,
+    stream: &mut HostWireStream<HostStream>,
     request_id: [u8; 16],
     version: ProtocolVersion,
     state: &RuntimeState,
@@ -1695,7 +1559,7 @@ async fn serve_attach(
 }
 
 async fn send_state(
-    stream: &mut HostWireStream<UnixStream>,
+    stream: &mut HostWireStream<HostStream>,
     request_id: [u8; 16],
     version: ProtocolVersion,
     state: &RuntimeState,
@@ -1743,7 +1607,7 @@ struct MutationRequest<'a, F> {
 }
 
 async fn handle_mutation<F>(
-    stream: &mut HostWireStream<UnixStream>,
+    stream: &mut HostWireStream<HostStream>,
     request_id: [u8; 16],
     version: ProtocolVersion,
     state: &RuntimeState,
@@ -1789,7 +1653,7 @@ fn validate_command_request(command_id: CommandId, request_id: [u8; 16]) -> Resu
 }
 
 async fn send_command_result(
-    stream: &mut HostWireStream<UnixStream>,
+    stream: &mut HostWireStream<HostStream>,
     request_id: [u8; 16],
     version: ProtocolVersion,
     command_id: CommandId,
@@ -1844,7 +1708,7 @@ fn decode_checked(envelope: &WireEnvelope) -> Result<wire::EnvelopePayload, Host
 }
 
 async fn send_message(
-    stream: &mut HostWireStream<UnixStream>,
+    stream: &mut HostWireStream<HostStream>,
     request_id: [u8; 16],
     version: ProtocolVersion,
     message: envelope_payload::Message,
@@ -1870,7 +1734,7 @@ async fn send_message(
 }
 
 async fn send_error(
-    stream: &mut HostWireStream<UnixStream>,
+    stream: &mut HostWireStream<HostStream>,
     request_id: [u8; 16],
     code: wire::ErrorCode,
     recovery: wire::RecoveryHint,
@@ -2011,6 +1875,7 @@ mod tests {
     };
     use multiplex_store::JournalLimits;
     use std::collections::BTreeMap;
+    use std::fs;
 
     #[tokio::test]
     async fn a_host_with_no_stop_to_answer_does_not_wait() {
