@@ -102,7 +102,8 @@ jobs:
           done
           ./scripts/verify/release-package.sh "$APP/Contents/MacOS"
           ditto -c -k --keepParent "$APP" "dist/Multiplex-${{ matrix.target.name }}.zip"
-          shasum -a 256 "dist/Multiplex-${{ matrix.target.name }}.zip" > "dist/Multiplex-${{ matrix.target.name }}.zip.sha256"
+          # From inside dist/, so the file names only the download and `shasum -c` works beside it.
+          (cd dist && shasum -a 256 "Multiplex-${{ matrix.target.name }}.zip" > "Multiplex-${{ matrix.target.name }}.zip.sha256")
 
       - name: Bundle Linux deb and portable archive
         if: matrix.target.bundle == 'linux'
@@ -125,7 +126,7 @@ jobs:
           printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Multiplex' 'Exec=multiplex' 'Icon=multiplex' 'Categories=Development;Utility;' 'Terminal=false' > "$ROOT/usr/share/applications/multiplex.desktop"
           printf 'Package: multiplex\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: Multiplex contributors\nDepends: libssl3t64 | libssl3, libxkbcommon0, libxkbcommon-x11-0, libpipewire-0.3-0t64 | libpipewire-0.3-0\nDescription: Native desktop SSH client\n' "$VERSION" > "$ROOT/DEBIAN/control"
           dpkg-deb --root-owner-group --build "$ROOT" "dist/multiplex_${VERSION}_amd64.deb"
-          sha256sum "dist/Multiplex-${{ matrix.target.name }}.tar.gz" "dist/multiplex_${VERSION}_amd64.deb" > "dist/Multiplex-${{ matrix.target.name }}.sha256"
+          (cd dist && sha256sum "Multiplex-${{ matrix.target.name }}.tar.gz" "multiplex_${VERSION}_amd64.deb" > "Multiplex-${{ matrix.target.name }}.sha256")
           rm -rf "$PORTABLE" "$ROOT"
 
       - name: Package Windows artifact
@@ -152,7 +153,9 @@ jobs:
           }
           Compress-Archive -Path "$stage/*" -DestinationPath "dist/Multiplex-${{ matrix.target.name }}.zip"
           $hash = (Get-FileHash "dist/Multiplex-${{ matrix.target.name }}.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  Multiplex-${{ matrix.target.name }}.zip" | Set-Content -Encoding ascii "dist/Multiplex-${{ matrix.target.name }}.zip.sha256"
+          # LF, not Set-Content's CRLF: `shasum -c` on macOS and Linux would read the carriage
+          # return as part of the file name.
+          [IO.File]::WriteAllText("dist/Multiplex-${{ matrix.target.name }}.zip.sha256", "$hash  Multiplex-${{ matrix.target.name }}.zip`n")
           Remove-Item -Recurse -Force $stage
 
       - name: Generate platform SBOM
