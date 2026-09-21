@@ -12,7 +12,7 @@ default-run = "multiplex"
 
 [package.metadata.bundle]
 name = "Multiplex"
-identifier = "com.multiplex.desktop"
+identifier = "com.millionrust.multiplex"
 icon = ["assets/icons/app.png", "assets/icons/app@2x.png"]
 copyright = "Copyright (c) 2025 Multiplex contributors"
 category = "DeveloperTool"

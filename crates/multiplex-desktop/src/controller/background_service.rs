@@ -18,12 +18,16 @@ use multiplex_controller_listener::{ListenerError, ListenerOwnership};
 
 pub const SERVICE_COMMAND: &str = "controller-service";
 /// The LaunchAgent label, derived from the app bundle identifier.
-pub const LAUNCH_AGENT_LABEL: &str = "com.multiplex.desktop.controller-service";
-/// The label an installed copy registered before the rename. Its plist names an application
-/// path that no longer exists, so launchd keeps trying to start something that is gone; both
-/// installing and removing the service take it out.
+pub const LAUNCH_AGENT_LABEL: &str = "com.millionrust.multiplex.controller-service";
+/// Labels installed copies registered under earlier bundle identifiers: TermiRust's, then
+/// Multiplex's before it moved to com.millionrust. An old plist can name an application path that
+/// no longer exists, so launchd keeps trying to start something that is gone, or two agents serve
+/// the same route; both installing and removing the service take every one of them out.
 #[cfg(target_os = "macos")]
-const LEGACY_LAUNCH_AGENT_LABEL: &str = "com.termirust.desktop.controller-service";
+const LEGACY_LAUNCH_AGENT_LABELS: [&str; 2] = [
+    "com.termirust.desktop.controller-service",
+    "com.multiplex.desktop.controller-service",
+];
 
 const YIELD_SOCKET: &str = "controller-service.sock";
 const YIELD_REQUEST: &[u8] = b"yield\n";
@@ -431,15 +435,14 @@ pub fn remove() -> Result<(), ServiceError> {
 /// registration is the one launchd has.
 #[cfg(target_os = "macos")]
 fn remove_legacy_launch_agent() {
-    let _ = launchctl(&[
-        "bootout",
-        &format!("{}/{LEGACY_LAUNCH_AGENT_LABEL}", launchctl_domain()),
-    ]);
-    if let Some(home) = dirs::home_dir() {
-        let _ = std::fs::remove_file(
-            home.join("Library/LaunchAgents")
-                .join(format!("{LEGACY_LAUNCH_AGENT_LABEL}.plist")),
-        );
+    for label in LEGACY_LAUNCH_AGENT_LABELS {
+        let _ = launchctl(&["bootout", &format!("{}/{label}", launchctl_domain())]);
+        if let Some(home) = dirs::home_dir() {
+            let _ = std::fs::remove_file(
+                home.join("Library/LaunchAgents")
+                    .join(format!("{label}.plist")),
+            );
+        }
     }
 }
 
@@ -729,7 +732,7 @@ mod tests {
             Path::new("/Applications/Terminal & Co <beta>.app/Contents/MacOS/multiplex"),
             Path::new("/Users/me/Library/Application Support/multiplex/controller-service.log"),
         );
-        assert!(plist.contains("<string>com.multiplex.desktop.controller-service</string>"));
+        assert!(plist.contains("<string>com.millionrust.multiplex.controller-service</string>"));
         assert!(plist.contains("Terminal &amp; Co &lt;beta&gt;.app"));
         assert!(plist.contains("<string>controller-service</string>\n\t\t<string>run</string>"));
         let path = fixture.path().join("agent.plist");

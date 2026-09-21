@@ -225,7 +225,7 @@ tmux sessions survive the app, but something has to accept Controller connection
 - **Self-hosted relay** needs `termirust relay-host run` running.
 - **Local network (macOS):** under "Keep reachable when Multiplex is closed", choose
   **Run in background**. This installs a per-user LaunchAgent,
-  `~/Library/LaunchAgents/com.multiplex.desktop.controller-service.plist`, which runs
+  `~/Library/LaunchAgents/com.millionrust.multiplex.controller-service.plist`, which runs
   `termirust controller-service run` at login. It serves already-paired devices on every private
   address; pairing a new device still needs the app. When you open Multiplex, the service
   hands the route to the app, and takes it back when the app quits. The same commands work
