@@ -72,7 +72,7 @@ jobs:
           echo "::notice title=Runner shell (${{ matrix.runner }})::${{ steps.shell.outputs.ssh-command }}"
           echo "${{ steps.shell.outputs.ssh-command }}" >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: dtolnay/rust-toolchain@1.98.1
         with:
           components: rustfmt, clippy
 
@@ -240,7 +240,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: dtolnay/rust-toolchain@1.98.1
         with:
           components: rustfmt, clippy
 
@@ -310,7 +310,7 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: dtolnay/rust-toolchain@1.98.1
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -365,7 +365,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: dtolnay/rust-toolchain@1.98.1
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -435,7 +435,7 @@ jobs:
 
       # The four Android ABIs the bindings are built for. A developer's machine usually has them
       # already, which is why their absence here only shows up as a compile that cannot find core.
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: dtolnay/rust-toolchain@1.98.1
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
@@ -512,7 +512,7 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: dtolnay/rust-toolchain@1.98.1
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 

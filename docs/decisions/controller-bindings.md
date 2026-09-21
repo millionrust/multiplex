@@ -7,7 +7,7 @@
 
 ## Decision
 
-TermiRust pins UniFFI `0.32.0` exactly and uses its proc-macro metadata plus library-mode generator. The pinned Rust toolchain is `1.97.1`; generator and runtime crates come from the same lockfile. UniFFI is MPL-2.0 and the TermiRust wrapper remains MIT OR Apache-2.0. The standard Kotlin backend uses JNA, pinned by the Android application to `5.17.0`; the experimental UniFFI JNI backend is not selected.
+TermiRust pins UniFFI `0.32.0` exactly and uses its proc-macro metadata plus library-mode generator. The pinned Rust toolchain is `1.98.1`; generator and runtime crates come from the same lockfile. UniFFI is MPL-2.0 and the TermiRust wrapper remains MIT OR Apache-2.0. The standard Kotlin backend uses JNA, pinned by the Android application to `5.17.0`; the experimental UniFFI JNI backend is not selected.
 
 The generated boundary lives in `termirust-controller-bindings`, separate from the legacy mobile vault/terminal ABI. It contains only immutable Controller-v1 DTOs, stable closed errors, an opaque stateful pairing/framing object, authorization evaluation, and a bounded `SecureBlobStore` foreign trait. Native Swift actors and Kotlin coroutines continue to own transport, retries, clocks, lifecycle, UI, terminal presentation, Keychain/Keystore policy, and artifact packaging.
 
@@ -16,7 +16,7 @@ The selection follows the official [UniFFI 0.32.0 changelog](https://github.com/
 ## Toolchain and targets
 
 - UniFFI crates/CLI/runtime: exactly `0.32.0`
-- Rust: exactly `1.97.1-aarch64-apple-darwin`, minimal profile with rustfmt and Clippy
+- Rust: exactly `1.98.1-aarch64-apple-darwin`, minimal profile with rustfmt and Clippy
 - iOS: `aarch64-apple-ios`; simulator: `aarch64-apple-ios-sim`, `x86_64-apple-ios`
 - Android: `aarch64-linux-android`, `armv7-linux-androideabi`, `i686-linux-android`, `x86_64-linux-android`; API 26; NDK LLVM; 16 KiB ELF LOAD alignment
 - Swift module: `MultiplexControllerSecurity`; C module: `MultiplexControllerSecurityFFI`

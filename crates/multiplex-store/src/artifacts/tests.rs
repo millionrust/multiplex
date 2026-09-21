@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[cfg(unix)]
-use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _, symlink};
+use std::os::unix::fs::{MetadataExt as _, symlink};
 
 use multiplex_domain::{
     ArtifactCancellation, ArtifactError, ArtifactId, ArtifactLimits, ArtifactMediaType,

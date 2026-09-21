@@ -99,7 +99,7 @@ def locate_ndk(sdk):
 
 
 def build():
-    require_pinned("rustc", "1.97.1", run("rustc", "--version", capture=True).split()[1])
+    require_pinned("rustc", "1.98.1", run("rustc", "--version", capture=True).split()[1])
     sdk = Path(os.environ.get("ANDROID_HOME", Path.home() / "Library/Android/sdk"))
     ndk = locate_ndk(sdk)
     properties = ndk / "source.properties"
@@ -158,7 +158,7 @@ def build():
                 dest.mkdir(parents=True)
                 shutil.copy2(lib, dest / lib.name)
                 (staged / f"symbols-{abi}.txt").write_text("\n".join(names) + "\n")
-        (staged / "provenance.json").write_text(json.dumps({"rust": "1.97.1", "uniffi": "0.32.0", "ndk": "27.0.12077973", "api": 26, "alignment": 16384}, sort_keys=True) + "\n")
+        (staged / "provenance.json").write_text(json.dumps({"rust": "1.98.1", "uniffi": "0.32.0", "ndk": "27.0.12077973", "api": 26, "alignment": 16384}, sort_keys=True) + "\n")
         (staged / "artifacts.json").write_text(json.dumps(inventory(staged), sort_keys=True, indent=2) + "\n")
         promote(staged, OUTPUT)
     print("PASS: all four Android replication artifacts staged and verified")

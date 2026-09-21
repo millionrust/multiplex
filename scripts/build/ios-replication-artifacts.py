@@ -60,8 +60,8 @@ def verify(directory):
 
 def build():
     shared.space()
-    if not run("rustc", "--version", capture=True).startswith("rustc 1.97.1 "):
-        raise RuntimeError("Rust 1.97.1 required")
+    if not run("rustc", "--version", capture=True).startswith("rustc 1.98.1 "):
+        raise RuntimeError("Rust 1.98.1 required")
     run("rustup", "component", "add", "llvm-tools-preview")
     run("cargo", "build", "--locked", "-p", "multiplex-replication-bindings", "--lib")
     run("cargo", "build", "--locked", "-p", "multiplex-controller-bindings", "--features", "bindgen-cli", "--bin", "uniffi-bindgen")
@@ -92,7 +92,7 @@ def build():
                 shutil.copy2(Path(build_dir) / rust_target / "release" / f"lib{STEM}.a", work / f"{rust_target}.a")
         run("lipo", "-create", str(work / "aarch64-apple-ios-sim.a"), str(work / "x86_64-apple-ios.a"), "-output", str(work / "simulator.a"))
         run("bash", "scripts/build/ios-static-xcframework.sh", f"{NAME}FFI", str(work / "aarch64-apple-ios.a"), str(work / "simulator.a"), str(headers), str(staged / f"{NAME}.xcframework"))
-        (staged / "provenance.json").write_text(json.dumps({"rust": "1.97.1", "uniffi": "0.32.0", "minimum_ios": "17.0", "lto": False, "xcode": run("xcodebuild", "-version", capture=True).strip()}, sort_keys=True) + "\n")
+        (staged / "provenance.json").write_text(json.dumps({"rust": "1.98.1", "uniffi": "0.32.0", "minimum_ios": "17.0", "lto": False, "xcode": run("xcodebuild", "-version", capture=True).strip()}, sort_keys=True) + "\n")
         (staged / "artifacts.json").write_text(json.dumps(shared.inventory(staged), sort_keys=True, indent=2) + "\n")
         shared.promote(staged, OUTPUT, verify)
     print("PASS: iOS replication artifact set built and verified")

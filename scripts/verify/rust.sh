@@ -18,8 +18,8 @@ require_tool python3 "Install Python 3 to run the changed-line Clippy policy."
 verify_versions() {
   local rust_version deny_version
   rust_version=$(rustc --version | awk '{print $2}')
-  if [[ $rust_version != "1.97.1" ]]; then
-    echo "Expected rustc 1.97.1 from rust-toolchain.toml; found $rust_version." >&2
+  if [[ $rust_version != "1.98.1" ]]; then
+    echo "Expected rustc 1.98.1 from rust-toolchain.toml; found $rust_version." >&2
     exit 1
   fi
   require_tool cargo-deny "Install the pinned policy runner with: cargo install cargo-deny --version 0.19.8 --locked"

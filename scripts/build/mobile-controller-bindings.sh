@@ -7,7 +7,7 @@ LIB_STEM="multiplex_controller_bindings"
 OUTPUT_DIR="$ROOT_DIR/dist/mobile/controller"
 BUILD_IOS=0
 BUILD_ANDROID=0
-PINNED_RUST_VERSION="1.97.1"
+PINNED_RUST_VERSION="1.98.1"
 UNIFFI_VERSION="0.32.0"
 PINNED_XCODE_VERSION="27.0"
 PINNED_IOS_SDK_VERSION="27.0"
@@ -264,7 +264,7 @@ fi
 cat > "$STAGED/provenance-v1.txt" <<'PROVENANCE'
 schema=termirust-controller-bindings-provenance-v1
 uniffi=0.32.0
-rust=1.97.1
+rust=1.98.1
 xcode=27.0
 ios_sdk=27.0
 swift_target=aarch64-apple-ios

@@ -314,7 +314,7 @@ any gate that appears to require editing an immutable baseline (§6).
 ./scripts/verify/rust.sh policy       # toolchain pins + cargo-deny
 ```
 
-- Toolchain is pinned: rustc exactly `1.97.1`, cargo-deny exactly `0.19.8`, and every
+- Toolchain is pinned: rustc exactly `1.98.1`, cargo-deny exactly `0.19.8`, and every
   workspace package must declare `rust-version = "1.88"` (`scripts/verify/rust.sh:21,25,60`).
 - `scripts/dev/clippy-changed.py` fails on any clippy warning whose span overlaps a line
   you touched, and on all lines of new files. Passing `cargo clippy` is not enough.
