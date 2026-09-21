@@ -1,10 +1,11 @@
 # Remote terminals: reaching your desktop terminals from the mobile app
 
-Status: **partly built.** On macOS and Linux, tmux sessions are listed to paired devices
-and can be watched and typed into, and the desktop app can set up new terminals to start
-inside tmux after showing you the exact file changes, over every Controller route. On macOS
-the local network listener can keep running after you quit the app. Windows is not built
-yet; see "What has to be built".
+Status: **built, awaiting testing on real Windows hardware.** On every platform, a terminal
+opened with the **Multiplex profile** (Windows Terminal, Visual Studio Code, iTerm2) runs your
+own shell in a session paired devices can list, watch, and type into, and the session outlives
+its window. On macOS and Linux, tmux sessions are listed too, and new terminals can be started
+inside tmux after showing you the exact file changes. On macOS and Windows the listener can keep
+running after you quit the app.
 
 This is the guide a person follows when they want the terminals on their computer to
 show up on their phone.
@@ -46,9 +47,15 @@ reachable from then on.
   server appears in the phone's session list as a live terminal, including sessions
   Multiplex did not create, on every route. Watching and typing work; a
   tmux session is never resized or ended by the phone. Requires tmux 3.2 or later.
-- **Setup for new terminals**, which starts new tabs in Terminal, Zed, iTerm2, Ghostty,
-  WezTerm, and the VS Code terminal inside tmux. Previewed, applied, and removed from the
-  desktop app.
+- **The Multiplex terminal profile**: Devices adds a "Multiplex" profile to Windows Terminal,
+  Visual Studio Code, and iTerm2. A terminal opened with it runs `multiplex-cli shell`, which
+  starts your shell (PowerShell on Windows, your login shell elsewhere) in a Session Host, in the
+  folder the window opened in, and attaches the window to it. Paired devices list it as
+  "pwsh in projects". Nothing else changes: scripts, `cmd /c`, `powershell -Command`, and every
+  other program keep starting the plain shell.
+- **Setup for new terminals** (macOS and Linux, advanced), which starts every new tab in
+  Terminal, Zed, iTerm2, Ghostty, WezTerm, and the VS Code terminal inside tmux. Previewed,
+  applied, and removed from the desktop app.
 - Local panes marked persistent already run inside `tmux new-session -A -s <name>`.
 
 Not yet: approval prompts answered from the phone (`Approval` returns an error on both
@@ -195,26 +202,37 @@ The guards matter:
 No `~/.tmux.conf` change is needed. The phone attaches with
 `tmux attach-session -f ignore-size`, so it never takes part in window sizing.
 
-### Windows
+### The Multiplex terminal profile (every platform)
 
-Not built yet. There is no tmux, and PowerShell cannot replace itself with another process
-the way a POSIX shell can, so the session host has to own the terminal from the start.
+This is the recommended way, and the only one on Windows. Under **Devices → Terminal profiles**,
+each terminal app on this computer that can take a profile is listed with **Review adding**.
+Reviewing shows the exact change; applying writes only that.
 
-The intended setup adds a Windows Terminal profile whose command line is a Multiplex shim,
-and optionally makes it the default profile:
+- **Windows Terminal** loads the profile from a file of its own,
+  `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\Multiplex\multiplex.json`, so its
+  `settings.json` is never edited. To open Multiplex whenever Windows Terminal opens, choose it
+  under Settings → Startup → Default profile.
+- **iTerm2** loads it the same way, from
+  `~/Library/Application Support/iTerm2/DynamicProfiles/multiplex.json`.
+- **Visual Studio Code** has no such folder, so one marked block is added at the top of your user
+  `settings.json`, between `// >>> multiplex terminal profile >>>` and
+  `// <<< multiplex terminal profile <<<`. When your settings already set
+  `terminal.integrated.profiles.<platform>`, nothing is merged into them; the entry to add by
+  hand is shown instead.
 
-```json
-{
-  "name": "PowerShell (Multiplex)",
-  "commandline": "termirust.exe shell -- pwsh.exe -NoLogo",
-  "startingDirectory": "%USERPROFILE%",
-  "icon": "ms-appx:///ProfileIcons/pwsh.png"
-}
-```
+A window opened with the profile behaves like the shell itself: Ctrl-C, colours, full-screen
+programs, and resizing work as before, and the window closes when the shell exits. Closing the
+window instead leaves the session running for paired devices; `Ctrl-]` then `d` detaches
+without closing it. The window holds the writer lease only while you type, so a paired device
+can take over a terminal nobody at the computer is using; keys typed while a device is typing
+ring the bell instead of mixing in.
 
-`termirust shell` would create a session-host-owned ConPTY, attach your console to it, and
-leave the session running when the window closes. For WSL shells, the macOS/Linux tmux
-setup above applies inside the distribution.
+`multiplex-cli shell` runs the program directly, without a session, when it has no terminal or
+runs inside another Multiplex shell, so a profile never nests or wraps anything non-interactive.
+It can also be run by hand: `multiplex-cli shell -- pwsh.exe -NoLogo`.
+
+On Windows the sessions run in the Windows Session Host; see
+`docs/decisions/windows-session-host.md`.
 
 ### Keeping sessions reachable when the app is closed
 
@@ -230,7 +248,10 @@ tmux sessions survive the app, but something has to accept Controller connection
   address; pairing a new device still needs the app. When you open Multiplex, the service
   hands the route to the app, and takes it back when the app quits. The same commands work
   from a terminal: `termirust controller-service install|remove|status`.
-- **Windows:** not built yet; the intended setup is a per-user scheduled task at logon.
+- **Windows:** the same **Run in background** choice adds a value under the current user's
+  `Run` key, which needs no administrator rights and shows under Settings → Apps → Startup,
+  and starts the service at once. A notification-area icon says who is viewing or controlling
+  the screen and offers **Open Multiplex** and **Stop until next sign-in**.
 
 ## Turning it off
 
@@ -265,9 +286,12 @@ Existing tmux sessions keep running; `tmux kill-server` ends them.
 ## What has to be built
 
 Done: tmux session discovery and attach, the setup flow for macOS and Linux, route parity
-(see `docs/decisions/controller-session-sources.md`), and the macOS background listener.
+(see `docs/decisions/controller-session-sources.md`), the background listener on macOS and
+Windows, the Windows Session Host, `multiplex-cli shell`, and the terminal profiles.
 
 Remaining:
 
-1. **Windows**: the `termirust shell` shim, the Windows Terminal profile writer, and a
-   per-user logon task for the background listener.
+1. **Windows, on real hardware**: a person checking the profile in Windows Terminal and VS Code,
+   the background service and its tray icon, and a paired phone typing into a session.
+2. **More terminal apps**: Ghostty and WezTerm take a command in their configuration files;
+   Terminal.app profiles live in a property list.

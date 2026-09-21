@@ -57,6 +57,17 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   and VS Code terminal tabs inside tmux, and on macOS a LaunchAgent
   (`multiplex controller-service`) that keeps the LAN listener up after the app quits.
   See `docs/remote-terminals.md`.
+- A "Multiplex" terminal profile, added from Devices to Windows Terminal (a fragment file),
+  iTerm2 (a dynamic profile), or VS Code (one marked block in `settings.json`), runs
+  `multiplex-cli shell`: the user's own shell in a Session Host, started detached so it outlives
+  the window, recorded under `console-sessions/` and listed to paired devices on every route.
+  The window takes the writer lease only while typed in. Nothing outside the profile is wrapped.
+  This is the recommended path and the only one on Windows; the tmux startup change stays as the
+  advanced opt-in on macOS and Linux.
+- Windows: the Session Host runs there too (named pipe with a single-SID DACL, a job object per
+  session; `docs/decisions/windows-session-host.md`), the background listener starts from the
+  user's `Run` key with a notification-area icon, and paired devices can view and control the
+  screen.
 - Saved host groups can open directly as SSH Fleet canvases. The fleet panel
   summarizes connection and tmux state and provides guarded reconnect,
   broadcast-input, and disconnect controls without removing canvas nodes.
@@ -118,8 +129,9 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 - [crates/multiplex-desktop/src/ui/theme.rs](crates/multiplex-desktop/src/ui/theme.rs)
   - App color system and layout constants.
 - `crates/multiplex-tmux/` — the one GPUI-free tmux integration: binary discovery, bounded
-  `list-sessions` parsing, attach arguments, a listing self-check, and
-  `shell_integration` (the previewed, conflict-checked startup-file change and its removal).
+  `list-sessions` parsing, attach arguments, a listing self-check,
+  `shell_integration` (the previewed, conflict-checked startup-file change and its removal), and
+  `terminal_profiles` (the previewed, removable Multiplex profile for terminal apps).
   The Controller listener's `tmux_sessions.rs` uses it to publish tmux sessions and attach
   through shared in-process Session Hosts running `tmux attach-session -f ignore-size`.
 - `crates/multiplex-slate/` — Slate, the styled component library the desktop app will move to.
