@@ -1926,6 +1926,15 @@ fn monotonic_nanos() -> u64 {
 mod tests {
     use super::*;
 
+    /// A program every platform has, now that these tests run on Windows too.
+    fn system_executable() -> PathBuf {
+        #[cfg(windows)]
+        return PathBuf::from(std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into()))
+            .join(r"System32\cmd.exe");
+        #[cfg(not(windows))]
+        return PathBuf::from("/bin/sh");
+    }
+
     #[test]
     fn a_cursor_position_query_is_recognized_anywhere_in_the_output() {
         assert!(requests_cursor_position(b"\x1b[6n"));
@@ -2059,7 +2068,7 @@ mod tests {
 
     #[test]
     fn process_observation_host_launch_requires_exact_executable_fingerprint_for_managed() {
-        let executable = PathBuf::from("/bin/sh");
+        let executable = system_executable();
         let fingerprint = fingerprint_executable(&executable).unwrap();
         let descriptor = descriptor_with_detection(executable, fingerprint);
         let token = ProcessToken::new(descriptor.host_instance_id, 42, 1);
@@ -2083,7 +2092,7 @@ mod tests {
         let changed = fixture.path().join("changed-runtime");
         fs::write(&changed, b"different executable").unwrap();
         let descriptor = descriptor_with_detection(
-            PathBuf::from("/bin/sh"),
+            system_executable(),
             fingerprint_executable(&changed).unwrap(),
         );
         let token = ProcessToken::new(descriptor.host_instance_id, 42, 1);

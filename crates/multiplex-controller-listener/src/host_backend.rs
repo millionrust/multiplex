@@ -1125,8 +1125,13 @@ mod tests {
                     rows: 24,
                 },
             );
-            backend.command_context(&attach, &cancel).await.unwrap();
-            let responses = backend.execute(attach, &cancel).await.unwrap();
+            // Bounded, so a session that never answers fails here rather than holding the runner.
+            let responses = tokio::time::timeout(std::time::Duration::from_secs(15), async {
+                backend.command_context(&attach, &cancel).await.unwrap();
+                backend.execute(attach, &cancel).await.unwrap()
+            })
+            .await
+            .expect("attaching to the shell session did not finish");
             let printed = responses.iter().any(|response| {
                 matches!(
                     response,
