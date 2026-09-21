@@ -231,20 +231,22 @@ jobs:
         run: |
           apps/android/gradlew -p apps/android assembleRelease --console=plain
           VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)
-          mkdir -p dist
-          cp apps/android/app/build/outputs/apk/release/app-release.apk "dist/Multiplex-${VERSION}-android.apk"
-          (cd dist && sha256sum "Multiplex-${VERSION}-android.apk" > "Multiplex-${VERSION}-android.apk.sha256")
+          mkdir -p release-out
+          cp apps/android/app/build/outputs/apk/release/app-release.apk "release-out/Multiplex-${VERSION}-android.apk"
+          (cd release-out && sha256sum "Multiplex-${VERSION}-android.apk" > "Multiplex-${VERSION}-android.apk.sha256")
 
+      # Not dist/: the mobile build scripts write their intermediate frameworks and libraries under
+      # dist/mobile, and uploading those alongside the package broke the release's flat file list.
       - name: Attest release artifacts
         uses: actions/attest@v4
         with:
-          subject-path: dist/*
+          subject-path: release-out/*
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: multiplex-android
-          path: dist/*
+          path: release-out/*
           if-no-files-found: error
 
   ios:
@@ -297,23 +299,25 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)
           STAGE="$RUNNER_TEMP/ipa"
-          mkdir -p "$STAGE/Payload" dist
+          mkdir -p "$STAGE/Payload" release-out
           APP=$(find "$RUNNER_TEMP/MultiplexMobile.xcarchive/Products/Applications" -maxdepth 1 -name '*.app' | head -n1)
           test -d "$APP"
           ditto "$APP" "$STAGE/Payload/$(basename "$APP")"
-          (cd "$STAGE" && ditto -c -k --sequesterRsrc --keepParent Payload "$GITHUB_WORKSPACE/dist/Multiplex-${VERSION}-ios-unsigned.ipa")
-          (cd dist && shasum -a 256 "Multiplex-${VERSION}-ios-unsigned.ipa" > "Multiplex-${VERSION}-ios-unsigned.ipa.sha256")
+          (cd "$STAGE" && ditto -c -k --sequesterRsrc --keepParent Payload "$GITHUB_WORKSPACE/release-out/Multiplex-${VERSION}-ios-unsigned.ipa")
+          (cd release-out && shasum -a 256 "Multiplex-${VERSION}-ios-unsigned.ipa" > "Multiplex-${VERSION}-ios-unsigned.ipa.sha256")
 
+      # Not dist/: the mobile build scripts write their intermediate frameworks and libraries under
+      # dist/mobile, and uploading those alongside the package broke the release's flat file list.
       - name: Attest release artifacts
         uses: actions/attest@v4
         with:
-          subject-path: dist/*
+          subject-path: release-out/*
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: multiplex-ios
-          path: dist/*
+          path: release-out/*
           if-no-files-found: error
 
   release:
