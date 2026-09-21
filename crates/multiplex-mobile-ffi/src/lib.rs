@@ -23,7 +23,7 @@ pub struct MultiplexMobileResult {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_decrypt_vault_json(
+pub extern "C" fn multiplex_mobile_decrypt_vault_json(
     encrypted_json_ptr: *const u8,
     encrypted_json_len: usize,
     passphrase_ptr: *const u8,
@@ -43,7 +43,7 @@ pub extern "C" fn termirust_mobile_decrypt_vault_json(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_render_terminal_utf8(
+pub extern "C" fn multiplex_mobile_render_terminal_utf8(
     input_ptr: *const u8,
     input_len: usize,
     columns: u16,
@@ -59,13 +59,13 @@ pub extern "C" fn termirust_mobile_render_terminal_utf8(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_free_result(result: MultiplexMobileResult) {
-    termirust_mobile_free_buffer(result.data);
-    termirust_mobile_free_buffer(result.error);
+pub extern "C" fn multiplex_mobile_free_result(result: MultiplexMobileResult) {
+    multiplex_mobile_free_buffer(result.data);
+    multiplex_mobile_free_buffer(result.error);
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_free_buffer(buffer: MultiplexMobileByteBuffer) {
+pub extern "C" fn multiplex_mobile_free_buffer(buffer: MultiplexMobileByteBuffer) {
     if buffer.ptr.is_null() || buffer.len == 0 {
         return;
     }
@@ -224,7 +224,7 @@ mod android_jni {
     use vt100::Parser;
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_termirust_mobile_data_NativeMobileVaultCrypto_decryptVaultJson(
+    pub extern "system" fn Java_com_multiplex_mobile_data_NativeMobileVaultCrypto_decryptVaultJson(
         mut env: JNIEnv<'_>,
         _class: JClass<'_>,
         encrypted_json: JByteArray<'_>,
@@ -250,7 +250,7 @@ mod android_jni {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_termirust_mobile_terminal_NativeMobileTerminal_renderUtf8(
+    pub extern "system" fn Java_com_multiplex_mobile_terminal_NativeMobileTerminal_renderUtf8(
         mut env: JNIEnv<'_>,
         _class: JClass<'_>,
         input: JByteArray<'_>,
@@ -278,7 +278,7 @@ mod android_jni {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_termirust_mobile_controller_NativeControllerTerminal_create(
+    pub extern "system" fn Java_com_multiplex_mobile_controller_NativeControllerTerminal_create(
         mut env: JNIEnv<'_>,
         _class: JClass<'_>,
         columns: i32,
@@ -294,11 +294,11 @@ mod android_jni {
             );
             return 0;
         };
-        super::terminal::termirust_mobile_terminal_create(columns, rows, scrollback_rows) as jlong
+        super::terminal::multiplex_mobile_terminal_create(columns, rows, scrollback_rows) as jlong
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_termirust_mobile_controller_NativeControllerTerminal_process(
+    pub extern "system" fn Java_com_multiplex_mobile_controller_NativeControllerTerminal_process(
         mut env: JNIEnv<'_>,
         _class: JClass<'_>,
         handle: jlong,
@@ -315,7 +315,7 @@ mod android_jni {
                 return ptr::null_mut();
             }
         };
-        let result = super::terminal::termirust_mobile_terminal_process(
+        let result = super::terminal::multiplex_mobile_terminal_process(
             terminal_handle(handle),
             input.as_ptr(),
             input.len(),
@@ -324,7 +324,7 @@ mod android_jni {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_termirust_mobile_controller_NativeControllerTerminal_feed(
+    pub extern "system" fn Java_com_multiplex_mobile_controller_NativeControllerTerminal_feed(
         mut env: JNIEnv<'_>,
         _class: JClass<'_>,
         handle: jlong,
@@ -341,7 +341,7 @@ mod android_jni {
                 return 0;
             }
         };
-        super::terminal::termirust_mobile_terminal_feed(
+        super::terminal::multiplex_mobile_terminal_feed(
             terminal_handle(handle),
             input.as_ptr(),
             input.len(),
@@ -349,7 +349,7 @@ mod android_jni {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_termirust_mobile_controller_NativeControllerTerminal_resize(
+    pub extern "system" fn Java_com_multiplex_mobile_controller_NativeControllerTerminal_resize(
         mut env: JNIEnv<'_>,
         _class: JClass<'_>,
         handle: jlong,
@@ -372,7 +372,7 @@ mod android_jni {
             );
             return ptr::null_mut();
         };
-        let result = super::terminal::termirust_mobile_terminal_resize(
+        let result = super::terminal::multiplex_mobile_terminal_resize(
             terminal_handle(handle),
             columns,
             rows,
@@ -381,26 +381,26 @@ mod android_jni {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_termirust_mobile_controller_NativeControllerTerminal_snapshot(
+    pub extern "system" fn Java_com_multiplex_mobile_controller_NativeControllerTerminal_snapshot(
         mut env: JNIEnv<'_>,
         _class: JClass<'_>,
         handle: jlong,
     ) -> jbyteArray {
-        let result = super::terminal::termirust_mobile_terminal_snapshot(terminal_handle(handle));
+        let result = super::terminal::multiplex_mobile_terminal_snapshot(terminal_handle(handle));
         mobile_result_to_java(&mut env, result)
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_termirust_mobile_controller_NativeControllerTerminal_destroy(
+    pub extern "system" fn Java_com_multiplex_mobile_controller_NativeControllerTerminal_destroy(
         _env: JNIEnv<'_>,
         _class: JClass<'_>,
         handle: jlong,
     ) {
-        super::terminal::termirust_mobile_terminal_destroy(terminal_handle(handle));
+        super::terminal::multiplex_mobile_terminal_destroy(terminal_handle(handle));
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_termirust_mobile_controller_NativeRelayProtocol_clientHello(
+    pub extern "system" fn Java_com_multiplex_mobile_controller_NativeRelayProtocol_clientHello(
         mut env: JNIEnv<'_>,
         _class: JClass<'_>,
         route_id: JByteArray<'_>,
@@ -417,7 +417,7 @@ mod android_jni {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_termirust_mobile_controller_NativeRelayProtocol_admissionProof(
+    pub extern "system" fn Java_com_multiplex_mobile_controller_NativeRelayProtocol_admissionProof(
         mut env: JNIEnv<'_>,
         _class: JClass<'_>,
         route_id: JByteArray<'_>,
@@ -462,7 +462,7 @@ mod android_jni {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_termirust_mobile_controller_NativeRelayProtocol_admissionConnectionId(
+    pub extern "system" fn Java_com_multiplex_mobile_controller_NativeRelayProtocol_admissionConnectionId(
         mut env: JNIEnv<'_>,
         _class: JClass<'_>,
         result: JByteArray<'_>,
@@ -479,7 +479,7 @@ mod android_jni {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_termirust_mobile_controller_NativeRelayProtocol_encodeEnvelope(
+    pub extern "system" fn Java_com_multiplex_mobile_controller_NativeRelayProtocol_encodeEnvelope(
         mut env: JNIEnv<'_>,
         _class: JClass<'_>,
         route_id: JByteArray<'_>,
@@ -513,7 +513,7 @@ mod android_jni {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_termirust_mobile_controller_NativeRelayProtocol_decodeEnvelope(
+    pub extern "system" fn Java_com_multiplex_mobile_controller_NativeRelayProtocol_decodeEnvelope(
         mut env: JNIEnv<'_>,
         _class: JClass<'_>,
         route_id: JByteArray<'_>,
@@ -630,7 +630,7 @@ mod android_jni {
             let error = String::from_utf8_lossy(bytes).into_owned();
             Err(error)
         };
-        super::termirust_mobile_free_result(result);
+        super::multiplex_mobile_free_result(result);
         match response {
             Ok(array) => array.into_raw(),
             Err(error) => {
@@ -646,7 +646,7 @@ mod android_jni {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_relay_client_hello(
+pub extern "C" fn multiplex_mobile_relay_client_hello(
     route_id_ptr: *const u8,
     route_id_len: usize,
 ) -> MultiplexMobileResult {
@@ -654,7 +654,7 @@ pub extern "C" fn termirust_mobile_relay_client_hello(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_relay_admission_proof(
+pub extern "C" fn multiplex_mobile_relay_admission_proof(
     route_id_ptr: *const u8,
     route_id_len: usize,
     credential_ptr: *const u8,
@@ -679,7 +679,7 @@ pub extern "C" fn termirust_mobile_relay_admission_proof(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_relay_admission_connection_id(
+pub extern "C" fn multiplex_mobile_relay_admission_connection_id(
     result_ptr: *const u8,
     result_len: usize,
 ) -> MultiplexMobileResult {
@@ -687,7 +687,7 @@ pub extern "C" fn termirust_mobile_relay_admission_connection_id(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_relay_encode_envelope(
+pub extern "C" fn multiplex_mobile_relay_encode_envelope(
     route_id_ptr: *const u8,
     route_id_len: usize,
     sequence: u64,
@@ -706,7 +706,7 @@ pub extern "C" fn termirust_mobile_relay_encode_envelope(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_relay_decode_envelope(
+pub extern "C" fn multiplex_mobile_relay_decode_envelope(
     route_id_ptr: *const u8,
     route_id_len: usize,
     expected_sequence: u64,
@@ -738,7 +738,7 @@ mod tests {
             encrypt_mobile_vault_export_json(&export, "hunter2").expect("encrypt test vault");
         let passphrase = "hunter2";
 
-        let result = termirust_mobile_decrypt_vault_json(
+        let result = multiplex_mobile_decrypt_vault_json(
             encrypted.as_ptr(),
             encrypted.len(),
             passphrase.as_ptr(),
@@ -750,7 +750,7 @@ mod tests {
         assert!(decrypted.contains("\"export_id\": \"export-1\""));
         assert!(decrypted.contains("\"source_device_id\": \"desktop-1\""));
 
-        termirust_mobile_free_result(result);
+        multiplex_mobile_free_result(result);
     }
 
     #[test]
@@ -758,7 +758,7 @@ mod tests {
         let encrypted = "{}";
         let passphrase = "hunter2";
 
-        let result = termirust_mobile_decrypt_vault_json(
+        let result = multiplex_mobile_decrypt_vault_json(
             encrypted.as_ptr(),
             encrypted.len(),
             passphrase.as_ptr(),
@@ -769,14 +769,14 @@ mod tests {
         let error = buffer_to_str(result.error);
         assert!(error.contains("missing field"));
 
-        termirust_mobile_free_result(result);
+        multiplex_mobile_free_result(result);
     }
 
     #[test]
     fn ffi_reports_null_pointer_errors() {
         let passphrase = "hunter2";
 
-        let result = termirust_mobile_decrypt_vault_json(
+        let result = multiplex_mobile_decrypt_vault_json(
             std::ptr::null(),
             0,
             passphrase.as_ptr(),
@@ -789,7 +789,7 @@ mod tests {
             "Multiplex mobile vault JSON pointer was null."
         );
 
-        termirust_mobile_free_result(result);
+        multiplex_mobile_free_result(result);
     }
 
     #[test]
@@ -797,12 +797,12 @@ mod tests {
         let input = b"progress 1\rprogress 2\r\n\x1b[31mred\x1b[0m\r\nabc\x08Z";
 
         let result =
-            termirust_mobile_render_terminal_utf8(input.as_ptr(), input.len(), 80, 24, 2_000);
+            multiplex_mobile_render_terminal_utf8(input.as_ptr(), input.len(), 80, 24, 2_000);
 
         assert!(result.ok);
         assert_eq!(buffer_to_str(result.data), "progress 2\nred\nabZ");
 
-        termirust_mobile_free_result(result);
+        multiplex_mobile_free_result(result);
     }
 
     fn buffer_to_str(buffer: MultiplexMobileByteBuffer) -> &'static str {

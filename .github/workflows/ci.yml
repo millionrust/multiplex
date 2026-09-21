@@ -451,19 +451,27 @@ jobs:
         run: |
           cargo build --locked --release -p multiplex-controller-bindings --lib
           mkdir -p apps/android/app/src/test/native/linux-x86-64
-          cp target/release/libtermirust_controller_bindings.so apps/android/app/src/test/native/linux-x86-64/
+          cp target/release/libmultiplex_controller_bindings.so apps/android/app/src/test/native/linux-x86-64/
 
-      # The Remote Screens bindings are generated rather than vendored, and the Kotlin sources
-      # name their types, so `compileDebugKotlin` needs them before anything else runs.
-      - name: Build and sync Remote Screens bindings
-        # A hosted runner does not get to choose its NDK, and these bindings are built to prove the
+      # Every binding and native library the APK packages is generated from the Rust crates
+      # rather than vendored, and the Kotlin sources name their types, so `compileDebugKotlin`
+      # needs all of them before anything else runs.
+      - name: Build and sync the generated bindings and native libraries
+        # A hosted runner does not get to choose its NDK, and these are built to prove the
         # application compiles and its tests pass, not to be released. Release artifacts are built
-        # on the pinned toolchains, where this variable is unset.
+        # on the pinned toolchains, where these variables are unset.
         env:
           TERMIRUST_SCREEN_BINDINGS_ALLOW_UNPINNED: "1"
+          TERMIRUST_CONTROLLER_BINDINGS_ALLOW_UNPINNED: "1"
+          TERMIRUST_REPLICATION_ARTIFACTS_ALLOW_UNPINNED: "1"
         run: |
+          scripts/build/mobile-controller-bindings.sh --android
+          scripts/sync/mobile-controller-bindings.sh --write --android
           scripts/build/mobile-screen-bindings.sh --android
           scripts/sync/mobile-screen-bindings.sh --write --android
+          scripts/sync/mobile-ffi-artifacts.sh android
+          python3 scripts/build/mobile-replication-artifacts.py build --android
+          python3 scripts/build/mobile-replication-artifacts.py sync --android --write
 
       - name: Verify Kotlin contracts, unit tests, lint, and debug APK
         env:
@@ -512,16 +520,23 @@ jobs:
         with:
           cache-on-failure: true
 
-      # The Xcode project lists the generated Remote Screens bindings among its sources, and they
-      # are generated rather than vendored, so the project cannot even be generated without them.
-      - name: Build and sync Remote Screens bindings
+      # The Xcode project lists the generated bindings among its sources and links the frameworks
+      # built from the Rust crates. None of them are vendored, so the project cannot even be
+      # generated without them.
+      - name: Build and sync the generated bindings and frameworks
         # As on Android: the runner's Xcode is whatever the image ships, and what is built here is
         # verified, not shipped.
         env:
           TERMIRUST_SCREEN_BINDINGS_ALLOW_UNPINNED: "1"
+          TERMIRUST_CONTROLLER_BINDINGS_ALLOW_UNPINNED: "1"
         run: |
+          scripts/build/mobile-controller-bindings.sh --ios
+          scripts/sync/mobile-controller-bindings.sh --write --ios
           scripts/build/mobile-screen-bindings.sh --ios
           scripts/sync/mobile-screen-bindings.sh --write --ios
+          scripts/sync/mobile-ffi-artifacts.sh ios
+          python3 scripts/build/ios-replication-artifacts.py build
+          python3 scripts/build/ios-replication-artifacts.py sync --write
 
       - name: Verify Swift 6 contracts and generic application build
         run: apps/ios/scripts/verify-ios-unified-routes.sh

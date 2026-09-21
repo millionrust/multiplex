@@ -84,10 +84,10 @@ prepare_android_test_native() {
   host_arch="$(uname -m)"
 
   case "$host_os-$host_arch" in
-    Darwin-arm64) resource_dir="darwin-aarch64"; library_name="libtermirust_controller_bindings.dylib" ;;
-    Darwin-x86_64) resource_dir="darwin-x86-64"; library_name="libtermirust_controller_bindings.dylib" ;;
-    Linux-aarch64|Linux-arm64) resource_dir="linux-aarch64"; library_name="libtermirust_controller_bindings.so" ;;
-    Linux-x86_64) resource_dir="linux-x86-64"; library_name="libtermirust_controller_bindings.so" ;;
+    Darwin-arm64) resource_dir="darwin-aarch64"; library_name="libmultiplex_controller_bindings.dylib" ;;
+    Darwin-x86_64) resource_dir="darwin-x86-64"; library_name="libmultiplex_controller_bindings.dylib" ;;
+    Linux-aarch64|Linux-arm64) resource_dir="linux-aarch64"; library_name="libmultiplex_controller_bindings.so" ;;
+    Linux-x86_64) resource_dir="linux-x86-64"; library_name="libmultiplex_controller_bindings.so" ;;
     *)
       echo "Unsupported Android unit-test host: $host_os $host_arch" >&2
       return 1
@@ -100,7 +100,7 @@ prepare_android_test_native() {
     "$ANDROID_DIR/app/src/test/native/$resource_dir/$library_name"
 }
 
-require_path "$IOS_DIR/TermiRustMobile.xcodeproj" "iOS project"
+require_path "$IOS_DIR/MultiplexMobile.xcodeproj" "iOS project"
 require_path "$ANDROID_DIR/gradlew" "Android Gradle wrapper"
 
 cd "$ROOT_DIR"
@@ -117,8 +117,8 @@ run_step "Mobile helper script syntax" bash -n \
 
 run_step "iOS unit and build tests" \
   xcodebuild test \
-    -project "$IOS_DIR/TermiRustMobile.xcodeproj" \
-    -scheme TermiRustMobile \
+    -project "$IOS_DIR/MultiplexMobile.xcodeproj" \
+    -scheme MultiplexMobile \
     -destination "$IOS_DESTINATION" \
     -quiet
 

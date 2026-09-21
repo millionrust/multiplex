@@ -5,7 +5,7 @@ use multiplex_screen_protocol::{FrameReader, SurfaceInfo, encode_frame};
 use multiplex_screen_session::{
     Grants, HostConfig, HostEvent, HostSession, ResumeStore, TicketVerifier,
 };
-use termirust_screen_bindings::{
+use multiplex_screen_bindings::{
     ScreenBindingError, ScreenCapability, ScreenEvent, ScreenPointerButton, ScreenRect,
     ScreenViewer,
 };
@@ -184,7 +184,7 @@ fn control_and_input_reach_the_computer_only_after_it_is_given() {
     pump(&mut host, &viewer, &mut store);
     assert_eq!(
         viewer.control(),
-        termirust_screen_bindings::ScreenControlHolder::You
+        multiplex_screen_bindings::ScreenControlHolder::You
     );
 
     viewer.send_pointer_button(1, 10, 10, ScreenPointerButton::Primary, true);

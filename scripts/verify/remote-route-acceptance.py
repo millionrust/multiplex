@@ -96,9 +96,9 @@ def main() -> None:
     require(confirmed.get("automatic_switches") == 0, "switch must remain explicit")
 
     copies = [
-        (ROUTE_FIXTURE, SWIFT / "TermiRustMobileTests/Fixtures/route-selection-v1.json"),
+        (ROUTE_FIXTURE, SWIFT / "MultiplexMobileTests/Fixtures/route-selection-v1.json"),
         (ROUTE_FIXTURE, KOTLIN / "app/src/test/resources/route-selection-v1.json"),
-        (ACCEPTANCE_FIXTURE, SWIFT / "TermiRustMobileTests/Fixtures/remote-route-acceptance-v1.json"),
+        (ACCEPTANCE_FIXTURE, SWIFT / "MultiplexMobileTests/Fixtures/remote-route-acceptance-v1.json"),
         (ACCEPTANCE_FIXTURE, KOTLIN / "app/src/test/resources/remote-route-acceptance-v1.json"),
     ]
     for source, destination in copies:

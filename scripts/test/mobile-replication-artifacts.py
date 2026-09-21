@@ -27,7 +27,7 @@ class ArtifactPublicationTests(unittest.TestCase):
             library = path / "jniLibs" / abi / f"lib{artifacts.STEM}.so"
             library.parent.mkdir(parents=True)
             library.write_bytes(value)
-        kotlin = path / f"kotlin/com/termirust/replication/security/{artifacts.STEM}.kt"
+        kotlin = path / f"kotlin/com/multiplex/replication/security/{artifacts.STEM}.kt"
         kotlin.parent.mkdir(parents=True)
         kotlin.write_bytes(value)
         (path / "artifacts.json").write_text(json.dumps(artifacts.inventory(path)))

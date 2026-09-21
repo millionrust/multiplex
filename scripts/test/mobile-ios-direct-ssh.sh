@@ -5,10 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IOS_DIR="${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}"
 IOS_DESTINATION="${TERMIRUST_IOS_DESTINATION:-}"
 SSH_IMAGE="${TERMIRUST_MOBILE_TEST_SSH_IMAGE:-termirust-e2e-sshd:local}"
-CONFIG_PATH="$IOS_DIR/TermiRustMobileTests/.termirust-mobile-live-ssh.properties"
+CONFIG_PATH="$IOS_DIR/MultiplexMobileTests/.termirust-mobile-live-ssh.properties"
 
-if [[ ! -d "$IOS_DIR/TermiRustMobile.xcodeproj" ]]; then
-  echo "iOS project not found at $IOS_DIR/TermiRustMobile.xcodeproj" >&2
+if [[ ! -d "$IOS_DIR/MultiplexMobile.xcodeproj" ]]; then
+  echo "iOS project not found at $IOS_DIR/MultiplexMobile.xcodeproj" >&2
   exit 1
 fi
 
@@ -27,10 +27,10 @@ fi
 run_ios_smoke() {
   cd "$IOS_DIR"
   xcodebuild test -quiet \
-    -project TermiRustMobile.xcodeproj \
-    -scheme TermiRustMobile \
+    -project MultiplexMobile.xcodeproj \
+    -scheme MultiplexMobile \
     -destination "$IOS_DESTINATION" \
-    -only-testing:TermiRustMobileTests/DirectSSHIntegrationTests/testDirectSSHAttachesToPersistentTmuxSessionAndSurvivesReconnect
+    -only-testing:MultiplexMobileTests/DirectSSHIntegrationTests/testDirectSSHAttachesToPersistentTmuxSessionAndSurvivesReconnect
 }
 
 write_smoke_config() {

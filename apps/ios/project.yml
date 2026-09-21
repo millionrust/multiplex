@@ -1,4 +1,4 @@
-name: TermiRustMobile
+name: MultiplexMobile
 options:
   minimumXcodeGenVersion: 2.42.0
   deploymentTarget:
@@ -14,74 +14,74 @@ packages:
     url: https://github.com/apple/swift-crypto.git
     from: 4.5.0
 targets:
-  TermiRustMobileUITests:
+  MultiplexMobileUITests:
     type: bundle.ui-testing
     platform: iOS
     sources:
-      - TermiRustMobileUITests
+      - MultiplexMobileUITests
     dependencies:
-      - target: TermiRustMobile
+      - target: MultiplexMobile
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.termirust.mobile.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: com.multiplex.mobile.uitests
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: 6.0
         IPHONEOS_DEPLOYMENT_TARGET: 17.0
-  TermiRustMobile:
+  MultiplexMobile:
     type: application
     platform: iOS
     sources:
-      - TermiRustMobile/App/TermiRustMobileApp.swift
-      - TermiRustMobile/Assets.xcassets
-      - TermiRustMobile/Controller
-      - TermiRustMobile/Enrollment
-      - TermiRustMobile/ReplicationTransport
-      - TermiRustMobile/Generated/TermiRustControllerSecurity.swift
-      - TermiRustMobile/Generated/TermiRustRemoteScreens.swift
-      - Replication/Sources/TermiRustReplicationSecurity.swift
-      - TermiRustMobile/Security/ReplicationKeychainStore.swift
-      - TermiRustMobile/Models/ControllerModels.swift
-      - TermiRustMobile/Models/ControllerRemoteRoute.swift
-      - TermiRustMobile/Models/ControllerRemoteRouteConfiguration.swift
-      - TermiRustMobile/Models/MobileRouteContract.swift
-      - TermiRustMobile/Models/MobileCrossRouteAcceptance.swift
-      - TermiRustMobile/Models/MobileVaultModels.swift
-      - TermiRustMobile/Relay/RelayControllerTransport.swift
-      - TermiRustMobile/Security/ControllerKeychainBlobStore.swift
-      - TermiRustMobile/Security/ControllerRouteConfigurationStore.swift
-      - TermiRustMobile/Security/ControllerRouteCredentialStore.swift
-      - TermiRustMobile/Security/KeychainSecretStore.swift
-      - TermiRustMobile/Security/MobileDeviceIdentityStore.swift
-      - TermiRustMobile/SSH/MobileSSHSession.swift
-      - TermiRustMobile/SSH/OpenSSHPrivateKeyParser.swift
-      - TermiRustMobile/SSH/SSHControllerTransport.swift
-      - TermiRustMobile/SSH/TmuxBootstrap.swift
-      - TermiRustMobile/Terminal/BoundedTerminalBuffer.swift
-      - TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift
-      - TermiRustMobile/Terminal/NativeControllerTerminal.swift
-      - TermiRustMobile/Terminal/TerminalInteraction.swift
-      - TermiRustMobile/Terminal/TerminalAcceptance.swift
-      - TermiRustMobile/Terminal/TerminalBuffer.swift
-      - TermiRustMobile/Terminal/TerminalGrid.swift
-      - TermiRustMobile/Terminal/TerminalInputEncoding.swift
-      - TermiRustMobile/ViewModels/ControllerScreenCoordinator.swift
-      - TermiRustMobile/ViewModels/ControllerTerminalViewModel.swift
-      - TermiRustMobile/ViewModels/ControllerViewModel.swift
-      - TermiRustMobile/ViewModels/HostListViewModel.swift
-      - TermiRustMobile/ViewModels/RemoteScreenViewModel.swift
-      - TermiRustMobile/Vault
-      - TermiRustMobile/Views/ContentView.swift
-      - TermiRustMobile/Views/RemoteScreenView.swift
-      - TermiRustMobile/Views/ControllerPresentation.swift
-      - TermiRustMobile/Views/ControllerQRCodeScanner.swift
-      - TermiRustMobile/Views/ControllerReadOnlyTerminalView.swift
-      - TermiRustMobile/Views/ControllerRootView.swift
-      - TermiRustMobile/Views/ControllerTerminalInputView.swift
-      - TermiRustMobile/Views/HostListView.swift
-      - TermiRustMobile/Views/SlateColors.swift
-      - TermiRustMobile/Views/SlateTokens.swift
-      - TermiRustMobile/Views/TerminalSessionView.swift
-      - TermiRustMobile/Localizable.xcstrings
+      - MultiplexMobile/App/MultiplexMobileApp.swift
+      - MultiplexMobile/Assets.xcassets
+      - MultiplexMobile/Controller
+      - MultiplexMobile/Enrollment
+      - MultiplexMobile/ReplicationTransport
+      - MultiplexMobile/Generated/MultiplexControllerSecurity.swift
+      - MultiplexMobile/Generated/MultiplexRemoteScreens.swift
+      - Replication/Sources/MultiplexReplicationSecurity.swift
+      - MultiplexMobile/Security/ReplicationKeychainStore.swift
+      - MultiplexMobile/Models/ControllerModels.swift
+      - MultiplexMobile/Models/ControllerRemoteRoute.swift
+      - MultiplexMobile/Models/ControllerRemoteRouteConfiguration.swift
+      - MultiplexMobile/Models/MobileRouteContract.swift
+      - MultiplexMobile/Models/MobileCrossRouteAcceptance.swift
+      - MultiplexMobile/Models/MobileVaultModels.swift
+      - MultiplexMobile/Relay/RelayControllerTransport.swift
+      - MultiplexMobile/Security/ControllerKeychainBlobStore.swift
+      - MultiplexMobile/Security/ControllerRouteConfigurationStore.swift
+      - MultiplexMobile/Security/ControllerRouteCredentialStore.swift
+      - MultiplexMobile/Security/KeychainSecretStore.swift
+      - MultiplexMobile/Security/MobileDeviceIdentityStore.swift
+      - MultiplexMobile/SSH/MobileSSHSession.swift
+      - MultiplexMobile/SSH/OpenSSHPrivateKeyParser.swift
+      - MultiplexMobile/SSH/SSHControllerTransport.swift
+      - MultiplexMobile/SSH/TmuxBootstrap.swift
+      - MultiplexMobile/Terminal/BoundedTerminalBuffer.swift
+      - MultiplexMobile/Terminal/GeneratedTerminalCellWidth.swift
+      - MultiplexMobile/Terminal/NativeControllerTerminal.swift
+      - MultiplexMobile/Terminal/TerminalInteraction.swift
+      - MultiplexMobile/Terminal/TerminalAcceptance.swift
+      - MultiplexMobile/Terminal/TerminalBuffer.swift
+      - MultiplexMobile/Terminal/TerminalGrid.swift
+      - MultiplexMobile/Terminal/TerminalInputEncoding.swift
+      - MultiplexMobile/ViewModels/ControllerScreenCoordinator.swift
+      - MultiplexMobile/ViewModels/ControllerTerminalViewModel.swift
+      - MultiplexMobile/ViewModels/ControllerViewModel.swift
+      - MultiplexMobile/ViewModels/HostListViewModel.swift
+      - MultiplexMobile/ViewModels/RemoteScreenViewModel.swift
+      - MultiplexMobile/Vault
+      - MultiplexMobile/Views/ContentView.swift
+      - MultiplexMobile/Views/RemoteScreenView.swift
+      - MultiplexMobile/Views/ControllerPresentation.swift
+      - MultiplexMobile/Views/ControllerQRCodeScanner.swift
+      - MultiplexMobile/Views/ControllerReadOnlyTerminalView.swift
+      - MultiplexMobile/Views/ControllerRootView.swift
+      - MultiplexMobile/Views/ControllerTerminalInputView.swift
+      - MultiplexMobile/Views/HostListView.swift
+      - MultiplexMobile/Views/SlateColors.swift
+      - MultiplexMobile/Views/SlateTokens.swift
+      - MultiplexMobile/Views/TerminalSessionView.swift
+      - MultiplexMobile/Localizable.xcstrings
     dependencies:
       - package: swift-nio-ssh
         product: NIOSSH
@@ -91,11 +91,11 @@ targets:
         product: NIOPosix
       - package: swift-crypto
         product: Crypto
-      - framework: Frameworks/TermiRustMobileCrypto.xcframework
+      - framework: Frameworks/MultiplexMobileCrypto.xcframework
         embed: false
-      - framework: Frameworks/TermiRustControllerSecurity.xcframework
+      - framework: Frameworks/MultiplexControllerSecurity.xcframework
         embed: false
-      - framework: Frameworks/TermiRustRemoteScreens.xcframework
+      - framework: Frameworks/MultiplexRemoteScreens.xcframework
         embed: false
       # The Remote Screens library decodes and encodes video through VideoToolbox, which reaches
       # the linker as undefined symbols unless the frameworks behind them are named here: a static
@@ -103,61 +103,61 @@ targets:
       - sdk: VideoToolbox.framework
       - sdk: CoreMedia.framework
       - sdk: CoreVideo.framework
-      - framework: Replication/TermiRustReplicationSecurity.xcframework
+      - framework: Replication/MultiplexReplicationSecurity.xcframework
         embed: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.termirust.mobile
+        PRODUCT_BUNDLE_IDENTIFIER: com.multiplex.mobile
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_FILE: TermiRustMobile/Info.plist
+        INFOPLIST_FILE: MultiplexMobile/Info.plist
         TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: TermiRust finds TermiRust desktops on your local network and connects to the ones you pair.
-        INFOPLIST_KEY_NSCameraUsageDescription: Scan a TermiRust Desktop pairing code without saving camera images.
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: Multiplex finds Multiplex desktops on your local network and connects to the ones you pair.
+        INFOPLIST_KEY_NSCameraUsageDescription: Scan a Multiplex Desktop pairing code without saving camera images.
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         SWIFT_VERSION: 6.0
         IPHONEOS_DEPLOYMENT_TARGET: 17.0
         UNIFIED_MOBILE_ROUTES: 1
-  TermiRustMobileTests:
+  MultiplexMobileTests:
     type: bundle.unit-test
     platform: iOS
     sources:
-      - TermiRustMobileTests/BoundedTerminalBufferTests.swift
-      - TermiRustMobileTests/AppleControllerRouteTests.swift
-      - TermiRustMobileTests/AppleControllerRouteViewModelTests.swift
-      - TermiRustMobileTests/AppleSSHControllerTransportLiveTests.swift
-      - TermiRustMobileTests/AppleRelayControllerTransportLiveTests.swift
-      - TermiRustMobileTests/ControllerBindingConformanceTests.swift
-      - TermiRustMobileTests/ControllerScreenSessionTests.swift
-      - TermiRustMobileTests/RemoteScreenViewModelTests.swift
-      - TermiRustMobileTests/ReplicationCustodyTests.swift
-      - TermiRustMobileTests/EnrollmentWorkflowTests.swift
-      - TermiRustMobileTests/ReplicationDocumentReaderTests.swift
-      - TermiRustMobileTests/ControllerFleetCacheTests.swift
-      - TermiRustMobileTests/ControllerPairingFleetTests.swift
-      - TermiRustMobileTests/ControllerReadOnlyTerminalTests.swift
-      - TermiRustMobileTests/ControllerTerminalViewModelTests.swift
-      - TermiRustMobileTests/ControllerWriterTests.swift
-      - TermiRustMobileTests/TerminalConformanceV1Tests.swift
-      - TermiRustMobileTests/TerminalConformanceV2Tests.swift
-      - TermiRustMobileTests/TerminalInteractionTests.swift
-      - TermiRustMobileTests/TerminalAcceptanceTests.swift
-      - TermiRustMobileTests/MobileRouteContractTests.swift
-      - TermiRustMobileTests/MobileCrossRouteAcceptanceTests.swift
-      - TermiRustMobileTests/MobileVaultImporterTests.swift
-      - TermiRustMobileTests/UnifiedRouteLifecycleTests.swift
-      - TermiRustMobileTests/DirectSSHIntegrationTests.swift
-      - TermiRustMobileTests/UniversalSessionGoldenPathTests.swift
-      - path: TermiRustMobileTests/Fixtures
+      - MultiplexMobileTests/BoundedTerminalBufferTests.swift
+      - MultiplexMobileTests/AppleControllerRouteTests.swift
+      - MultiplexMobileTests/AppleControllerRouteViewModelTests.swift
+      - MultiplexMobileTests/AppleSSHControllerTransportLiveTests.swift
+      - MultiplexMobileTests/AppleRelayControllerTransportLiveTests.swift
+      - MultiplexMobileTests/ControllerBindingConformanceTests.swift
+      - MultiplexMobileTests/ControllerScreenSessionTests.swift
+      - MultiplexMobileTests/RemoteScreenViewModelTests.swift
+      - MultiplexMobileTests/ReplicationCustodyTests.swift
+      - MultiplexMobileTests/EnrollmentWorkflowTests.swift
+      - MultiplexMobileTests/ReplicationDocumentReaderTests.swift
+      - MultiplexMobileTests/ControllerFleetCacheTests.swift
+      - MultiplexMobileTests/ControllerPairingFleetTests.swift
+      - MultiplexMobileTests/ControllerReadOnlyTerminalTests.swift
+      - MultiplexMobileTests/ControllerTerminalViewModelTests.swift
+      - MultiplexMobileTests/ControllerWriterTests.swift
+      - MultiplexMobileTests/TerminalConformanceV1Tests.swift
+      - MultiplexMobileTests/TerminalConformanceV2Tests.swift
+      - MultiplexMobileTests/TerminalInteractionTests.swift
+      - MultiplexMobileTests/TerminalAcceptanceTests.swift
+      - MultiplexMobileTests/MobileRouteContractTests.swift
+      - MultiplexMobileTests/MobileCrossRouteAcceptanceTests.swift
+      - MultiplexMobileTests/MobileVaultImporterTests.swift
+      - MultiplexMobileTests/UnifiedRouteLifecycleTests.swift
+      - MultiplexMobileTests/DirectSSHIntegrationTests.swift
+      - MultiplexMobileTests/UniversalSessionGoldenPathTests.swift
+      - path: MultiplexMobileTests/Fixtures
         buildPhase: resources
     dependencies:
-      - target: TermiRustMobile
+      - target: MultiplexMobile
       - package: swift-nio-ssh
         product: NIOSSH
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.termirust.mobile.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.multiplex.mobile.tests
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: 6.0
         IPHONEOS_DEPLOYMENT_TARGET: 17.0

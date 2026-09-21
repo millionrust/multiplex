@@ -4,7 +4,7 @@ import XCTest
 final class ProviderPickerTests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
     func testExternalPickerReadAndReselection() {
-        let donor = XCUIApplication(bundleIdentifier: "com.termirust.fixture.documents")
+        let donor = XCUIApplication(bundleIdentifier: "com.multiplex.fixture.documents")
         donor.launch()
         XCTAssertTrue(donor.staticTexts["Fixture ready"].waitForExistence(timeout: 10))
         donor.terminate()

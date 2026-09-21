@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IOS_DIR="${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}"
-RESOURCE_PATH="$IOS_DIR/TermiRustMobileTests/Fixtures/controller-v2.json"
+RESOURCE_PATH="$IOS_DIR/MultiplexMobileTests/Fixtures/controller-v2.json"
 FIXTURE_BINARY="$ROOT_DIR/target/debug/examples/mobile_controller_fixture"
 HOST_BINARY="$ROOT_DIR/target/debug/multiplex-session-host"
 IOS_DESTINATION="${TERMIRUST_IOS_DESTINATION:-}"
@@ -74,7 +74,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-[[ -d "$IOS_DIR/TermiRustMobile.xcodeproj" ]] || {
+[[ -d "$IOS_DIR/MultiplexMobile.xcodeproj" ]] || {
   status_line FAIL "iOS project not found at $IOS_DIR"
   exit 1
 }
@@ -156,14 +156,14 @@ status_line RUN "building iOS tests for $IOS_DESTINATION"
 cd "$IOS_DIR"
 if [[ -n "$IOS_DEVELOPMENT_TEAM" ]]; then
   xcodebuild build-for-testing -quiet \
-    -project TermiRustMobile.xcodeproj \
-    -scheme TermiRustMobile \
+    -project MultiplexMobile.xcodeproj \
+    -scheme MultiplexMobile \
     -destination "$IOS_DESTINATION" \
     "${XCODEBUILD_SIGNING_ARGS[@]}"
 else
   xcodebuild build-for-testing -quiet \
-    -project TermiRustMobile.xcodeproj \
-    -scheme TermiRustMobile \
+    -project MultiplexMobile.xcodeproj \
+    -scheme MultiplexMobile \
     -destination "$IOS_DESTINATION"
 fi
 restore_resource
@@ -171,17 +171,17 @@ restore_resource
 status_line RUN "pairing iOS with the real Rust Host and exercising terminal lifecycle"
 if [[ -n "$IOS_DEVELOPMENT_TEAM" ]]; then
   xcodebuild test-without-building -quiet \
-    -project TermiRustMobile.xcodeproj \
-    -scheme TermiRustMobile \
+    -project MultiplexMobile.xcodeproj \
+    -scheme MultiplexMobile \
     -destination "$IOS_DESTINATION" \
     "${XCODEBUILD_SIGNING_ARGS[@]}" \
-    -only-testing:TermiRustMobileTests/ControllerPairingFleetTests/testLiveRustControllerPairingTerminalLifecycleAndRevocation
+    -only-testing:MultiplexMobileTests/ControllerPairingFleetTests/testLiveRustControllerPairingTerminalLifecycleAndRevocation
 else
   xcodebuild test-without-building -quiet \
-    -project TermiRustMobile.xcodeproj \
-    -scheme TermiRustMobile \
+    -project MultiplexMobile.xcodeproj \
+    -scheme MultiplexMobile \
     -destination "$IOS_DESTINATION" \
-    -only-testing:TermiRustMobileTests/ControllerPairingFleetTests/testLiveRustControllerPairingTerminalLifecycleAndRevocation
+    -only-testing:MultiplexMobileTests/ControllerPairingFleetTests/testLiveRustControllerPairingTerminalLifecycleAndRevocation
 fi
 
 # A missing fixture makes the test skip itself, and a skip is reported as a pass. Ask the

@@ -22,15 +22,15 @@ TARGET_DIR="$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 
 
 # Reuse the workspace's pinned generator; the generated namespace is independent.
 "$TARGET_DIR/uniffi-bindgen" generate \
-  "$TARGET_DIR/libtermirust_replication_bindings.dylib" \
+  "$TARGET_DIR/libmultiplex_replication_bindings.dylib" \
   --language swift --language kotlin --no-format --out-dir "$TEMP_DIR"
 
 swiftc -swift-version 6 -parse-as-library -module-name ReplicationCustodyConformance \
   -I "$TEMP_DIR" \
-  -Xcc "-fmodule-map-file=$TEMP_DIR/TermiRustReplicationSecurityFFI.modulemap" \
-  -L "$TARGET_DIR" -ltermirust_replication_bindings \
-  "$TEMP_DIR/TermiRustReplicationSecurity.swift" \
-  "$ROOT_DIR/mobile/ios/TermiRustMobile/Security/ReplicationKeychainStore.swift" \
+  -Xcc "-fmodule-map-file=$TEMP_DIR/MultiplexReplicationSecurityFFI.modulemap" \
+  -L "$TARGET_DIR" -lmultiplex_replication_bindings \
+  "$TEMP_DIR/MultiplexReplicationSecurity.swift" \
+  "$ROOT_DIR/mobile/ios/MultiplexMobile/Security/ReplicationKeychainStore.swift" \
   "$ROOT_DIR/tests/swift/replication_custody_conformance.swift" \
   -o "$TEMP_DIR/conformance"
 DYLD_LIBRARY_PATH="$TARGET_DIR${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" \
@@ -39,10 +39,10 @@ DYLD_LIBRARY_PATH="$TARGET_DIR${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" \
 if [[ "${1:-}" == --keychain ]]; then
   swiftc -swift-version 6 -parse-as-library -module-name ReplicationKeychainConformance \
     -I "$TEMP_DIR" \
-    -Xcc "-fmodule-map-file=$TEMP_DIR/TermiRustReplicationSecurityFFI.modulemap" \
-    -L "$TARGET_DIR" -ltermirust_replication_bindings \
-    "$TEMP_DIR/TermiRustReplicationSecurity.swift" \
-    "$ROOT_DIR/mobile/ios/TermiRustMobile/Security/ReplicationKeychainStore.swift" \
+    -Xcc "-fmodule-map-file=$TEMP_DIR/MultiplexReplicationSecurityFFI.modulemap" \
+    -L "$TARGET_DIR" -lmultiplex_replication_bindings \
+    "$TEMP_DIR/MultiplexReplicationSecurity.swift" \
+    "$ROOT_DIR/mobile/ios/MultiplexMobile/Security/ReplicationKeychainStore.swift" \
     "$ROOT_DIR/tests/swift/replication_keychain_conformance.swift" \
     -o "$TEMP_DIR/keychain-conformance"
   DYLD_LIBRARY_PATH="$TARGET_DIR${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" \

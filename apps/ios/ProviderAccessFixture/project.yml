@@ -20,16 +20,16 @@ targets:
         LSSupportsOpeningDocumentsInPlace: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.termirust.fixture.documents
+        PRODUCT_BUNDLE_IDENTIFIER: com.multiplex.fixture.documents
   ProviderReader:
     type: application
     platform: iOS
     sources:
       - Reader
-      - ../TermiRustMobile/ReplicationTransport/ReplicationDocumentReader.swift
+      - ../MultiplexMobile/ReplicationTransport/ReplicationDocumentReader.swift
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.termirust.fixture.reader
+        PRODUCT_BUNDLE_IDENTIFIER: com.multiplex.fixture.reader
   ProviderPickerTests:
     type: bundle.ui-testing
     platform: iOS
@@ -38,7 +38,7 @@ targets:
       - target: ProviderReader
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.termirust.fixture.picker-tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.multiplex.fixture.picker-tests
         TEST_TARGET_NAME: ProviderReader
 schemes:
   ProviderReader:

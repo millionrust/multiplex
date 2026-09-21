@@ -20,8 +20,8 @@ done
 
 DIST_DIR="$ROOT_DIR/dist/mobile/ios"
 SIM_DIR="$DIST_DIR/simulator"
-HEADER="$ROOT_DIR/crates/multiplex-mobile-ffi/include/termirust_mobile.h"
-LIB_NAME="libtermirust_mobile_ffi.a"
+HEADER="$ROOT_DIR/crates/multiplex-mobile-ffi/include/multiplex_mobile.h"
+LIB_NAME="libmultiplex_mobile_ffi.a"
 
 rm -rf "$SIM_DIR"
 mkdir -p "$SIM_DIR"
@@ -32,10 +32,10 @@ lipo -create \
   -output "$SIM_DIR/$LIB_NAME"
 
 "$ROOT_DIR/scripts/build/ios-static-xcframework.sh" \
-  TermiRustMobileCrypto \
+  MultiplexMobileCrypto \
   "$ROOT_DIR/target/aarch64-apple-ios/release/$LIB_NAME" \
   "$SIM_DIR/$LIB_NAME" \
   "$(dirname "$HEADER")" \
-  "$DIST_DIR/TermiRustMobileCrypto.xcframework"
+  "$DIST_DIR/MultiplexMobileCrypto.xcframework"
 
-printf 'Built %s\n' "$DIST_DIR/TermiRustMobileCrypto.xcframework"
+printf 'Built %s\n' "$DIST_DIR/MultiplexMobileCrypto.xcframework"

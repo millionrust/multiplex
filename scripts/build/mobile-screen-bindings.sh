@@ -3,9 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CRATE="multiplex-screen-bindings"
-LIB_STEM="termirust_screen_bindings"
-SWIFT_MODULE="TermiRustRemoteScreens"
-KOTLIN_PACKAGE_PATH="com/termirust/screens"
+LIB_STEM="multiplex_screen_bindings"
+SWIFT_MODULE="MultiplexRemoteScreens"
+KOTLIN_PACKAGE_PATH="com/multiplex/screens"
 OUTPUT_DIR="$ROOT_DIR/dist/mobile/screens"
 BUILD_IOS=0
 BUILD_ANDROID=0

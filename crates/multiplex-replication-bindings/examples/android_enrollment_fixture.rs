@@ -7,7 +7,7 @@ use std::{
     io::Read,
     sync::{Arc, Mutex},
 };
-use termirust_replication_bindings::{
+use multiplex_replication_bindings::{
     NativeReplicationSecretBackend, ReplicationSecureStore, ReplicationStorageError,
 };
 use zeroize::Zeroizing;

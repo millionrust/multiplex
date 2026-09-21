@@ -7,13 +7,14 @@ from pathlib import Path
 import platform
 import shutil
 import signal
+import sys
 import tempfile
 from owned_process import run_owned
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "dist/mobile/replication"
 DEST = ROOT / "apps/android/app/src/main/replication"
-STEM = "termirust_replication_bindings"
+STEM = "multiplex_replication_bindings"
 ABIS = {
     "aarch64-linux-android": ("arm64-v8a", "aarch64-linux-android", "AArch64"),
     "armv7-linux-androideabi": ("armeabi-v7a", "armv7a-linux-androideabi", "ARM"),
@@ -46,7 +47,7 @@ def verify(directory):
     for abi, _, _ in ABIS.values():
         if f"jniLibs/{abi}/lib{STEM}.so" not in expected:
             raise RuntimeError("Missing replication ABI")
-    if f"kotlin/com/termirust/replication/security/{STEM}.kt" not in expected:
+    if f"kotlin/com/multiplex/replication/security/{STEM}.kt" not in expected:
         raise RuntimeError("Missing generated Kotlin binding")
 
 
@@ -68,22 +69,50 @@ def promote(source, destination, validator=verify):
             raise
 
 
+PINNED_NDK = "27.0.12077973"
+# The pin is what makes a shipped artifact reproducible. A build that only has to prove the
+# application still compiles does not need it, and a hosted runner does not get to choose its
+# NDK, so it may say so — loudly, and never for anything released.
+UNPINNED = os.environ.get("TERMIRUST_REPLICATION_ARTIFACTS_ALLOW_UNPINNED", "0") != "0"
+
+
+def require_pinned(what, expected, found):
+    if found == expected:
+        return
+    if UNPINNED:
+        print(
+            f"warning: {what} is {found}, not the pinned {expected}. "
+            "These artifacts are not release-reproducible.",
+            file=sys.stderr,
+        )
+        return
+    raise RuntimeError(f"Expected {what} {expected}, found {found}")
+
+
+def locate_ndk(sdk):
+    """The pinned NDK, or the newest installed one when the pin is waived."""
+    pinned = sdk / "ndk" / PINNED_NDK
+    if pinned.is_dir() or not UNPINNED:
+        return pinned
+    installed = sorted(p for p in (sdk / "ndk").glob("*") if p.is_dir())
+    return installed[-1] if installed else pinned
+
+
 def build():
-    if not run("rustc", "--version", capture=True).startswith("rustc 1.97.1 "):
-        raise RuntimeError("Rust 1.97.1 required")
+    require_pinned("rustc", "1.97.1", run("rustc", "--version", capture=True).split()[1])
     sdk = Path(os.environ.get("ANDROID_HOME", Path.home() / "Library/Android/sdk"))
-    ndk = sdk / "ndk/27.0.12077973"
+    ndk = locate_ndk(sdk)
     properties = ndk / "source.properties"
     if not properties.is_file():
         raise RuntimeError("Pinned Android NDK metadata missing")
     revision = dict(line.split("=", 1) for line in properties.read_text().splitlines() if "=" in line)
-    if next((value.strip() for key, value in revision.items() if key.strip() == "Pkg.Revision"), None) != "27.0.12077973":
-        raise RuntimeError("Android NDK revision mismatch")
+    found = next((value.strip() for key, value in revision.items() if key.strip() == "Pkg.Revision"), None)
+    require_pinned("the Android NDK", PINNED_NDK, found)
     host = "darwin-x86_64" if platform.system() == "Darwin" else "linux-x86_64"
     toolchain = ndk / "toolchains/llvm/prebuilt" / host / "bin"
     readelf = str(toolchain / "llvm-readelf")
     if not Path(readelf).is_file():
-        raise RuntimeError("Pinned Android NDK 27.0.12077973 missing")
+        raise RuntimeError(f"Android NDK llvm-readelf missing at {readelf}")
     space()
     run("cargo", "build", "--locked", "-p", "multiplex-replication-bindings", "--lib")
     # The existing pinned generator is shared, without changing Controller outputs.

@@ -81,7 +81,7 @@ create_framework() {
     <key>CFBundleExecutable</key>
     <string>$MODULE_NAME</string>
     <key>CFBundleIdentifier</key>
-    <string>com.termirust.$bundle_suffix</string>
+    <string>com.multiplex.$bundle_suffix</string>
     <key>CFBundleName</key>
     <string>$MODULE_NAME</string>
     <key>CFBundlePackageType</key>

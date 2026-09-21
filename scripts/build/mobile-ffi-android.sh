@@ -83,8 +83,8 @@ for target in "${TARGETS[@]}"; do
   esac
 
   mkdir -p "$DIST_DIR/$abi"
-  cp "$ROOT_DIR/target/$target/release/libtermirust_mobile_ffi.so" "$DIST_DIR/$abi/"
-  verify_elf_alignment "$DIST_DIR/$abi/libtermirust_mobile_ffi.so"
+  cp "$ROOT_DIR/target/$target/release/libmultiplex_mobile_ffi.so" "$DIST_DIR/$abi/"
+  verify_elf_alignment "$DIST_DIR/$abi/libmultiplex_mobile_ffi.so"
 done
 
 printf 'Built Android JNI libraries in %s\n' "$DIST_DIR"

@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <provider
-            android:name="com.termirust.mobile.replication.ReplicationTransferTestProvider"
+            android:name="com.multiplex.mobile.replication.ReplicationTransferTestProvider"
             android:authorities="${applicationId}.replication-transfer-fixture"
             android:exported="true"
             android:permission="android.permission.MANAGE_DOCUMENTS"
@@ -11,7 +11,7 @@
             </intent-filter>
         </provider>
         <service
-            android:name="com.termirust.mobile.replication.ReplicationCustodyTestService"
+            android:name="com.multiplex.mobile.replication.ReplicationCustodyTestService"
             android:exported="false"
             android:process=":replicationCustodyTest" />
     </application>

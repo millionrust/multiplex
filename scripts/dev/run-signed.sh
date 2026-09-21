@@ -20,7 +20,7 @@ if [[ "$(uname -s)" == "Darwin" && "$(basename "$binary")" == "multiplex" && "$b
   fi
   signature=$(codesign -dv "$binary" 2>&1 || true)
   if [[ -n "$identity" && "$signature" == *"Signature=adhoc"* ]]; then
-    if ! codesign --force --sign "$identity" --identifier com.termirust.desktop.dev \
+    if ! codesign --force --sign "$identity" --identifier com.multiplex.desktop.dev \
       "$binary" 2>/dev/null; then
       echo "run-signed: could not sign $binary; the Keychain may ask for access again" >&2
     fi

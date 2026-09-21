@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 # The name the phone apps load, and the one uniffi writes into its bindings. It stays as it
 # was while the crate around it is renamed: what an installed app looks for belongs with the
 # rest of the app-facing identity, in the OS registration step of the rename.
-name = "termirust_replication_bindings"
+name = "multiplex_replication_bindings"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]

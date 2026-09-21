@@ -3,15 +3,15 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARTIFACTS="$ROOT_DIR/dist/mobile/controller"
-GENERATED="$ARTIFACTS/ios/Sources/TermiRustControllerSecurity.swift"
-FRAMEWORKS="$ARTIFACTS/ios/TermiRustControllerSecurity.xcframework/ios-arm64"
-MODULE_MAP="$FRAMEWORKS/TermiRustControllerSecurityFFI.framework/Modules/module.modulemap"
+GENERATED="$ARTIFACTS/ios/Sources/MultiplexControllerSecurity.swift"
+FRAMEWORKS="$ARTIFACTS/ios/MultiplexControllerSecurity.xcframework/ios-arm64"
+MODULE_MAP="$FRAMEWORKS/MultiplexControllerSecurityFFI.framework/Modules/module.modulemap"
 NATIVE="$ARTIFACTS/kotlin-test/darwin-aarch64"
 FIXTURE="$ROOT_DIR/crates/multiplex-controller-security/tests/vectors/controller-v2.json"
 RUNNER="$ROOT_DIR/tests/swift/controller_binding_conformance.swift"
 
 for required_path in "$GENERATED" "$MODULE_MAP" \
-  "$NATIVE/libtermirust_controller_bindings.dylib" "$FIXTURE" "$RUNNER"; do
+  "$NATIVE/libmultiplex_controller_bindings.dylib" "$FIXTURE" "$RUNNER"; do
   [[ -e "$required_path" ]] || {
     printf 'Missing Controller binding input: %s\n' "$required_path" >&2
     exit 1
@@ -23,10 +23,10 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 
 swiftc \
   -parse-as-library \
-  -module-name TermiRustControllerSecurityConformance \
+  -module-name MultiplexControllerSecurityConformance \
   -F "$FRAMEWORKS" \
   -L "$NATIVE" \
-  -ltermirust_controller_bindings \
+  -lmultiplex_controller_bindings \
   "$GENERATED" \
   "$RUNNER" \
   -o "$TEMP_DIR/controller-binding-conformance"

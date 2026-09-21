@@ -56,7 +56,7 @@ enum TerminalColor {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_terminal_create(
+pub extern "C" fn multiplex_mobile_terminal_create(
     columns: u16,
     rows: u16,
     scrollback_rows: usize,
@@ -76,7 +76,7 @@ pub extern "C" fn termirust_mobile_terminal_create(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_terminal_process(
+pub extern "C" fn multiplex_mobile_terminal_process(
     terminal: *mut MultiplexMobileTerminal,
     input_ptr: *const u8,
     input_len: usize,
@@ -93,7 +93,7 @@ pub extern "C" fn termirust_mobile_terminal_process(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_terminal_feed(
+pub extern "C" fn multiplex_mobile_terminal_feed(
     terminal: *mut MultiplexMobileTerminal,
     input_ptr: *const u8,
     input_len: usize,
@@ -115,7 +115,7 @@ pub extern "C" fn termirust_mobile_terminal_feed(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_terminal_resize(
+pub extern "C" fn multiplex_mobile_terminal_resize(
     terminal: *mut MultiplexMobileTerminal,
     columns: u16,
     rows: u16,
@@ -129,14 +129,14 @@ pub extern "C" fn termirust_mobile_terminal_resize(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_terminal_snapshot(
+pub extern "C" fn multiplex_mobile_terminal_snapshot(
     terminal: *mut MultiplexMobileTerminal,
 ) -> MultiplexMobileResult {
     ffi_result(|| snapshot_json(terminal_mut(terminal)?))
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn termirust_mobile_terminal_destroy(terminal: *mut MultiplexMobileTerminal) {
+pub extern "C" fn multiplex_mobile_terminal_destroy(terminal: *mut MultiplexMobileTerminal) {
     if terminal.is_null() {
         return;
     }
@@ -418,29 +418,29 @@ mod tests {
 
     #[test]
     fn ffi_rejects_invalid_dimensions_and_oversized_frames() {
-        assert!(termirust_mobile_terminal_create(0, 24, 10).is_null());
-        let terminal = termirust_mobile_terminal_create(80, 24, 10);
+        assert!(multiplex_mobile_terminal_create(0, 24, 10).is_null());
+        let terminal = multiplex_mobile_terminal_create(80, 24, 10);
         assert!(!terminal.is_null());
         let bytes = vec![b'x'; MAX_PROCESS_BYTES + 1];
-        let result = termirust_mobile_terminal_process(terminal, bytes.as_ptr(), bytes.len());
+        let result = multiplex_mobile_terminal_process(terminal, bytes.as_ptr(), bytes.len());
         assert!(!result.ok);
-        crate::termirust_mobile_free_result(result);
-        termirust_mobile_terminal_destroy(terminal);
+        crate::multiplex_mobile_free_result(result);
+        multiplex_mobile_terminal_destroy(terminal);
     }
 
     #[test]
     fn feed_updates_state_without_serializing_a_snapshot() {
-        let terminal = termirust_mobile_terminal_create(12, 4, 8);
+        let terminal = multiplex_mobile_terminal_create(12, 4, 8);
         assert!(!terminal.is_null());
         let bytes = b"one\r\ntwo\x1b[1;1Htop";
-        assert!(termirust_mobile_terminal_feed(
+        assert!(multiplex_mobile_terminal_feed(
             terminal,
             bytes.as_ptr(),
             bytes.len()
         ));
         let value = unsafe { &*terminal };
         assert_eq!(snapshot(value).lines[0], "top");
-        termirust_mobile_terminal_destroy(terminal);
+        multiplex_mobile_terminal_destroy(terminal);
     }
 
     #[test]

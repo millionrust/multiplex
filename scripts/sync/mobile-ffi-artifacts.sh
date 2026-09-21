@@ -39,8 +39,8 @@ sync_ios() {
 
   "$ROOT_DIR/scripts/build/mobile-ffi-ios.sh"
 
-  local source="$ROOT_DIR/dist/mobile/ios/TermiRustMobileCrypto.xcframework"
-  local destination="$IOS_DIR/Frameworks/TermiRustMobileCrypto.xcframework"
+  local source="$ROOT_DIR/dist/mobile/ios/MultiplexMobileCrypto.xcframework"
+  local destination="$IOS_DIR/Frameworks/MultiplexMobileCrypto.xcframework"
 
   if [[ ! -d "$source" ]]; then
     echo "Expected iOS XCFramework was not built at $source" >&2
@@ -74,8 +74,8 @@ sync_android() {
     local abi
     abi="$(basename "$(dirname "$library")")"
     mkdir -p "$destination/$abi"
-    cp "$library" "$destination/$abi/libtermirust_mobile_ffi.so"
-  done < <(find "$source" -mindepth 2 -maxdepth 2 -name libtermirust_mobile_ffi.so -type f | sort)
+    cp "$library" "$destination/$abi/libmultiplex_mobile_ffi.so"
+  done < <(find "$source" -mindepth 2 -maxdepth 2 -name libmultiplex_mobile_ffi.so -type f | sort)
   echo "Synced Android JNI libraries to $destination"
 }
 

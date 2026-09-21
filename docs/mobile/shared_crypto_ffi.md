@@ -13,7 +13,7 @@ crates/termirust-mobile-ffi
 Public C header:
 
 ```text
-crates/termirust-mobile-ffi/include/termirust_mobile.h
+crates/termirust-mobile-ffi/include/multiplex_mobile.h
 ```
 
 Primary function:

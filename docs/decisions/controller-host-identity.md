@@ -11,7 +11,7 @@ Controller pairing requires one stable desktop identity and a durable authority 
 
 ## Decision
 
-The Host static X25519 private key exists only in the operating-system credential store under the `com.termirust.controller.identity` service. Versioned `controller-devices.json` metadata contains only the public key and fingerprint, identity generation, opaque secret reference, bounded pairing offers, public device records, capabilities, and revocation epochs. Writes use the shared atomic writer, compare-and-swap revisions, a process lock, private permissions, size limits, and symlink rejection.
+The Host static X25519 private key exists only in the operating-system credential store under the `com.multiplex.controller.identity` service. Versioned `controller-devices.json` metadata contains only the public key and fingerprint, identity generation, opaque secret reference, bounded pairing offers, public device records, capabilities, and revocation epochs. Writes use the shared atomic writer, compare-and-swap revisions, a process lock, private permissions, size limits, and symlink rejection.
 
 Startup loads the recorded secret and derives its public key again. Missing, locked, denied, invalid, or mismatched private material disables authority and never creates a replacement around existing metadata. Explicit reset first persists `ResetRequired`, advances identity and revocation generations, consumes offers, and revokes devices. Only then may it delete the old credential and commit a new identity. An interrupted reset remains disabled instead of accepting either identity ambiguously.
 

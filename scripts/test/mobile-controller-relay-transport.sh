@@ -86,11 +86,11 @@ xcrun simctl spawn "$TEST_SIMULATOR_ID" launchctl setenv \
 cd "$ROOT_DIR/apps/ios"
 xcodegen generate --spec project.yml >/dev/null
 if ! xcodebuild \
-    -project TermiRustMobile.xcodeproj \
-    -scheme TermiRustMobile \
+    -project MultiplexMobile.xcodeproj \
+    -scheme MultiplexMobile \
     -destination "platform=iOS Simulator,id=$TEST_SIMULATOR_ID" \
     -derivedDataPath "$FIXTURE/derived" \
-    -only-testing:TermiRustMobileTests/AppleRelayControllerTransportLiveTests \
+    -only-testing:MultiplexMobileTests/AppleRelayControllerTransportLiveTests \
     test CODE_SIGNING_ALLOWED=NO \
     -test-timeouts-enabled YES \
     -default-test-execution-time-allowance 60 >"$FIXTURE/xcode.log" 2>&1; then

@@ -26,23 +26,23 @@ done
 cd "$ROOT_DIR"
 
 command -v xcodegen >/dev/null || { printf 'xcodegen is required.\n' >&2; exit 1; }
-[[ -d Frameworks/TermiRustMobileCrypto.xcframework ]] || {
+[[ -d Frameworks/MultiplexMobileCrypto.xcframework ]] || {
   printf 'Direct SSH crypto XCFramework is missing.\n' >&2
   exit 1
 }
-[[ -d Frameworks/TermiRustControllerSecurity.xcframework ]] || {
+[[ -d Frameworks/MultiplexControllerSecurity.xcframework ]] || {
   printf 'Controller security XCFramework is missing.\n' >&2
   exit 1
 }
 
 required_sources=(
-  TermiRustMobile/SSH/MobileSSHSession.swift
-  TermiRustMobile/SSH/TmuxBootstrap.swift
-  TermiRustMobile/ViewModels/HostListViewModel.swift
-  TermiRustMobile/Controller/AppleControllerRouteCoordinator.swift
-  TermiRustMobile/Models/ControllerRemoteRoute.swift
-  TermiRustMobile/Views/ContentView.swift
-  TermiRustMobile/Views/ControllerRootView.swift
+  MultiplexMobile/SSH/MobileSSHSession.swift
+  MultiplexMobile/SSH/TmuxBootstrap.swift
+  MultiplexMobile/ViewModels/HostListViewModel.swift
+  MultiplexMobile/Controller/AppleControllerRouteCoordinator.swift
+  MultiplexMobile/Models/ControllerRemoteRoute.swift
+  MultiplexMobile/Views/ContentView.swift
+  MultiplexMobile/Views/ControllerRootView.swift
 )
 for path in "${required_sources[@]}"; do
   [[ -f "$path" ]] || { printf 'Unified route source is missing: %s\n' "$path" >&2; exit 1; }
@@ -52,47 +52,47 @@ grep -Eq '^[[:space:]]+UNIFIED_MOBILE_ROUTES:[[:space:]]+1$' project.yml || {
   printf 'The product target must enable unified mobile routes.\n' >&2
   exit 1
 }
-grep -Eq 'ContentView\(viewModel: connectionViewModel\)' TermiRustMobile/App/TermiRustMobileApp.swift || {
+grep -Eq 'ContentView\(viewModel: connectionViewModel\)' MultiplexMobile/App/MultiplexMobileApp.swift || {
   printf 'Unified navigation does not expose saved Connections.\n' >&2
   exit 1
 }
-grep -Eq 'ControllerRootView\(viewModel: controllerViewModel\)' TermiRustMobile/App/TermiRustMobileApp.swift || {
+grep -Eq 'ControllerRootView\(viewModel: controllerViewModel\)' MultiplexMobile/App/MultiplexMobileApp.swift || {
   printf 'Unified navigation does not expose paired Devices.\n' >&2
   exit 1
 }
-grep -Eq 'TabView\(selection: \$destination\)' TermiRustMobile/App/TermiRustMobileApp.swift || {
+grep -Eq 'TabView\(selection: \$destination\)' MultiplexMobile/App/MultiplexMobileApp.swift || {
   printf 'Unified navigation is not bound to the canonical root destination.\n' >&2
   exit 1
 }
-grep -q 'Section("Connection Route")' TermiRustMobile/Views/ControllerRootView.swift || {
+grep -q 'Section("Connection Route")' MultiplexMobile/Views/ControllerRootView.swift || {
   printf 'Devices does not expose explicit Controller route selection.\n' >&2
   exit 1
 }
 
 xcodegen generate --spec project.yml >/dev/null
-project_file=TermiRustMobile.xcodeproj/project.pbxproj
-for marker in MobileSSHSession TmuxBootstrap HostListViewModel ControllerRootView TermiRustMobileCrypto TermiRustControllerSecurity NIOSSH; do
+project_file=MultiplexMobile.xcodeproj/project.pbxproj
+for marker in MobileSSHSession TmuxBootstrap HostListViewModel ControllerRootView MultiplexMobileCrypto MultiplexControllerSecurity NIOSSH; do
   grep -q "$marker" "$project_file" || {
     printf 'Generated unified target is missing %s.\n' "$marker" >&2
     exit 1
   }
 done
 
-TEMP_MODULE="$(mktemp -d "${TMPDIR:-/tmp}/termirust-ios-unified.XXXXXX")"
+TEMP_MODULE="$(mktemp -d "${TMPDIR:-/tmp}/multiplex-ios-unified.XXXXXX")"
 trap 'find "$TEMP_MODULE" -depth -delete 2>/dev/null || true' EXIT
 
 xcrun xcstringstool compile \
-  TermiRustMobile/Localizable.xcstrings \
+  MultiplexMobile/Localizable.xcstrings \
   --output-directory "$TEMP_MODULE/localization" \
   --dry-run >/dev/null
 
-xcrun swiftc -frontend -parse $(find TermiRustMobile TermiRustMobileTests -name '*.swift' -print)
+xcrun swiftc -frontend -parse $(find MultiplexMobile MultiplexMobileTests -name '*.swift' -print)
 
 BUILD_LOG="$TEMP_MODULE/xcodebuild.log"
 set +e
 xcodebuild build \
-  -project TermiRustMobile.xcodeproj \
-  -scheme TermiRustMobile \
+  -project MultiplexMobile.xcodeproj \
+  -scheme MultiplexMobile \
   -configuration "$CONFIGURATION" \
   -destination 'generic/platform=iOS' \
   CODE_SIGNING_ALLOWED=NO >"$BUILD_LOG" 2>&1
@@ -123,13 +123,13 @@ if [[ -z "$IOS_DESTINATION" ]]; then
 fi
 if [[ -n "$IOS_DESTINATION" ]]; then
   xcodebuild test -quiet \
-    -project TermiRustMobile.xcodeproj \
-    -scheme TermiRustMobile \
+    -project MultiplexMobile.xcodeproj \
+    -scheme MultiplexMobile \
     -configuration "$CONFIGURATION" \
     -destination "$IOS_DESTINATION" \
-    -only-testing:TermiRustMobileTests/UnifiedRouteLifecycleTests \
-    -only-testing:TermiRustMobileTests/AppleControllerRouteTests \
-    -only-testing:TermiRustMobileTests/AppleControllerRouteViewModelTests
+    -only-testing:MultiplexMobileTests/UnifiedRouteLifecycleTests \
+    -only-testing:MultiplexMobileTests/AppleControllerRouteTests \
+    -only-testing:MultiplexMobileTests/AppleControllerRouteViewModelTests
   printf 'Unified production lifecycle tests passed on %s.\n' "$IOS_DESTINATION"
 elif [[ "$REQUIRE_RUNTIME" == "1" ]]; then
   printf 'No eligible iOS destination is installed; runtime verification is required.\n' >&2

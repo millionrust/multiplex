@@ -1,11 +1,11 @@
 [bindings.swift]
-module_name = "TermiRustRemoteScreens"
-ffi_module_name = "TermiRustRemoteScreensFFI"
+module_name = "MultiplexRemoteScreens"
+ffi_module_name = "MultiplexRemoteScreensFFI"
 generate_module_map = true
 
 [bindings.kotlin]
-package_name = "com.termirust.screens"
-cdylib_name = "termirust_screen_bindings"
+package_name = "com.multiplex.screens"
+cdylib_name = "multiplex_screen_bindings"
 generate_immutable_records = true
 android = true
 kotlin_target_version = "2.1.0"

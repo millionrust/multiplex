@@ -46,14 +46,14 @@ ANDROID_HOME=${ANDROID_HOME:-"$HOME/Library/Android/sdk"}
 export ANDROID_HOME
 (cd apps/android && ./gradlew \
     :app:testDebugUnitTest \
-    --tests com.termirust.mobile.controller.AndroidSSHControllerTransportLiveTest \
+    --tests com.multiplex.mobile.controller.AndroidSSHControllerTransportLiveTest \
     --no-daemon)
 
 (cd apps/ios && xcodegen generate >/dev/null && xcodebuild \
-    -project TermiRustMobile.xcodeproj \
-    -scheme TermiRustMobile \
+    -project MultiplexMobile.xcodeproj \
+    -scheme MultiplexMobile \
     -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
-    -only-testing:TermiRustMobileTests/AppleSSHControllerTransportLiveTests \
+    -only-testing:MultiplexMobileTests/AppleSSHControllerTransportLiveTests \
     test CODE_SIGNING_ALLOWED=NO -quiet)
 
 printf '%s\n' 'Native Android and iOS SSH Controller transports passed.'

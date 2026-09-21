@@ -1,4 +1,4 @@
-module TermiRustMobileCrypto {
-  header "termirust_mobile.h"
+module MultiplexMobileCrypto {
+  header "multiplex_mobile.h"
   export *
 }

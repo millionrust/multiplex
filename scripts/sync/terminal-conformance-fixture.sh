@@ -6,17 +6,17 @@ SWIFT_ROOT="$ROOT/apps/ios"
 KOTLIN_ROOT="$ROOT/apps/android"
 
 FILES="
-tests/fixtures/terminal/terminal-conformance-v1.json|TermiRustMobileTests/Fixtures/terminal-conformance-v1.json|app/src/test/resources/terminal-conformance-v1.json
-tests/fixtures/terminal/terminal-conformance-v2.json|TermiRustMobileTests/Fixtures/terminal-conformance-v2.json|app/src/test/resources/terminal-conformance-v2.json
-tests/fixtures/terminal/terminal-interaction-v1.json|TermiRustMobileTests/Fixtures/terminal-interaction-v1.json|app/src/test/resources/terminal-interaction-v1.json
-tests/fixtures/terminal/terminal-interactive-v1.json|TermiRustMobileTests/Fixtures/terminal-interactive-v1.json|app/src/androidTest/assets/terminal-interactive-v1.json
-tests/fixtures/terminal/terminal-acceptance-v1.json|TermiRustMobileTests/Fixtures/terminal-acceptance-v1.json|app/src/test/resources/terminal-acceptance-v1.json
-tests/fixtures/mobile/mobile-route-contract-v1.json|TermiRustMobileTests/Fixtures/mobile-route-contract-v1.json|app/src/test/resources/mobile-route-contract-v1.json
-tests/fixtures/mobile/mobile-cross-route-acceptance-v1.json|TermiRustMobileTests/Fixtures/mobile-cross-route-acceptance-v1.json|app/src/test/resources/mobile-cross-route-acceptance-v1.json
-tests/fixtures/controller-routes/route-selection-v1.json|TermiRustMobileTests/Fixtures/route-selection-v1.json|app/src/test/resources/route-selection-v1.json
-tests/fixtures/controller-routes/remote-route-acceptance-v1.json|TermiRustMobileTests/Fixtures/remote-route-acceptance-v1.json|app/src/test/resources/remote-route-acceptance-v1.json
-tests/fixtures/terminal/generated/GeneratedTerminalCellWidth.swift|TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift|-
-tests/fixtures/terminal/generated/GeneratedTerminalCellWidth.kt|-|app/src/main/java/com/termirust/mobile/controller/GeneratedTerminalCellWidth.kt
+tests/fixtures/terminal/terminal-conformance-v1.json|MultiplexMobileTests/Fixtures/terminal-conformance-v1.json|app/src/test/resources/terminal-conformance-v1.json
+tests/fixtures/terminal/terminal-conformance-v2.json|MultiplexMobileTests/Fixtures/terminal-conformance-v2.json|app/src/test/resources/terminal-conformance-v2.json
+tests/fixtures/terminal/terminal-interaction-v1.json|MultiplexMobileTests/Fixtures/terminal-interaction-v1.json|app/src/test/resources/terminal-interaction-v1.json
+tests/fixtures/terminal/terminal-interactive-v1.json|MultiplexMobileTests/Fixtures/terminal-interactive-v1.json|app/src/androidTest/assets/terminal-interactive-v1.json
+tests/fixtures/terminal/terminal-acceptance-v1.json|MultiplexMobileTests/Fixtures/terminal-acceptance-v1.json|app/src/test/resources/terminal-acceptance-v1.json
+tests/fixtures/mobile/mobile-route-contract-v1.json|MultiplexMobileTests/Fixtures/mobile-route-contract-v1.json|app/src/test/resources/mobile-route-contract-v1.json
+tests/fixtures/mobile/mobile-cross-route-acceptance-v1.json|MultiplexMobileTests/Fixtures/mobile-cross-route-acceptance-v1.json|app/src/test/resources/mobile-cross-route-acceptance-v1.json
+tests/fixtures/controller-routes/route-selection-v1.json|MultiplexMobileTests/Fixtures/route-selection-v1.json|app/src/test/resources/route-selection-v1.json
+tests/fixtures/controller-routes/remote-route-acceptance-v1.json|MultiplexMobileTests/Fixtures/remote-route-acceptance-v1.json|app/src/test/resources/remote-route-acceptance-v1.json
+tests/fixtures/terminal/generated/GeneratedTerminalCellWidth.swift|MultiplexMobile/Terminal/GeneratedTerminalCellWidth.swift|-
+tests/fixtures/terminal/generated/GeneratedTerminalCellWidth.kt|-|app/src/main/java/com/multiplex/mobile/controller/GeneratedTerminalCellWidth.kt
 "
 
 case "${1:-}" in

@@ -23,14 +23,14 @@ require_pattern() {
 }
 
 for path in \
-  app/src/main/java/com/termirust/mobile/MainActivity.kt \
-  app/src/main/java/com/termirust/mobile/ui/UnifiedMobileApp.kt \
-  app/src/main/java/com/termirust/mobile/ssh/DirectSshSessionClient.kt \
-  app/src/main/java/com/termirust/mobile/controller/ControllerApp.kt \
-  app/src/main/java/com/termirust/mobile/controller/ControllerRemoteRoute.kt \
-  app/src/main/java/com/termirust/mobile/controller/AndroidControllerRouteCoordinator.kt \
-  app/src/main/java/com/termirust/mobile/controller/AndroidControllerRouteConnections.kt \
-  app/src/main/java/com/termirust/mobile/controller/ControllerRemoteRouteConfiguration.kt; do
+  app/src/main/java/com/multiplex/mobile/MainActivity.kt \
+  app/src/main/java/com/multiplex/mobile/ui/UnifiedMobileApp.kt \
+  app/src/main/java/com/multiplex/mobile/ssh/DirectSshSessionClient.kt \
+  app/src/main/java/com/multiplex/mobile/controller/ControllerApp.kt \
+  app/src/main/java/com/multiplex/mobile/controller/ControllerRemoteRoute.kt \
+  app/src/main/java/com/multiplex/mobile/controller/AndroidControllerRouteCoordinator.kt \
+  app/src/main/java/com/multiplex/mobile/controller/AndroidControllerRouteConnections.kt \
+  app/src/main/java/com/multiplex/mobile/controller/ControllerRemoteRouteConfiguration.kt; do
   [ -f "$path" ] || { echo "unified route source is missing: $path" >&2; exit 1; }
 done
 
@@ -44,38 +44,38 @@ if [ -d app/src/controller ] || [ -d app/src/legacyDirectSsh ] || \
   exit 1
 fi
 require_pattern 'MobileRootDestination.CONNECTIONS' \
-  app/src/main/java/com/termirust/mobile/ui/UnifiedMobileApp.kt "Connections destination"
+  app/src/main/java/com/multiplex/mobile/ui/UnifiedMobileApp.kt "Connections destination"
 require_pattern 'MobileRootDestination.DEVICES' \
-  app/src/main/java/com/termirust/mobile/ui/UnifiedMobileApp.kt "Devices destination"
-require_pattern 'Direct SSH' app/src/main/java/com/termirust/mobile/ui/TermirustApp.kt \
+  app/src/main/java/com/multiplex/mobile/ui/UnifiedMobileApp.kt "Devices destination"
+require_pattern 'Direct SSH' app/src/main/java/com/multiplex/mobile/ui/MultiplexApp.kt \
   "direct SSH route"
 require_pattern 'DEVICE_SESSION("device_session")' \
-  app/src/main/java/com/termirust/mobile/controller/MobileCrossRouteAcceptance.kt \
+  app/src/main/java/com/multiplex/mobile/controller/MobileCrossRouteAcceptance.kt \
   "Device Session acceptance route"
 require_pattern '<string name="previous_sessions">' app/src/main/res/values/strings.xml \
   "Sessions UI resource"
 require_pattern 'implementation("com.hierynomus:sshj:0.39.0")' app/build.gradle.kts \
   "SSHJ runtime dependency"
 require_pattern 'termirust-mobile-secrets' \
-  app/src/main/java/com/termirust/mobile/security/KeystoreSecretStore.kt \
+  app/src/main/java/com/multiplex/mobile/security/KeystoreSecretStore.kt \
   "mobile secret-store namespace"
 require_pattern 'termirust-controller-device-v1' \
-  app/src/main/java/com/termirust/mobile/controller/ControllerSecureBlobStore.kt \
+  app/src/main/java/com/multiplex/mobile/controller/ControllerSecureBlobStore.kt \
   "Controller secure-blob namespace"
 require_pattern 'Routes never switch automatically' app/src/main/res/values/strings.xml \
   "explicit route-switching guidance"
 require_pattern 'ControllerRouteCredentialStore' \
-  app/src/main/java/com/termirust/mobile/controller/ControllerRemoteRouteConfiguration.kt \
+  app/src/main/java/com/multiplex/mobile/controller/ControllerRemoteRouteConfiguration.kt \
   "Controller route credential store"
 require_pattern 'routeConnections.disconnect' \
-  app/src/main/java/com/termirust/mobile/controller/ControllerViewModel.kt \
+  app/src/main/java/com/multiplex/mobile/controller/ControllerViewModel.kt \
   "Controller route disconnect lifecycle"
 
 for abi in arm64-v8a armeabi-v7a x86 x86_64; do
-  [ -f "app/src/main/jniLibs/$abi/libtermirust_controller_bindings.so" ] || {
+  [ -f "app/src/main/jniLibs/$abi/libmultiplex_controller_bindings.so" ] || {
     echo "Controller JNI library missing for $abi" >&2; exit 1;
   }
-  [ -f "app/src/main/jniLibs/$abi/libtermirust_mobile_ffi.so" ] || {
+  [ -f "app/src/main/jniLibs/$abi/libmultiplex_mobile_ffi.so" ] || {
     echo "direct SSH crypto JNI library missing for $abi" >&2; exit 1;
   }
 done
@@ -89,7 +89,7 @@ if [ "$STRUCTURAL" -eq 0 ]; then
   ./gradlew testDebugUnitTest assembleDebug --console=plain
   APK=app/build/outputs/apk/debug/app-debug.apk
   [ -f "$APK" ] || { echo "unified debug APK was not produced" >&2; exit 1; }
-  for library in libtermirust_controller_bindings.so libtermirust_mobile_ffi.so; do
+  for library in libmultiplex_controller_bindings.so libmultiplex_mobile_ffi.so; do
     COUNT=$(unzip -Z1 "$APK" | grep -c "/$library$")
     [ "$COUNT" -eq 4 ] || {
       echo "$library must be packaged once for each supported ABI" >&2

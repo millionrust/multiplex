@@ -6,7 +6,7 @@ IOS_DIR="${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}"
 ANDROID_DIR="${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/apps/android}"
 MODE="${1:---check}"
 SOURCE="$ROOT_DIR/tests/fixtures/universal-session-v1/golden.json"
-IOS_FIXTURE="$IOS_DIR/TermiRustMobileTests/Fixtures/universal-session-v1.json"
+IOS_FIXTURE="$IOS_DIR/MultiplexMobileTests/Fixtures/universal-session-v1.json"
 ANDROID_FIXTURE="$ANDROID_DIR/app/src/test/resources/universal-session-v1.json"
 
 if [[ "$MODE" != "--check" && "$MODE" != "--write" ]]; then

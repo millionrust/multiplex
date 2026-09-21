@@ -45,8 +45,8 @@ def main():
                 return
 
     project_dir = IOS / "ProviderAccessFixture" if args.provider_picker else IOS
-    project = "ProviderAccessFixture.xcodeproj" if args.provider_picker else "TermiRustMobile.xcodeproj"
-    scheme = "ProviderReader" if args.provider_picker else "TermiRustMobile"
+    project = "ProviderAccessFixture.xcodeproj" if args.provider_picker else "MultiplexMobile.xcodeproj"
+    scheme = "ProviderReader" if args.provider_picker else "MultiplexMobile"
     expected = 1 if args.provider_picker else 10
     run("xcodegen", "generate", "--spec", "project.yml", cwd=project_dir)
     label = "TermiRust C06 disposable" if args.provider_picker else "TermiRust C05 disposable"
@@ -71,8 +71,8 @@ def main():
             result = str(Path(temporary) / "enrollment.xcresult")
             print("RUN: C06 external picker" if args.provider_picker else "RUN: production app, Keychain, enrollment UI and restart", flush=True)
             suites = ["ProviderPickerTests"] if args.provider_picker else [
-                "TermiRustMobileTests/EnrollmentWorkflowTests", "TermiRustMobileTests/ReplicationCustodyTests",
-                "TermiRustMobileUITests/EnrollmentUITests"]
+                "MultiplexMobileTests/EnrollmentWorkflowTests", "MultiplexMobileTests/ReplicationCustodyTests",
+                "MultiplexMobileUITests/EnrollmentUITests"]
             execution = run(*build, "test",
                 "-parallel-testing-enabled", "NO", "-maximum-concurrent-test-simulator-destinations", "1",
                 *[f"-only-testing:{suite}" for suite in suites],

@@ -1,6 +1,6 @@
 # C06 Picker Access Fixture
 
-Test-only XcodeGen project; not a dependency of TermiRustMobile or its release scheme.
+Test-only XcodeGen project; not a dependency of MultiplexMobile or its release scheme.
 
 - C06Documents exposes only a synthetic JSON document through Apple's local Files
   provider using UIFileSharingEnabled and LSSupportsOpeningDocumentsInPlace.

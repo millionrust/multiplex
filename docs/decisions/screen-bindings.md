@@ -21,8 +21,8 @@ Everything pinned for the Controller bindings applies unchanged: UniFFI exactly 
 exactly `1.97.1`, the same iOS and Android targets, API 26, 16 KiB ELF LOAD alignment, and JNA for
 Kotlin. UniFFI is MPL-2.0; this wrapper stays MIT OR Apache-2.0.
 
-- Swift module: `TermiRustRemoteScreens`; C module: `TermiRustRemoteScreensFFI`
-- Kotlin package: `com.termirust.screens`; library: `termirust_screen_bindings`
+- Swift module: `MultiplexRemoteScreens`; C module: `MultiplexRemoteScreensFFI`
+- Kotlin package: `com.multiplex.screens`; library: `multiplex_screen_bindings`
 
 ## Boundary contract
 

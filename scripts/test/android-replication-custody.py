@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
 from owned_process import run_owned  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
-APP = "com.termirust.mobile"
+APP = "com.multiplex.mobile"
 TEST_APP = APP + ".test/androidx.test.runner.AndroidJUnitRunner"
 TEST_CLASS = APP + ".replication.ReplicationCustodyInstrumentedTest"
 RESTART = APP + ".replication.ReplicationRestartTest"
@@ -141,9 +141,9 @@ def main():
             tests = ROOT / "apps/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
             with zipfile.ZipFile(apk) as archive:
                 for abi in ("arm64-v8a", "armeabi-v7a", "x86", "x86_64"):
-                    name = f"lib/{abi}/libtermirust_replication_bindings.so"
+                    name = f"lib/{abi}/libmultiplex_replication_bindings.so"
                     actual = hashlib.sha256(archive.read(name)).hexdigest()
-                    source = ROOT / "apps/android/app/src/main/replication/jniLibs" / abi / "libtermirust_replication_bindings.so"
+                    source = ROOT / "apps/android/app/src/main/replication/jniLibs" / abi / "libmultiplex_replication_bindings.so"
                     if actual != hashlib.sha256(source.read_bytes()).hexdigest():
                         raise RuntimeError("APK native custody checksum differs from verified artifact")
             command(adb, "-s", serial, "install", "-r", str(apk))

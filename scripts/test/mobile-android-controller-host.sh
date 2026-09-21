@@ -231,8 +231,8 @@ INSTRUMENTATION_REPORT="$(mktemp /tmp/tri.XXXXXX.instrumentation.log)"
 status_line RUN "pairing Android with the real Rust Host and exercising terminal lifecycle"
 set +e
 "$ADB" -s "$SERIAL" shell am instrument -w -r \
-  -e class com.termirust.mobile.controller.LiveRustControllerGoldenTest \
-  com.termirust.mobile.test/androidx.test.runner.AndroidJUnitRunner | tee "$INSTRUMENTATION_REPORT"
+  -e class com.multiplex.mobile.controller.LiveRustControllerGoldenTest \
+  com.multiplex.mobile.test/androidx.test.runner.AndroidJUnitRunner | tee "$INSTRUMENTATION_REPORT"
 instrument_status=${PIPESTATUS[0]}
 set -e
 if [[ $instrument_status -ne 0 ]] || ! grep -q 'OK (1 test)' "$INSTRUMENTATION_REPORT"; then

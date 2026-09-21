@@ -7,7 +7,7 @@ IOS_DIR="${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}"
 ANDROID_DIR="${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/apps/android}"
 MODE="${1:---check}"
 PLATFORM="${2:---all}"
-LIB="libtermirust_controller_bindings.so"
+LIB="libmultiplex_controller_bindings.so"
 
 if [[ "$MODE" != "--check" && "$MODE" != "--write" ]] \
   || [[ "$PLATFORM" != "--all" && "$PLATFORM" != "--ios" && "$PLATFORM" != "--android" ]]; then
@@ -24,10 +24,10 @@ DO_ANDROID=0
   exit 1
 }
 
-IOS_FRAMEWORK="$IOS_DIR/Frameworks/TermiRustControllerSecurity.xcframework"
-IOS_SWIFT="$IOS_DIR/TermiRustMobile/Generated/TermiRustControllerSecurity.swift"
-IOS_FIXTURE="$IOS_DIR/TermiRustMobileTests/Fixtures/controller-v2.json"
-ANDROID_KOTLIN="$ANDROID_DIR/app/src/main/java/com/termirust/controller/security/termirust_controller_bindings.kt"
+IOS_FRAMEWORK="$IOS_DIR/Frameworks/MultiplexControllerSecurity.xcframework"
+IOS_SWIFT="$IOS_DIR/MultiplexMobile/Generated/MultiplexControllerSecurity.swift"
+IOS_FIXTURE="$IOS_DIR/MultiplexMobileTests/Fixtures/controller-v2.json"
+ANDROID_KOTLIN="$ANDROID_DIR/app/src/main/java/com/multiplex/controller/security/multiplex_controller_bindings.kt"
 ANDROID_FIXTURE="$ANDROID_DIR/app/src/test/resources/controller-v2.json"
 ANDROID_TEST_NATIVE="$ANDROID_DIR/app/src/test/native"
 FIXTURE="$ROOT_DIR/crates/multiplex-controller-security/tests/vectors/controller-v2.json"
@@ -36,13 +36,13 @@ if [[ "$MODE" == "--write" ]]; then
   if [[ "$DO_IOS" -eq 1 ]]; then
     rm -rf "$IOS_FRAMEWORK"
     mkdir -p "$(dirname "$IOS_FRAMEWORK")" "$(dirname "$IOS_SWIFT")" "$(dirname "$IOS_FIXTURE")"
-    cp -R "$SOURCE/ios/TermiRustControllerSecurity.xcframework" "$IOS_FRAMEWORK"
-    cp "$SOURCE/ios/Sources/TermiRustControllerSecurity.swift" "$IOS_SWIFT"
+    cp -R "$SOURCE/ios/MultiplexControllerSecurity.xcframework" "$IOS_FRAMEWORK"
+    cp "$SOURCE/ios/Sources/MultiplexControllerSecurity.swift" "$IOS_SWIFT"
     cp "$FIXTURE" "$IOS_FIXTURE"
   fi
   if [[ "$DO_ANDROID" -eq 1 ]]; then
     mkdir -p "$(dirname "$ANDROID_KOTLIN")" "$(dirname "$ANDROID_FIXTURE")"
-    cp "$SOURCE/android/kotlin/com/termirust/controller/security/termirust_controller_bindings.kt" "$ANDROID_KOTLIN"
+    cp "$SOURCE/android/kotlin/com/multiplex/controller/security/multiplex_controller_bindings.kt" "$ANDROID_KOTLIN"
     cp "$FIXTURE" "$ANDROID_FIXTURE"
     rm -rf "$ANDROID_TEST_NATIVE"
     mkdir -p "$ANDROID_TEST_NATIVE"
@@ -57,12 +57,12 @@ if [[ "$MODE" == "--write" ]]; then
 fi
 
 if [[ "$DO_IOS" -eq 1 ]]; then
-  diff -qr "$SOURCE/ios/TermiRustControllerSecurity.xcframework" "$IOS_FRAMEWORK"
-  cmp "$SOURCE/ios/Sources/TermiRustControllerSecurity.swift" "$IOS_SWIFT"
+  diff -qr "$SOURCE/ios/MultiplexControllerSecurity.xcframework" "$IOS_FRAMEWORK"
+  cmp "$SOURCE/ios/Sources/MultiplexControllerSecurity.swift" "$IOS_SWIFT"
   cmp "$FIXTURE" "$IOS_FIXTURE"
 fi
 if [[ "$DO_ANDROID" -eq 1 ]]; then
-  cmp "$SOURCE/android/kotlin/com/termirust/controller/security/termirust_controller_bindings.kt" "$ANDROID_KOTLIN"
+  cmp "$SOURCE/android/kotlin/com/multiplex/controller/security/multiplex_controller_bindings.kt" "$ANDROID_KOTLIN"
   cmp "$FIXTURE" "$ANDROID_FIXTURE"
   for abi in arm64-v8a armeabi-v7a x86 x86_64; do
     cmp "$SOURCE/android/jniLibs/$abi/$LIB" "$ANDROID_DIR/app/src/main/jniLibs/$abi/$LIB"

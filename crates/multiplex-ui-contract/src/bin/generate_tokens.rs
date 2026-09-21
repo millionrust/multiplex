@@ -32,7 +32,7 @@ fn run() -> Result<(), String> {
     let manifest_path = root.join("design/tokens.toml");
     let rust_path = root.join("crates/multiplex-ui-contract/src/generated.rs");
     let fixture_path = root.join("design/generated/tokens-contract.json");
-    let swift_path = root.join("apps/ios/TermiRustMobile/Views/SlateTokens.swift");
+    let swift_path = root.join("apps/ios/MultiplexMobile/Views/SlateTokens.swift");
     let kotlin_path =
         root.join("apps/android/app/src/main/java/com/termirust/mobile/ui/SlateTokens.kt");
     let (manifest, source) = load_manifest(&manifest_path).map_err(|error| error.to_string())?;

@@ -36,7 +36,7 @@ def main():
         raise RuntimeError("At least 16 GiB free required")
     run("python3", "scripts/build/ios-replication-artifacts.py", "sync")
     run("xcodegen", "generate", "--spec", "project.yml", cwd=IOS)
-    common = ("xcodebuild", "-project", "TermiRustMobile.xcodeproj", "-scheme", "TermiRustMobile", "-configuration", "Debug")
+    common = ("xcodebuild", "-project", "MultiplexMobile.xcodeproj", "-scheme", "MultiplexMobile", "-configuration", "Debug")
     owned_boot = device["state"] == "Shutdown"
     try:
         if owned_boot:
@@ -50,7 +50,7 @@ def main():
                 "ReplicationCustodyTests", "ControllerBindingConformanceTests", "UnifiedRouteLifecycleTests",
                 "AppleControllerRouteTests", "AppleControllerRouteViewModelTests"]
             run(*common, "test", "-destination", f"platform=iOS Simulator,id={args.simulator}",
-                "-parallel-testing-enabled", "NO", *[f"-only-testing:TermiRustMobileTests/{suite}" for suite in suites],
+                "-parallel-testing-enabled", "NO", *[f"-only-testing:MultiplexMobileTests/{suite}" for suite in suites],
                 "-resultBundlePath", result, cwd=IOS)
             summary = json.loads(run("xcrun", "xcresulttool", "get", "test-results", "summary", "--path", result))
             expected = 7 if args.provider_only else 21

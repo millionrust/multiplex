@@ -15,7 +15,7 @@ run_android_smoke() {
   cd "$ANDROID_DIR"
   ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}" \
   ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}" \
-    ./gradlew testDebugUnitTest --tests com.termirust.mobile.DirectSshIntegrationTest --no-daemon
+    ./gradlew testDebugUnitTest --tests com.multiplex.mobile.DirectSshIntegrationTest --no-daemon
 }
 
 write_smoke_config() {

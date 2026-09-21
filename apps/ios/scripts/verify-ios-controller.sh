@@ -29,15 +29,15 @@ done
 }
 
 cd "$ROOT_DIR"
-[[ -d Frameworks/TermiRustControllerSecurity.xcframework ]] || {
+[[ -d Frameworks/MultiplexControllerSecurity.xcframework ]] || {
   printf 'Controller security XCFramework is missing.\n' >&2
   exit 1
 }
-[[ -f TermiRustMobile/Generated/TermiRustControllerSecurity.swift ]] || {
+[[ -f MultiplexMobile/Generated/MultiplexControllerSecurity.swift ]] || {
   printf 'Generated Controller Swift binding is missing.\n' >&2
   exit 1
 }
-[[ -f TermiRustMobile/Localizable.xcstrings ]] || {
+[[ -f MultiplexMobile/Localizable.xcstrings ]] || {
   printf 'Controller string catalog is missing.\n' >&2
   exit 1
 }
@@ -49,10 +49,10 @@ command -v xcodegen >/dev/null || {
 xcodegen generate --spec project.yml >/dev/null
 
 SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
-FRAMEWORKS="Frameworks/TermiRustControllerSecurity.xcframework/ios-arm64"
-MOBILE_FRAMEWORKS="Frameworks/TermiRustMobileCrypto.xcframework/ios-arm64"
+FRAMEWORKS="Frameworks/MultiplexControllerSecurity.xcframework/ios-arm64"
+MOBILE_FRAMEWORKS="Frameworks/MultiplexMobileCrypto.xcframework/ios-arm64"
 PLATFORM="/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer"
-TEMP_MODULE="$(mktemp -d "${TMPDIR:-/tmp}/termirust-ios-controller.XXXXXX")"
+TEMP_MODULE="$(mktemp -d "${TMPDIR:-/tmp}/multiplex-ios-controller.XXXXXX")"
 trap 'find "$TEMP_MODULE" -depth -delete 2>/dev/null || true' EXIT
 TRANSPORT_STUBS="$TEMP_MODULE/ControllerTransportTypecheckStubs.swift"
 cat >"$TRANSPORT_STUBS" <<'EOF'
@@ -63,7 +63,7 @@ private enum ControllerTransportTypecheckError: Error {
 }
 
 enum SSHControllerTransport {
-  static let remoteCommand = "termirust controller-bridge --stdio"
+  static let remoteCommand = "multiplex controller-bridge --stdio"
 
   static func factory(
     hostID: String,
@@ -85,65 +85,65 @@ enum RelayControllerTransport {
 }
 EOF
 xcrun xcstringstool compile \
-  TermiRustMobile/Localizable.xcstrings \
+  MultiplexMobile/Localizable.xcstrings \
   --output-directory "$TEMP_MODULE/localization" \
   --dry-run >/dev/null
 
 CONTROLLER_SOURCES=(
-  TermiRustMobile/Generated/TermiRustControllerSecurity.swift
-  TermiRustMobile/Models/ControllerModels.swift
-  TermiRustMobile/Models/ControllerRemoteRoute.swift
-  TermiRustMobile/Models/ControllerRemoteRouteConfiguration.swift
-  TermiRustMobile/Models/MobileRouteContract.swift
-  TermiRustMobile/Models/MobileCrossRouteAcceptance.swift
-  TermiRustMobile/Controller/ControllerFleetCache.swift
-  TermiRustMobile/Controller/AppleControllerRouteCoordinator.swift
-  TermiRustMobile/Controller/PairedHostStore.swift
-  TermiRustMobile/Security/ControllerKeychainBlobStore.swift
-  TermiRustMobile/Security/ControllerRouteConfigurationStore.swift
-  TermiRustMobile/Security/ControllerRouteCredentialStore.swift
-  TermiRustMobile/Controller/ControllerRetryPolicy.swift
-  TermiRustMobile/Controller/ControllerReadOnlyAttach.swift
-  TermiRustMobile/Controller/ControllerWriterControl.swift
-  TermiRustMobile/Terminal/BoundedTerminalBuffer.swift
-  TermiRustMobile/Terminal/NativeControllerTerminal.swift
-  TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift
-  TermiRustMobile/Terminal/TerminalInteraction.swift
-  TermiRustMobile/Terminal/TerminalAcceptance.swift
-  TermiRustMobile/Controller/ControllerComputerDiscovery.swift
-  TermiRustMobile/Controller/ControllerConnectionActor.swift
-  TermiRustMobile/ViewModels/ControllerViewModel.swift
-  TermiRustMobile/ViewModels/ControllerTerminalViewModel.swift
-  TermiRustMobile/Views/SlateTokens.swift
-  TermiRustMobile/Views/SlateColors.swift
-  TermiRustMobile/Views/ControllerPresentation.swift
-  TermiRustMobile/Views/ControllerRootView.swift
-  TermiRustMobile/Views/ControllerReadOnlyTerminalView.swift
-  TermiRustMobile/Views/ControllerTerminalInputView.swift
-  TermiRustMobile/Views/ControllerQRCodeScanner.swift
+  MultiplexMobile/Generated/MultiplexControllerSecurity.swift
+  MultiplexMobile/Models/ControllerModels.swift
+  MultiplexMobile/Models/ControllerRemoteRoute.swift
+  MultiplexMobile/Models/ControllerRemoteRouteConfiguration.swift
+  MultiplexMobile/Models/MobileRouteContract.swift
+  MultiplexMobile/Models/MobileCrossRouteAcceptance.swift
+  MultiplexMobile/Controller/ControllerFleetCache.swift
+  MultiplexMobile/Controller/AppleControllerRouteCoordinator.swift
+  MultiplexMobile/Controller/PairedHostStore.swift
+  MultiplexMobile/Security/ControllerKeychainBlobStore.swift
+  MultiplexMobile/Security/ControllerRouteConfigurationStore.swift
+  MultiplexMobile/Security/ControllerRouteCredentialStore.swift
+  MultiplexMobile/Controller/ControllerRetryPolicy.swift
+  MultiplexMobile/Controller/ControllerReadOnlyAttach.swift
+  MultiplexMobile/Controller/ControllerWriterControl.swift
+  MultiplexMobile/Terminal/BoundedTerminalBuffer.swift
+  MultiplexMobile/Terminal/NativeControllerTerminal.swift
+  MultiplexMobile/Terminal/GeneratedTerminalCellWidth.swift
+  MultiplexMobile/Terminal/TerminalInteraction.swift
+  MultiplexMobile/Terminal/TerminalAcceptance.swift
+  MultiplexMobile/Controller/ControllerComputerDiscovery.swift
+  MultiplexMobile/Controller/ControllerConnectionActor.swift
+  MultiplexMobile/ViewModels/ControllerViewModel.swift
+  MultiplexMobile/ViewModels/ControllerTerminalViewModel.swift
+  MultiplexMobile/Views/SlateTokens.swift
+  MultiplexMobile/Views/SlateColors.swift
+  MultiplexMobile/Views/ControllerPresentation.swift
+  MultiplexMobile/Views/ControllerRootView.swift
+  MultiplexMobile/Views/ControllerReadOnlyTerminalView.swift
+  MultiplexMobile/Views/ControllerTerminalInputView.swift
+  MultiplexMobile/Views/ControllerQRCodeScanner.swift
 )
 CONTROLLER_SOURCES+=("$TRANSPORT_STUBS")
 TEST_SOURCES=(
-  TermiRustMobileTests/ControllerFleetCacheTests.swift
-  TermiRustMobileTests/ControllerPairingFleetTests.swift
+  MultiplexMobileTests/ControllerFleetCacheTests.swift
+  MultiplexMobileTests/ControllerPairingFleetTests.swift
 )
 RUNTIME_TESTS=(
-  -only-testing:TermiRustMobileTests/ControllerPairingFleetTests
-  -only-testing:TermiRustMobileTests/ControllerFleetCacheTests
+  -only-testing:MultiplexMobileTests/ControllerPairingFleetTests
+  -only-testing:MultiplexMobileTests/ControllerFleetCacheTests
 )
 if [[ "$STAGE" == "readonly-terminal" || "$STAGE" == "writer-controls" || "$STAGE" == "terminal-conformance" || "$STAGE" == "terminal-interaction" || "$STAGE" == "terminal-acceptance" || "$STAGE" == "route-contract" || "$STAGE" == "universal-session" ]]; then
-  TEST_SOURCES+=(TermiRustMobileTests/ControllerReadOnlyTerminalTests.swift)
-  TEST_SOURCES+=(TermiRustMobileTests/BoundedTerminalBufferTests.swift)
-  TEST_SOURCES+=(TermiRustMobileTests/ControllerTerminalViewModelTests.swift)
-  RUNTIME_TESTS+=(-only-testing:TermiRustMobileTests/ControllerReadOnlyTerminalTests)
-  RUNTIME_TESTS+=(-only-testing:TermiRustMobileTests/BoundedTerminalBufferTests)
-  RUNTIME_TESTS+=(-only-testing:TermiRustMobileTests/ControllerTerminalViewModelTests)
+  TEST_SOURCES+=(MultiplexMobileTests/ControllerReadOnlyTerminalTests.swift)
+  TEST_SOURCES+=(MultiplexMobileTests/BoundedTerminalBufferTests.swift)
+  TEST_SOURCES+=(MultiplexMobileTests/ControllerTerminalViewModelTests.swift)
+  RUNTIME_TESTS+=(-only-testing:MultiplexMobileTests/ControllerReadOnlyTerminalTests)
+  RUNTIME_TESTS+=(-only-testing:MultiplexMobileTests/BoundedTerminalBufferTests)
+  RUNTIME_TESTS+=(-only-testing:MultiplexMobileTests/ControllerTerminalViewModelTests)
 fi
 if [[ "$STAGE" == "terminal-conformance" || "$STAGE" == "terminal-interaction" || "$STAGE" == "terminal-acceptance" || "$STAGE" == "route-contract" ]]; then
-  TEST_SOURCES+=(TermiRustMobileTests/TerminalConformanceV1Tests.swift)
-  TEST_SOURCES+=(TermiRustMobileTests/TerminalConformanceV2Tests.swift)
-  RUNTIME_TESTS+=(-only-testing:TermiRustMobileTests/TerminalConformanceV1Tests)
-  RUNTIME_TESTS+=(-only-testing:TermiRustMobileTests/TerminalConformanceV2Tests)
+  TEST_SOURCES+=(MultiplexMobileTests/TerminalConformanceV1Tests.swift)
+  TEST_SOURCES+=(MultiplexMobileTests/TerminalConformanceV2Tests.swift)
+  RUNTIME_TESTS+=(-only-testing:MultiplexMobileTests/TerminalConformanceV1Tests)
+  RUNTIME_TESTS+=(-only-testing:MultiplexMobileTests/TerminalConformanceV2Tests)
 fi
 
 if [[ "$STAGE" == "terminal-interaction" || "$STAGE" == "terminal-acceptance" || "$STAGE" == "route-contract" ]]; then
@@ -151,75 +151,75 @@ if [[ "$STAGE" == "terminal-interaction" || "$STAGE" == "terminal-acceptance" ||
     -swift-version 6 \
     -strict-concurrency=complete \
     -D TERMIRUST_TERMINAL_FALLBACK_ONLY \
-    TermiRustMobile/Controller/ControllerReadOnlyAttach.swift \
-    TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift \
-    TermiRustMobile/Terminal/BoundedTerminalBuffer.swift \
-    TermiRustMobile/Terminal/TerminalInteraction.swift \
+    MultiplexMobile/Controller/ControllerReadOnlyAttach.swift \
+    MultiplexMobile/Terminal/GeneratedTerminalCellWidth.swift \
+    MultiplexMobile/Terminal/BoundedTerminalBuffer.swift \
+    MultiplexMobile/Terminal/TerminalInteraction.swift \
     scripts/terminal-interaction.swift \
     -o "$TEMP_MODULE/terminal-interaction"
   "$TEMP_MODULE/terminal-interaction" \
-    TermiRustMobileTests/Fixtures/terminal-interaction-v1.json
+    MultiplexMobileTests/Fixtures/terminal-interaction-v1.json
 fi
 if [[ "$STAGE" == "terminal-interaction" || "$STAGE" == "terminal-acceptance" || "$STAGE" == "route-contract" ]]; then
-  TEST_SOURCES+=(TermiRustMobileTests/TerminalInteractionTests.swift)
-  RUNTIME_TESTS+=(-only-testing:TermiRustMobileTests/TerminalInteractionTests)
+  TEST_SOURCES+=(MultiplexMobileTests/TerminalInteractionTests.swift)
+  RUNTIME_TESTS+=(-only-testing:MultiplexMobileTests/TerminalInteractionTests)
 fi
 if [[ "$STAGE" == "writer-controls" || "$STAGE" == "terminal-interaction" || "$STAGE" == "terminal-acceptance" || "$STAGE" == "route-contract" || "$STAGE" == "universal-session" ]]; then
-  TEST_SOURCES+=(TermiRustMobileTests/ControllerWriterTests.swift)
-  RUNTIME_TESTS+=(-only-testing:TermiRustMobileTests/ControllerWriterTests)
+  TEST_SOURCES+=(MultiplexMobileTests/ControllerWriterTests.swift)
+  RUNTIME_TESTS+=(-only-testing:MultiplexMobileTests/ControllerWriterTests)
 fi
 if [[ "$STAGE" == "terminal-acceptance" || "$STAGE" == "route-contract" ]]; then
-  TEST_SOURCES+=(TermiRustMobileTests/TerminalAcceptanceTests.swift)
-  RUNTIME_TESTS+=(-only-testing:TermiRustMobileTests/TerminalAcceptanceTests)
+  TEST_SOURCES+=(MultiplexMobileTests/TerminalAcceptanceTests.swift)
+  RUNTIME_TESTS+=(-only-testing:MultiplexMobileTests/TerminalAcceptanceTests)
   xcrun swiftc \
     -swift-version 6 \
     -strict-concurrency=complete \
     -D TERMIRUST_TERMINAL_FALLBACK_ONLY \
-    TermiRustMobile/Controller/ControllerReadOnlyAttach.swift \
-    TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift \
-    TermiRustMobile/Terminal/BoundedTerminalBuffer.swift \
-    TermiRustMobile/Terminal/TerminalAcceptance.swift \
+    MultiplexMobile/Controller/ControllerReadOnlyAttach.swift \
+    MultiplexMobile/Terminal/GeneratedTerminalCellWidth.swift \
+    MultiplexMobile/Terminal/BoundedTerminalBuffer.swift \
+    MultiplexMobile/Terminal/TerminalAcceptance.swift \
     scripts/terminal-acceptance.swift \
     -o "$TEMP_MODULE/terminal-acceptance"
   "$TEMP_MODULE/terminal-acceptance" \
-    TermiRustMobileTests/Fixtures/terminal-acceptance-v1.json
+    MultiplexMobileTests/Fixtures/terminal-acceptance-v1.json
 fi
 if [[ "$STAGE" == "route-contract" ]]; then
-  TEST_SOURCES+=(TermiRustMobileTests/AppleControllerRouteTests.swift)
-  TEST_SOURCES+=(TermiRustMobileTests/AppleControllerRouteViewModelTests.swift)
-  TEST_SOURCES+=(TermiRustMobileTests/MobileRouteContractTests.swift)
-  TEST_SOURCES+=(TermiRustMobileTests/MobileCrossRouteAcceptanceTests.swift)
-  RUNTIME_TESTS+=(-only-testing:TermiRustMobileTests/MobileRouteContractTests)
-  RUNTIME_TESTS+=(-only-testing:TermiRustMobileTests/MobileCrossRouteAcceptanceTests)
-  RUNTIME_TESTS+=(-only-testing:TermiRustMobileTests/AppleControllerRouteTests)
-  RUNTIME_TESTS+=(-only-testing:TermiRustMobileTests/AppleControllerRouteViewModelTests)
+  TEST_SOURCES+=(MultiplexMobileTests/AppleControllerRouteTests.swift)
+  TEST_SOURCES+=(MultiplexMobileTests/AppleControllerRouteViewModelTests.swift)
+  TEST_SOURCES+=(MultiplexMobileTests/MobileRouteContractTests.swift)
+  TEST_SOURCES+=(MultiplexMobileTests/MobileCrossRouteAcceptanceTests.swift)
+  RUNTIME_TESTS+=(-only-testing:MultiplexMobileTests/MobileRouteContractTests)
+  RUNTIME_TESTS+=(-only-testing:MultiplexMobileTests/MobileCrossRouteAcceptanceTests)
+  RUNTIME_TESTS+=(-only-testing:MultiplexMobileTests/AppleControllerRouteTests)
+  RUNTIME_TESTS+=(-only-testing:MultiplexMobileTests/AppleControllerRouteViewModelTests)
   xcrun swiftc \
     -swift-version 6 \
     -strict-concurrency=complete \
-    TermiRustMobile/Models/MobileRouteContract.swift \
+    MultiplexMobile/Models/MobileRouteContract.swift \
     scripts/mobile-route-contract.swift \
     -o "$TEMP_MODULE/mobile-route-contract"
   "$TEMP_MODULE/mobile-route-contract" \
-    TermiRustMobileTests/Fixtures/mobile-route-contract-v1.json
+    MultiplexMobileTests/Fixtures/mobile-route-contract-v1.json
   "$ROOT_DIR/scripts/verify-ios-controller-routes.sh"
 fi
 if [[ "$STAGE" == "universal-session" ]]; then
-  TEST_SOURCES+=(TermiRustMobileTests/UniversalSessionGoldenPathTests.swift)
-  RUNTIME_TESTS+=(-only-testing:TermiRustMobileTests/UniversalSessionGoldenPathTests)
+  TEST_SOURCES+=(MultiplexMobileTests/UniversalSessionGoldenPathTests.swift)
+  RUNTIME_TESTS+=(-only-testing:MultiplexMobileTests/UniversalSessionGoldenPathTests)
 fi
 
 xcrun swiftc \
   -emit-module \
   -parse-as-library \
   -enable-testing \
-  -module-name TermiRustMobile \
+  -module-name MultiplexMobile \
   -swift-version 6 \
   -strict-concurrency=complete \
   -target arm64-apple-ios17.0 \
   -sdk "$SDK" \
   -F "$FRAMEWORKS" \
   -F "$MOBILE_FRAMEWORKS" \
-  -emit-module-path "$TEMP_MODULE/TermiRustMobile.swiftmodule" \
+  -emit-module-path "$TEMP_MODULE/MultiplexMobile.swiftmodule" \
   "${CONTROLLER_SOURCES[@]}"
 
 xcrun swiftc \
@@ -235,7 +235,7 @@ xcrun swiftc \
   -F "$MOBILE_FRAMEWORKS" \
   "${TEST_SOURCES[@]}"
 
-xcrun swiftc -frontend -parse $(find TermiRustMobile TermiRustMobileTests -name '*.swift' -print)
+xcrun swiftc -frontend -parse $(find MultiplexMobile MultiplexMobileTests -name '*.swift' -print)
 git diff --check
 
 if [[ "$STAGE" == "terminal-conformance" || "$STAGE" == "terminal-interaction" || "$STAGE" == "terminal-acceptance" || "$STAGE" == "route-contract" ]]; then
@@ -243,25 +243,25 @@ if [[ "$STAGE" == "terminal-conformance" || "$STAGE" == "terminal-interaction" |
     -swift-version 6 \
     -strict-concurrency=complete \
     -D TERMIRUST_TERMINAL_FALLBACK_ONLY \
-    TermiRustMobile/Controller/ControllerReadOnlyAttach.swift \
-    TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift \
-    TermiRustMobile/Terminal/BoundedTerminalBuffer.swift \
+    MultiplexMobile/Controller/ControllerReadOnlyAttach.swift \
+    MultiplexMobile/Terminal/GeneratedTerminalCellWidth.swift \
+    MultiplexMobile/Terminal/BoundedTerminalBuffer.swift \
     scripts/terminal-conformance-v1.swift \
     -o "$TEMP_MODULE/terminal-conformance-v1"
   "$TEMP_MODULE/terminal-conformance-v1" \
-    TermiRustMobileTests/Fixtures/terminal-conformance-v1.json
+    MultiplexMobileTests/Fixtures/terminal-conformance-v1.json
 
   xcrun swiftc \
     -swift-version 6 \
     -strict-concurrency=complete \
     -D TERMIRUST_TERMINAL_FALLBACK_ONLY \
-    TermiRustMobile/Controller/ControllerReadOnlyAttach.swift \
-    TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift \
-    TermiRustMobile/Terminal/BoundedTerminalBuffer.swift \
+    MultiplexMobile/Controller/ControllerReadOnlyAttach.swift \
+    MultiplexMobile/Terminal/GeneratedTerminalCellWidth.swift \
+    MultiplexMobile/Terminal/BoundedTerminalBuffer.swift \
     scripts/terminal-conformance-v2.swift \
     -o "$TEMP_MODULE/terminal-conformance-v2"
   "$TEMP_MODULE/terminal-conformance-v2" \
-    TermiRustMobileTests/Fixtures/terminal-conformance-v2.json
+    MultiplexMobileTests/Fixtures/terminal-conformance-v2.json
 fi
 
 IOS_DESTINATION="${TERMIRUST_IOS_DESTINATION:-}"
@@ -276,8 +276,8 @@ if [[ -z "$IOS_DESTINATION" ]]; then
 fi
 if [[ -n "$IOS_DESTINATION" ]]; then
   xcodebuild test -quiet \
-    -project TermiRustMobile.xcodeproj \
-    -scheme TermiRustMobile \
+    -project MultiplexMobile.xcodeproj \
+    -scheme MultiplexMobile \
     -destination "$IOS_DESTINATION" \
     "${RUNTIME_TESTS[@]}"
   printf 'Controller iOS runtime tests passed on %s.\n' "$IOS_DESTINATION"

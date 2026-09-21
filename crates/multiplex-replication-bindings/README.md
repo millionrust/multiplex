@@ -48,7 +48,7 @@ idempotent deletion, invalid accounts, and corrupt envelope lengths. Access-fail
 mapping is tested with status constants, not by locking the user's device.
 
 The Apple source lives at
-`apps/ios/TermiRustMobile/Security/ReplicationKeychainStore.swift`. It is compiled
+`apps/ios/MultiplexMobile/Security/ReplicationKeychainStore.swift`. It is compiled
 by this conformance runner and the iOS app target, using the separately packaged
 `apps/ios/Replication` framework. It uses a replication-only service, disables
 synchronization, and selects `WhenUnlockedThisDeviceOnly`. iPhone lifecycle and

@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.termirust.mobile"
+    namespace = "com.multiplex.mobile"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.termirust.mobile"
+        applicationId = "com.multiplex.mobile"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
@@ -36,7 +36,7 @@ android {
 
     packaging {
         // Rust release artifacts are already stripped; retain their verified bytes.
-        jniLibs.keepDebugSymbols += "**/libtermirust_replication_bindings.so"
+        jniLibs.keepDebugSymbols += "**/libmultiplex_replication_bindings.so"
         resources {
             excludes += "META-INF/versions/**/OSGI-INF/MANIFEST.MF"
         }

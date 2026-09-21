@@ -3,9 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARTIFACTS="$ROOT_DIR/dist/mobile/screens"
-GENERATED="$ARTIFACTS/ios/Sources/TermiRustRemoteScreens.swift"
-FRAMEWORKS="$ARTIFACTS/ios/TermiRustRemoteScreens.xcframework/ios-arm64"
-MODULE_MAP="$FRAMEWORKS/TermiRustRemoteScreensFFI.framework/Modules/module.modulemap"
+GENERATED="$ARTIFACTS/ios/Sources/MultiplexRemoteScreens.swift"
+FRAMEWORKS="$ARTIFACTS/ios/MultiplexRemoteScreens.xcframework/ios-arm64"
+MODULE_MAP="$FRAMEWORKS/MultiplexRemoteScreensFFI.framework/Modules/module.modulemap"
 NATIVE="$ARTIFACTS/kotlin-test/darwin-aarch64"
 VECTORS="$ROOT_DIR/crates/multiplex-screen-bindings/tests/vectors"
 # Both the session this build records and the version 1 one it must still understand.
@@ -13,7 +13,7 @@ FIXTURES=("$VECTORS/screen-session-v2.json" "$VECTORS/screen-session-v1.json")
 RUNNER="$ROOT_DIR/tests/swift/screen_binding_conformance.swift"
 
 for required_path in "$GENERATED" "$MODULE_MAP" \
-  "$NATIVE/libtermirust_screen_bindings.dylib" "${FIXTURES[@]}" "$RUNNER"; do
+  "$NATIVE/libmultiplex_screen_bindings.dylib" "${FIXTURES[@]}" "$RUNNER"; do
   [[ -e "$required_path" ]] || {
     printf 'Missing Remote Screens binding input: %s\n' "$required_path" >&2
     printf 'Run scripts/build/mobile-screen-bindings.sh --ios first.\n' >&2
@@ -26,10 +26,10 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 
 swiftc \
   -parse-as-library \
-  -module-name TermiRustRemoteScreensConformance \
+  -module-name MultiplexRemoteScreensConformance \
   -F "$FRAMEWORKS" \
   -L "$NATIVE" \
-  -ltermirust_screen_bindings \
+  -lmultiplex_screen_bindings \
   "$GENERATED" \
   "$RUNNER" \
   -o "$TEMP_DIR/screen-binding-conformance"

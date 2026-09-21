@@ -189,8 +189,8 @@ REPORT="$FIXTURE/instrumentation.log"
 status_line RUN "executing native Android relay echo and reconnect"
 set +e
 "$ADB" -s "$SERIAL" shell am instrument -w -r \
-  -e class com.termirust.mobile.controller.RelayControllerTransportInstrumentedTest \
-  com.termirust.mobile.test/androidx.test.runner.AndroidJUnitRunner | tee "$REPORT"
+  -e class com.multiplex.mobile.controller.RelayControllerTransportInstrumentedTest \
+  com.multiplex.mobile.test/androidx.test.runner.AndroidJUnitRunner | tee "$REPORT"
 instrument_status=${PIPESTATUS[0]}
 set -e
 if [[ $instrument_status -ne 0 ]] || ! grep -q 'OK (1 test)' "$REPORT"; then

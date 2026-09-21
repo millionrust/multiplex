@@ -1,12 +1,12 @@
-# TermiRust Mobile for iOS and iPadOS
+# Multiplex Mobile for iOS and iPadOS
 
-This folder contains the unified native TermiRust mobile application.
+This folder contains the unified native Multiplex mobile application.
 
 ## Architecture
 
 - **Connections** are saved direct-SSH destinations. Their SSH credentials are
   device-local, known-host pins are mandatory, and optional remote tmux owns continuity.
-- **Devices** are paired TermiRust desktops. A paired Device lists durable Device Sessions;
+- **Devices** are paired Multiplex desktops. A paired Device lists durable Device Sessions;
   the desktop Host service owns replay, activity truth, and single-writer coordination.
 - Device access uses one explicit private-network, SSH Controller, or self-hosted relay
   selection. Only a configured transport is selectable; route changes close the source first.
@@ -41,16 +41,25 @@ Not finished yet:
 
 ## Build
 
-The Remote Screens bindings are generated, not vendored, so build and sync them once
-before opening the project. Without them the framework and the generated Swift the
-project references are missing:
+Every binding and framework here is generated from the Rust crates, not vendored, so
+build and sync them once before opening the project. Without them the frameworks and the
+generated Swift the project references are missing, and XcodeGen cannot write the project
+at all. From the repository root:
 
 ```bash
+scripts/build/mobile-controller-bindings.sh --ios
+scripts/sync/mobile-controller-bindings.sh --write --ios
 scripts/build/mobile-screen-bindings.sh --ios
 scripts/sync/mobile-screen-bindings.sh --write --ios
+scripts/sync/mobile-ffi-artifacts.sh ios
+python3 scripts/build/ios-replication-artifacts.py build
+python3 scripts/build/ios-replication-artifacts.py sync --write
 ```
 
-`--all` builds Android too, which needs NDK 27.1.12297006.
+`--all` builds Android too, which needs NDK 27.1.12297006. The pinned toolchains are what
+make a released artifact reproducible; a build that only has to prove the application
+still compiles can waive them with `TERMIRUST_CONTROLLER_BINDINGS_ALLOW_UNPINNED=1`,
+which says so on stderr.
 
 ```bash
 cd /Users/jacob/Projects/terminal

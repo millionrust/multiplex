@@ -16,7 +16,7 @@ run = shared.run
 ROOT = shared.ROOT
 OUTPUT = ROOT / "dist/mobile/replication-ios"
 DEST = ROOT / "apps/ios/Replication"
-NAME = "TermiRustReplicationSecurity"
+NAME = "MultiplexReplicationSecurity"
 STEM = shared.STEM
 
 

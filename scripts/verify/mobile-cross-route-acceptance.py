@@ -13,7 +13,7 @@ KOTLIN_ROOT = Path(
     os.environ.get("TERMIRUST_ANDROID_DIR", ROOT / "apps/android")
 )
 NATIVE_COPIES = [
-    SWIFT_ROOT / "TermiRustMobileTests/Fixtures/mobile-cross-route-acceptance-v1.json",
+    SWIFT_ROOT / "MultiplexMobileTests/Fixtures/mobile-cross-route-acceptance-v1.json",
     KOTLIN_ROOT / "app/src/test/resources/mobile-cross-route-acceptance-v1.json",
 ]
 

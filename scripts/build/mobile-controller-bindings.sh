@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CRATE="multiplex-controller-bindings"
-LIB_STEM="termirust_controller_bindings"
+LIB_STEM="multiplex_controller_bindings"
 OUTPUT_DIR="$ROOT_DIR/dist/mobile/controller"
 BUILD_IOS=0
 BUILD_ANDROID=0
@@ -64,19 +64,25 @@ if [[ "$BUILD_IOS" -eq 0 && "$BUILD_ANDROID" -eq 0 ]]; then
 fi
 
 cd "$ROOT_DIR"
-[[ "$(rustc --version)" == "rustc $PINNED_RUST_VERSION "* ]] || {
-  printf 'Expected rustc %s, found %s.\n' "$PINNED_RUST_VERSION" "$(rustc --version)" >&2
+# The pinned toolchains are what makes a shipped artifact reproducible. A build that only has to
+# prove the applications still compile does not need them, and a hosted runner does not get to
+# choose its Xcode or its NDK, so it may say so — loudly, and never for anything released.
+UNPINNED="${TERMIRUST_CONTROLLER_BINDINGS_ALLOW_UNPINNED:-0}"
+require_pinned() {
+  local what="$1" expected="$2" found="$3"
+  [[ "$found" == "$expected" ]] && return 0
+  if [[ "$UNPINNED" != "0" ]]; then
+    printf 'warning: %s is %s, not the pinned %s. These artifacts are not release-reproducible.\n' \
+      "$what" "$found" "$expected" >&2
+    return 0
+  fi
+  printf 'Expected %s %s, found %s.\n' "$what" "$expected" "$found" >&2
   exit 1
 }
+require_pinned rustc "$PINNED_RUST_VERSION" "$(rustc --version | cut -d' ' -f2)"
 if [[ "$BUILD_IOS" -eq 1 ]]; then
-  [[ "$(xcodebuild -version | head -1)" == "Xcode $PINNED_XCODE_VERSION" ]] || {
-    printf 'Expected Xcode %s.\n' "$PINNED_XCODE_VERSION" >&2
-    exit 1
-  }
-  [[ "$(xcrun --sdk iphoneos --show-sdk-version)" == "$PINNED_IOS_SDK_VERSION" ]] || {
-    printf 'Expected iOS SDK %s.\n' "$PINNED_IOS_SDK_VERSION" >&2
-    exit 1
-  }
+  require_pinned Xcode "Xcode $PINNED_XCODE_VERSION" "$(xcodebuild -version | head -1)"
+  require_pinned "the iOS SDK" "$PINNED_IOS_SDK_VERSION" "$(xcrun --sdk iphoneos --show-sdk-version)"
 fi
 BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/multiplex-controller-bindings.XXXXXX")"
 trap 'rm -rf "$BUILD_ROOT"' EXIT
@@ -169,9 +175,9 @@ build_ios() {
   local libraries="$BUILD_ROOT/ios-libraries"
   local headers="$BUILD_ROOT/ios-headers"
   mkdir -p "$libraries" "$headers" "$STAGED/ios/Sources"
-  cp "$GENERATED/TermiRustControllerSecurityFFI.h" "$headers/"
-  cp "$GENERATED/TermiRustControllerSecurityFFI.modulemap" "$headers/module.modulemap"
-  cp "$GENERATED/TermiRustControllerSecurity.swift" "$STAGED/ios/Sources/"
+  cp "$GENERATED/MultiplexControllerSecurityFFI.h" "$headers/"
+  cp "$GENERATED/MultiplexControllerSecurityFFI.modulemap" "$headers/module.modulemap"
+  cp "$GENERATED/MultiplexControllerSecurity.swift" "$STAGED/ios/Sources/"
 
   for target in "${targets[@]}"; do
     rustup target add "$target"
@@ -187,11 +193,11 @@ build_ios() {
     -output "$libraries/simulator.a"
 
   "$ROOT_DIR/scripts/build/ios-static-xcframework.sh" \
-    TermiRustControllerSecurityFFI \
+    MultiplexControllerSecurityFFI \
     "$libraries/aarch64-apple-ios.a" \
     "$libraries/simulator.a" \
     "$headers" \
-    "$STAGED/ios/TermiRustControllerSecurity.xcframework"
+    "$STAGED/ios/MultiplexControllerSecurity.xcframework"
 }
 
 build_android() {
@@ -205,21 +211,19 @@ build_android() {
     printf 'Android NDK not found. Set ANDROID_NDK_HOME or install it under %s/ndk.\n' "$android_sdk" >&2
     exit 1
   }
-  [[ "$(basename "$android_ndk")" == "$PINNED_ANDROID_NDK_VERSION" ]] || {
-    printf 'Expected Android NDK %s, found %s.\n' \
-      "$PINNED_ANDROID_NDK_VERSION" "$(basename "$android_ndk")" >&2
-    exit 1
-  }
+  require_pinned "the Android NDK" "$PINNED_ANDROID_NDK_VERSION" "$(basename "$android_ndk")"
 
+  # The NDK ships one prebuilt toolchain per build host, and the Linux one is what CI has.
   local host_tag="darwin-x86_64"
+  [[ "$(uname -s)" == "Linux" ]] && host_tag="linux-x86_64"
   local toolchain="$android_ndk/toolchains/llvm/prebuilt/$host_tag/bin"
   local readelf="$toolchain/llvm-readelf"
   [[ -x "$readelf" ]] || { printf 'Android llvm-readelf missing at %s.\n' "$readelf" >&2; exit 1; }
 
   local targets=(aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android)
-  mkdir -p "$STAGED/android/kotlin/com/termirust/controller/security"
-  cp "$GENERATED/com/termirust/controller/security/${LIB_STEM}.kt" \
-    "$STAGED/android/kotlin/com/termirust/controller/security/"
+  mkdir -p "$STAGED/android/kotlin/com/multiplex/controller/security"
+  cp "$GENERATED/com/multiplex/controller/security/${LIB_STEM}.kt" \
+    "$STAGED/android/kotlin/com/multiplex/controller/security/"
 
   export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$toolchain/aarch64-linux-android${android_api}-clang"
   export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER="$toolchain/armv7a-linux-androideabi${android_api}-clang"

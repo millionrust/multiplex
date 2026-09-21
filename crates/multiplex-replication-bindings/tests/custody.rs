@@ -11,7 +11,7 @@ use multiplex_replication_security::{
     ReplicationSecretBackend, ReplicationSecretKind, ReplicationSecretRef,
     ReplicationSecretStoreError,
 };
-use termirust_replication_bindings::{
+use multiplex_replication_bindings::{
     MobileReplicationError, MobileReplicationProduct, NativeReplicationSecretBackend,
     ReplicationCustody, ReplicationSecureStore, ReplicationStorageError,
 };

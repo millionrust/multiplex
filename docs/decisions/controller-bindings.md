@@ -19,8 +19,8 @@ The selection follows the official [UniFFI 0.32.0 changelog](https://github.com/
 - Rust: exactly `1.97.1-aarch64-apple-darwin`, minimal profile with rustfmt and Clippy
 - iOS: `aarch64-apple-ios`; simulator: `aarch64-apple-ios-sim`, `x86_64-apple-ios`
 - Android: `aarch64-linux-android`, `armv7-linux-androideabi`, `i686-linux-android`, `x86_64-linux-android`; API 26; NDK LLVM; 16 KiB ELF LOAD alignment
-- Swift module: `TermiRustControllerSecurity`; C module: `TermiRustControllerSecurityFFI`
-- Kotlin package: `com.termirust.controller.security`; library: `termirust_controller_bindings`
+- Swift module: `MultiplexControllerSecurity`; C module: `MultiplexControllerSecurityFFI`
+- Kotlin package: `com.multiplex.controller.security`; library: `multiplex_controller_bindings`
 
 ## Boundary contract
 

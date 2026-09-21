@@ -1,12 +1,12 @@
-# TermiRust Mobile for Android
+# Multiplex Mobile for Android
 
-This folder contains the unified native TermiRust mobile application.
+This folder contains the unified native Multiplex mobile application.
 
 ## Architecture
 
 - **Connections** are saved direct-SSH destinations with device-local SSH credentials,
   mandatory known-host pins, and optional remote-tmux continuity.
-- **Devices** are paired TermiRust desktops that list durable Device Sessions. The Host
+- **Devices** are paired Multiplex desktops that list durable Device Sessions. The Host
   service owns replay, authoritative activity, and single-writer coordination.
 - Device access uses one explicit route contract for private LAN/VPN, Controller over SSH,
   and an optional self-hosted relay. The app never silently falls back to another route.
@@ -29,7 +29,7 @@ Implemented:
 - Jetpack Compose Connection list and direct terminal detail.
 - Versioned mobile vault models using kotlinx.serialization.
 - Plaintext fixture import for unit tests, encrypted envelope inspection, and encrypted production vault import through the shared Rust crypto library.
-- `NativeMobileVaultDecryptor` JNI adapter with `libtermirust_mobile_ffi.so` packaged for Android ABIs in `app/src/main/jniLibs/`.
+- `NativeMobileVaultDecryptor` JNI adapter with `libmultiplex_mobile_ffi.so` packaged for Android ABIs in `app/src/main/jniLibs/`.
 - Android document picker flow for encrypted mobile vault import.
 - Android Keystore-backed secret storage.
 - Selected-host credential entry that saves password/private-key material into Keystore-backed storage under the exported `secret_ref`, including private-key file import.
@@ -48,12 +48,24 @@ work; they are not implied by local unit/build coverage.
 
 ## Build
 
-Refresh the shared Rust mobile crypto JNI libraries when the desktop FFI crate changes:
+Every binding and JNI library the APK packages is generated from the Rust crates, not
+vendored, so build and sync them once before opening the project. Without them the Kotlin
+sources name types that do not exist yet. From the repository root:
 
 ```bash
-cd /Users/jacob/Projects/terminal
+scripts/build/mobile-controller-bindings.sh --android
+scripts/sync/mobile-controller-bindings.sh --write --android
+scripts/build/mobile-screen-bindings.sh --android
+scripts/sync/mobile-screen-bindings.sh --write --android
 scripts/sync/mobile-ffi-artifacts.sh android
+python3 scripts/build/mobile-replication-artifacts.py build --android
+python3 scripts/build/mobile-replication-artifacts.py sync --android --write
 ```
+
+The pinned NDK is what makes a released artifact reproducible; a build that only has to
+prove the application still compiles can waive it with
+`TERMIRUST_CONTROLLER_BINDINGS_ALLOW_UNPINNED=1` and
+`TERMIRUST_REPLICATION_ARTIFACTS_ALLOW_UNPINNED=1`, which say so on stderr.
 
 Use the checked-in Gradle wrapper:
 

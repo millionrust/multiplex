@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use serde::Deserialize;
-use termirust_controller_bindings::{
+use multiplex_controller_bindings::{
     AuthorizationDecision, ControllerBindingError, ControllerCapability, ControllerFrameKind,
     ControllerSecurityEngine, PairingConfirmation, PairingRole, PairingStartRequest,
     SecureBlobError, SecureBlobStore,
@@ -273,7 +273,7 @@ fn ffi_code_pairing_matches_the_code_vectors_and_confirms_without_a_sas() {
         CodeKeyExchange, PairingCode, PairingMachine, PairingNonce, PairingRole as CoreRole,
         RevocationEpoch, StaticPrivateKey, decode_offer,
     };
-    use termirust_controller_bindings::{CodePairingFinishRequest, CodePairingStartRequest};
+    use multiplex_controller_bindings::{CodePairingFinishRequest, CodePairingStartRequest};
 
     let vector: CodeVector = serde_json::from_str(include_str!(
         "../../multiplex-controller-security/tests/vectors/controller-code-v2.json"
@@ -362,7 +362,7 @@ fn ffi_code_pairing_matches_the_code_vectors_and_confirms_without_a_sas() {
 
 #[test]
 fn ffi_code_pairing_rejects_malformed_codes_and_sas_sessions_cannot_skip_the_sas() {
-    use termirust_controller_bindings::CodePairingStartRequest;
+    use multiplex_controller_bindings::CodePairingStartRequest;
 
     let vector = vector();
     let device = ControllerSecurityEngine::new(Arc::new(MemoryBlobStore::default())).unwrap();
