@@ -1,19 +1,63 @@
-# Terminal
+# Multiplex
 
-A native desktop SSH client. Save your servers, connect in a click, split terminals side by side. No Electron, no browser -- just a Rust binary talking to your boxes over SSH.
+Multiplex connects your servers, your computers, and your phone. It's an SSH client for the servers you
+manage, and it also lets you reach the computers that run it. From your phone or another desktop you can
+see every paired Mac, Windows PC, or Linux machine, view its screen, and use the terminals running on it.
+It's native on every platform, with no Electron and no browser: a Rust desktop app plus Swift and Kotlin
+mobile apps.
 
 ![Windows](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
 ![Linux](https://img.shields.io/badge/platform-Linux-lightgrey)
+![iOS](https://img.shields.io/badge/platform-iOS-lightgrey)
+![Android](https://img.shields.io/badge/platform-Android-lightgrey)
 ![Rust](https://img.shields.io/badge/language-Rust-orange)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Status](https://img.shields.io/badge/status-early%20alpha-yellow)
 
 ---
 
+## What it does
+
+Multiplex covers three things:
+
+1. **SSH into your servers.** Save your servers in a host library and connect with a click, or type
+   `user@host` for a quick connection. Split panes, SFTP file transfer, port forwarding, jump hosts,
+   snippets, and a command palette are built in.
+2. **Reach every computer that runs Multiplex.** Pair a phone (iOS or Android) or a second desktop
+   with a computer running the Multiplex desktop app. The Devices screen lists every paired computer.
+   You can reach them over the local network, Tailscale or another VPN, SSH, or a self-hosted relay.
+3. **See their screens and use their terminals.** Open a paired computer to view its whole screen,
+   and control it with a pointer and keyboard. You can also list, watch, and type into the terminals
+   running on it.
+
+### Every terminal on the computer, not only the app's own
+
+An operating system never lets one program adopt a terminal that another app already opened. So
+Multiplex uses **tmux**. Once you turn it on, new tabs in Terminal, iTerm2, Ghostty, WezTerm, Zed, and
+VS Code start inside tmux. The desktop listens for your paired devices, so every terminal on that
+machine is reachable from your phone, including the ones Multiplex didn't open itself.
+
+The setup is opt-in and reversible. It shows the exact startup-file change before making it, never
+edits `~/.tmux.conf`, and can be removed from the same screen. On macOS, a background service keeps
+the machine reachable after the app quits.
+
+### Where each part runs today
+
+| | macOS | Linux | Windows |
+| --- | --- | --- | --- |
+| SSH client, split panes, SFTP, forwarding | Yes | Yes | Yes |
+| Screen viewing and control from a paired device | Yes | Yes | Yes |
+| Every terminal on the machine reachable from the phone (tmux) | Yes | Yes | Not yet ([plan](docs/remote-terminals.md#windows)) |
+| Reachable after the app quits | Yes (LaunchAgent) | Over SSH or relay | Not yet |
+
+This is early alpha, and remote screens still need testing on real devices. See
+[docs/remote-terminals.md](docs/remote-terminals.md) and
+[docs/remote-screens-implementation-plan.md](docs/remote-screens-implementation-plan.md).
+
 ## What you get
 
-Terminal has a host library where you save connection details once. Double-click a host and it connects straight away, showing its progress, the connection log, and any error with a Retry button until the terminal is live. Want to watch logs on one server while poking at another? Split the workspace into up to 4 panes, each running its own SSH session.
+Multiplex has a host library where you save connection details once. Double-click a host and it connects straight away, showing its progress, the connection log, and any error with a Retry button until the terminal is live. Want to watch logs on one server while poking at another? Split the workspace into up to 4 panes, each running its own SSH session.
 
 There's also a quick-connect bar. Type `user@host` or `ssh user@host:port` and you're in, no need to save anything first.
 
@@ -21,7 +65,7 @@ The terminal is built the way Zed's is. [`alacritty_terminal`](https://crates.io
 
 ## Your terminals on your phone
 
-The iOS and Android apps pair with the desktop and can watch and type into its terminals:
+The details behind reaching a computer's terminals from the iOS and Android apps:
 
 - **Remote access** listens on every private address the computer has (Wi-Fi, Ethernet, and VPNs such as Tailscale) and announces itself with Bonjour on the local network.
 - **Pairing** is a six-digit code shown on the desktop and typed on the phone, protected by a PAKE (CPace) so a code cannot be guessed offline. Scanning a QR code still works.
@@ -117,12 +161,12 @@ This is early alpha. The following are on the radar but don't exist yet:
 ## Repository layout
 
 ```
-crates/            Cargo workspace members; crates/termirust-desktop is the GPUI desktop app
+crates/            Cargo workspace members; crates/multiplex-desktop is the GPUI desktop app
 apps/              Native iOS/iPadOS (apps/ios, Swift) and Android (apps/android, Kotlin) applications
 tools/             Standalone spike workspaces with their own lockfiles
 scripts/           Automation grouped by verb: verify/, test/, build/, sync/, bench/, run/, dev/
 tests/             Shared cross-crate test assets: fixtures/, support/, ui/ audits, swift/ runners
-design/, locales/  Design tokens and localization catalogs consumed by termirust-ui-contract
+design/, locales/  Design tokens and localization catalogs consumed by multiplex-ui-contract
 docs/              Guides, ADRs (decisions/), and completion/engineering evidence
 dist/              Ignored build output for mobile FFI artifacts (see scripts/build/)
 ```
