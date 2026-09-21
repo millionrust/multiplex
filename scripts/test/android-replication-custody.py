@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
 from owned_process import run_owned  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
-APP = "com.multiplex.mobile"
+APP = "com.millionrust.multiplex"
 TEST_APP = APP + ".test/androidx.test.runner.AndroidJUnitRunner"
 TEST_CLASS = APP + ".replication.ReplicationCustodyInstrumentedTest"
 RESTART = APP + ".replication.ReplicationRestartTest"

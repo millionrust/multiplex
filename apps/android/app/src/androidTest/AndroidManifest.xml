@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <queries>
-        <package android:name="com.multiplex.mobile" />
+        <package android:name="com.millionrust.multiplex" />
     </queries>
     <application>
         <service

@@ -23,7 +23,7 @@ targets:
       - target: MultiplexMobile
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.multiplex.mobile.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: com.millionrust.multiplex.uitests
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: 6.0
         IPHONEOS_DEPLOYMENT_TARGET: 17.0
@@ -107,9 +107,9 @@ targets:
         embed: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.multiplex.mobile
-        MARKETING_VERSION: 0.0.1
-        CURRENT_PROJECT_VERSION: 1
+        PRODUCT_BUNDLE_IDENTIFIER: com.millionrust.multiplex
+        MARKETING_VERSION: 0.0.2
+        CURRENT_PROJECT_VERSION: 2
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: MultiplexMobile/Info.plist
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -159,7 +159,7 @@ targets:
         product: NIOSSH
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.multiplex.mobile.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.millionrust.multiplex.tests
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: 6.0
         IPHONEOS_DEPLOYMENT_TARGET: 17.0

@@ -1,6 +1,6 @@
 [package]
 name = "multiplex-tmux"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 rust-version.workspace = true
 description = "UI-free tmux discovery, session listing, and attach arguments for TermiRust"

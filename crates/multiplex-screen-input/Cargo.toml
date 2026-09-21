@@ -1,15 +1,15 @@
 [package]
 name = "multiplex-screen-input"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 rust-version.workspace = true
 description = "Pointer and keyboard injection for TermiRust Remote Screens: a single-writer injector over a platform-neutral sink, and the macOS Core Graphics backend"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-multiplex-screen-codec = { version = "0.0.1", path = "../multiplex-screen-codec" }
-multiplex-screen-protocol = { version = "0.0.1", path = "../multiplex-screen-protocol" }
-multiplex-screen-session = { version = "0.0.1", path = "../multiplex-screen-session" }
+multiplex-screen-codec = { version = "0.0.2", path = "../multiplex-screen-codec" }
+multiplex-screen-protocol = { version = "0.0.2", path = "../multiplex-screen-protocol" }
+multiplex-screen-session = { version = "0.0.2", path = "../multiplex-screen-session" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = { version = "0.24", features = ["highsierra"] }

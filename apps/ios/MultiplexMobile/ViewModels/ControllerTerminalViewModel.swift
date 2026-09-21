@@ -52,7 +52,7 @@ final class ControllerTerminalViewModel: ObservableObject, Identifiable {
     private var inputBlockedForResize = false
     private let sessionCapabilities: [ControllerSessionCapability]
     private static let logger = Logger(
-        subsystem: "com.multiplex.mobile",
+        subsystem: "com.millionrust.multiplex",
         category: "controller-terminal"
     )
 

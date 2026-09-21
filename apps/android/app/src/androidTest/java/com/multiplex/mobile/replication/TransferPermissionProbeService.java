@@ -20,7 +20,7 @@ public final class TransferPermissionProbeService extends Service {
     }
 
     private boolean probe(Message message) {
-        final String target = "com.multiplex.mobile";
+        final String target = "com.millionrust.multiplex";
         try {
             if (message.sendingUid != getPackageManager().getApplicationInfo(target, 0).uid) return true;
         } catch (android.content.pm.PackageManager.NameNotFoundException error) { return true; }

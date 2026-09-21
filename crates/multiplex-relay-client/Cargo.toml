@@ -1,6 +1,6 @@
 [package]
 name = "multiplex-relay-client"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 rust-version.workspace = true
 description = "Bounded outbound WSS client for the optional TermiRust ciphertext relay"
@@ -18,7 +18,7 @@ serde_json = { version = "=1.0.149", optional = true }
 rustls = { version = "=0.23.45", default-features = false, features = ["ring", "std"] }
 rustls-native-certs = "=0.8.3"
 sha2 = "=0.10.9"
-multiplex-relay-protocol = { version = "0.0.1", path = "../multiplex-relay-protocol" }
+multiplex-relay-protocol = { version = "0.0.2", path = "../multiplex-relay-protocol" }
 tokio = { version = "=1.50.0", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 tokio-tungstenite = { version = "=0.28.0", default-features = false, features = ["connect", "handshake", "rustls-tls-native-roots"] }
 tokio-util = { version = "=0.7.18", features = ["rt"] }
@@ -30,10 +30,10 @@ zeroize = { version = "=1.9.0", features = ["zeroize_derive"] }
 async-trait = "=0.1.89"
 rcgen = { version = "=0.14.10", default-features = false, features = ["crypto", "ring"] }
 tempfile = "=3.27.0"
-multiplex-controller-listener = { version = "0.0.1", path = "../multiplex-controller-listener" }
-multiplex-controller-security = { version = "0.0.1", path = "../multiplex-controller-security" }
-multiplex-domain = { version = "0.0.1", path = "../multiplex-domain" }
-multiplex-relay-server = { version = "0.0.1", path = "../multiplex-relay-server" }
+multiplex-controller-listener = { version = "0.0.2", path = "../multiplex-controller-listener" }
+multiplex-controller-security = { version = "0.0.2", path = "../multiplex-controller-security" }
+multiplex-domain = { version = "0.0.2", path = "../multiplex-domain" }
+multiplex-relay-server = { version = "0.0.2", path = "../multiplex-relay-server" }
 uuid = { version = "=1.22.0", features = ["v4"] }
 
 [[example]]

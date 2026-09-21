@@ -1,6 +1,6 @@
 [package]
 name = "multiplex-mobile-ffi"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 rust-version.workspace = true
 description = "C ABI bridge for TermiRust mobile vault crypto"
@@ -17,6 +17,6 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 jni = "0.21"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-multiplex-protocol = { version = "0.0.1", path = "../multiplex-protocol" }
-multiplex-relay-protocol = { version = "0.0.1", path = "../multiplex-relay-protocol" }
+multiplex-protocol = { version = "0.0.2", path = "../multiplex-protocol" }
+multiplex-relay-protocol = { version = "0.0.2", path = "../multiplex-relay-protocol" }
 vt100 = "0.16"

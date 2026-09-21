@@ -63,25 +63,25 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
 smallvec = "1.15"
-multiplex-protocol = { version = "0.0.1", path = "../multiplex-protocol" }
-multiplex-domain = { version = "0.0.1", path = "../multiplex-domain" }
-multiplex-diagnostics = { version = "0.0.1", path = "../multiplex-diagnostics" }
-multiplex-client = { version = "0.0.1", path = "../multiplex-client" }
-multiplex-cli = { version = "0.0.1", path = "../multiplex-cli" }
-multiplex-controller-security = { version = "0.0.1", path = "../multiplex-controller-security" }
-multiplex-controller-listener = { version = "0.0.1", path = "../multiplex-controller-listener" }
-multiplex-host-protocol = { version = "0.0.1", path = "../multiplex-host-protocol" }
-multiplex-relay-client = { version = "0.0.1", path = "../multiplex-relay-client" }
-multiplex-screen-capture = { version = "0.0.1", path = "../multiplex-screen-capture" }
-multiplex-screen-codec = { version = "0.0.1", path = "../multiplex-screen-codec" }
-multiplex-screen-host = { version = "0.0.1", path = "../multiplex-screen-host" }
-multiplex-screen-input = { version = "0.0.1", path = "../multiplex-screen-input" }
-multiplex-screen-protocol = { version = "0.0.1", path = "../multiplex-screen-protocol" }
-multiplex-screen-session = { version = "0.0.1", path = "../multiplex-screen-session" }
-multiplex-session-host = { version = "0.0.1", path = "../multiplex-session-host" }
-multiplex-store = { version = "0.0.1", path = "../multiplex-store", features = ["os-keyring"] }
-multiplex-tmux = { version = "0.0.1", path = "../multiplex-tmux" }
-multiplex-ui-contract = { version = "0.0.1", path = "../multiplex-ui-contract" }
+multiplex-protocol = { version = "0.0.2", path = "../multiplex-protocol" }
+multiplex-domain = { version = "0.0.2", path = "../multiplex-domain" }
+multiplex-diagnostics = { version = "0.0.2", path = "../multiplex-diagnostics" }
+multiplex-client = { version = "0.0.2", path = "../multiplex-client" }
+multiplex-cli = { version = "0.0.2", path = "../multiplex-cli" }
+multiplex-controller-security = { version = "0.0.2", path = "../multiplex-controller-security" }
+multiplex-controller-listener = { version = "0.0.2", path = "../multiplex-controller-listener" }
+multiplex-host-protocol = { version = "0.0.2", path = "../multiplex-host-protocol" }
+multiplex-relay-client = { version = "0.0.2", path = "../multiplex-relay-client" }
+multiplex-screen-capture = { version = "0.0.2", path = "../multiplex-screen-capture" }
+multiplex-screen-codec = { version = "0.0.2", path = "../multiplex-screen-codec" }
+multiplex-screen-host = { version = "0.0.2", path = "../multiplex-screen-host" }
+multiplex-screen-input = { version = "0.0.2", path = "../multiplex-screen-input" }
+multiplex-screen-protocol = { version = "0.0.2", path = "../multiplex-screen-protocol" }
+multiplex-screen-session = { version = "0.0.2", path = "../multiplex-screen-session" }
+multiplex-session-host = { version = "0.0.2", path = "../multiplex-session-host" }
+multiplex-store = { version = "0.0.2", path = "../multiplex-store", features = ["os-keyring"] }
+multiplex-tmux = { version = "0.0.2", path = "../multiplex-tmux" }
+multiplex-ui-contract = { version = "0.0.2", path = "../multiplex-ui-contract" }
 tokio = { version = "1", features = ["io-std", "io-util", "net", "rt", "signal", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 uuid = { version = "1.22", features = ["v4"] }
@@ -90,7 +90,7 @@ zeroize = "=1.9.0"
 [target.'cfg(target_os = "macos")'.dependencies]
 block = "0.1"
 objc = "0.2"
-multiplex-accessibility-macos = { version = "0.0.1", path = "../multiplex-accessibility-macos" }
+multiplex-accessibility-macos = { version = "0.0.2", path = "../multiplex-accessibility-macos" }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
