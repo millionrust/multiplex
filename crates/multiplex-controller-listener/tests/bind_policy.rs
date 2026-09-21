@@ -22,12 +22,14 @@ impl InterfaceProvider for Interfaces {
     }
 }
 
-/// Records every bind and refuses the listed addresses as already in use.
+/// Records every bind and refuses the listed addresses as already in use, and the reserved ports
+/// the way Windows refuses a port inside an excluded range: as permission denied.
 #[derive(Default)]
 struct RecordingBinder {
     attempts: Mutex<Vec<SocketAddr>>,
     in_use: HashSet<SocketAddr>,
     busy_ports: HashSet<u16>,
+    reserved_ports: HashSet<u16>,
 }
 
 impl ControllerBinder for RecordingBinder {
@@ -37,6 +39,11 @@ impl ControllerBinder for RecordingBinder {
         self.attempts.lock().unwrap().push(address);
         if self.in_use.contains(&address) || self.busy_ports.contains(&address.port()) {
             Err(io::Error::new(io::ErrorKind::AddrInUse, "fixture conflict"))
+        } else if self.reserved_ports.contains(&address.port()) {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "fixture excluded port range",
+            ))
         } else {
             Ok(address)
         }
@@ -273,4 +280,45 @@ fn a_fixed_port_is_never_replaced() {
         ListenerErrorCode::PortConflict
     );
     assert_eq!(binder.attempts.lock().unwrap().len(), 3);
+}
+
+#[test]
+fn a_generated_port_inside_a_reserved_range_is_replaced() {
+    let binder = RecordingBinder {
+        reserved_ports: HashSet::from([55_000]),
+        ..RecordingBinder::default()
+    };
+    let bound = bind_private_addresses(
+        &policy(true, ControllerPort::Generated(55_000)),
+        &home_and_tailscale(),
+        &binder,
+        &mut Ports(vec![61_000]),
+    )
+    .unwrap();
+    assert_eq!(bound.port, ControllerPort::Generated(61_000));
+    assert_eq!(bound.bound.len(), 3);
+}
+
+#[test]
+fn a_chosen_port_inside_a_reserved_range_is_reported_not_replaced() {
+    let binder = RecordingBinder {
+        reserved_ports: HashSet::from([9_999]),
+        ..RecordingBinder::default()
+    };
+    let error = bind_private_addresses(
+        &policy(true, ControllerPort::UserFixed(9_999)),
+        &home_and_tailscale(),
+        &binder,
+        &mut Ports(vec![61_000]),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, ListenerErrorCode::PermissionDenied);
+    assert!(
+        binder
+            .attempts
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|address| address.port() == 9_999)
+    );
 }

@@ -115,12 +115,12 @@ where
             port = ControllerPort::generated(ports.next_port()?)?;
         }
         let mut bound = Vec::new();
-        let mut all_conflicts = true;
+        let mut another_port_may_work = true;
         for candidate in &candidates {
             match bind_address(candidate, port, binder) {
                 Ok(address) => bound.push(address),
                 Err(error) => {
-                    all_conflicts &= error.code == ListenerErrorCode::PortConflict;
+                    another_port_may_work &= port_refused(error.code);
                     last_error = Some(error);
                 }
             }
@@ -128,11 +128,24 @@ where
         if !bound.is_empty() {
             return Ok(BoundControllerListeners { port, bound });
         }
-        if !all_conflicts {
+        if !another_port_may_work {
             break;
         }
     }
     Err(last_error.unwrap_or_else(|| ListenerError::new(ListenerErrorCode::PortConflict)))
+}
+
+/// Whether a generated port was refused for being that port, so a different one may bind.
+///
+/// Windows reserves blocks of the dynamic range this port is drawn from for Hyper-V, WSL, and
+/// Docker (`netsh interface ipv4 show excludedportrange protocol=tcp`), and binding inside one
+/// fails with WSAEACCES, which reads as permission denied rather than as a port in use. A port the
+/// person chose is never replaced, so this only decides whether to draw another.
+fn port_refused(code: ListenerErrorCode) -> bool {
+    matches!(
+        code,
+        ListenerErrorCode::PortConflict | ListenerErrorCode::PermissionDenied
+    )
 }
 
 /// Binds one eligible private address on `port`.
