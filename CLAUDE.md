@@ -204,6 +204,10 @@ MULTIPLEX_PERF_BUDGETS=1 cargo test --workspace --bench '*' --locked  # enforce 
   # tests/support/perf_budget.rs are only asserted when `CI` is unset, because a hosted runner
   # overshoots them by more than ten times without anything in the code changing. Set this to
   # enforce them on a machine that sets `CI` but is not shared, or `=0` on a busy laptop.
+MULTIPLEX_MOBILE_CARGO_TARGET_DIR="$PWD/target" scripts/build/mobile-controller-bindings.sh --android
+  # the mobile build scripts normally give every library and target its own empty target
+  # directory; this makes them share one, as CI does, so dependencies build once per target.
+  # Never set it for artifacts that ship.
 cargo run -p multiplex-slate --example gallery  # Slate component gallery
 cargo run -p multiplex-ui-contract --bin generate-tokens  # after editing design/tokens.toml; also writes the mobile SlateTokens.swift and SlateTokens.kt
 ```
