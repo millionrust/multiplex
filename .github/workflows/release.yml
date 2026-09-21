@@ -328,9 +328,8 @@ jobs:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           generate_release_notes: true
           files: flat/*
-          # Early releases are unsigned on every platform: macOS is not notarized (right-click →
-          # Open), Windows has no Authenticode signature, the APK carries a throwaway debug key,
-          # and the iOS build must be re-signed before it installs. They ship as prereleases
-          # until signing credentials exist.
-          draft: false
+          # Always a draft: a person publishes it after looking at it. Early releases are unsigned
+          # on every platform (macOS is not notarized, Windows has no Authenticode signature, the
+          # APK carries a throwaway debug key, and the iOS build must be re-signed to install).
+          draft: true
           prerelease: true

@@ -22,7 +22,8 @@ done
 
 grep -F 'if-no-files-found: error' "$workflow" >/dev/null
 grep -F 'sha256' "$workflow" >/dev/null
-grep -F 'macos-15-intel' "$workflow" >/dev/null
+# Intel macOS is cross-compiled on Apple silicon, whose Xcode ScreenCaptureKit's Metal bridge needs.
+grep -F 'triple: x86_64-apple-darwin' "$workflow" >/dev/null
 grep -F 'output-file: dist/Multiplex-${{ matrix.target.name }}.spdx.json' "$workflow" >/dev/null
 grep -F 'uses: actions/attest@v4' "$workflow" >/dev/null
 grep -F 'draft: true' "$workflow" >/dev/null
