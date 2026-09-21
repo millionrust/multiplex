@@ -715,12 +715,62 @@ async fn output_loop(
     Ok(())
 }
 
+/// Windows' pseudo-console asks where the cursor is (`ESC [ 6 n`) as it starts, and shows
+/// nothing more until it hears back. A terminal window answers that itself; a Host has no window
+/// in front of it, so it answers from its own screen model, one-based as the report is. On Unix
+/// nothing asks, and a program's own query is left for the terminal a client attaches, as before.
+fn cursor_position_reply(output: &[u8], screen: &vt100::Screen) -> Option<String> {
+    if !cfg!(windows) || !requests_cursor_position(output) {
+        return None;
+    }
+    let (row, column) = screen.cursor_position();
+    Some(format!(
+        "\x1b[{};{}R",
+        u32::from(row) + 1,
+        u32::from(column) + 1
+    ))
+}
+
+fn requests_cursor_position(output: &[u8]) -> bool {
+    output.windows(4).any(|window| window == b"\x1b[6n")
+}
+
+fn without_cursor_position_requests(output: &[u8]) -> Vec<u8> {
+    let mut kept = Vec::with_capacity(output.len());
+    let mut index = 0;
+    while index < output.len() {
+        if output[index..].starts_with(b"\x1b[6n") {
+            index += 4;
+        } else {
+            kept.push(output[index]);
+            index += 1;
+        }
+    }
+    kept
+}
+
 async fn process_output(
     state: &RuntimeState,
-    bytes: Vec<u8>,
+    mut bytes: Vec<u8>,
     last_sync: &mut Instant,
 ) -> Result<(), HostError> {
-    state.parser.lock().await.process(&bytes);
+    let cursor_reply = {
+        let mut parser = state.parser.lock().await;
+        parser.process(&bytes);
+        cursor_position_reply(&bytes, parser.screen())
+    };
+    if let Some(reply) = cursor_reply {
+        let mut writer = state
+            .writer
+            .lock()
+            .map_err(|_| HostError::new(HostErrorCode::Io))?;
+        writer.write_all(reply.as_bytes()).map_err(HostError::io)?;
+        writer.flush().map_err(HostError::io)?;
+        drop(writer);
+        // Answered here, so no client's terminal answers it again: a second report would reach
+        // the program as typed text.
+        bytes = without_cursor_position_requests(&bytes);
+    }
     state
         .last_output_monotonic_nanos
         .store(monotonic_nanos(), Ordering::Release);
@@ -1875,6 +1925,22 @@ fn monotonic_nanos() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cursor_position_query_is_recognized_anywhere_in_the_output() {
+        assert!(requests_cursor_position(b"\x1b[6n"));
+        assert!(requests_cursor_position(b"hello\x1b[?25l\x1b[6nworld"));
+        assert!(!requests_cursor_position(b"\x1b[5n"));
+        assert!(!requests_cursor_position(b"plain output"));
+    }
+
+    #[test]
+    fn an_answered_query_is_not_passed_on() {
+        assert_eq!(
+            without_cursor_position_requests(b"a\x1b[6nb\x1b[6n\x1b[5n"),
+            b"ab\x1b[5n"
+        );
+    }
     use multiplex_domain::{
         HostInstanceId, HostedSessionId, RuntimeCapability, RuntimeDetectionResult,
         RuntimeDetectionStatus, RuntimeId,
