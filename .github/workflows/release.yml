@@ -29,8 +29,10 @@ jobs:
             runner: macos-26
             triple: aarch64-apple-darwin
             bundle: macos
+          # Cross-compiled on Apple silicon: ScreenCaptureKit's Metal bridge needs a newer SDK
+          # than the Intel runner image's Xcode carries.
           - name: macos-x86_64
-            runner: macos-15-intel
+            runner: macos-26
             triple: x86_64-apple-darwin
             bundle: macos
           - name: linux-x86_64
@@ -62,6 +64,7 @@ jobs:
           sudo apt-get install -y \
             libxkbcommon-dev libssl-dev libfontconfig1-dev libdbus-1-dev \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libpipewire-0.3-dev libspa-0.2-dev libclang-dev \
             pkg-config
 
       - name: Build release application and sidecars
@@ -110,7 +113,7 @@ jobs:
           install -m 755 "$PORTABLE"/* "$ROOT/usr/bin/"
           install -m 644 crates/multiplex-desktop/assets/icons/app.png "$ROOT/usr/share/icons/hicolor/512x512/apps/multiplex.png"
           printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Multiplex' 'Exec=multiplex' 'Icon=multiplex' 'Categories=Development;Utility;' 'Terminal=false' > "$ROOT/usr/share/applications/multiplex.desktop"
-          printf 'Package: multiplex\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: Multiplex contributors\nDepends: libssl3, libxkbcommon0\nDescription: Native desktop SSH client\n' "$VERSION" > "$ROOT/DEBIAN/control"
+          printf 'Package: multiplex\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: Multiplex contributors\nDepends: libssl3, libxkbcommon0, libpipewire-0.3-0\nDescription: Native desktop SSH client\n' "$VERSION" > "$ROOT/DEBIAN/control"
           dpkg-deb --root-owner-group --build "$ROOT" "dist/multiplex_${VERSION}_amd64.deb"
           sha256sum "dist/Multiplex-${{ matrix.target.name }}.tar.gz" "dist/multiplex_${VERSION}_amd64.deb" > "dist/Multiplex-${{ matrix.target.name }}.sha256"
           rm -rf "$PORTABLE" "$ROOT"
