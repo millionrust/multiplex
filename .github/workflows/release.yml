@@ -11,6 +11,13 @@ on:
         required: false
         default: ""
 
+# A dry run (dispatched without a tag) only proves that everything builds, so it compiles in
+# parallel without link-time optimisation. Anything that is published gets the release profile as
+# Cargo.toml declares it: one codegen unit and thin LTO, the slowest to build and fastest to run.
+env:
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.tag != '') && '1' || '16' }}
+  CARGO_PROFILE_RELEASE_LTO: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.tag != '') && 'thin' || 'false' }}
+
 permissions:
   contents: write
   actions: read

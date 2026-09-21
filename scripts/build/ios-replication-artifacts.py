@@ -85,7 +85,7 @@ def build():
         for rust_target in ("aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"):
             shared.space()
             run("rustup", "target", "add", rust_target)
-            with tempfile.TemporaryDirectory(prefix="slice-", dir=work) as build_dir:
+            with shared.slice_target(work) as build_dir:
                 # Ship machine-code archives, not Rust LLVM bitcode newer than Apple's tools.
                 env = dict(os.environ, CARGO_TARGET_DIR=build_dir, IPHONEOS_DEPLOYMENT_TARGET="17.0", CARGO_PROFILE_RELEASE_LTO="false")
                 run("cargo", "build", "--locked", "-p", "multiplex-replication-bindings", "--release", "--lib", "--target", rust_target, env=env)

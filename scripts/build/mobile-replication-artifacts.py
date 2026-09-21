@@ -1,5 +1,6 @@
 """Build and promote one complete Android replication artifact set, never Controller files."""
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -10,6 +11,18 @@ import signal
 import sys
 import tempfile
 from owned_process import run_owned
+
+
+def slice_target(work):
+    """The cargo target directory for one slice: new and empty unless CI shares one.
+
+    CI only verifies these artifacts, so it sets MULTIPLEX_MOBILE_CARGO_TARGET_DIR to one cached
+    directory that every mobile library builds into; anything that ships starts from nothing.
+    """
+    shared = os.environ.get("MULTIPLEX_MOBILE_CARGO_TARGET_DIR")
+    if shared:
+        return contextlib.nullcontext(shared)
+    return tempfile.TemporaryDirectory(prefix="slice-", dir=work)
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "dist/mobile/replication"
@@ -135,7 +148,7 @@ def build():
         for rust_target, (abi, clang, machine) in ABIS.items():
             space()
             run("rustup", "target", "add", rust_target)
-            with tempfile.TemporaryDirectory(prefix="slice-", dir=work) as slice_dir:
+            with slice_target(work) as slice_dir:
                 env = dict(os.environ, CARGO_TARGET_DIR=slice_dir)
                 env["CARGO_TARGET_" + rust_target.upper().replace("-", "_") + "_LINKER"] = str(toolchain / (clang + "26-clang"))
                 env["RUSTFLAGS"] = "-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384"

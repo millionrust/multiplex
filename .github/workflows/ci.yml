@@ -374,6 +374,13 @@ jobs:
       (github.event_name == 'workflow_dispatch' || needs.changes.outputs.mobile == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    # What these jobs build is verified, never shipped, so it compiles for speed: parallel code
+    # generation without link-time optimisation, and every mobile library sharing one cached target
+    # directory (the build scripts otherwise give each library and target its own empty one).
+    env:
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      CARGO_PROFILE_RELEASE_LTO: "false"
+      MULTIPLEX_MOBILE_CARGO_TARGET_DIR: ${{ github.workspace }}/target
     steps:
       - uses: actions/checkout@v4
 
@@ -461,6 +468,13 @@ jobs:
       (github.event_name == 'workflow_dispatch' || needs.changes.outputs.mobile == 'true')
     runs-on: macos-26
     timeout-minutes: 120
+    # What these jobs build is verified, never shipped, so it compiles for speed: parallel code
+    # generation without link-time optimisation, and every mobile library sharing one cached target
+    # directory (the build scripts otherwise give each library and target its own empty one).
+    env:
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      CARGO_PROFILE_RELEASE_LTO: "false"
+      MULTIPLEX_MOBILE_CARGO_TARGET_DIR: ${{ github.workspace }}/target
     steps:
       - uses: actions/checkout@v4
 

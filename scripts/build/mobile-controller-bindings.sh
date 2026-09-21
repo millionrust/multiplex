@@ -90,6 +90,12 @@ GENERATED="$BUILD_ROOT/generated"
 STAGED="$BUILD_ROOT/output"
 mkdir -p "$GENERATED" "$STAGED"
 
+# Each build normally gets its own empty target directory, so what is built cannot depend on
+# anything left behind. CI, which only verifies these artifacts and never ships them, sets
+# MULTIPLEX_MOBILE_CARGO_TARGET_DIR to one shared, cached directory instead: every mobile library
+# then compiles the dependencies once per target rather than once per library per target.
+SHARED_TARGET="${MULTIPLEX_MOBILE_CARGO_TARGET_DIR:-}"
+
 # uniffi-bindgen reads the host build of the library, and the Kotlin unit tests load that same
 # file through JNA, so its name and the tool that lists its symbols follow the machine doing the
 # build rather than the machine being built for. CI builds the Android half on Linux.
@@ -109,7 +115,7 @@ case "$(uname -s)" in
     ;;
 esac
 
-HOST_TARGET="$BUILD_ROOT/host-target"
+HOST_TARGET="${SHARED_TARGET:-$BUILD_ROOT/host-target}"
 # uniffi reads the interface out of the library's static symbol table (`elf.syms` in
 # uniffi_bindgen's extract_from_elf), which the workspace's `strip = "symbols"` release profile
 # deletes on ELF — leaving only "No UniFFI metadata found". Mach-O keeps enough to survive it,
@@ -181,10 +187,10 @@ build_ios() {
 
   for target in "${targets[@]}"; do
     rustup target add "$target"
-    local target_dir="$BUILD_ROOT/ios-$target"
+    local target_dir="${SHARED_TARGET:-$BUILD_ROOT/ios-$target}"
     CARGO_TARGET_DIR="$target_dir" cargo build --locked -p "$CRATE" --release --lib --target "$target"
     cp "$target_dir/$target/release/lib${LIB_STEM}.a" "$libraries/$target.a"
-    rm -rf "$target_dir"
+    [[ -n "$SHARED_TARGET" ]] || rm -rf "$target_dir"
   done
 
   lipo -create \
@@ -239,7 +245,7 @@ build_android() {
       i686-linux-android) abi="x86" ;;
       x86_64-linux-android) abi="x86_64" ;;
     esac
-    local target_dir="$BUILD_ROOT/android-$target"
+    local target_dir="${SHARED_TARGET:-$BUILD_ROOT/android-$target}"
     RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" \
       CARGO_TARGET_DIR="$target_dir" cargo build --locked -p "$CRATE" --release --lib --target "$target"
     mkdir -p "$STAGED/android/jniLibs/$abi"
@@ -250,7 +256,7 @@ build_android() {
         exit 1
       fi
     done < <("$readelf" -lW "$STAGED/android/jniLibs/$abi/lib${LIB_STEM}.so" | awk '$1 == "LOAD" { print $NF }')
-    rm -rf "$target_dir"
+    [[ -n "$SHARED_TARGET" ]] || rm -rf "$target_dir"
   done
 }
 
