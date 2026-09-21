@@ -926,8 +926,10 @@ mod tests {
             )
         });
         // A capture that failed before navigating and one still starting look the same from here,
-        // so say which it was.
-        if let Err(error) = accepted_rx.recv_timeout(Duration::from_secs(10)) {
+        // so say which it was. Thirty seconds, not ten: a hosted runner has taken longer than ten
+        // just to start Chromium, and what this test measures, how fast cancellation lands, is
+        // timed from the moment navigation arrives, not from here.
+        if let Err(error) = accepted_rx.recv_timeout(Duration::from_secs(30)) {
             let capture = if worker.is_finished() {
                 format!("the capture had ended: {:?}", worker.join())
             } else {
