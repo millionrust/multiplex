@@ -228,7 +228,8 @@ cargo run -p multiplex-ui-contract --bin generate-tokens  # after editing design
 
 `.github/workflows/release.yml` builds macOS (Apple silicon, and Intel cross-compiled on the same
 `macos-26` runner, merged with `lipo` by `scripts/build/macos-universal.sh` into one universal
-`Multiplex.app`), Linux, Windows, an Android APK, and an iOS `.ipa`. Nothing is signed yet: the
+`Multiplex.app`), Linux, Windows on x64 and Arm64 (each a zip and a per-user MSI built with
+WiX 5 from `crates/multiplex-desktop/wix/multiplex.wxs`), an Android APK, and an iOS `.ipa`. Nothing is signed yet: the
 APK carries the runner's throwaway debug key and the `.ipa` must be re-signed to install. The app
 ID is `com.millionrust.multiplex` on every platform.
 
@@ -250,9 +251,10 @@ ID is `com.millionrust.multiplex` on every platform.
    the release profile as declared (one codegen unit, thin LTO) and saves no cache, so it takes
    about 40 minutes. It always creates a **draft** prerelease; `scripts/verify/release-workflow.sh`
    holds it to that, so no workflow ever publishes by itself.
-5. **Check the draft** (`gh release view vX.Y.Z`): fourteen files — the universal macOS zip, the
-   Linux `.tar.gz` and `.deb`, the Windows zip, the APK, the `.ipa`, their `.sha256` files, and an
-   `.spdx.json` per desktop platform. `lipo -archs` on `Multiplex.app/Contents/MacOS/*` should say
+5. **Check the draft** (`gh release view vX.Y.Z`): twenty-one files — the universal macOS zip,
+   the Linux `.tar.gz` and `.deb`, a zip and an `.msi` for each of Windows x64 and Arm64, the APK,
+   the `.ipa`, their `.sha256` files, and an `.spdx.json` per desktop build. Each Windows runner has
+   already installed and removed its MSI silently before the file is kept. `lipo -archs` on `Multiplex.app/Contents/MacOS/*` should say
    `x86_64 arm64`. Download a few and run `shasum -a 256 -c` and
    `gh attestation verify <file> --repo millionrust/multiplex`.
 6. **Write the notes and publish:** `gh release edit vX.Y.Z --notes-file notes.md`, then

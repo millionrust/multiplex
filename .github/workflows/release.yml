@@ -51,6 +51,13 @@ jobs:
             runner: windows-2022
             triple: x86_64-pc-windows-msvc
             bundle: windows
+            msi_arch: x64
+          # Windows on Arm, built natively on GitHub's Arm runner.
+          - name: windows-aarch64
+            runner: windows-11-arm
+            triple: aarch64-pc-windows-msvc
+            bundle: windows
+            msi_arch: arm64
 
     steps:
       - uses: actions/checkout@v4
@@ -156,7 +163,58 @@ jobs:
           # LF, not Set-Content's CRLF: `shasum -c` on macOS and Linux would read the carriage
           # return as part of the file name.
           [IO.File]::WriteAllText("dist/Multiplex-${{ matrix.target.name }}.zip.sha256", "$hash  Multiplex-${{ matrix.target.name }}.zip`n")
+
+      # WiX 5, pinned: a .NET tool, so it runs on the Arm runner too, and older than the releases
+      # that ask for a maintenance-fee EULA.
+      - name: .NET for WiX
+        if: matrix.target.bundle == 'windows'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Install WiX
+        if: matrix.target.bundle == 'windows'
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix --version
+
+      # The per-user installer, from the same programs as the zip. crates/multiplex-desktop/wix
+      # explains its choices.
+      - name: Build the Windows installer
+        if: matrix.target.bundle == 'windows'
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "([^"]+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+          $stage = (Resolve-Path "dist/Multiplex-${{ matrix.target.name }}").Path
+          $msi = "dist/Multiplex-${{ matrix.target.name }}.msi"
+          wix build crates/multiplex-desktop/wix/multiplex.wxs -arch ${{ matrix.target.msi_arch }} -d "Version=$version" -d "SourceDir=$stage" -o $msi
+          if ($LASTEXITCODE -ne 0) { throw "wix build failed" }
+          $hash = (Get-FileHash $msi -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText("$msi.sha256", "$hash  Multiplex-${{ matrix.target.name }}.msi`n")
           Remove-Item -Recurse -Force $stage
+          Remove-Item -Force "dist/*.wixpdb" -ErrorAction SilentlyContinue
+
+      # The installer is only shipped after this runner has installed and removed it, silently, as
+      # the user it runs as: the programs must land in the per-user folder, and leave it again.
+      - name: Install and remove the installer on this runner
+        if: matrix.target.bundle == 'windows'
+        shell: pwsh
+        run: |
+          $msi = (Resolve-Path "dist/Multiplex-${{ matrix.target.name }}.msi").Path
+          $folder = Join-Path $env:LOCALAPPDATA "Programs\Multiplex"
+          $install = Start-Process msiexec -ArgumentList "/i `"$msi`" /qn /l*v `"$env:RUNNER_TEMP\install.log`"" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\install.log" -Tail 60; throw "install failed: $($install.ExitCode)" }
+          foreach ($name in @("multiplex.exe", "multiplex-cli.exe", "multiplex-session-host.exe", "multiplex-mcp.exe", "multiplex-mcp-authorize.exe", "multiplex-relay.exe")) {
+            if (-not (Test-Path (Join-Path $folder $name))) { throw "not installed: $name" }
+          }
+          $shortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Multiplex.lnk"
+          if (-not (Test-Path $shortcut)) { throw "Start menu shortcut missing" }
+          $remove = Start-Process msiexec -ArgumentList "/x `"$msi`" /qn /l*v `"$env:RUNNER_TEMP\remove.log`"" -Wait -PassThru
+          if ($remove.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\remove.log" -Tail 60; throw "uninstall failed: $($remove.ExitCode)" }
+          if (Test-Path (Join-Path $folder "multiplex.exe")) { throw "uninstall left the programs behind" }
+          if (Test-Path $shortcut) { throw "uninstall left the Start menu shortcut" }
+          Write-Host "The installer installed and removed Multiplex cleanly."
 
       - name: Generate platform SBOM
         uses: anchore/sbom-action@v0

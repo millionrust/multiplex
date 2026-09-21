@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Multiplex for Windows, installed for the current user only.
+
+  Per-user, so installing asks for no administrator rights, and it matches what the app does
+  per user: the background service starts from the user's own Run key, and terminal profiles go in
+  the user's own settings. Files go to %LOCALAPPDATA%\Programs\Multiplex, the per-user program
+  folder Windows itself uses.
+
+  Built by .github/workflows/release.yml with WiX 5:
+    wix build multiplex.wxs -arch x64 -d Version=0.0.2 -d SourceDir=<release folder> -o Multiplex.msi
+
+  The UpgradeCode never changes: it is how a newer Multiplex replaces an older one in place.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="Multiplex"
+      Manufacturer="Multiplex"
+      Version="$(Version)"
+      UpgradeCode="87A4C346-CC12-4AF8-9937-CCA00DE5C4BE"
+      Scope="perUser"
+      Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Multiplex is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="UserProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="Multiplex" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <!--
+      A per-user component cannot use a file as its key path, so each one is keyed by a value
+      under HKCU\Software\Multiplex, and every folder it creates is removed on uninstall.
+    -->
+    <ComponentGroup Id="Programs" Directory="INSTALLFOLDER">
+      <Component Id="Executables" Guid="4F0C4E7B-3C1E-4F1B-9D7E-6A2B8E5F0A11">
+        <RegistryValue Root="HKCU" Key="Software\Multiplex" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+        <File Id="MultiplexExe" Source="$(SourceDir)\multiplex.exe" />
+        <File Id="CliExe" Source="$(SourceDir)\multiplex-cli.exe" />
+        <File Id="SessionHostExe" Source="$(SourceDir)\multiplex-session-host.exe" />
+        <File Id="McpExe" Source="$(SourceDir)\multiplex-mcp.exe" />
+        <File Id="McpAuthorizeExe" Source="$(SourceDir)\multiplex-mcp-authorize.exe" />
+        <File Id="RelayExe" Source="$(SourceDir)\multiplex-relay.exe" />
+        <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+        <RemoveFolder Id="RemoveUserProgramsFolder" Directory="UserProgramsFolder" On="uninstall" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="StartMenu" Directory="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut" Guid="9B61D2A4-5E8C-4C0F-8A3D-2F7E1C6B4D22">
+        <RegistryValue Root="HKCU" Key="Software\Multiplex" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+        <Shortcut
+            Id="MultiplexShortcut"
+            Name="Multiplex"
+            Description="Your terminals and screens, wherever you are."
+            Target="[INSTALLFOLDER]multiplex.exe"
+            WorkingDirectory="INSTALLFOLDER" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Main" Title="Multiplex">
+      <ComponentGroupRef Id="Programs" />
+      <ComponentGroupRef Id="StartMenu" />
+    </Feature>
+
+    <!--
+      On removal, and not on an upgrade: the app takes out its background service's startup entry
+      and the terminal profiles it added, which live outside this folder and would otherwise point
+      at files that are gone. It runs before the files are removed, while the app is still there.
+      A failure never blocks the uninstall.
+    -->
+    <CustomAction
+        Id="UninstallCleanup"
+        Directory="INSTALLFOLDER"
+        ExeCommand="&quot;[INSTALLFOLDER]multiplex.exe&quot; --uninstall-cleanup"
+        Execute="immediate"
+        Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom
+          Action="UninstallCleanup"
+          Before="RemoveFiles"
+          Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>

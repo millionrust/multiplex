@@ -44,6 +44,9 @@ const CONTROLLER_BRIDGE_COMMAND: &str = "controller-bridge";
 const CONTROLLER_BRIDGE_STDIO: &str = "--stdio";
 const RELAY_HOST_COMMAND: &str = "relay-host";
 const ACCESSIBILITY_HARNESS_MODE: &str = "--accessibility-harness";
+/// Run by the Windows installer as Multiplex is removed: takes out what the app added outside its
+/// own folder, so nothing is left pointing at files that are gone.
+const UNINSTALL_CLEANUP_MODE: &str = "--uninstall-cleanup";
 
 fn run_session_host_mode() -> Result<(), multiplex_session_host::HostError> {
     use std::io::Write as _;
@@ -213,7 +216,42 @@ fn attach_parent_console() {
     }
 }
 
+/// The background service's startup entry, and every terminal profile this app added. Each is
+/// removed on its own, so one that cannot be leaves the others still removed.
+fn uninstall_cleanup() {
+    let _ = crate::controller::background_service::remove();
+    let Some(home) = dirs::home_dir() else {
+        return;
+    };
+    let launcher_name = if cfg!(windows) {
+        "multiplex-cli.exe"
+    } else {
+        "multiplex-cli"
+    };
+    let Some(launcher) = std::env::current_exe()
+        .ok()
+        .and_then(|executable| executable.parent().map(|dir| dir.join(launcher_name)))
+    else {
+        return;
+    };
+    use multiplex_tmux::terminal_profiles::{ProfileStatus, ProfileTarget, TerminalProfiles};
+    let profiles = TerminalProfiles::for_this_machine(home, launcher);
+    for target in ProfileTarget::ALL {
+        if matches!(
+            profiles.status(target),
+            ProfileStatus::On | ProfileStatus::Outdated
+        ) && let Ok(plan) = profiles.disable_plan(target)
+        {
+            let _ = plan.apply();
+        }
+    }
+}
+
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some(UNINSTALL_CLEANUP_MODE) {
+        uninstall_cleanup();
+        return;
+    }
     #[cfg(target_os = "macos")]
     if std::env::args().nth(1).as_deref() == Some(ACCESSIBILITY_HARNESS_MODE) {
         crate::ui::accessibility::harness::run();
