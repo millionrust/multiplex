@@ -14,10 +14,19 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.0.1"
         manifestPlaceholders["appLabel"] = "@string/app_name"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        getByName("release") {
+            // No release keystore exists yet. The debug key Gradle generates on the build machine
+            // makes the APK installable by sideloading; it cannot go to the Play Store, and each
+            // build machine's key differs, so an update from another machine needs a reinstall.
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
 
     buildFeatures {

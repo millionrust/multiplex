@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to publish under (e.g. v0.1.0). Leave blank to dry-run without publishing."
+        description: "Tag to publish under (e.g. v0.0.1). Leave blank to dry-run without publishing."
         required: false
         default: ""
 
@@ -108,11 +108,11 @@ jobs:
           ROOT="dist/deb-root"
           mkdir -p "$ROOT/DEBIAN" "$ROOT/usr/bin" "$ROOT/usr/share/applications" "$ROOT/usr/share/icons/hicolor/512x512/apps"
           install -m 755 "$PORTABLE"/* "$ROOT/usr/bin/"
-          install -m 644 crates/multiplex-desktop/assets/icons/app.png "$ROOT/usr/share/icons/hicolor/512x512/apps/termirust.png"
-          printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Multiplex' 'Exec=multiplex' 'Icon=termirust' 'Categories=Development;Utility;' 'Terminal=false' > "$ROOT/usr/share/applications/termirust.desktop"
-          printf 'Package: termirust\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: Multiplex contributors\nDepends: libssl3, libxkbcommon0\nDescription: Native desktop SSH client\n' "$VERSION" > "$ROOT/DEBIAN/control"
-          dpkg-deb --root-owner-group --build "$ROOT" "dist/termirust_${VERSION}_amd64.deb"
-          sha256sum "dist/Multiplex-${{ matrix.target.name }}.tar.gz" "dist/termirust_${VERSION}_amd64.deb" > "dist/Multiplex-${{ matrix.target.name }}.sha256"
+          install -m 644 crates/multiplex-desktop/assets/icons/app.png "$ROOT/usr/share/icons/hicolor/512x512/apps/multiplex.png"
+          printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Multiplex' 'Exec=multiplex' 'Icon=multiplex' 'Categories=Development;Utility;' 'Terminal=false' > "$ROOT/usr/share/applications/multiplex.desktop"
+          printf 'Package: multiplex\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: Multiplex contributors\nDepends: libssl3, libxkbcommon0\nDescription: Native desktop SSH client\n' "$VERSION" > "$ROOT/DEBIAN/control"
+          dpkg-deb --root-owner-group --build "$ROOT" "dist/multiplex_${VERSION}_amd64.deb"
+          sha256sum "dist/Multiplex-${{ matrix.target.name }}.tar.gz" "dist/multiplex_${VERSION}_amd64.deb" > "dist/Multiplex-${{ matrix.target.name }}.sha256"
           rm -rf "$PORTABLE" "$ROOT"
 
       - name: Package Windows artifact
@@ -160,13 +160,148 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: termirust-${{ matrix.target.name }}
+          name: multiplex-${{ matrix.target.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  android:
+    name: build (android)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-android
+
+      # The bindings scripts pin this NDK. The runner image carries a different default, so the
+      # pinned one is installed and named explicitly.
+      - name: Install the pinned Android NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.1.12297006" >/dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.1.12297006" >> "$GITHUB_ENV"
+
+      - name: Build and sync the generated bindings and native libraries
+        # The NDK and Rust are pinned above; anything else the runner image differs on warns.
+        env:
+          MULTIPLEX_SCREEN_BINDINGS_ALLOW_UNPINNED: "1"
+          MULTIPLEX_CONTROLLER_BINDINGS_ALLOW_UNPINNED: "1"
+          MULTIPLEX_REPLICATION_ARTIFACTS_ALLOW_UNPINNED: "1"
+        run: |
+          scripts/build/mobile-controller-bindings.sh --android
+          scripts/sync/mobile-controller-bindings.sh --write --android
+          scripts/build/mobile-screen-bindings.sh --android
+          scripts/sync/mobile-screen-bindings.sh --write --android
+          scripts/sync/mobile-ffi-artifacts.sh android
+          python3 scripts/build/mobile-replication-artifacts.py build --android
+          python3 scripts/build/mobile-replication-artifacts.py sync --android --write
+
+      # Signed with the debug key Gradle generates on this runner (see build.gradle.kts): the APK
+      # installs by sideloading, but is not a Play Store build.
+      - name: Build the release APK
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+        run: |
+          apps/android/gradlew -p apps/android assembleRelease --console=plain
+          VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)
+          mkdir -p dist
+          cp apps/android/app/build/outputs/apk/release/app-release.apk "dist/Multiplex-${VERSION}-android.apk"
+          (cd dist && sha256sum "Multiplex-${VERSION}-android.apk" > "Multiplex-${VERSION}-android.apk.sha256")
+
+      - name: Attest release artifacts
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: multiplex-android
+          path: dist/*
+          if-no-files-found: error
+
+  ios:
+    name: build (ios)
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-ios
+
+      - name: Build and sync the generated bindings and frameworks
+        # The hosted runner ships whatever Xcode its image has, not necessarily the pinned one.
+        env:
+          MULTIPLEX_SCREEN_BINDINGS_ALLOW_UNPINNED: "1"
+          MULTIPLEX_CONTROLLER_BINDINGS_ALLOW_UNPINNED: "1"
+        run: |
+          scripts/build/mobile-controller-bindings.sh --ios
+          scripts/sync/mobile-controller-bindings.sh --write --ios
+          scripts/build/mobile-screen-bindings.sh --ios
+          scripts/sync/mobile-screen-bindings.sh --write --ios
+          scripts/sync/mobile-ffi-artifacts.sh ios
+          python3 scripts/build/ios-replication-artifacts.py build
+          python3 scripts/build/ios-replication-artifacts.py sync --write
+
+      # No Apple signing identity exists yet, so this is an unsigned device build. It installs only
+      # after being re-signed (for example by a sideloading tool with the user's own Apple ID).
+      - name: Build the unsigned iOS application
+        run: |
+          cd apps/ios
+          xcodegen generate --spec project.yml
+          xcodebuild archive -quiet \
+            -project MultiplexMobile.xcodeproj \
+            -scheme MultiplexMobile \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/MultiplexMobile.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+          cd "$GITHUB_WORKSPACE"
+          VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)
+          STAGE="$RUNNER_TEMP/ipa"
+          mkdir -p "$STAGE/Payload" dist
+          APP=$(find "$RUNNER_TEMP/MultiplexMobile.xcarchive/Products/Applications" -maxdepth 1 -name '*.app' | head -n1)
+          test -d "$APP"
+          ditto "$APP" "$STAGE/Payload/$(basename "$APP")"
+          (cd "$STAGE" && ditto -c -k --sequesterRsrc --keepParent Payload "$GITHUB_WORKSPACE/dist/Multiplex-${VERSION}-ios-unsigned.ipa")
+          (cd dist && shasum -a 256 "Multiplex-${VERSION}-ios-unsigned.ipa" > "Multiplex-${VERSION}-ios-unsigned.ipa.sha256")
+
+      - name: Attest release artifacts
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: multiplex-ios
           path: dist/*
           if-no-files-found: error
 
   release:
     name: publish
-    needs: build
+    needs: [build, android, ios]
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
     runs-on: ubuntu-22.04
     steps:
@@ -189,7 +324,9 @@ jobs:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           generate_release_notes: true
           files: flat/*
-          # Signing/notarization credentials and platform install/rollback proof are
-          # external N14 gates. Never publish an unsigned workflow artifact directly.
-          draft: true
+          # Early releases are unsigned on every platform: macOS is not notarized (right-click →
+          # Open), Windows has no Authenticode signature, the APK carries a throwaway debug key,
+          # and the iOS build must be re-signed before it installs. They ship as prereleases
+          # until signing credentials exist.
+          draft: false
           prerelease: true

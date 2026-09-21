@@ -1,6 +1,6 @@
 [package]
 name = "multiplex-mcp"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2024"
 rust-version.workspace = true
 description = "Capability-scoped local MCP server for TermiRust"
@@ -14,10 +14,10 @@ rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
-multiplex-cli = { version = "0.1.0", path = "../multiplex-cli" }
-multiplex-browser = { version = "0.1.0", path = "../multiplex-browser" }
-multiplex-domain = { version = "0.1.0", path = "../multiplex-domain" }
-multiplex-store = { version = "0.1.0", path = "../multiplex-store" }
+multiplex-cli = { version = "0.0.1", path = "../multiplex-cli" }
+multiplex-browser = { version = "0.0.1", path = "../multiplex-browser" }
+multiplex-domain = { version = "0.0.1", path = "../multiplex-domain" }
+multiplex-store = { version = "0.0.1", path = "../multiplex-store" }
 
 [dev-dependencies]
 tempfile = "3.27"

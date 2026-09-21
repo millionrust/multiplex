@@ -1,6 +1,6 @@
 [package]
 name = "multiplex-tui"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2024"
 rust-version.workspace = true
 description = "Terminal fleet navigator and durable session client for TermiRust"
@@ -12,12 +12,12 @@ dirs = "=6.0.0"
 rand = "0.8"
 ratatui = { version = "=0.30.2", default-features = false, features = ["crossterm", "layout-cache"] }
 signal-hook = "=0.3.18"
-multiplex-client = { version = "0.1.0", path = "../multiplex-client" }
-multiplex-cli = { version = "0.1.0", path = "../multiplex-cli" }
-multiplex-domain = { version = "0.1.0", path = "../multiplex-domain" }
-multiplex-host-protocol = { version = "0.1.0", path = "../multiplex-host-protocol" }
-multiplex-store = { version = "0.1.0", path = "../multiplex-store" }
-multiplex-ui-contract = { version = "0.1.0", path = "../multiplex-ui-contract" }
+multiplex-client = { version = "0.0.1", path = "../multiplex-client" }
+multiplex-cli = { version = "0.0.1", path = "../multiplex-cli" }
+multiplex-domain = { version = "0.0.1", path = "../multiplex-domain" }
+multiplex-host-protocol = { version = "0.0.1", path = "../multiplex-host-protocol" }
+multiplex-store = { version = "0.0.1", path = "../multiplex-store" }
+multiplex-ui-contract = { version = "0.0.1", path = "../multiplex-ui-contract" }
 tokio = { version = "1", features = ["rt", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 vt100 = "=0.16.2"
@@ -28,7 +28,7 @@ libc = "=0.2.183"
 portable-pty = "=0.9.0"
 serde_json = "1"
 tempfile = "=3.27.0"
-multiplex-session-host = { version = "0.1.0", path = "../multiplex-session-host" }
+multiplex-session-host = { version = "0.0.1", path = "../multiplex-session-host" }
 
 [[bin]]
 name = "multiplex-tui"

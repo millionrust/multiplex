@@ -1,6 +1,6 @@
 [package]
 name = "multiplex-screen-bindings"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2024"
 rust-version.workspace = true
 description = "Generated Swift and Kotlin boundary for watching and driving TermiRust Remote Screens"
@@ -17,9 +17,9 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 bindgen-cli = ["uniffi/cargo-metadata", "uniffi/cli"]
 
 [dependencies]
-multiplex-screen-codec = { version = "0.1.0", path = "../multiplex-screen-codec" }
-multiplex-screen-protocol = { version = "0.1.0", path = "../multiplex-screen-protocol" }
-multiplex-screen-session = { version = "0.1.0", path = "../multiplex-screen-session" }
+multiplex-screen-codec = { version = "0.0.1", path = "../multiplex-screen-codec" }
+multiplex-screen-protocol = { version = "0.0.1", path = "../multiplex-screen-protocol" }
+multiplex-screen-session = { version = "0.0.1", path = "../multiplex-screen-session" }
 uniffi = { version = "=0.32.0", default-features = false }
 
 [dev-dependencies]

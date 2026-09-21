@@ -1,6 +1,6 @@
 [package]
 name = "multiplex-controller-bindings"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2024"
 rust-version.workspace = true
 description = "Generated Swift and Kotlin boundary for TermiRust Controller-v1 security"
@@ -17,7 +17,7 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 bindgen-cli = ["uniffi/cargo-metadata", "uniffi/cli"]
 
 [dependencies]
-multiplex-controller-security = { version = "0.1.0", path = "../multiplex-controller-security" }
+multiplex-controller-security = { version = "0.0.1", path = "../multiplex-controller-security" }
 uniffi = { version = "=0.32.0", default-features = false }
 zeroize = "=1.9.0"
 

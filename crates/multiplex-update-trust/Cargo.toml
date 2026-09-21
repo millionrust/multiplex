@@ -1,6 +1,6 @@
 [package]
 name = "multiplex-update-trust"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2024"
 rust-version.workspace = true
 description = "Bounded platform-neutral TUF metadata verification for TermiRust updates"
