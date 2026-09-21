@@ -57,6 +57,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-${{ matrix.target.name }}
+          # Releases are rare; their gigabytes of cache would only evict what CI reuses every push.
+          save-if: false
 
       - name: Linux build dependencies
         if: matrix.target.bundle == 'linux'
@@ -189,6 +191,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-android
+          # Releases are rare; their gigabytes of cache would only evict what CI reuses every push.
+          save-if: false
 
       # The bindings scripts pin this NDK. The runner image carries a different default, so the
       # pinned one is installed and named explicitly.
@@ -253,6 +257,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-ios
+          # Releases are rare; their gigabytes of cache would only evict what CI reuses every push.
+          save-if: false
 
       - name: Build and sync the generated bindings and frameworks
         # The hosted runner ships whatever Xcode its image has, not necessarily the pinned one.

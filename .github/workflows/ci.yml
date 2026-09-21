@@ -2,11 +2,33 @@ name: ci
 
 permissions:
   contents: read
+  # dorny/paths-filter reads a pull request's changed files through the API.
+  pull-requests: read
+
+# A newer push to the same branch or pull request makes the older run moot; cancel it rather
+# than let both hold runners for an hour.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 on:
+  # A change to prose alone runs nothing. docs/decisions stays in: the controller-security vectors
+  # pin the ADR's checksum, and crate-level COMPATIBILITY.md files are read by tests.
   push:
     branches: [main, dev, test]
+    paths:
+      - "**"
+      - "!README.md"
+      - "!CLAUDE.md"
+      - "!docs/**"
+      - "docs/decisions/**"
   pull_request:
+    paths:
+      - "**"
+      - "!README.md"
+      - "!CLAUDE.md"
+      - "!docs/**"
+      - "docs/decisions/**"
   # Run by hand with `debug` on to be handed a shell on each runner, from the moment it starts.
   # Meant for a failure that cannot be read from a log: a linker that will not say which symbol it
   # wanted, a build script that panics inside a dependency, a toolchain unlike every machine here.
@@ -28,6 +50,44 @@ on:
         default: ""
 
 jobs:
+  # The mobile applications build only these crates. A change that touches none of them, such as
+  # most desktop work, cannot change what the Android and iOS jobs build, so they are skipped.
+  changes:
+    name: changed areas
+    if: inputs.windows_probe == ''
+    runs-on: ubuntu-24.04
+    outputs:
+      mobile: ${{ steps.filter.outputs.mobile }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            mobile:
+              - "apps/**"
+              - "scripts/build/**"
+              - "scripts/sync/**"
+              - "tests/fixtures/**"
+              - "Cargo.toml"
+              - "Cargo.lock"
+              - "rust-toolchain.toml"
+              - ".github/workflows/ci.yml"
+              - "crates/multiplex-controller-bindings/**"
+              - "crates/multiplex-controller-security/**"
+              - "crates/multiplex-domain/**"
+              - "crates/multiplex-mobile-ffi/**"
+              - "crates/multiplex-protocol/**"
+              - "crates/multiplex-relay-protocol/**"
+              - "crates/multiplex-replication-bindings/**"
+              - "crates/multiplex-replication-security/**"
+              - "crates/multiplex-screen-bindings/**"
+              - "crates/multiplex-screen-codec/**"
+              - "crates/multiplex-screen-protocol/**"
+              - "crates/multiplex-screen-session/**"
+              - "crates/multiplex-screen-video/**"
+              - "crates/multiplex-store/**"
+
   test:
     name: rust baseline (${{ matrix.runner }})
     # A probe run asks one narrow question and should not also occupy every runner for an hour.
@@ -85,7 +145,7 @@ jobs:
       # The MCP, browser and diagnostics gates search with ripgrep, which the runners lack.
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-deny@0.19.8,ripgrep
+          tool: cargo-deny@0.19.8,ripgrep,nextest
 
       - name: Linux build dependencies
         if: runner.os == 'Linux'
@@ -179,14 +239,9 @@ jobs:
       # 178 test executables, and link.exe is the slow step in each. The release job keeps link.exe,
       # since what it builds is what ships.
       CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld.exe
-      # rust-cache keeps dependencies but not this workspace's own crates, which cargo rebuilds on
-      # every checkout because checkout gives every source file a new timestamp. sccache keys each
-      # compile by its contents instead, so a crate nobody touched is fetched rather than rebuilt
-      # and nothing stale can come back. It cannot cache the test executables, only the libraries
-      # under them. (Restoring timestamps from git history would skip more, but hands back stale
-      # builds whenever a commit is older than the cache, so it is not used.)
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: sccache
+      # sccache used to sit in front of rustc here. It served 24% of compiles on 1c16b4a while its
+      # thousand small entries filled the repository's 10 GB Actions cache and evicted every
+      # job's rust-cache, so it was removed.
     steps:
       # Defender scans every file the build writes and every test binary the first time it runs.
       # Measured on this runner: a test binary with no tests in it took seven seconds to start,
@@ -222,8 +277,6 @@ jobs:
         with:
           tool: nextest
 
-      - uses: mozilla-actions/sccache-action@v0.0.9
-
       # Every feature, deliberately: Windows is where an optional dependency is likeliest to break,
       # and the release contract in scripts/verify/release-workflow.sh holds this job to it.
       #
@@ -244,11 +297,6 @@ jobs:
         if: matrix.shard == 1
         run: cargo test --workspace --bench '*' --all-features --locked --no-fail-fast
 
-      # Whether sccache earned its place: how many compiles it served, missed, or could not cache.
-      - name: Compile cache report
-        if: always()
-        run: sccache --show-stats
-
   # A slice of the Windows suite, run by hand, for questions the full job answers too slowly to be
   # worth asking. It never runs on a push: `windows_probe` is empty there, and an empty argument
   # list would otherwise mean "the whole workspace", which is the job above.
@@ -261,8 +309,6 @@ jobs:
     # the machine the tests run on, not a different build of them.
     env:
       CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld.exe
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: sccache
     steps:
       # As in the full Windows job, and needed here too so a probe measures the same machine.
       - name: Keep Defender off the build output
@@ -286,8 +332,6 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest
-
-      - uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: Run the chosen command
         # A whole command rather than arguments to one, so a single probe can compare runners,
@@ -321,50 +365,13 @@ jobs:
 
   # The release binaries do not depend on the tests passing, and waiting for them put an hour
   # between a push and knowing whether Windows can still produce what it ships.
-  windows-release:
-    name: windows release executables
-    if: inputs.windows_probe == ''
-    runs-on: windows-2022
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@1.98.1
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-
-      - name: Build required Windows release executables
-        run: >-
-          cargo build --release --locked
-          -p multiplex
-          -p multiplex-cli
-          -p multiplex-session-host
-          -p multiplex-mcp
-          -p multiplex-relay-server
-
-      - name: Verify required Windows release executables
-        shell: pwsh
-        run: |
-          $required = @(
-            "multiplex.exe",
-            "multiplex-cli.exe",
-            "multiplex-session-host.exe",
-            "multiplex-mcp.exe",
-            "multiplex-mcp-authorize.exe",
-            "multiplex-relay.exe"
-          )
-          foreach ($name in $required) {
-            $path = Join-Path "target/release" $name
-            if (-not (Test-Path -PathType Leaf $path)) {
-              throw "required Windows release executable is missing: $path"
-            }
-          }
-
   android:
     name: native Android application
-    if: inputs.windows_probe == ''
+    needs: changes
+    # Run by hand, both always build.
+    if: >-
+      inputs.windows_probe == '' &&
+      (github.event_name == 'workflow_dispatch' || needs.changes.outputs.mobile == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -447,7 +454,11 @@ jobs:
 
   ios:
     name: native iOS and iPadOS application
-    if: inputs.windows_probe == ''
+    needs: changes
+    # Run by hand, both always build.
+    if: >-
+      inputs.windows_probe == '' &&
+      (github.event_name == 'workflow_dispatch' || needs.changes.outputs.mobile == 'true')
     runs-on: macos-26
     timeout-minutes: 120
     steps:

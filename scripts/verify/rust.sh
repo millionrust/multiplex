@@ -87,12 +87,20 @@ workspace() {
   ./scripts/verify/mcp-readonly.sh
   ./scripts/verify/mcp-actions.sh
   ./scripts/verify/browser-capability.sh
-  cargo check --workspace --all-targets --all-features --locked
-  cargo clippy --workspace --all-targets --all-features
+  # Clippy type-checks everything `cargo check` would, so a separate check pass only repeated it.
+  cargo clippy --workspace --all-targets --all-features --locked
   python3 scripts/dev/clippy-changed.py
   # Runs every test binary even after one fails, so a red run reports all of its failures
-  # instead of the first one and hides the rest behind it.
-  cargo test --workspace --all-targets --locked --no-fail-fast
+  # instead of the first one and hides the rest behind it. With nextest installed (CI installs
+  # it), this is `cargo test --all-targets` split in two, as on Windows: nextest runs the test
+  # binaries at once, and the benches, whose harness prints its own report, run under cargo test.
+  # What may not run at once is declared in .config/nextest.toml.
+  if cargo nextest --version >/dev/null 2>&1; then
+    cargo nextest run --workspace --lib --bins --tests --examples --locked --no-fail-fast
+    cargo test --workspace --bench '*' --locked --no-fail-fast
+  else
+    cargo test --workspace --all-targets --locked --no-fail-fast
+  fi
   cargo doc --workspace --no-deps
   policy
   git diff --check
