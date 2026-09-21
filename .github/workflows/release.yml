@@ -173,10 +173,57 @@ jobs:
         with:
           subject-path: dist/*
 
+      # The two macOS builds are only inputs to the universal app, so their artifacts are named
+      # apart from what the release collects.
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: multiplex-${{ matrix.target.name }}
+          name: ${{ matrix.target.bundle == 'macos' && 'macos-slice' || 'multiplex' }}-${{ matrix.target.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  # One Multiplex.app for every Mac: each executable from the two builds above merged with lipo.
+  macos-universal:
+    name: build (macos-universal)
+    needs: build
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download both macOS builds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: macos-slice-*
+          path: slices
+
+      - name: Merge them into one universal app
+        run: |
+          mkdir -p dist
+          scripts/build/macos-universal.sh \
+            slices/macos-slice-macos-aarch64/Multiplex-macos-aarch64.zip \
+            slices/macos-slice-macos-x86_64/Multiplex-macos-x86_64.zip \
+            dist/Multiplex-macos-universal.zip
+          (cd dist && shasum -a 256 Multiplex-macos-universal.zip > Multiplex-macos-universal.zip.sha256)
+
+      - name: Generate platform SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: dist
+          format: spdx-json
+          output-file: dist/Multiplex-macos-universal.spdx.json
+          artifact-name: Multiplex-macos-universal.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Attest release artifacts
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: multiplex-macos-universal
           path: dist/*
           if-no-files-found: error
 
@@ -327,7 +374,7 @@ jobs:
   # a tag depends on it; only the step that creates the GitHub release needs a tag.
   release:
     name: publish
-    needs: [build, android, ios]
+    needs: [build, macos-universal, android, ios]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -335,6 +382,7 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: multiplex-*
           path: dist
 
       - name: Flatten artifact directories
