@@ -1,3 +1,9 @@
+// A Windows release build is a GUI program, so opening Multiplex from Explorer, or the background
+// service starting at logon, shows no console window. The commands that print attach to the
+// terminal they were started from instead (`attach_parent_console`). Debug builds keep their
+// console for the log output developers read there.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod agents;
 mod artifact_preview;
 mod assets;
@@ -194,6 +200,19 @@ fn restored_window_bounds(
     (bounds, display_id)
 }
 
+/// Lets a command run from a terminal print there, although a Windows release build has no console
+/// of its own. Nothing happens when there is no such terminal, as at logon, or on other platforms.
+fn attach_parent_console() {
+    #[cfg(windows)]
+    // SAFETY: AttachConsole takes a process id and touches no memory of ours; failing, when the
+    // parent has no console, leaves this process as it was.
+    unsafe {
+        windows_sys::Win32::System::Console::AttachConsole(
+            windows_sys::Win32::System::Console::ATTACH_PARENT_PROCESS,
+        );
+    }
+}
+
 fn main() {
     #[cfg(target_os = "macos")]
     if std::env::args().nth(1).as_deref() == Some(ACCESSIBILITY_HARNESS_MODE) {
@@ -219,6 +238,7 @@ fn main() {
     if std::env::args().nth(1).as_deref()
         == Some(crate::controller::background_service::SERVICE_COMMAND)
     {
+        attach_parent_console();
         let arguments: Vec<String> = std::env::args().skip(2).collect();
         if let Err(error) = crate::controller::background_service::run_command(&arguments) {
             eprintln!(
@@ -233,6 +253,7 @@ fn main() {
         return;
     }
     if std::env::args().nth(1).as_deref() == Some(RELAY_HOST_COMMAND) {
+        attach_parent_console();
         let arguments: Vec<String> = std::env::args().skip(2).collect();
         if let Err(error) = crate::controller::relay_host_service::run_command(&arguments) {
             eprintln!(

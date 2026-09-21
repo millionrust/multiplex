@@ -7,9 +7,14 @@
 //! worker exits, the lock frees, and the service takes the route back. Pairing new devices
 //! still needs the app; the service only serves devices that are already paired.
 //!
-//! On macOS the service is installed as a per-user LaunchAgent that runs at login.
+//! On macOS the service is installed as a per-user LaunchAgent that runs at login. On Windows it is
+//! a value under the current user's `Run` key, which needs no administrator rights, and the app
+//! asks it to yield through two small files in the user's own runtime directory instead of a
+//! socket; a lock file the running service holds is how anything tells that it is running.
 
-use std::io::{self, BufReader, Read as _, Write as _};
+use std::io::{self, BufReader};
+#[cfg(unix)]
+use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -30,6 +35,19 @@ const LEGACY_LAUNCH_AGENT_LABELS: [&str; 2] = [
 ];
 
 const YIELD_SOCKET: &str = "controller-service.sock";
+/// Windows: the app writes this to ask for the route, and the service answers with the next one.
+#[cfg(windows)]
+const YIELD_REQUEST_FILE: &str = "controller-service.yield";
+#[cfg(windows)]
+const YIELD_RELEASED_FILE: &str = "controller-service.released";
+/// Windows: held exclusively for as long as a service runs.
+#[cfg(windows)]
+const SERVICE_LOCK_FILE: &str = "controller-service.lock";
+/// Windows: written by `remove` (or a reinstall) to ask the running service to exit.
+#[cfg(windows)]
+const STOP_REQUEST_FILE: &str = "controller-service.stop";
+#[cfg(windows)]
+const HANDSHAKE_POLL: Duration = Duration::from_millis(20);
 const YIELD_REQUEST: &[u8] = b"yield\n";
 const YIELD_ACK: &[u8] = b"released\n";
 const YIELD_TIMEOUT: Duration = Duration::from_secs(3);
@@ -81,9 +99,47 @@ pub fn request_yield(runtime_parent: &Path) -> bool {
     stream.read_exact(&mut reply).is_ok() && reply == YIELD_ACK
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+pub fn request_yield(runtime_parent: &Path) -> bool {
+    if !service_running(runtime_parent) {
+        return false;
+    }
+    let released = runtime_parent.join(YIELD_RELEASED_FILE);
+    let request = runtime_parent.join(YIELD_REQUEST_FILE);
+    // An answer left from an exchange that timed out must not be read as this one's.
+    let _ = std::fs::remove_file(&released);
+    if std::fs::write(&request, YIELD_REQUEST).is_err() {
+        return false;
+    }
+    let deadline = Instant::now() + YIELD_TIMEOUT;
+    while Instant::now() < deadline {
+        if released.is_file() {
+            let _ = std::fs::remove_file(&released);
+            return true;
+        }
+        thread::sleep(HANDSHAKE_POLL);
+    }
+    let _ = std::fs::remove_file(&request);
+    false
+}
+
+#[cfg(not(any(unix, windows)))]
 pub fn request_yield(_: &Path) -> bool {
     false
+}
+
+/// Whether a service holds the lock in `runtime_parent`: a lock nobody holds is left over from a
+/// service that exited, and taking it here releases it again straight away.
+#[cfg(windows)]
+fn service_running(runtime_parent: &Path) -> bool {
+    let Ok(file) = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(runtime_parent.join(SERVICE_LOCK_FILE))
+    else {
+        return false;
+    };
+    matches!(file.try_lock(), Err(std::fs::TryLockError::WouldBlock))
 }
 
 /// A serving listener, as the supervisor sees it.
@@ -96,22 +152,22 @@ pub trait ServingListener {
 /// Runs listeners for the saved route until `should_stop` returns true. `start` is called
 /// whenever the route is free; it returns `Err` when there is nothing to serve yet, such as
 /// a disabled route, and the supervisor tries again later.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 pub fn supervise(
     controller_root: &Path,
     runtime_parent: &Path,
     mut start: impl FnMut() -> Result<Box<dyn ServingListener>, ServiceError>,
     mut should_stop: impl FnMut() -> bool,
 ) -> Result<(), ServiceError> {
-    let socket = bind_yield_socket(runtime_parent)?;
+    let mut channel = YieldChannel::open(runtime_parent)?;
     let mut serving: Option<Box<dyn ServingListener>> = None;
     let mut next_attempt = Instant::now();
     while !should_stop() {
-        if let Some(stream) = accept_yield_request(&socket) {
+        if channel.requested() {
             if let Some(listener) = serving.take() {
                 listener.stop();
             }
-            acknowledge_yield(stream);
+            channel.acknowledge();
             wait_for_handover(controller_root, &mut should_stop);
             next_attempt = Instant::now();
             continue;
@@ -143,8 +199,93 @@ pub fn supervise(
     if let Some(listener) = serving.take() {
         listener.stop();
     }
-    let _ = std::fs::remove_file(yield_socket_path(runtime_parent));
+    channel.close();
     Ok(())
+}
+
+/// Where a starting app's request to take the route arrives: a user-only socket on Unix.
+#[cfg(unix)]
+struct YieldChannel {
+    socket: std::os::unix::net::UnixListener,
+    path: PathBuf,
+    pending: Option<std::os::unix::net::UnixStream>,
+}
+
+#[cfg(unix)]
+impl YieldChannel {
+    fn open(runtime_parent: &Path) -> Result<Self, ServiceError> {
+        Ok(Self {
+            socket: bind_yield_socket(runtime_parent)?,
+            path: yield_socket_path(runtime_parent),
+            pending: None,
+        })
+    }
+
+    fn requested(&mut self) -> bool {
+        self.pending = accept_yield_request(&self.socket);
+        self.pending.is_some()
+    }
+
+    fn acknowledge(&mut self) {
+        if let Some(stream) = self.pending.take() {
+            acknowledge_yield(stream);
+        }
+    }
+
+    fn close(self) {
+        let _ = std::fs::remove_file(self.path);
+    }
+}
+
+/// Where a starting app's request to take the route arrives: a file in the user's own runtime
+/// directory on Windows, answered with another. The lock held here is what `service_running`
+/// and a second service see.
+#[cfg(windows)]
+struct YieldChannel {
+    runtime_parent: PathBuf,
+    _lock: std::fs::File,
+}
+
+#[cfg(windows)]
+impl YieldChannel {
+    fn open(runtime_parent: &Path) -> Result<Self, ServiceError> {
+        std::fs::create_dir_all(runtime_parent)
+            .map_err(|_| ServiceError("service.runtime_unavailable"))?;
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(runtime_parent.join(SERVICE_LOCK_FILE))
+            .map_err(|_| ServiceError("service.socket_failed"))?;
+        match lock.try_lock() {
+            Ok(()) => {}
+            Err(std::fs::TryLockError::WouldBlock) => {
+                return Err(ServiceError("service.already_running"));
+            }
+            Err(_) => return Err(ServiceError("service.socket_failed")),
+        }
+        // Whatever a previous service left unanswered is stale now.
+        for name in [YIELD_REQUEST_FILE, YIELD_RELEASED_FILE, STOP_REQUEST_FILE] {
+            let _ = std::fs::remove_file(runtime_parent.join(name));
+        }
+        Ok(Self {
+            runtime_parent: runtime_parent.to_path_buf(),
+            _lock: lock,
+        })
+    }
+
+    fn requested(&mut self) -> bool {
+        std::fs::remove_file(self.runtime_parent.join(YIELD_REQUEST_FILE)).is_ok()
+    }
+
+    fn acknowledge(&mut self) {
+        let _ = std::fs::write(self.runtime_parent.join(YIELD_RELEASED_FILE), YIELD_ACK);
+    }
+
+    fn close(self) {
+        let _ = std::fs::remove_file(self.runtime_parent.join(YIELD_RELEASED_FILE));
+    }
 }
 
 #[cfg(unix)]
@@ -191,7 +332,7 @@ fn acknowledge_yield(mut stream: std::os::unix::net::UnixStream) {
 }
 
 /// Waits until the app that asked has taken the route, or the grace period passes.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn wait_for_handover(controller_root: &Path, should_stop: &mut impl FnMut() -> bool) {
     let deadline = Instant::now() + HANDOVER_GRACE;
     while Instant::now() < deadline && !should_stop() {
@@ -208,13 +349,13 @@ fn wait_for_handover(controller_root: &Path, should_stop: &mut impl FnMut() -> b
 
 /// A listener worker thread fed its launch descriptor through a pipe. Closing the pipe is the
 /// worker's stop signal.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 struct WorkerListener {
     control: Option<io::PipeWriter>,
     thread: Option<JoinHandle<Result<(), ListenerError>>>,
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 impl ServingListener for WorkerListener {
     fn is_finished(&self) -> bool {
         self.thread.as_ref().is_none_or(JoinHandle::is_finished)
@@ -228,7 +369,7 @@ impl ServingListener for WorkerListener {
     }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn start_worker() -> Result<Box<dyn ServingListener>, ServiceError> {
     use multiplex_controller_listener::{
         ListenerLaunchDescriptor, run_listener_worker_with_screens,
@@ -347,7 +488,21 @@ fn run_foreground() -> Result<(), ServiceError> {
     supervise(&controller_root, &runtime_parent, start_worker, || false)
 }
 
-#[cfg(not(unix))]
+/// Windows has no launchd to stop the service, so `remove` asks it to exit with a file.
+#[cfg(windows)]
+fn run_foreground() -> Result<(), ServiceError> {
+    let app_root =
+        crate::storage::app_dir().map_err(|_| ServiceError("service.storage_unavailable"))?;
+    let controller_root = crate::storage::controller_store_dir()
+        .map_err(|_| ServiceError("service.storage_unavailable"))?;
+    let runtime_parent = crate::controller_runtime_parent(&app_root);
+    let stop = runtime_parent.join(STOP_REQUEST_FILE);
+    supervise(&controller_root, &runtime_parent, start_worker, || {
+        std::fs::remove_file(&stop).is_ok()
+    })
+}
+
+#[cfg(not(any(unix, windows)))]
 fn run_foreground() -> Result<(), ServiceError> {
     Err(ServiceError("service.unsupported"))
 }
@@ -373,7 +528,20 @@ pub fn status() -> ServiceStatus {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+pub fn status() -> ServiceStatus {
+    if windows_run::read().is_none() {
+        return ServiceStatus::NotInstalled;
+    }
+    match crate::storage::app_dir() {
+        Ok(app_root) if service_running(&crate::controller_runtime_parent(&app_root)) => {
+            ServiceStatus::Running
+        }
+        _ => ServiceStatus::Installed,
+    }
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn status() -> ServiceStatus {
     ServiceStatus::Unsupported
 }
@@ -408,7 +576,43 @@ pub fn install() -> Result<(), ServiceError> {
     .map_err(|_| ServiceError("service.launchctl_failed"))
 }
 
-#[cfg(not(target_os = "macos"))]
+/// Registers the service to start at logon, and starts it now so it serves before the next one.
+#[cfg(windows)]
+pub fn install() -> Result<(), ServiceError> {
+    use std::os::windows::process::CommandExt as _;
+    use windows_sys::Win32::System::Threading::{CREATE_NEW_PROCESS_GROUP, DETACHED_PROCESS};
+
+    let executable =
+        std::env::current_exe().map_err(|_| ServiceError("service.executable_unavailable"))?;
+    let app_root =
+        crate::storage::app_dir().map_err(|_| ServiceError("service.storage_unavailable"))?;
+    windows_run::write(&format!(
+        "\"{}\" {SERVICE_COMMAND} run",
+        executable.display()
+    ))?;
+    // A service already running may be an older copy of the app; replace it, as launchd does.
+    let runtime_parent = crate::controller_runtime_parent(&app_root);
+    stop_running_service(&runtime_parent);
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(app_root.join("controller-service.log"))
+        .map_err(|_| ServiceError("service.write_failed"))?;
+    let log_err = log
+        .try_clone()
+        .map_err(|_| ServiceError("service.write_failed"))?;
+    std::process::Command::new(executable)
+        .args([SERVICE_COMMAND, "run"])
+        .stdin(std::process::Stdio::null())
+        .stdout(log)
+        .stderr(log_err)
+        .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+        .spawn()
+        .map(drop)
+        .map_err(|_| ServiceError("service.start_failed"))
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn install() -> Result<(), ServiceError> {
     Err(ServiceError("service.unsupported"))
 }
@@ -425,9 +629,132 @@ pub fn remove() -> Result<(), ServiceError> {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+pub fn remove() -> Result<(), ServiceError> {
+    windows_run::delete()?;
+    if let Ok(app_root) = crate::storage::app_dir() {
+        stop_running_service(&crate::controller_runtime_parent(&app_root));
+    }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn remove() -> Result<(), ServiceError> {
     Err(ServiceError("service.unsupported"))
+}
+
+/// Asks a running service to exit, and waits until its lock is free or the wait runs out.
+#[cfg(windows)]
+fn stop_running_service(runtime_parent: &Path) {
+    if !service_running(runtime_parent) {
+        return;
+    }
+    if std::fs::write(runtime_parent.join(STOP_REQUEST_FILE), b"stop\n").is_err() {
+        return;
+    }
+    // The supervisor stops its worker before it exits, which can take the worker's own timeout.
+    let deadline = Instant::now() + YIELD_TIMEOUT + HANDOVER_GRACE;
+    while Instant::now() < deadline && service_running(runtime_parent) {
+        thread::sleep(HANDSHAKE_POLL);
+    }
+}
+
+/// The service's value under `HKEY_CURRENT_USER\...\Run`: what Windows starts at this user's
+/// logon, and which the user can see and switch off under Startup apps.
+#[cfg(windows)]
+mod windows_run {
+    use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
+    use windows_sys::Win32::System::Registry::{
+        HKEY_CURRENT_USER, REG_SZ, RRF_RT_REG_SZ, RegDeleteKeyValueW, RegGetValueW, RegSetKeyValueW,
+    };
+
+    use super::{LAUNCH_AGENT_LABEL, ServiceError};
+
+    const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+
+    fn wide(value: &str) -> Vec<u16> {
+        value.encode_utf16().chain(Some(0)).collect()
+    }
+
+    pub(super) fn read() -> Option<String> {
+        let key = wide(RUN_KEY);
+        let name = wide(LAUNCH_AGENT_LABEL);
+        let mut bytes: u32 = 0;
+        // SAFETY: both strings are NUL-terminated and outlive the call; a null data pointer asks
+        // only for the size, which is written to `bytes`.
+        let found = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                key.as_ptr(),
+                name.as_ptr(),
+                RRF_RT_REG_SZ,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut bytes,
+            )
+        };
+        if found != ERROR_SUCCESS || bytes == 0 {
+            return None;
+        }
+        let mut buffer = vec![0_u16; (bytes as usize).div_ceil(2)];
+        // SAFETY: `buffer` holds at least `bytes` bytes, the size the previous call reported.
+        let read = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                key.as_ptr(),
+                name.as_ptr(),
+                RRF_RT_REG_SZ,
+                std::ptr::null_mut(),
+                buffer.as_mut_ptr().cast(),
+                &mut bytes,
+            )
+        };
+        if read != ERROR_SUCCESS {
+            return None;
+        }
+        let end = buffer
+            .iter()
+            .position(|&unit| unit == 0)
+            .unwrap_or(buffer.len());
+        Some(String::from_utf16_lossy(&buffer[..end]))
+    }
+
+    pub(super) fn write(command: &str) -> Result<(), ServiceError> {
+        let key = wide(RUN_KEY);
+        let name = wide(LAUNCH_AGENT_LABEL);
+        let data = wide(command);
+        let length =
+            u32::try_from(data.len() * 2).map_err(|_| ServiceError("service.write_failed"))?;
+        // SAFETY: all three strings are NUL-terminated and outlive the call, and `length` is the
+        // size of `data` in bytes, terminator included, as REG_SZ requires.
+        let written = unsafe {
+            RegSetKeyValueW(
+                HKEY_CURRENT_USER,
+                key.as_ptr(),
+                name.as_ptr(),
+                REG_SZ,
+                data.as_ptr().cast(),
+                length,
+            )
+        };
+        if written == ERROR_SUCCESS {
+            Ok(())
+        } else {
+            Err(ServiceError("service.write_failed"))
+        }
+    }
+
+    pub(super) fn delete() -> Result<(), ServiceError> {
+        let key = wide(RUN_KEY);
+        let name = wide(LAUNCH_AGENT_LABEL);
+        // SAFETY: both strings are NUL-terminated and outlive the call.
+        let deleted = unsafe { RegDeleteKeyValueW(HKEY_CURRENT_USER, key.as_ptr(), name.as_ptr()) };
+        if deleted == ERROR_SUCCESS || deleted == ERROR_FILE_NOT_FOUND {
+            Ok(())
+        } else {
+            Err(ServiceError("service.write_failed"))
+        }
+    }
 }
 
 /// Takes out the agent an installed copy registered before the rename. Nothing here is worth
@@ -519,6 +846,55 @@ fn xml_escape(value: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+
+    #[test]
+    fn one_service_holds_the_route_and_a_second_is_refused() {
+        let runtime = tempfile::tempdir().unwrap();
+        assert!(!service_running(runtime.path()));
+        let channel = YieldChannel::open(runtime.path()).unwrap();
+        assert!(service_running(runtime.path()));
+        assert_eq!(
+            YieldChannel::open(runtime.path()).err(),
+            Some(ServiceError("service.already_running"))
+        );
+        channel.close();
+        assert!(!service_running(runtime.path()));
+    }
+
+    #[test]
+    fn a_starting_app_is_answered_once_the_service_lets_go() {
+        let runtime = tempfile::tempdir().unwrap();
+        let service_dir = runtime.path().to_path_buf();
+        let service = thread::spawn(move || {
+            let mut channel = YieldChannel::open(&service_dir).unwrap();
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while Instant::now() < deadline {
+                if channel.requested() {
+                    channel.acknowledge();
+                    return true;
+                }
+                thread::sleep(HANDSHAKE_POLL);
+            }
+            false
+        });
+        while !service_running(runtime.path()) {
+            thread::sleep(HANDSHAKE_POLL);
+        }
+        assert!(request_yield(runtime.path()));
+        assert!(service.join().unwrap());
+    }
+
+    #[test]
+    fn nothing_answers_when_no_service_runs() {
+        let runtime = tempfile::tempdir().unwrap();
+        assert!(!request_yield(runtime.path()));
+        assert!(!runtime.path().join(YIELD_REQUEST_FILE).exists());
+    }
 }
 
 #[cfg(all(test, unix))]
