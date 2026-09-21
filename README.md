@@ -50,14 +50,15 @@ the machine reachable after the app quits.
 | --- | --- | --- | --- |
 | SSH client, split panes, SFTP, forwarding | Yes | Yes | Yes |
 | Screen viewing from a paired device | Yes | Not yet | Yes |
-| Screen control (pointer and keyboard) from a paired device | Yes | Not yet | Not yet |
+| Screen control (pointer and keyboard) from a paired device | Yes | Not yet | Yes |
 | Every terminal on the machine reachable from the phone (tmux) | Yes | Yes | Not yet ([plan](docs/remote-terminals.md#windows)) |
 | Reachable after the app quits | Yes (LaunchAgent) | Over SSH or relay | Not yet |
 
 This is early alpha, and remote screens still need testing on real devices. On Linux the capture
 and input code exists, but the Wayland portal only picks a screen once sharing starts, so the
-share-a-screen flow still has to be built; on Windows, input injection exists but is not yet wired
-into the app. See
+share-a-screen flow still has to be built. On Windows, control reaches every window except those of
+an elevated (administrator) process and the secure desktop behind a UAC prompt or the lock screen,
+which Windows keeps from any program that is not itself elevated. See
 [docs/remote-terminals.md](docs/remote-terminals.md) and
 [docs/remote-screens-implementation-plan.md](docs/remote-screens-implementation-plan.md).
 

@@ -562,7 +562,8 @@ fn spawn_injection(
         .name("screen-input".to_owned())
         .spawn(move || {
             let Some(mut injector) = open_injector(layout) else {
-                // Without the Accessibility permission the device can still watch.
+                // Without the Accessibility permission (macOS), or where input is not built yet
+                // (Linux), the device can still watch.
                 drain(&input);
                 return;
             };
@@ -600,7 +601,19 @@ fn open_injector(
         .map(|sink| Injector::new(sink, layout))
 }
 
-#[cfg(not(target_os = "macos"))]
+/// `SendInput` needs no permission the way macOS's Accessibility does, so this always opens.
+/// Windows still keeps two things out of its reach: windows of a process running elevated, which
+/// user interface privilege isolation shields from a process that is not, and the secure desktop
+/// behind a UAC prompt or the lock screen. Input aimed at either is dropped by Windows, not here.
+#[cfg(target_os = "windows")]
+fn open_injector(layout: DisplayLayout) -> Option<Injector<multiplex_screen_input::SendInputSink>> {
+    Some(Injector::new(
+        multiplex_screen_input::SendInputSink::new(),
+        layout,
+    ))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn open_injector(
     _layout: DisplayLayout,
 ) -> Option<Injector<multiplex_screen_input::RecordingSink>> {
@@ -620,6 +633,15 @@ fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A paired device that is allowed to control this PC gets an injector, where before Windows
+    /// fell through to the branch that has none and the device could only watch.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_opens_an_injector_for_the_screens_it_shares() {
+        let displays = displays().unwrap_or_default();
+        assert!(open_injector(layout(&displays)).is_some());
+    }
 
     fn device() -> multiplex_domain::ControllerDeviceId {
         multiplex_domain::ControllerDeviceId::new()
