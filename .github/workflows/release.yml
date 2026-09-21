@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to publish under (e.g. v0.0.1). Leave blank to dry-run without publishing."
+        description: "Tag to publish under (e.g. v0.0.2). Leave blank to dry-run without publishing."
         required: false
         default: ""
 
@@ -320,10 +320,11 @@ jobs:
           path: release-out/*
           if-no-files-found: error
 
+  # Runs on a dry run too, so gathering every platform's files into one release is checked before
+  # a tag depends on it; only the step that creates the GitHub release needs a tag.
   release:
     name: publish
     needs: [build, android, ios]
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -340,6 +341,7 @@ jobs:
           ls -la flat
 
       - name: Create / update GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
