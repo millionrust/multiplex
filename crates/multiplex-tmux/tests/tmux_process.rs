@@ -825,7 +825,7 @@ fn a_wrapped_tab_tells_tmux_what_its_terminal_can_do() {
             .unwrap()
             .apply()
             .unwrap();
-        let init = home_path.join(".config/termirust").join(init_name);
+        let init = home_path.join(".config/multiplex").join(init_name);
 
         for (program, colorterm, expected) in [
             ("zed", Some("truecolor"), "-u -T RGB,sync"),

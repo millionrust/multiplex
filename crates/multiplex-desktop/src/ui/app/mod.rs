@@ -28136,7 +28136,7 @@ sleep 1
         assert!(installed.contains(multiplex_tmux::shell_integration::BLOCK_START));
         assert!(
             home.path()
-                .join(".config/termirust/shell-init.zsh")
+                .join(".config/multiplex/shell-init.zsh")
                 .is_file()
         );
 
@@ -28156,7 +28156,7 @@ sleep 1
         assert!(
             !home
                 .path()
-                .join(".config/termirust/shell-init.zsh")
+                .join(".config/multiplex/shell-init.zsh")
                 .exists()
         );
     }
