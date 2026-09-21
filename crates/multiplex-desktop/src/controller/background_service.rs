@@ -370,7 +370,9 @@ impl ServingListener for WorkerListener {
 }
 
 #[cfg(any(unix, windows))]
-fn start_worker() -> Result<Box<dyn ServingListener>, ServiceError> {
+fn start_worker(
+    screens: super::screen_sharing::ScreenSharing,
+) -> Result<Box<dyn ServingListener>, ServiceError> {
     use multiplex_controller_listener::{
         ListenerLaunchDescriptor, run_listener_worker_with_screens,
     };
@@ -428,9 +430,7 @@ fn start_worker() -> Result<Box<dyn ServingListener>, ServiceError> {
             run_listener_worker_with_screens(
                 BufReader::new(reader),
                 io::sink(),
-                Some(std::sync::Arc::new(
-                    super::screen_sharing::ScreenSharing::enabled(),
-                )),
+                Some(std::sync::Arc::new(screens)),
             )
         })
         .map_err(|_| ServiceError("service.worker_failed"))?;
@@ -485,7 +485,13 @@ fn run_foreground() -> Result<(), ServiceError> {
     let controller_root = crate::storage::controller_store_dir()
         .map_err(|_| ServiceError("service.storage_unavailable"))?;
     let runtime_parent = crate::controller_runtime_parent(&app_root);
-    supervise(&controller_root, &runtime_parent, start_worker, || false)
+    let screens = super::screen_sharing::ScreenSharing::enabled();
+    supervise(
+        &controller_root,
+        &runtime_parent,
+        || start_worker(screens.clone()),
+        || false,
+    )
 }
 
 /// Windows has no launchd to stop the service, so `remove` asks it to exit with a file.
@@ -497,9 +503,15 @@ fn run_foreground() -> Result<(), ServiceError> {
         .map_err(|_| ServiceError("service.storage_unavailable"))?;
     let runtime_parent = crate::controller_runtime_parent(&app_root);
     let stop = runtime_parent.join(STOP_REQUEST_FILE);
-    supervise(&controller_root, &runtime_parent, start_worker, || {
-        std::fs::remove_file(&stop).is_ok()
-    })
+    // Shared with the tray, so its icon always knows who is watching.
+    let screens = super::screen_sharing::ScreenSharing::enabled();
+    let tray = super::windows_tray::spawn(screens.clone());
+    supervise(
+        &controller_root,
+        &runtime_parent,
+        || start_worker(screens.clone()),
+        || tray.stop_requested() || std::fs::remove_file(&stop).is_ok(),
+    )
 }
 
 #[cfg(not(any(unix, windows)))]

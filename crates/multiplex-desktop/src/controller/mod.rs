@@ -14,6 +14,8 @@ pub mod ssh_pairing;
 pub mod tailscale;
 pub mod watch_session;
 pub mod watched;
+#[cfg(windows)]
+pub mod windows_tray;
 
 use std::path::Path;
 
