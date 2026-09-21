@@ -15,6 +15,11 @@
 # there it costs a little time and changes nothing.
 durable-host-session = { max-threads = 1 }
 
+[profile.default]
+# A test that hangs is reported as failed after five minutes instead of holding its runner until
+# the whole job times out two hours later, with nothing in the log to say which test it was.
+slow-timeout = { period = "60s", terminate-after = 5 }
+
 [[profile.default.overrides]]
 filter = 'package(multiplex-cli) and kind(test)'
 test-group = 'durable-host-session'
