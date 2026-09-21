@@ -40,6 +40,11 @@ mod platform;
 
 use platform::{HostStream, OwnedProcess, RuntimeHostSlot, UserOnlyListener};
 
+/// The fewest rows the Host gives its terminal. The screen model (`vt100`) panics on output to a
+/// one-row screen, which took the Host down with the session; a client asking for one row, a
+/// phone in an odd viewport or a window dragged flat, gets two.
+const MIN_ROWS: u16 = 2;
+
 /// The three steps a stop takes, gentlest first.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum StopSignal {
@@ -464,7 +469,7 @@ pub async fn start_with_cancel(
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {
-            rows: descriptor.rows,
+            rows: descriptor.rows.max(MIN_ROWS),
             cols: descriptor.columns,
             pixel_width: 0,
             pixel_height: 0,
@@ -525,7 +530,7 @@ pub async fn start_with_cancel(
         writer: StdMutex::new(writer),
         journal: Mutex::new(journal),
         parser: Mutex::new(vt100::Parser::new(
-            descriptor.rows,
+            descriptor.rows.max(MIN_ROWS),
             descriptor.columns,
             10_000,
         )),
@@ -1241,6 +1246,7 @@ async fn serve_connection(
                 if rows == 0 || cols == 0 {
                     return Err(HostError::new(HostErrorCode::Protocol));
                 }
+                let rows = rows.max(MIN_ROWS);
                 handle_mutation(
                     &mut stream,
                     envelope.request_id,

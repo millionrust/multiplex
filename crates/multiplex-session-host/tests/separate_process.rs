@@ -187,3 +187,44 @@ async fn abrupt_host_death_preserves_journal_and_reconciles_without_signaling_ch
     assert!(String::from_utf8_lossy(&bytes).contains("CRASH-RETAINED"));
     tokio::time::sleep(Duration::from_millis(1_100)).await;
 }
+
+/// A one-row terminal once made the screen model panic on the first output, which ended the Host
+/// and the session with it. The Host now gives such a terminal two rows.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_one_row_terminal_keeps_its_host_running() {
+    let fixture = tempfile::tempdir().unwrap();
+    let session_id = HostedSessionId::new();
+    let mut descriptor = descriptor(&fixture, session_id);
+    descriptor.rows = 1;
+    let mut process = Command::new(env!("CARGO_BIN_EXE_multiplex-session-host"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    serde_json::to_writer(process.stdin.as_mut().unwrap(), &descriptor).unwrap();
+    process.stdin.take().unwrap().flush().unwrap();
+    let mut ready = String::new();
+    BufReader::new(process.stdout.take().unwrap())
+        .read_line(&mut ready)
+        .unwrap();
+    assert!(ready.contains("host_ready"));
+    let cancel = CancellationToken::new();
+    let mut client = HostClient::connect(
+        LocalEndpoint::new(&descriptor.runtime_root, session_id),
+        ConnectOptions::local(session_id, [3; 32]),
+        &cancel,
+    )
+    .await
+    .unwrap();
+    wait_for_output(&mut client, &cancel).await;
+    assert!(process.try_wait().unwrap().is_none(), "the Host ended");
+    client
+        .stop(CommandId::new(), wire::StopMode::Graceful, &cancel)
+        .await
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while process.try_wait().unwrap().is_none() && Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
