@@ -212,6 +212,45 @@ cargo run -p multiplex-slate --example gallery  # Slate component gallery
 cargo run -p multiplex-ui-contract --bin generate-tokens  # after editing design/tokens.toml; also writes the mobile SlateTokens.swift and SlateTokens.kt
 ```
 
+## Releasing
+
+`.github/workflows/release.yml` builds macOS (Apple silicon, and Intel cross-compiled on the same
+`macos-26` runner), Linux, Windows, an Android APK, and an iOS `.ipa`. Nothing is signed yet: the
+APK carries the runner's throwaway debug key and the `.ipa` must be re-signed to install. The app
+ID is `com.millionrust.multiplex` on every platform.
+
+1. **Bump the version everywhere.** Every `version = "X.Y.Z"` in the workspace `Cargo.toml` and in
+   each crate's internal dependency requirements, then `cargo update --workspace`;
+   `cli_version` in `tests/fixtures/cli/v1/responses.json`; `versionName` and `versionCode` (+1)
+   in `apps/android/app/build.gradle.kts`; `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` (+1)
+   in `apps/ios/project.yml`. `git grep` the old version afterwards.
+2. **The lockfile checksum.** `multiplex-controller-security`'s golden vectors pin `Cargo.lock`'s
+   SHA-256, so any lockfile change fails them. Its ADR requires regenerating the vectors in review:
+   `cargo test -p multiplex-controller-security --lib -- --ignored write_golden_vectors`, then
+   copy the new `cargo_lock_sha256` into the legacy v1, Android, and iOS fixture copies. If no
+   third-party crate changed, only that one line should differ.
+3. **Dry run:** `gh workflow run release.yml --ref dev` with no tag. It builds all six targets
+   (with 16 codegen units and no LTO, for speed) and gathers every file the release would contain,
+   failing on a name collision, but publishes nothing.
+4. **Tag the commit the dry run built** and push the tag:
+   `git tag -a vX.Y.Z <sha> -m "Multiplex X.Y.Z" && git push origin vX.Y.Z`. The tag build uses
+   the release profile as declared (one codegen unit, thin LTO) and saves no cache, so it takes
+   about 40 minutes. It always creates a **draft** prerelease; `scripts/verify/release-workflow.sh`
+   holds it to that, so no workflow ever publishes by itself.
+5. **Check the draft** (`gh release view vX.Y.Z`): seventeen files — two macOS zips, the Linux
+   `.tar.gz` and `.deb`, the Windows zip, the APK, the `.ipa`, their `.sha256` files, and an
+   `.spdx.json` per desktop platform. Download a few and run `shasum -a 256 -c` and
+   `gh attestation verify <file> --repo millionrust/multiplex`.
+6. **Write the notes and publish:** `gh release edit vX.Y.Z --notes-file notes.md`, then
+   `gh release edit vX.Y.Z --draft=false`. The notes should say how to open each unsigned build
+   (right-click → Open on macOS, SmartScreen → Run anyway on Windows, uninstall before updating
+   the APK, re-sign the `.ipa`) and what is not built yet.
+
+A tag is never moved once pushed. If a tag build cannot be published, fix the workflow on `dev` and
+release the next patch version (v0.0.1 is a tag without a release for that reason). A job that
+fails on something outside the repository, such as a 504 while the SBOM step downloads `syft`, is
+rerun on its own with `gh run rerun <run id> --failed`; the builds that passed are kept.
+
 Every variable this workspace defines is spelled `MULTIPLEX_SOMETHING`. It was
 `TERMIRUST_SOMETHING` before the rename, and both are still read: the shipped crates go
 through `multiplex-env`, and the scripts write `${MULTIPLEX_X:-${TERMIRUST_X:-default}}`.
