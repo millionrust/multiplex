@@ -27,7 +27,10 @@ pub const SELECTION_STYLE: &str = "bg=#3b4252,fg=default";
 
 /// The first line of the tmux configuration file Multiplex writes. It is how a later version
 /// recognises the file as its own to bring up to date, rather than one the user has taken over.
-pub(crate) const CONFIGURATION_FILE_HEADER: &str = "# Managed by TermiRust for the tmux sessions it starts (named termirust-*). Turn off \"Open new terminals in tmux\" in TermiRust to remove it.";
+pub(crate) const CONFIGURATION_FILE_HEADER: &str = "# Managed by Multiplex for the tmux sessions it starts (named multiplex-*). Turn off \"Open new terminals in tmux\" in Multiplex to remove it.";
+/// The line an installed copy wrote before the rename. A file that starts with it is still one
+/// of ours, so it is brought up to date rather than left alone as a file someone else wrote.
+pub(crate) const LEGACY_CONFIGURATION_FILE_HEADER: &str = "# Managed by TermiRust for the tmux sessions it starts (named termirust-*). Turn off \"Open new terminals in tmux\" in TermiRust to remove it.";
 
 const COPY_TABLES: [&str; 2] = ["copy-mode", "copy-mode-vi"];
 

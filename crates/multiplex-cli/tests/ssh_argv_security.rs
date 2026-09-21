@@ -55,7 +55,7 @@ fn exact_argv_ignores_hostile_configuration_and_keeps_remote_command_constant() 
         "-p",
         "2202",
         "host.example",
-        "termirust",
+        "multiplex",
         "controller-bridge",
         "--stdio",
     ];

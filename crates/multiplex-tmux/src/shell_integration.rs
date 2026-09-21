@@ -2,7 +2,7 @@
 //!
 //! Two kinds of file change, both previewed before they happen:
 //!
-//! - an app-owned init file per shell under `~/.config/termirust/`, safe to delete, and
+//! - an app-owned init file per shell under `~/.config/multiplex/`, safe to delete, and
 //! - one marked block in that shell's startup file that sources it.
 //!
 //! Nothing here writes without a [`ChangePlan`] the user has seen. Applying a plan refuses
@@ -17,9 +17,14 @@ use std::path::{Path, PathBuf};
 use crate::appearance::{self, WrappedSessionAppearance};
 
 /// First line of the block added to a shell startup file.
-pub const BLOCK_START: &str = "# >>> termirust remote terminals >>>";
+pub const BLOCK_START: &str = "# >>> multiplex remote terminals >>>";
 /// Last line of the block added to a shell startup file.
-pub const BLOCK_END: &str = "# <<< termirust remote terminals <<<";
+pub const BLOCK_END: &str = "# <<< multiplex remote terminals <<<";
+/// The markers an installed copy wrote into a person's own startup file before the rename. They
+/// are still recognised, so enabling replaces that block rather than leaving a second one beside
+/// it, and disabling takes it away. Nothing writes them any more.
+pub const LEGACY_BLOCK_START: &str = "# >>> termirust remote terminals >>>";
+pub const LEGACY_BLOCK_END: &str = "# <<< termirust remote terminals <<<";
 /// Set to any non-empty value in an app's environment to keep its terminals out of tmux.
 pub const NO_WRAP_ENV: &str = "TERMIRUST_NO_WRAP";
 /// `TERM_PROGRAM` values whose new terminals start inside tmux.
@@ -38,13 +43,17 @@ pub const SYNCHRONIZED_UPDATE_PROGRAMS: [&str; 5] =
 /// Unchanged lines kept around each change in a preview.
 pub const DIFF_CONTEXT_LINES: usize = 2;
 
-const CONFIG_DIRECTORY: &str = ".config/termirust";
+const CONFIG_DIRECTORY: &str = ".config/multiplex";
+/// Where an installed copy put these files before the rename. Enabling writes the current
+/// directory and takes the old files away, so nobody is left with a second set that nothing
+/// sources.
+const LEGACY_CONFIG_DIRECTORY: &str = ".config/termirust";
 /// The app-owned tmux configuration wrapped tabs source, shared by every shell.
 const TMUX_CONFIG_FILE: &str = "tmux.conf";
-/// The first line of the file this app writes, and how it recognises its own. It still says
-/// TermiRust: an installed copy has already written this line into shell startup files, and
-/// what those files say moves with the rest of the installed identity and its migration.
-const INIT_FILE_HEADER: &str = "# Managed by TermiRust. Turn off \"Open new terminals in tmux\" in TermiRust, or delete this file and the marked block in your shell startup file.";
+/// The first line of the init file this app writes. The file is replaced whole whenever it
+/// differs from what this version produces, so nothing recognises the file by this line and it
+/// can say the current name.
+const INIT_FILE_HEADER: &str = "# Managed by Multiplex. Turn off \"Open new terminals in tmux\" in Multiplex, or delete this file and the marked block in your shell startup file.";
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Shell {
@@ -325,9 +334,11 @@ impl ShellIntegration {
             return Ok(false);
         };
         let current = self.appearance.configuration_file();
-        if installed == current
-            || installed.lines().next() != Some(appearance::CONFIGURATION_FILE_HEADER)
-        {
+        let ours = installed.lines().next().is_some_and(|first| {
+            first == appearance::CONFIGURATION_FILE_HEADER
+                || first == appearance::LEGACY_CONFIGURATION_FILE_HEADER
+        });
+        if installed == current || !ours {
             return Ok(false);
         }
         write_atomically(&path, &current)?;
@@ -380,6 +391,7 @@ impl ShellIntegration {
                 });
             }
         }
+        self.plan_legacy_removals(&mut plan)?;
         Ok(plan)
     }
 
@@ -423,6 +435,7 @@ impl ShellIntegration {
                 after: None,
             });
         }
+        self.plan_legacy_removals(&mut plan)?;
         // Blocks go first so a failure part way never leaves one pointing at nothing.
         Ok(plan)
     }
@@ -439,6 +452,34 @@ impl ShellIntegration {
 
     fn startup_path(&self, shell: Shell) -> PathBuf {
         self.home.join(shell.startup_file_name())
+    }
+
+    /// The files the previous name left in its own directory: one init file per shell and the
+    /// tmux configuration. Nothing sources them once the block names the current directory.
+    fn legacy_paths(&self) -> Vec<PathBuf> {
+        let directory = self.home.join(LEGACY_CONFIG_DIRECTORY);
+        Shell::ALL
+            .iter()
+            .map(|shell| directory.join(shell.init_file_name()))
+            .chain([directory.join(TMUX_CONFIG_FILE)])
+            .collect()
+    }
+
+    /// Adds a removal for each file the previous name left behind that is still there, so the
+    /// user sees it in the same preview as everything else.
+    fn plan_legacy_removals(&self, plan: &mut ChangePlan) -> Result<(), IntegrationError> {
+        for path in self.legacy_paths() {
+            let Some(before) = read_optional(&path)? else {
+                continue;
+            };
+            plan.changes.push(FileChange {
+                path: self.display_path(&path),
+                write_path: path,
+                before: Some(before),
+                after: None,
+            });
+        }
+        Ok(())
     }
 
     fn display_path(&self, path: &Path) -> PathBuf {
@@ -499,15 +540,20 @@ fn find_blocks(contents: &str) -> Result<Vec<(usize, usize)>, ()> {
     let lines = contents.lines().collect::<Vec<_>>();
     let mut blocks = Vec::new();
     let mut start = None;
+    // Either name's markers: a startup file written before the rename holds the old pair, and
+    // that block is this app's to replace or take away.
     for (index, line) in lines.iter().enumerate() {
-        match line.trim_end() {
-            BLOCK_START if start.is_none() => start = Some(index),
-            BLOCK_START => return Err(()),
-            BLOCK_END => match start.take() {
+        let line = line.trim_end();
+        if line == BLOCK_START || line == LEGACY_BLOCK_START {
+            if start.is_some() {
+                return Err(());
+            }
+            start = Some(index);
+        } else if line == BLOCK_END || line == LEGACY_BLOCK_END {
+            match start.take() {
                 Some(first) => blocks.push((first, index)),
                 None => return Err(()),
-            },
-            _ => {}
+            }
         }
     }
     if start.is_some() {
@@ -721,8 +767,8 @@ mod tests {
         assert_eq!(
             paths,
             [
-                PathBuf::from("~/.config/termirust/tmux.conf"),
-                PathBuf::from("~/.config/termirust/shell-init.zsh"),
+                PathBuf::from("~/.config/multiplex/tmux.conf"),
+                PathBuf::from("~/.config/multiplex/shell-init.zsh"),
                 PathBuf::from("~/.zshrc")
             ]
         );
@@ -733,7 +779,7 @@ mod tests {
         assert!(zshrc.starts_with(original));
         assert_eq!(zshrc.matches(BLOCK_START).count(), 1);
         let init =
-            fs::read_to_string(home.path().join(".config/termirust/shell-init.zsh")).unwrap();
+            fs::read_to_string(home.path().join(".config/multiplex/shell-init.zsh")).unwrap();
         assert!(init.contains(&format!("'{TMUX}' -u $termirust_features new-session")));
         // What the terminal can do is worked out before tmux starts.
         assert!(init.contains("$COLORTERM == (truecolor|24bit)"));
@@ -782,7 +828,7 @@ mod tests {
             assert!(
                 !home
                     .path()
-                    .join(".config/termirust/shell-init.zsh")
+                    .join(".config/multiplex/shell-init.zsh")
                     .exists()
             );
             assert_eq!(integration.status(), IntegrationStatus::Off);
@@ -836,7 +882,7 @@ mod tests {
         assert!(
             !home
                 .path()
-                .join(".config/termirust/shell-init.zsh")
+                .join(".config/multiplex/shell-init.zsh")
                 .exists(),
             "nothing is written when any file changed"
         );
@@ -901,8 +947,8 @@ mod tests {
                 .map(|change| change.path.clone())
                 .collect::<Vec<_>>(),
             [
-                PathBuf::from("~/.config/termirust/tmux.conf"),
-                PathBuf::from("~/.config/termirust/shell-init.zsh"),
+                PathBuf::from("~/.config/multiplex/tmux.conf"),
+                PathBuf::from("~/.config/multiplex/shell-init.zsh"),
             ]
         );
         update.apply().unwrap();
@@ -927,7 +973,7 @@ mod tests {
             .unwrap()
             .apply()
             .unwrap();
-        fs::remove_file(home.path().join(".config/termirust/shell-init.zsh")).unwrap();
+        fs::remove_file(home.path().join(".config/multiplex/shell-init.zsh")).unwrap();
         assert_eq!(integration.status(), IntegrationStatus::Partial);
         let repair = integration.plan_enable(&[Shell::Zsh]).unwrap();
         assert_eq!(repair.changes.len(), 1);
@@ -952,7 +998,7 @@ mod tests {
         assert_eq!(plan.changes.len(), 1);
         assert_eq!(
             plan.changes[0].path,
-            PathBuf::from("~/.config/termirust/shell-init.zsh")
+            PathBuf::from("~/.config/multiplex/shell-init.zsh")
         );
         let diff = plan.changes[0].diff();
         assert!(diff.iter().any(
@@ -1074,6 +1120,58 @@ mod tests {
                 DiffLine::Context("e".into()),
                 DiffLine::Context("f".into()),
             ]
+        );
+    }
+
+    /// Someone who set this up before the rename has a block in their own startup file naming
+    /// the old directory, and the old files beside it. Enabling replaces that block rather than
+    /// leaving a second one, and takes away the files nothing sources any more.
+    #[test]
+    fn the_setup_from_the_previous_name_is_replaced_rather_than_doubled() {
+        let (home, integration) = home();
+        let legacy_directory = home.path().join(LEGACY_CONFIG_DIRECTORY);
+        fs::create_dir_all(&legacy_directory).unwrap();
+        let legacy_init = legacy_directory.join("shell-init.zsh");
+        let legacy_config = legacy_directory.join(TMUX_CONFIG_FILE);
+        fs::write(&legacy_init, "# Managed by TermiRust.\n").unwrap();
+        fs::write(&legacy_config, appearance::LEGACY_CONFIGURATION_FILE_HEADER).unwrap();
+        fs::write(
+            home.path().join(".zshrc"),
+            format!(
+                "alias ll='ls -l'\n\n{LEGACY_BLOCK_START}\nsource ~/.config/termirust/shell-init.zsh\n{LEGACY_BLOCK_END}\n"
+            ),
+        )
+        .unwrap();
+
+        integration
+            .plan_enable(&[Shell::Zsh])
+            .unwrap()
+            .apply()
+            .unwrap();
+
+        let startup = fs::read_to_string(home.path().join(".zshrc")).unwrap();
+        assert_eq!(
+            startup.matches(BLOCK_START).count(),
+            1,
+            "exactly one block: {startup}"
+        );
+        assert!(!startup.contains(LEGACY_BLOCK_START), "the old block went");
+        assert!(startup.contains(".config/multiplex/shell-init.zsh"));
+        assert!(
+            startup.starts_with("alias ll='ls -l'\n"),
+            "their own lines stayed"
+        );
+        assert!(!legacy_init.exists(), "the old init file went");
+        assert!(!legacy_config.exists(), "the old tmux configuration went");
+        assert!(
+            home.path()
+                .join(CONFIG_DIRECTORY)
+                .join("shell-init.zsh")
+                .exists()
+        );
+        assert_eq!(
+            integration.status(),
+            IntegrationStatus::On(vec![Shell::Zsh])
         );
     }
 }
