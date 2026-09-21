@@ -1,5 +1,7 @@
 # Multiplex
 
+**Your terminals and screens, wherever you are.**
+
 Multiplex connects your servers, your computers, and your phone. It's an SSH client for the servers you
 manage, and it also lets you reach the computers that run it. From your phone or another desktop you can
 see every paired Mac, Windows PC, or Linux machine, view its screen, and use the terminals running on it.
