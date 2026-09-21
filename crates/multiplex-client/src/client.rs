@@ -73,12 +73,29 @@ pub struct SequencedOutput {
 
 #[cfg(unix)]
 type PlatformStream = UnixStream;
+#[cfg(windows)]
+type PlatformStream = tokio::net::windows::named_pipe::NamedPipeClient;
+
+/// Opens the Host's endpoint and checks that it belongs to this user before anything is sent.
+#[cfg(unix)]
+async fn connect_platform(endpoint: &LocalEndpoint) -> Result<PlatformStream, ClientError> {
+    let stream = UnixStream::connect(endpoint.socket_path())
+        .await
+        .map_err(ClientError::from)?;
+    authorize_unix_stream(&stream, unsafe { libc::geteuid() })?;
+    Ok(stream)
+}
+
+#[cfg(windows)]
+async fn connect_platform(endpoint: &LocalEndpoint) -> Result<PlatformStream, ClientError> {
+    crate::ipc::windows_pipe::connect(endpoint).await
+}
 
 pub struct HostClient {
     endpoint: LocalEndpoint,
     options: ConnectOptions,
     state: ConnectionState,
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     stream: Option<AsyncEnvelopeStream<PlatformStream>>,
     host_instance_id: Option<HostInstanceId>,
     selected_version: Option<ProtocolVersion>,
@@ -99,7 +116,7 @@ impl HostClient {
             last_state: None,
             options,
             state: ConnectionState::Disconnected,
-            #[cfg(unix)]
+            #[cfg(any(unix, windows))]
             stream: None,
             host_instance_id: None,
             selected_version: None,
@@ -141,7 +158,7 @@ impl HostClient {
         self.last_state.take()
     }
 
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     async fn establish(&mut self, cancel: &CancellationToken) -> Result<(), ClientError> {
         if self.state != ConnectionState::Disconnected {
             return Err(ClientError::new(ClientErrorCode::InvalidState));
@@ -153,11 +170,8 @@ impl HostClient {
                 _ = cancel.cancelled() => {
                     return Err(ClientError::new(ClientErrorCode::Cancelled));
                 }
-                result = UnixStream::connect(self.endpoint.socket_path()) => {
-                    result.map_err(ClientError::from)?
-                }
+                result = connect_platform(&self.endpoint) => result?,
             };
-            authorize_unix_stream(&stream, unsafe { libc::geteuid() })?;
             self.stream = Some(AsyncEnvelopeStream::new(stream));
             self.perform_handshake(cancel).await
         })
@@ -180,7 +194,7 @@ impl HostClient {
         }
     }
 
-    #[cfg(not(unix))]
+    #[cfg(not(any(unix, windows)))]
     async fn establish(&mut self, _: &CancellationToken) -> Result<(), ClientError> {
         Err(ClientError::new(ClientErrorCode::PermissionDenied))
     }
@@ -264,7 +278,7 @@ impl HostClient {
 
     pub fn disconnect(&mut self) {
         self.state = ConnectionState::Closing;
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         {
             self.stream = None;
         }
@@ -622,7 +636,7 @@ impl HostClient {
             request_id,
             payload: encode_payload(&payload),
         };
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         {
             self.stream
                 .as_mut()
@@ -630,7 +644,7 @@ impl HostClient {
                 .write(&envelope, cancel)
                 .await
         }
-        #[cfg(not(unix))]
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = (envelope, cancel);
             Err(ClientError::new(ClientErrorCode::PermissionDenied))
@@ -641,7 +655,7 @@ impl HostClient {
         &mut self,
         cancel: &CancellationToken,
     ) -> Result<WireEnvelope, ClientError> {
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         {
             self.stream
                 .as_mut()
@@ -649,7 +663,7 @@ impl HostClient {
                 .read(cancel)
                 .await
         }
-        #[cfg(not(unix))]
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = cancel;
             Err(ClientError::new(ClientErrorCode::PermissionDenied))

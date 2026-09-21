@@ -12,7 +12,7 @@ pub use codec::{
 pub use model::{
     CapabilitySet, IdDecodeError, NegotiatedLimits, PreservedPayload, ProtocolRange,
     ProtocolVersion, decode_command_id, decode_host_instance_id, decode_session_id,
-    encode_command_id, encode_host_instance_id, encode_payload, encode_session_id,
+    encode_command_id, encode_host_instance_id, encode_payload, encode_session_id, host_pipe_name,
     negotiate_protocol, opaque_endpoint_name, payload_kind,
 };
 

@@ -11,7 +11,7 @@ use std::os::windows::fs::MetadataExt as _;
 use std::os::windows::io::{AsRawHandle as _, FromRawHandle as _, OwnedHandle, RawHandle};
 use std::path::{Path, PathBuf};
 
-use multiplex_host_protocol::opaque_endpoint_name;
+use multiplex_host_protocol::{host_pipe_name as pipe_name, opaque_endpoint_name};
 use portable_pty::MasterPty;
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 use tokio::sync::Mutex;
@@ -40,12 +40,6 @@ use crate::{HostError, HostErrorCode};
 
 /// One connection from a client of this Host.
 pub(super) type HostStream = NamedPipeServer;
-
-/// Where a Host with this endpoint file name listens. The name is the opaque endpoint the Unix
-/// Host names its socket with, so it says nothing about the session.
-pub fn pipe_name(endpoint: &str) -> String {
-    format!(r"\\.\pipe\multiplex-{endpoint}")
-}
 
 /// The job exit code a Host's stop leaves, distinct from anything the program itself returns.
 const STOPPED_EXIT_CODE: u32 = 0xC000_013A;

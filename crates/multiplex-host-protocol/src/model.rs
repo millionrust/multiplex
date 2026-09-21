@@ -231,6 +231,12 @@ pub fn encode_session_id(value: HostedSessionId) -> Vec<u8> {
     value.as_uuid().as_bytes().to_vec()
 }
 
+/// The named pipe a Windows Session Host listens on for the endpoint `opaque_endpoint_name` gives:
+/// the same opaque name the Unix Host gives its socket, so it says nothing about the session.
+pub fn host_pipe_name(endpoint: &str) -> String {
+    format!(r"\\.\pipe\multiplex-{endpoint}")
+}
+
 pub fn opaque_endpoint_name(session_id: HostedSessionId) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     let bytes = session_id.as_uuid().into_bytes();

@@ -1,5 +1,7 @@
 use std::fmt;
+#[cfg(unix)]
 use std::fs;
+#[cfg(unix)]
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -293,6 +295,133 @@ mod unix {
 
 #[cfg(unix)]
 pub use unix::{ExportedUserOnlyUnixListener as UserOnlyUnixListener, authorize_unix_stream};
+
+/// Reaching a Windows Session Host: its named pipe, and the check that the Host runs as this user.
+#[cfg(windows)]
+pub(crate) mod windows_pipe {
+    use std::os::windows::io::{AsRawHandle as _, FromRawHandle as _, OwnedHandle, RawHandle};
+    use std::time::Duration;
+
+    use multiplex_host_protocol::host_pipe_name;
+    use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
+    use windows_sys::Win32::Foundation::{ERROR_PIPE_BUSY, HANDLE};
+    use windows_sys::Win32::Security::{
+        EqualSid, GetTokenInformation, TOKEN_QUERY, TOKEN_USER, TokenUser,
+    };
+    use windows_sys::Win32::System::Pipes::GetNamedPipeServerProcessId;
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    use super::LocalEndpoint;
+    use crate::error::{ClientError, ClientErrorCode};
+
+    /// How long to keep asking while the Host's one waiting pipe instance is taken by another
+    /// client, between its accepting that client and making the next instance.
+    const BUSY_RETRIES: usize = 100;
+    const BUSY_WAIT: Duration = Duration::from_millis(10);
+
+    pub(crate) async fn connect(endpoint: &LocalEndpoint) -> Result<NamedPipeClient, ClientError> {
+        let endpoint_name = endpoint
+            .socket_path()
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| ClientError::new(ClientErrorCode::PermissionDenied))?;
+        let name = host_pipe_name(endpoint_name);
+        let mut attempts = 0;
+        let client = loop {
+            match ClientOptions::new().open(&name) {
+                Ok(client) => break client,
+                Err(error)
+                    if error.raw_os_error() == Some(ERROR_PIPE_BUSY as i32)
+                        && attempts < BUSY_RETRIES =>
+                {
+                    attempts += 1;
+                    tokio::time::sleep(BUSY_WAIT).await;
+                }
+                Err(error) => return Err(ClientError::from(error)),
+            }
+        };
+        // The pipe's access list keeps other users out of a Host this user started; this is what
+        // keeps this user out of a pipe someone else created under the same name.
+        if server_is_this_user(&client) {
+            Ok(client)
+        } else {
+            Err(ClientError::new(ClientErrorCode::PermissionDenied))
+        }
+    }
+
+    fn owned(handle: HANDLE) -> Option<OwnedHandle> {
+        // SAFETY: `handle` was just returned for this process to close, and is closed once.
+        (!handle.is_null()).then(|| unsafe { OwnedHandle::from_raw_handle(handle as RawHandle) })
+    }
+
+    /// The `TOKEN_USER` of `process`, in a buffer aligned for the SID it points into.
+    fn token_user(process: HANDLE) -> Option<Vec<u64>> {
+        let mut token: HANDLE = std::ptr::null_mut();
+        // SAFETY: `process` is open; the token handle returned is owned below.
+        if unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut token) } == 0 {
+            return None;
+        }
+        let token = owned(token)?;
+        let mut needed = 0_u32;
+        // SAFETY: a null buffer asks only for the size.
+        unsafe {
+            GetTokenInformation(
+                token.as_raw_handle() as HANDLE,
+                TokenUser,
+                std::ptr::null_mut(),
+                0,
+                &mut needed,
+            );
+        }
+        if needed == 0 {
+            return None;
+        }
+        let mut buffer = vec![0_u64; (needed as usize).div_ceil(8)];
+        // SAFETY: `buffer` holds at least `needed` bytes.
+        let read = unsafe {
+            GetTokenInformation(
+                token.as_raw_handle() as HANDLE,
+                TokenUser,
+                buffer.as_mut_ptr().cast(),
+                needed,
+                &mut needed,
+            )
+        };
+        (read != 0).then_some(buffer)
+    }
+
+    fn server_is_this_user(client: &NamedPipeClient) -> bool {
+        let mut process_id = 0_u32;
+        // SAFETY: the pipe handle is open for the life of `client`.
+        if unsafe { GetNamedPipeServerProcessId(client.as_raw_handle() as HANDLE, &mut process_id) }
+            == 0
+        {
+            return false;
+        }
+        // SAFETY: opened for its identity only, and owned.
+        let Some(server) =
+            owned(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, process_id) })
+        else {
+            return false;
+        };
+        // SAFETY: the pseudo-handle for this process needs no closing.
+        let (Some(ours), Some(theirs)) = (
+            token_user(unsafe { GetCurrentProcess() }),
+            token_user(server.as_raw_handle() as HANDLE),
+        ) else {
+            return false;
+        };
+        // SAFETY: each buffer holds a TOKEN_USER whose SID lies inside it, and both outlive the call.
+        unsafe {
+            EqualSid(
+                (*ours.as_ptr().cast::<TOKEN_USER>()).User.Sid,
+                (*theirs.as_ptr().cast::<TOKEN_USER>()).User.Sid,
+            ) != 0
+        }
+    }
+}
 
 #[cfg(not(unix))]
 pub struct UserOnlyUnixListener;

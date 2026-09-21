@@ -265,7 +265,20 @@ pub fn stdin_is_pipe() -> Result<bool, HostError> {
     Ok((stat.st_mode & libc::S_IFMT) == libc::S_IFIFO)
 }
 
-#[cfg(not(unix))]
+/// The descriptor arrives through a pipe from whoever started this Host, never typed in: the same
+/// check as Unix's `S_IFIFO`, asked of the standard input handle.
+#[cfg(windows)]
+pub fn stdin_is_pipe() -> Result<bool, HostError> {
+    use windows_sys::Win32::Storage::FileSystem::{FILE_TYPE_PIPE, GetFileType};
+    use windows_sys::Win32::System::Console::{GetStdHandle, STD_INPUT_HANDLE};
+
+    // SAFETY: both calls take a handle value and touch no memory of ours; an invalid or absent
+    // standard input reads as some other file type.
+    let kind = unsafe { GetFileType(GetStdHandle(STD_INPUT_HANDLE)) };
+    Ok(kind == FILE_TYPE_PIPE)
+}
+
+#[cfg(not(any(unix, windows)))]
 pub fn stdin_is_pipe() -> Result<bool, HostError> {
     Ok(false)
 }
