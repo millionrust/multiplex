@@ -56,7 +56,7 @@ fn run() -> Result<(), String> {
                      Or: verify-design-tokens --paths crates/multiplex-desktop/src/ui/a.rs,crates/multiplex-desktop/src/ui/b.rs --zero-legacy\n\
                      Or: verify-design-tokens --surface vault-keys-snippets --zero-legacy\n\
                      Or: verify-design-tokens --surface terminal-chrome --zero-legacy-except terminal-grid-metrics\n\
-                     Baseline maintenance requires TERMIRUST_MAINTENANCE_ALLOW_BASELINE_WRITE=1."
+                     Baseline maintenance requires MULTIPLEX_MAINTENANCE_ALLOW_BASELINE_WRITE=1."
                 );
                 return Ok(());
             }
@@ -120,7 +120,7 @@ fn run() -> Result<(), String> {
         }
         println!("verified zero whole-UI legacy visual literals except named exceptions");
     } else if write {
-        if env::var("TERMIRUST_MAINTENANCE_ALLOW_BASELINE_WRITE").as_deref() != Ok("1") {
+        if multiplex_env::var("MULTIPLEX_MAINTENANCE_ALLOW_BASELINE_WRITE").as_deref() != Ok("1") {
             return Err(
                 "baseline writes are maintenance-only; normal checks may not add exceptions"
                     .to_string(),

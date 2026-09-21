@@ -28,7 +28,7 @@ safe. Approve only origins needed for the current task.
 ## Enable
 
 A supported user-installed Chrome or Chromium executable is required. Multiplex does not bundle a
-browser. Set `TERMIRUST_BROWSER_EXECUTABLE` in the MCP server environment only when automatic
+browser. Set `MULTIPLEX_BROWSER_EXECUTABLE` in the MCP server environment only when automatic
 detection cannot find it.
 
 Add only the required capabilities to the MCP configuration:

@@ -303,7 +303,7 @@ async fn real_host_resume_survives_cli_service_return_and_packaged_preview_is_pr
     );
     let output = Command::new(env!("CARGO_BIN_EXE_multiplex-cli"))
         .args(["session", "resume", &SESSION_ID.to_string(), "--json"])
-        .env("TERMIRUST_CONFIG_DIR", &fixture.seed.config_root)
+        .env("MULTIPLEX_CONFIG_DIR", &fixture.seed.config_root)
         .env("CODEX_HOME", &fixture.codex_home)
         .output()
         .unwrap();

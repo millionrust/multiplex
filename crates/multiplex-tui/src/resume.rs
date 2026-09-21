@@ -374,7 +374,7 @@ pub struct LocalResumeExecutor {
 impl LocalResumeExecutor {
     pub fn new(config_root: PathBuf) -> Result<Self, ResumeFailure> {
         let executable = std::env::current_exe().map_err(|_| ResumeFailure::unavailable())?;
-        let host_executable = std::env::var_os("TERMIRUST_SESSION_HOST_BIN")
+        let host_executable = multiplex_env::var_os("MULTIPLEX_SESSION_HOST_BIN")
             .map(PathBuf::from)
             .unwrap_or_else(|| sibling_binary(&executable, "multiplex-session-host"));
         Ok(Self::with_service(LocalCommandService::open(

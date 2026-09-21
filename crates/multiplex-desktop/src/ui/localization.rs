@@ -3,8 +3,8 @@ use std::sync::{OnceLock, RwLock};
 
 use multiplex_ui_contract::*;
 
-const DEVELOPMENT_LOCALE_ENV: &str = "TERMIRUST_DEV_LOCALE";
-const DEVELOPMENT_CONTROLS_ENV: &str = "TERMIRUST_ENABLE_PSEUDO_LOCALES";
+const DEVELOPMENT_LOCALE_ENV: &str = "MULTIPLEX_DEV_LOCALE";
+const DEVELOPMENT_CONTROLS_ENV: &str = "MULTIPLEX_ENABLE_PSEUDO_LOCALES";
 
 fn active_localizer() -> &'static RwLock<Localizer> {
     static LOCALIZER: OnceLock<RwLock<Localizer>> = OnceLock::new();

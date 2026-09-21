@@ -9,14 +9,14 @@
 //! a wrong answer, or a figure worth reading in the log on every platform. Only the threshold is
 //! held back, and only where it would be measuring the wrong thing.
 //!
-//! `TERMIRUST_PERF_BUDGETS=1` enforces budgets anyway, for a dedicated machine that sets `CI`;
-//! `TERMIRUST_PERF_BUDGETS=0` relaxes them on a laptop that is busy doing something else.
+//! `MULTIPLEX_PERF_BUDGETS=1` enforces budgets anyway, for a dedicated machine that sets `CI`;
+//! `MULTIPLEX_PERF_BUDGETS=0` relaxes them on a laptop that is busy doing something else.
 
 use std::time::Duration;
 
 /// True where a throughput budget is worth asserting: a machine this build has to itself.
 pub fn budgets_are_enforced() -> bool {
-    match std::env::var("TERMIRUST_PERF_BUDGETS") {
+    match std::env::var("MULTIPLEX_PERF_BUDGETS") {
         Ok(value) => matches!(value.trim(), "1" | "true" | "yes"),
         Err(_) => std::env::var_os("CI").is_none(),
     }
@@ -36,7 +36,7 @@ pub fn within_budget(what: &str, measured: Duration, budget: Duration) {
     } else if measured > budget {
         println!(
             "note: {what} {measured:?} exceeded the {budget:?} budget; budgets are measured but \
-             not enforced on a shared runner (TERMIRUST_PERF_BUDGETS=1 to enforce)"
+             not enforced on a shared runner (MULTIPLEX_PERF_BUDGETS=1 to enforce)"
         );
     }
 }

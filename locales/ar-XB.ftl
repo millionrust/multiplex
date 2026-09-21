@@ -1540,7 +1540,7 @@ remote-terminals-file-created = ⁧elif weN⁩
 remote-terminals-file-deleted = ⁧deteled eb lliW⁩
 remote-terminals-file-edited = ⁧detidE⁩
 remote-terminals-malformed-error = ⁧.niaga yrt neht ,srekram xelpitluM eht neewteb senil eht eteleD .kcolb xelpitluM etelpmocni na sah elif putrats llehs ruoY⁩
-remote-terminals-no-wrap-hint = ⁧.tnemnorivne s'ppa taht ni 1=PARW_ON_TSURIMRET tes ,xumt fo tuo ppa eno peek oT⁩
+remote-terminals-no-wrap-hint = ⁧.tnemnorivne s'ppa taht ni 1=PARW_ON_XELPITLUM tes ,xumt fo tuo ppa eno peek oT⁩
 remote-terminals-preview-empty = ⁧.egnahc lliw gnihtoN .pu tes ydaerla si gnihtyrevE⁩
 remote-terminals-preview-title = ⁧selif eseht egnahc lliw xelpitluM⁩
 remote-terminals-remove-action = ⁧selif ym morf evomeR⁩

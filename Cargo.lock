@@ -6828,6 +6828,7 @@ dependencies = [
  "multiplex-controller-security",
  "multiplex-diagnostics",
  "multiplex-domain",
+ "multiplex-env",
  "multiplex-host-protocol",
  "multiplex-protocol",
  "multiplex-relay-client",
@@ -6903,6 +6904,7 @@ dependencies = [
  "multiplex-controller-listener",
  "multiplex-controller-security",
  "multiplex-domain",
+ "multiplex-env",
  "multiplex-host-protocol",
  "multiplex-session-host",
  "multiplex-store",
@@ -7026,6 +7028,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "multiplex-env"
+version = "0.1.0"
+
+[[package]]
 name = "multiplex-host-protocol"
 version = "0.1.0"
 dependencies = [
@@ -7049,6 +7055,7 @@ dependencies = [
  "multiplex-browser",
  "multiplex-cli",
  "multiplex-domain",
+ "multiplex-env",
  "multiplex-store",
  "rand 0.8.6",
  "serde",
@@ -7134,6 +7141,7 @@ dependencies = [
  "futures-util",
  "libc",
  "multiplex-controller-security",
+ "multiplex-env",
  "multiplex-relay-protocol",
  "rand_core 0.6.4",
  "rcgen",
@@ -7347,6 +7355,7 @@ dependencies = [
  "multiplex-cli",
  "multiplex-client",
  "multiplex-domain",
+ "multiplex-env",
  "multiplex-host-protocol",
  "multiplex-session-host",
  "multiplex-store",
@@ -7367,6 +7376,7 @@ dependencies = [
 name = "multiplex-ui-contract"
 version = "0.1.0"
 dependencies = [
+ "multiplex-env",
  "serde",
  "serde_json",
  "sha2 0.10.9",

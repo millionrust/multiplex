@@ -55,7 +55,7 @@ final class AppleRelayControllerTransportLiveTests: XCTestCase {
     }
 
     private func livePackage() throws -> ControllerRelayRoutePackage {
-        guard let encoded = ProcessInfo.processInfo.environment["TERMIRUST_MOBILE_RELAY_PACKAGE"],
+        guard let encoded = ProcessInfo.processInfo.environment["MULTIPLEX_MOBILE_RELAY_PACKAGE"],
               let data = Data(base64Encoded: encoded),
               let text = String(data: data, encoding: .utf8) else {
             throw XCTSkip("Run through scripts/test/mobile-controller-relay-transport.sh")

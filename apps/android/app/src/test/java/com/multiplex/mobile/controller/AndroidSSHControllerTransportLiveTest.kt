@@ -35,10 +35,10 @@ class AndroidSSHControllerTransportLiveTest {
     }
 
     private fun liveEnvironment(): LiveSSHEnvironment {
-        val port = System.getenv("TERMIRUST_MOBILE_CONTROLLER_SSH_PORT")?.toIntOrNull()
-        val hostKey = System.getenv("TERMIRUST_MOBILE_CONTROLLER_SSH_HOST_KEY")
-        val privateKey = System.getenv("TERMIRUST_MOBILE_CONTROLLER_SSH_PRIVATE_KEY")
-        val password = System.getenv("TERMIRUST_MOBILE_CONTROLLER_SSH_PASSWORD")
+        val port = System.getenv("MULTIPLEX_MOBILE_CONTROLLER_SSH_PORT")?.toIntOrNull()
+        val hostKey = System.getenv("MULTIPLEX_MOBILE_CONTROLLER_SSH_HOST_KEY")
+        val privateKey = System.getenv("MULTIPLEX_MOBILE_CONTROLLER_SSH_PRIVATE_KEY")
+        val password = System.getenv("MULTIPLEX_MOBILE_CONTROLLER_SSH_PASSWORD")
         assumeTrue(
             "Run through scripts/test/mobile-controller-ssh-transports.sh",
             port != null && hostKey != null && privateKey != null && password != null,

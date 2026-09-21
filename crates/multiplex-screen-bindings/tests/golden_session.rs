@@ -8,7 +8,7 @@
 //! Regenerate deliberately, after reviewing why the bytes moved:
 //!
 //! ```sh
-//! TERMIRUST_WRITE_SCREEN_FIXTURE=1 cargo test -p multiplex-screen-bindings --test golden_session
+//! MULTIPLEX_WRITE_SCREEN_FIXTURE=1 cargo test -p multiplex-screen-bindings --test golden_session
 //! ```
 
 use multiplex_screen_bindings::{ScreenEvent, ScreenRect, ScreenViewer};
@@ -172,7 +172,7 @@ fn the_recorded_session_is_the_one_the_fixture_pins() {
     });
     let rendered = format!("{}\n", serde_json::to_string_pretty(&fixture).unwrap());
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURE);
-    if std::env::var_os("TERMIRUST_WRITE_SCREEN_FIXTURE").is_some() {
+    if std::env::var_os("MULTIPLEX_WRITE_SCREEN_FIXTURE").is_some() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, &rendered).unwrap();
         panic!("wrote {FIXTURE}; review the change and run the test again without the variable");

@@ -334,7 +334,7 @@ fn packaged_cli_reads_and_revokes_the_desktop_device_authority() {
 
     let list = std::process::Command::new(binary)
         .args(["device", "list", "--json"])
-        .env("TERMIRUST_CONFIG_DIR", &seed.config_root)
+        .env("MULTIPLEX_CONFIG_DIR", &seed.config_root)
         .output()
         .unwrap();
     assert!(list.status.success());
@@ -344,7 +344,7 @@ fn packaged_cli_reads_and_revokes_the_desktop_device_authority() {
 
     let preview = std::process::Command::new(binary)
         .args(["device", "revoke", &DEVICE_ID.to_string(), "--json"])
-        .env("TERMIRUST_CONFIG_DIR", &seed.config_root)
+        .env("MULTIPLEX_CONFIG_DIR", &seed.config_root)
         .output()
         .unwrap();
     assert!(preview.status.success());
@@ -363,7 +363,7 @@ fn packaged_cli_reads_and_revokes_the_desktop_device_authority() {
             "--yes",
             "--json",
         ])
-        .env("TERMIRUST_CONFIG_DIR", &seed.config_root)
+        .env("MULTIPLEX_CONFIG_DIR", &seed.config_root)
         .output()
         .unwrap();
     assert!(

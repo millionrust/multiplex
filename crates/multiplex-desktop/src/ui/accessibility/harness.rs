@@ -725,22 +725,22 @@ fn node_for_id(id: SemanticNodeId) -> Option<AccessibilityLabNode> {
 }
 
 fn configuration_from_environment() -> AccessibilityLabConfiguration {
-    let locale = std::env::var("TERMIRUST_AX_LOCALE")
+    let locale = multiplex_env::var("MULTIPLEX_AX_LOCALE")
         .ok()
         .and_then(|value| Locale::ALL.into_iter().find(|locale| locale.tag() == value))
         .unwrap_or(Locale::EnUs);
-    let theme = match std::env::var("TERMIRUST_AX_THEME").as_deref() {
+    let theme = match multiplex_env::var("MULTIPLEX_AX_THEME").as_deref() {
         Ok("light") => ThemeKind::Light,
         Ok("high-contrast") => ThemeKind::HighContrast,
         Ok("recording-friendly") => ThemeKind::RecordingFriendly,
         _ => ThemeKind::Dark,
     };
-    let text_scale_percent = std::env::var("TERMIRUST_AX_SCALE")
+    let text_scale_percent = multiplex_env::var("MULTIPLEX_AX_SCALE")
         .ok()
         .and_then(|value| value.parse().ok())
         .filter(|value| (100..=200).contains(value))
         .unwrap_or(100);
-    let reduced_motion = std::env::var("TERMIRUST_AX_REDUCED_MOTION").as_deref() == Ok("1");
+    let reduced_motion = multiplex_env::var("MULTIPLEX_AX_REDUCED_MOTION").as_deref() == Ok("1");
     AccessibilityLabConfiguration {
         locale,
         theme,

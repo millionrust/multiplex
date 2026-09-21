@@ -118,7 +118,7 @@ fn executable_help_and_invalid_input_do_not_require_or_create_a_store() {
 
     let help = Command::new(binary)
         .args(["--help", "--json"])
-        .env("TERMIRUST_CONFIG_DIR", &missing)
+        .env("MULTIPLEX_CONFIG_DIR", &missing)
         .output()
         .unwrap();
     assert!(help.status.success());
@@ -130,7 +130,7 @@ fn executable_help_and_invalid_input_do_not_require_or_create_a_store() {
 
     let invalid = Command::new(binary)
         .args(["session", "show", "invalid", "--json"])
-        .env("TERMIRUST_CONFIG_DIR", &missing)
+        .env("MULTIPLEX_CONFIG_DIR", &missing)
         .output()
         .unwrap();
     assert_eq!(invalid.status.code(), Some(2));

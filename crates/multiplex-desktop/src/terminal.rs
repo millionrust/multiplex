@@ -1051,14 +1051,14 @@ mod tests {
     /// Runs a real terminal interface program against this emulator through a pseudoterminal,
     /// answering its questions the way a pane does, and checks it drew what it was asked to.
     ///
-    /// Ignored by default because it needs a program to drive: set `TERMIRUST_TUI_PROBE` to a
+    /// Ignored by default because it needs a program to drive: set `MULTIPLEX_TUI_PROBE` to a
     /// command, such as `bun run /path/to/app.ts`, and run with `--ignored`.
     #[test]
-    #[ignore = "requires TERMIRUST_TUI_PROBE to name a terminal interface program to run"]
+    #[ignore = "requires MULTIPLEX_TUI_PROBE to name a terminal interface program to run"]
     fn a_terminal_interface_program_renders_against_this_emulator() {
         use std::io::{Read as _, Write as _};
 
-        let Ok(probe) = std::env::var("TERMIRUST_TUI_PROBE") else {
+        let Ok(probe) = multiplex_env::var("MULTIPLEX_TUI_PROBE") else {
             return;
         };
         let mut words = probe.split_whitespace();
@@ -1105,7 +1105,7 @@ mod tests {
         while Instant::now() < deadline {
             match output_rx.recv_timeout(Duration::from_millis(200)) {
                 Ok(bytes) => {
-                    if std::env::var_os("TERMIRUST_TUI_PROBE_TRACE").is_some() {
+                    if multiplex_env::var_os("MULTIPLEX_TUI_PROBE_TRACE").is_some() {
                         println!("read: {}", String::from_utf8_lossy(&bytes).escape_debug());
                     }
                     terminal.process_bytes(&bytes);

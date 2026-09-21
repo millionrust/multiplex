@@ -1882,7 +1882,7 @@ impl MultiplexApp {
             global_search: GlobalSearchState::new(),
             shell_accessibility: ShellAccessibilityAdapter::new(),
             project_list_focus,
-            focus_trace: std::env::var_os("TERMIRUST_TRACE_FOCUS").map(|_| String::new()),
+            focus_trace: multiplex_env::var_os("MULTIPLEX_TRACE_FOCUS").map(|_| String::new()),
             preset_library,
             preset_label_input,
             preset_executable_input,
@@ -2148,7 +2148,7 @@ impl MultiplexApp {
         self.saved.settings.terminal_font_size as f32
     }
 
-    /// With `TERMIRUST_TRACE_FOCUS` set, logs which element holds keyboard focus each time
+    /// With `MULTIPLEX_TRACE_FOCUS` set, logs which element holds keyboard focus each time
     /// it changes, to diagnose focus leaving the terminal.
     fn trace_focus_change(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.focus_trace.is_none() {
@@ -18010,7 +18010,7 @@ mod tests {
             startup_command: Some("git status --short".to_string()),
             persistent_session: true,
             terminal_scrollback_rows: Some(32_000),
-            environment: vec![("TERMIRUST_ENV".to_string(), "canvas".to_string())],
+            environment: vec![("MULTIPLEX_ENV".to_string(), "canvas".to_string())],
             ..HostProfile::default()
         });
         let (app, _window) = open_test_app_with_state(cx, saved);
@@ -18037,7 +18037,7 @@ mod tests {
             assert_eq!(request.terminal_scrollback_rows, 32_000);
             assert_eq!(
                 request.environment,
-                vec![("TERMIRUST_ENV".to_string(), "canvas".to_string())]
+                vec![("MULTIPLEX_ENV".to_string(), "canvas".to_string())]
             );
             assert!(matches!(
                 request.auth,
@@ -18776,7 +18776,7 @@ sleep 1
         let executable = "/usr/local/bin/termirust-ui-remote-claude";
         server
             .exec(&format!(
-                "cat > {executable} <<'TERMIRUST_EOF'\n#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'remote-ui 1.0\\n'; exit 0; fi\nprintf '%s\\n' \"$2\" >> /tmp/termirust-ui-remote-prompts\nprintf '%s\\n' '{{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"remote-ui\"}}'\nprintf '%s\\n' '{{\"type\":\"assistant\",\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"remote structured response\"}}]}}}}'\nprintf '%s\\n' '{{\"type\":\"result\",\"is_error\":false,\"result\":\"remote complete\"}}'\nTERMIRUST_EOF\nchmod 755 {executable}; rm -f /tmp/termirust-ui-remote-prompts"
+                "cat > {executable} <<'MULTIPLEX_EOF'\n#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'remote-ui 1.0\\n'; exit 0; fi\nprintf '%s\\n' \"$2\" >> /tmp/termirust-ui-remote-prompts\nprintf '%s\\n' '{{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"remote-ui\"}}'\nprintf '%s\\n' '{{\"type\":\"assistant\",\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"remote structured response\"}}]}}}}'\nprintf '%s\\n' '{{\"type\":\"result\",\"is_error\":false,\"result\":\"remote complete\"}}'\nMULTIPLEX_EOF\nchmod 755 {executable}; rm -f /tmp/termirust-ui-remote-prompts"
             ))
             .expect("unable to install remote UI provider fixture");
         let profile_id = "remote-structured-docker";

@@ -34,9 +34,9 @@ authenticated CLIs, network access, and may consume provider quota. Run one at a
 time with the explicit opt-in flag:
 
 ```bash
-TERMIRUST_RUN_LIVE_AGENT_TESTS=1 cargo test live_codex_app_server_smoke -- --ignored --nocapture
-TERMIRUST_RUN_LIVE_AGENT_TESTS=1 cargo test live_claude_headless_smoke -- --ignored --nocapture
-TERMIRUST_RUN_LIVE_AGENT_TESTS=1 cargo test live_gemini_headless_smoke -- --ignored --nocapture
+MULTIPLEX_RUN_LIVE_AGENT_TESTS=1 cargo test live_codex_app_server_smoke -- --ignored --nocapture
+MULTIPLEX_RUN_LIVE_AGENT_TESTS=1 cargo test live_claude_headless_smoke -- --ignored --nocapture
+MULTIPLEX_RUN_LIVE_AGENT_TESTS=1 cargo test live_gemini_headless_smoke -- --ignored --nocapture
 ```
 
 | Provider | Result | Notes |

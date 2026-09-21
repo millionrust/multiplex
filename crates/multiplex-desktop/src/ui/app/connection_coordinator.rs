@@ -1090,7 +1090,7 @@ mod tests {
         let sftp_calls = Arc::new(Mutex::new(Vec::new()));
         let mut request = ConnectRequest::local_shell(77);
         request.title = "Exact request".to_string();
-        request.environment = vec![("TERMIRUST_TEST".to_string(), "exact".to_string())];
+        request.environment = vec![("MULTIPLEX_TEST".to_string(), "exact".to_string())];
         let request_debug = format!("{request:?}");
         let coordinator = ConnectionCoordinator {
             event_tx: event_tx.into(),

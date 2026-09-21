@@ -328,7 +328,7 @@ fn run_scenario(
 
 fn run_cancellation(contract: &ContractFixture, provider: &ProviderFixture) -> Projection {
     let fixture_process = FixtureProcess::new(contract, provider, Scenario::Cancellation);
-    let canary = "TERMIRUST_CONTRACT_CANCEL_CANARY";
+    let canary = "MULTIPLEX_CONTRACT_CANCEL_CANARY";
     let handle = launch(provider.provider, &fixture_process.executable, canary);
     let mut projection = collect(
         &handle,

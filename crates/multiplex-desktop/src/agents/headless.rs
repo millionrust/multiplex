@@ -887,7 +887,7 @@ mod tests {
         let executable = "/usr/local/bin/termirust-fake-claude";
         server
             .exec(&format!(
-                "cat > {executable} <<'TERMIRUST_EOF'\n#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'fake-claude 1.0\\n'; exit 0; fi\nprintf '%s\\n' '{{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"remote-session\"}}'\nprintf '%s\\n' '{{\"type\":\"assistant\",\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"remote-ok\"}}]}}}}'\nprintf '%s\\n' '{{\"type\":\"result\",\"is_error\":false,\"result\":\"remote-done\"}}'\nTERMIRUST_EOF\nchmod 755 {executable}"
+                "cat > {executable} <<'MULTIPLEX_EOF'\n#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'fake-claude 1.0\\n'; exit 0; fi\nprintf '%s\\n' '{{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"remote-session\"}}'\nprintf '%s\\n' '{{\"type\":\"assistant\",\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"remote-ok\"}}]}}}}'\nprintf '%s\\n' '{{\"type\":\"result\",\"is_error\":false,\"result\":\"remote-done\"}}'\nMULTIPLEX_EOF\nchmod 755 {executable}"
             ))
             .expect("unable to install fake remote provider");
         let definition = SavedAgentDefinition {
@@ -1002,7 +1002,7 @@ mod tests {
         let executable = "/usr/local/bin/termirust-cancellable-claude";
         server
             .exec(&format!(
-                "cat > {executable} <<'TERMIRUST_EOF'\n#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'fake-claude 1.0\\n'; exit 0; fi\ntrap 'printf cancelled > /tmp/termirust-remote-cancelled; exit 143' TERM\nprintf '%s\\n' '{{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"remote-cancel\"}}'\nwhile :; do sleep 1; done\nTERMIRUST_EOF\nchmod 755 {executable}; rm -f /tmp/termirust-remote-cancelled"
+                "cat > {executable} <<'MULTIPLEX_EOF'\n#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'fake-claude 1.0\\n'; exit 0; fi\ntrap 'printf cancelled > /tmp/termirust-remote-cancelled; exit 143' TERM\nprintf '%s\\n' '{{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"remote-cancel\"}}'\nwhile :; do sleep 1; done\nMULTIPLEX_EOF\nchmod 755 {executable}; rm -f /tmp/termirust-remote-cancelled"
             ))
             .expect("unable to install cancellable remote provider");
         let definition = SavedAgentDefinition {
@@ -1092,8 +1092,8 @@ mod tests {
     }
 
     fn run_live_headless_smoke(provider: AgentProvider, executable: &str, marker: &str) {
-        if std::env::var("TERMIRUST_RUN_LIVE_AGENT_TESTS").as_deref() != Ok("1") {
-            eprintln!("skipping live provider smoke; set TERMIRUST_RUN_LIVE_AGENT_TESTS=1");
+        if multiplex_env::var("MULTIPLEX_RUN_LIVE_AGENT_TESTS").as_deref() != Ok("1") {
+            eprintln!("skipping live provider smoke; set MULTIPLEX_RUN_LIVE_AGENT_TESTS=1");
             return;
         }
         let working_directory = std::env::temp_dir().join(format!(
@@ -1146,19 +1146,19 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires TERMIRUST_RUN_LIVE_AGENT_TESTS=1, authenticated Claude Code, and network access"]
+    #[ignore = "requires MULTIPLEX_RUN_LIVE_AGENT_TESTS=1, authenticated Claude Code, and network access"]
     fn live_claude_headless_smoke() {
         run_live_headless_smoke(
             AgentProvider::ClaudeCode,
             "claude",
-            "TERMIRUST_CLAUDE_LIVE_OK",
+            "MULTIPLEX_CLAUDE_LIVE_OK",
         );
     }
 
     #[test]
-    #[ignore = "requires TERMIRUST_RUN_LIVE_AGENT_TESTS=1, authenticated Gemini CLI, and network access"]
+    #[ignore = "requires MULTIPLEX_RUN_LIVE_AGENT_TESTS=1, authenticated Gemini CLI, and network access"]
     fn live_gemini_headless_smoke() {
-        run_live_headless_smoke(AgentProvider::Gemini, "gemini", "TERMIRUST_GEMINI_LIVE_OK");
+        run_live_headless_smoke(AgentProvider::Gemini, "gemini", "MULTIPLEX_GEMINI_LIVE_OK");
     }
 
     #[test]

@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use multiplex_tmux::{Tmux, TmuxError};
 
@@ -310,8 +311,13 @@ fn run_wrapped_shell(
     shell: &str,
     extra_environment: &[&str],
 ) -> Vec<String> {
-    let ready = home.join(format!("ready-{}", extra_environment.len()));
-    let outer = format!("outer-{}", extra_environment.len());
+    // Each call needs its own outer session and ready file. Numbering them by how many variables
+    // were passed collided as soon as two calls set the same number of them, and tmux answered
+    // "duplicate session" rather than anything about the test.
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
+    let ready = home.join(format!("ready-{sequence}"));
+    let outer = format!("outer-{sequence}");
     let mut command = vec![
         "env".to_owned(),
         "-u".to_owned(),
@@ -417,6 +423,28 @@ fn shell_integration_starts_new_terminal_app_shells_inside_tmux() {
             &[
                 &socket,
                 "TERM_PROGRAM=Apple_Terminal",
+                "MULTIPLEX_NO_WRAP=1",
+                "X=1",
+            ],
+        );
+        assert_eq!(
+            names
+                .iter()
+                .filter(|name| name.starts_with("multiplex-"))
+                .count(),
+            1,
+            "{shell}: MULTIPLEX_NO_WRAP keeps a shell out of tmux: {names:?}"
+        );
+
+        // Someone who opted out before the rename put the old name in their shell profile. The
+        // snippet is regenerated under the new name, and it still has to honour that choice.
+        let names = run_wrapped_shell(
+            &server,
+            &home_path,
+            shell,
+            &[
+                &socket,
+                "TERM_PROGRAM=Apple_Terminal",
                 "TERMIRUST_NO_WRAP=1",
                 "X=1",
             ],
@@ -427,7 +455,7 @@ fn shell_integration_starts_new_terminal_app_shells_inside_tmux() {
                 .filter(|name| name.starts_with("multiplex-"))
                 .count(),
             1,
-            "{shell}: TERMIRUST_NO_WRAP keeps a shell out of tmux: {names:?}"
+            "{shell}: the opt-out's previous name still keeps a shell out of tmux: {names:?}"
         );
 
         let names = run_wrapped_shell(
@@ -841,7 +869,7 @@ fn a_wrapped_tab_tells_tmux_what_its_terminal_can_do() {
                 .env("HOME", &home_path)
                 .env("TERM_PROGRAM", program)
                 .env_remove("TMUX")
-                .env_remove("TERMIRUST_NO_WRAP");
+                .env_remove("MULTIPLEX_NO_WRAP");
             match colorterm {
                 Some(value) => command.env("COLORTERM", value),
                 None => command.env_remove("COLORTERM"),

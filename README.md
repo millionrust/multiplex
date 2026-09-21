@@ -112,7 +112,7 @@ This is early alpha. The following are on the radar but don't exist yet:
 
 ## Developing on macOS
 
-`cargo run` re-signs the desktop app with a stable identifier through `scripts/dev/run-signed.sh`, so Keychain and Local Network permissions granted once survive rebuilds. It uses your first Apple Development identity, or `TERMIRUST_CODESIGN_IDENTITY`. Set `TERMIRUST_TRACE_FOCUS=1` to log every keyboard focus change.
+`cargo run` re-signs the desktop app with a stable identifier through `scripts/dev/run-signed.sh`, so Keychain and Local Network permissions granted once survive rebuilds. It uses your first Apple Development identity, or `MULTIPLEX_CODESIGN_IDENTITY`. Set `MULTIPLEX_TRACE_FOCUS=1` to log every keyboard focus change.
 
 ## Repository layout
 

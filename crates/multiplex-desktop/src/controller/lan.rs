@@ -191,7 +191,7 @@ impl Drop for ControllerListenerProcess {
 }
 
 fn listener_executable() -> Result<PathBuf, ListenerProcessError> {
-    if let Some(path) = std::env::var_os("TERMIRUST_CONTROLLER_LISTENER_BIN") {
+    if let Some(path) = multiplex_env::var_os("MULTIPLEX_CONTROLLER_LISTENER_BIN") {
         return Ok(PathBuf::from(path));
     }
     std::env::current_exe().map_err(|_| ListenerProcessError::Executable)

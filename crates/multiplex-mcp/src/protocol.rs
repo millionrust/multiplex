@@ -181,7 +181,7 @@ impl Default for ServerConfiguration {
 
 impl ServerConfiguration {
     pub fn from_environment() -> Result<Self, ConfigurationError> {
-        let capabilities = std::env::var("TERMIRUST_MCP_CAPABILITIES")
+        let capabilities = multiplex_env::var("MULTIPLEX_MCP_CAPABILITIES")
             .ok()
             .map(|value| CapabilitySet::parse(&value))
             .transpose()?
@@ -200,7 +200,7 @@ pub enum ConfigurationError {
 
 impl fmt::Display for ConfigurationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("TERMIRUST_MCP_CAPABILITIES contains an unsupported capability")
+        formatter.write_str("MULTIPLEX_MCP_CAPABILITIES contains an unsupported capability")
     }
 }
 

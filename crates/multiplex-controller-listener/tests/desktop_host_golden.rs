@@ -632,16 +632,16 @@ async fn stop_host(endpoint: LocalEndpoint, session_id: HostedSessionId) {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn bundled_desktop_host_controller_golden_run() {
-    let Ok(host_binary) = std::env::var("TERMIRUST_N02_HOST_BIN") else {
-        eprintln!("SKIPPED N02 live golden run: TERMIRUST_N02_HOST_BIN is not set");
+    let Ok(host_binary) = std::env::var("MULTIPLEX_N02_HOST_BIN") else {
+        eprintln!("SKIPPED N02 live golden run: MULTIPLEX_N02_HOST_BIN is not set");
         return;
     };
-    let ssh_port: u16 = std::env::var("TERMIRUST_N02_SSH_PORT")
+    let ssh_port: u16 = std::env::var("MULTIPLEX_N02_SSH_PORT")
         .expect("N02 SSH port is required")
         .parse()
         .expect("N02 SSH port should be numeric");
     let ssh_key =
-        PathBuf::from(std::env::var_os("TERMIRUST_N02_SSH_KEY").expect("N02 SSH key is required"));
+        PathBuf::from(std::env::var_os("MULTIPLEX_N02_SSH_KEY").expect("N02 SSH key is required"));
     let fixture = tempfile::Builder::new()
         .prefix("tr-n02-")
         .tempdir_in("/tmp")

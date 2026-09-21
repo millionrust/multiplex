@@ -73,7 +73,7 @@ cd "$ROOT_DIR"
 # The pinned toolchains are what makes a shipped artifact reproducible. A build that only has to
 # prove the applications still compile does not need them, and a hosted runner does not get to
 # choose its Xcode, so it may say so — loudly, and never for anything released.
-UNPINNED="${TERMIRUST_SCREEN_BINDINGS_ALLOW_UNPINNED:-0}"
+UNPINNED="${MULTIPLEX_SCREEN_BINDINGS_ALLOW_UNPINNED:-${TERMIRUST_SCREEN_BINDINGS_ALLOW_UNPINNED:-0}}"
 require_pinned() {
   local what="$1" expected="$2" found="$3"
   [[ "$found" == "$expected" ]] && return 0

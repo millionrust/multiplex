@@ -3,8 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SOURCE="$ROOT_DIR/dist/mobile/controller"
-IOS_DIR="${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}"
-ANDROID_DIR="${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/apps/android}"
+IOS_DIR="${MULTIPLEX_IOS_DIR:-${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}}"
+ANDROID_DIR="${MULTIPLEX_ANDROID_DIR:-${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/apps/android}}"
 MODE="${1:---check}"
 PLATFORM="${2:---all}"
 LIB="libmultiplex_controller_bindings.so"

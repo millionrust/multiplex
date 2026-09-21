@@ -873,7 +873,7 @@ remote-terminals-verify-running = Checking tmux
 remote-terminals-verify-ok = tmux sessions are listed correctly. Paired devices can see them.
 remote-terminals-verify-ok-hidden = tmux works, but paired devices cannot see sessions until Show tmux sessions is on.
 remote-terminals-verify-failed = Multiplex could not list tmux sessions. Open a terminal and check that tmux starts.
-remote-terminals-no-wrap-hint = To keep one app out of tmux, set TERMIRUST_NO_WRAP=1 in that app's environment.
+remote-terminals-no-wrap-hint = To keep one app out of tmux, set MULTIPLEX_NO_WRAP=1 in that app's environment.
 remote-terminals-service-label = Keep reachable when Multiplex is closed
 remote-terminals-service-description = Runs the local network listener in the background from login, so paired devices can connect after you quit Multiplex. The app takes over again when you open it. Pairing a new device still needs the app.
 remote-terminals-service-status-off = Not running in the background

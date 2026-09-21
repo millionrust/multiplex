@@ -22,7 +22,7 @@ cargo run -q -p multiplex-ui-contract --bin accessibility_snapshot --locked \
   | diff -u tests/fixtures/accessibility/semantic-tree.snapshot -
 cargo check -q -p multiplex --locked
 
-if rg -n "TERMIRUST_AX_SECRET_CANARY_7bd50a" tests/fixtures/accessibility/semantic-tree.snapshot >/dev/null; then
+if rg -n "MULTIPLEX_AX_SECRET_CANARY_7bd50a" tests/fixtures/accessibility/semantic-tree.snapshot >/dev/null; then
   echo "verify-accessibility-harness: secret canary leaked into semantic snapshot" >&2
   exit 1
 fi

@@ -15,7 +15,7 @@ Run the TUI against the normal TermiRust store:
 cargo run -p termirust-tui --
 ```
 
-Use `TERMIRUST_CONFIG_DIR=/path` to select an isolated configuration root. Enter
+Use `MULTIPLEX_CONFIG_DIR=/path` to select an isolated configuration root. Enter
 attaches the selected Session. `Ctrl+Space`, then `Esc`, detaches and returns to
 the exact fleet row. `i` requests the writer lease while the attached view is
 read-only. `r` retries a gap or unavailable attachment immediately.

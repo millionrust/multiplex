@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-IOS_DIR="${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}"
-IOS_DESTINATION="${TERMIRUST_IOS_DESTINATION:-}"
-SSH_IMAGE="${TERMIRUST_MOBILE_TEST_SSH_IMAGE:-termirust-e2e-sshd:local}"
+IOS_DIR="${MULTIPLEX_IOS_DIR:-${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}}"
+IOS_DESTINATION="${MULTIPLEX_IOS_DESTINATION:-${TERMIRUST_IOS_DESTINATION:-}}"
+SSH_IMAGE="${MULTIPLEX_MOBILE_TEST_SSH_IMAGE:-${TERMIRUST_MOBILE_TEST_SSH_IMAGE:-termirust-e2e-sshd:local}}"
 CONFIG_PATH="$IOS_DIR/MultiplexMobileTests/.termirust-mobile-live-ssh.properties"
 
 if [[ ! -d "$IOS_DIR/MultiplexMobile.xcodeproj" ]]; then
@@ -18,7 +18,7 @@ if [[ -z "$IOS_DESTINATION" ]]; then
       | awk -F '[()]' '/iPhone/ { print $2; exit }'
   )"
   if [[ -z "$simulator_id" ]]; then
-    echo "No available iPhone simulator. Set TERMIRUST_IOS_DESTINATION for an eligible device." >&2
+    echo "No available iPhone simulator. Set MULTIPLEX_IOS_DESTINATION for an eligible device." >&2
     exit 1
   fi
   IOS_DESTINATION="platform=iOS Simulator,id=$simulator_id"
@@ -36,11 +36,11 @@ run_ios_smoke() {
 write_smoke_config() {
   mkdir -p "$(dirname "$CONFIG_PATH")"
   {
-    printf 'TERMIRUST_MOBILE_TEST_SSH_HOST=%s\n' "$TERMIRUST_MOBILE_TEST_SSH_HOST"
-    printf 'TERMIRUST_MOBILE_TEST_SSH_PORT=%s\n' "$TERMIRUST_MOBILE_TEST_SSH_PORT"
-    printf 'TERMIRUST_MOBILE_TEST_SSH_USER=%s\n' "$TERMIRUST_MOBILE_TEST_SSH_USER"
-    printf 'TERMIRUST_MOBILE_TEST_SSH_KEY_BASE64=%s\n' "$(printf '%s' "$TERMIRUST_MOBILE_TEST_SSH_KEY" | base64 | tr -d '\n')"
-    printf 'TERMIRUST_MOBILE_TEST_KNOWN_HOST_KEY_BASE64=%s\n' "$(printf '%s' "$TERMIRUST_MOBILE_TEST_KNOWN_HOST_KEY" | base64 | tr -d '\n')"
+    printf 'MULTIPLEX_MOBILE_TEST_SSH_HOST=%s\n' "$MULTIPLEX_MOBILE_TEST_SSH_HOST"
+    printf 'MULTIPLEX_MOBILE_TEST_SSH_PORT=%s\n' "$MULTIPLEX_MOBILE_TEST_SSH_PORT"
+    printf 'MULTIPLEX_MOBILE_TEST_SSH_USER=%s\n' "$MULTIPLEX_MOBILE_TEST_SSH_USER"
+    printf 'MULTIPLEX_MOBILE_TEST_SSH_KEY_BASE64=%s\n' "$(printf '%s' "$MULTIPLEX_MOBILE_TEST_SSH_KEY" | base64 | tr -d '\n')"
+    printf 'MULTIPLEX_MOBILE_TEST_KNOWN_HOST_KEY_BASE64=%s\n' "$(printf '%s' "$MULTIPLEX_MOBILE_TEST_KNOWN_HOST_KEY" | base64 | tr -d '\n')"
   } > "$CONFIG_PATH"
 }
 
@@ -48,16 +48,16 @@ cleanup_config() {
   rm -f "$CONFIG_PATH"
 }
 
-if [[ -n "${TERMIRUST_MOBILE_TEST_SSH_HOST:-}" ]]; then
+if [[ -n "${MULTIPLEX_MOBILE_TEST_SSH_HOST:-${TERMIRUST_MOBILE_TEST_SSH_HOST:-}}" ]]; then
   required=(
-    TERMIRUST_MOBILE_TEST_SSH_PORT
-    TERMIRUST_MOBILE_TEST_SSH_USER
-    TERMIRUST_MOBILE_TEST_SSH_KEY
-    TERMIRUST_MOBILE_TEST_KNOWN_HOST_KEY
+    MULTIPLEX_MOBILE_TEST_SSH_PORT
+    MULTIPLEX_MOBILE_TEST_SSH_USER
+    MULTIPLEX_MOBILE_TEST_SSH_KEY
+    MULTIPLEX_MOBILE_TEST_KNOWN_HOST_KEY
   )
   for name in "${required[@]}"; do
     if [[ -z "${!name:-}" ]]; then
-      echo "When TERMIRUST_MOBILE_TEST_SSH_HOST is set, $name is also required." >&2
+      echo "When MULTIPLEX_MOBILE_TEST_SSH_HOST is set, $name is also required." >&2
       exit 1
     fi
   done
@@ -68,12 +68,12 @@ if [[ -n "${TERMIRUST_MOBILE_TEST_SSH_HOST:-}" ]]; then
 fi
 
 if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker is required unless TERMIRUST_MOBILE_TEST_SSH_* env vars point at a reachable SSH host." >&2
+  echo "Docker is required unless MULTIPLEX_MOBILE_TEST_SSH_* env vars point at a reachable SSH host." >&2
   exit 1
 fi
 
 if ! docker info >/dev/null 2>&1; then
-  echo "Docker daemon is not running. Start Docker, or set TERMIRUST_MOBILE_TEST_SSH_* env vars for a reachable SSH host." >&2
+  echo "Docker daemon is not running. Start Docker, or set MULTIPLEX_MOBILE_TEST_SSH_* env vars for a reachable SSH host." >&2
   exit 1
 fi
 
@@ -87,7 +87,7 @@ cleanup() {
 trap cleanup EXIT
 
 cd "$ROOT_DIR"
-if [[ "${TERMIRUST_MOBILE_REBUILD_SSH_IMAGE:-0}" == "1" ]] || ! docker image inspect "$SSH_IMAGE" >/dev/null 2>&1; then
+if [[ "${MULTIPLEX_MOBILE_REBUILD_SSH_IMAGE:-${TERMIRUST_MOBILE_REBUILD_SSH_IMAGE:-0}}" == "1" ]] || ! docker image inspect "$SSH_IMAGE" >/dev/null 2>&1; then
   docker build -t "$SSH_IMAGE" tests/fixtures/ssh-server >/dev/null
 fi
 
@@ -113,10 +113,10 @@ if [[ -z "$KNOWN_HOST_KEY" ]]; then
   exit 1
 fi
 
-export TERMIRUST_MOBILE_TEST_SSH_HOST="127.0.0.1"
-export TERMIRUST_MOBILE_TEST_SSH_PORT="$PORT"
-export TERMIRUST_MOBILE_TEST_SSH_USER="termirust"
-export TERMIRUST_MOBILE_TEST_SSH_KEY="$(cat "$ROOT_DIR/tests/fixtures/ssh-server/id_ed25519")"
-export TERMIRUST_MOBILE_TEST_KNOWN_HOST_KEY="$KNOWN_HOST_KEY"
+export MULTIPLEX_MOBILE_TEST_SSH_HOST="127.0.0.1"
+export MULTIPLEX_MOBILE_TEST_SSH_PORT="$PORT"
+export MULTIPLEX_MOBILE_TEST_SSH_USER="termirust"
+export MULTIPLEX_MOBILE_TEST_SSH_KEY="$(cat "$ROOT_DIR/tests/fixtures/ssh-server/id_ed25519")"
+export MULTIPLEX_MOBILE_TEST_KNOWN_HOST_KEY="$KNOWN_HOST_KEY"
 write_smoke_config
 run_ios_smoke

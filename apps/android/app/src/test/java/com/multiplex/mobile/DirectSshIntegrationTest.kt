@@ -22,7 +22,7 @@ class DirectSshIntegrationTest {
     fun directSshAttachesToPersistentTmuxSessionAndSurvivesReconnect() = runBlocking {
         val config = LiveSshSmokeConfig.load()
         assumeTrue(
-            "Set TERMIRUST_MOBILE_TEST_SSH_HOST, TERMIRUST_MOBILE_TEST_SSH_PORT, TERMIRUST_MOBILE_TEST_SSH_USER, TERMIRUST_MOBILE_TEST_SSH_KEY, and TERMIRUST_MOBILE_TEST_KNOWN_HOST_KEY to run this live SSH smoke.",
+            "Set MULTIPLEX_MOBILE_TEST_SSH_HOST, MULTIPLEX_MOBILE_TEST_SSH_PORT, MULTIPLEX_MOBILE_TEST_SSH_USER, MULTIPLEX_MOBILE_TEST_SSH_KEY, and MULTIPLEX_MOBILE_TEST_KNOWN_HOST_KEY to run this live SSH smoke.",
             config != null,
         )
         requireNotNull(config)
@@ -58,8 +58,8 @@ class DirectSshIntegrationTest {
             // Split acknowledgement tokens so echoed input cannot satisfy the assertion.
             firstClient.send(
                 ("[ \"\$(tmux display-message -p '#S')\" = '$sessionName' ] && " +
-                    "export TERMIRUST_SMOKE_VALUE=android-smoke-first && " +
-                    "printf '%s\\n' \"\$TERMIRUST_SMOKE_VALUE\" > ~/termirust-android-smoke && " +
+                    "export MULTIPLEX_SMOKE_VALUE=android-smoke-first && " +
+                    "printf '%s\\n' \"\$MULTIPLEX_SMOKE_VALUE\" > ~/termirust-android-smoke && " +
                     "printf '%s%s\\n' WRITE_ CONFIRMED\n").encodeToByteArray(),
             )
 
@@ -77,8 +77,8 @@ class DirectSshIntegrationTest {
         try {
             secondClient.connect(host, knownHost) { secondOutput += it.copyOf() }
             secondClient.send(
-                ("[ \"\$TERMIRUST_SMOKE_VALUE\" = android-smoke-first ] && " +
-                    "[ \"\$(cat ~/termirust-android-smoke)\" = \"\$TERMIRUST_SMOKE_VALUE\" ] && " +
+                ("[ \"\$MULTIPLEX_SMOKE_VALUE\" = android-smoke-first ] && " +
+                    "[ \"\$(cat ~/termirust-android-smoke)\" = \"\$MULTIPLEX_SMOKE_VALUE\" ] && " +
                     "printf '%s%s\\n' RECONNECT_ CONFIRMED\n").encodeToByteArray(),
             )
 
@@ -128,11 +128,11 @@ class DirectSshIntegrationTest {
                     System.getProperty(name)?.let { values[name] = it }
                 }
 
-                val host = values["TERMIRUST_MOBILE_TEST_SSH_HOST"]?.trim().orEmpty()
-                val port = values["TERMIRUST_MOBILE_TEST_SSH_PORT"]?.trim()?.toIntOrNull()
-                val username = values["TERMIRUST_MOBILE_TEST_SSH_USER"]?.trim().orEmpty()
-                val privateKey = decodedValue(values, "TERMIRUST_MOBILE_TEST_SSH_KEY")
-                val knownHostKey = decodedValue(values, "TERMIRUST_MOBILE_TEST_KNOWN_HOST_KEY")
+                val host = values["MULTIPLEX_MOBILE_TEST_SSH_HOST"]?.trim().orEmpty()
+                val port = values["MULTIPLEX_MOBILE_TEST_SSH_PORT"]?.trim()?.toIntOrNull()
+                val username = values["MULTIPLEX_MOBILE_TEST_SSH_USER"]?.trim().orEmpty()
+                val privateKey = decodedValue(values, "MULTIPLEX_MOBILE_TEST_SSH_KEY")
+                val knownHostKey = decodedValue(values, "MULTIPLEX_MOBILE_TEST_KNOWN_HOST_KEY")
                 if (host.isBlank() || port == null || username.isBlank() || privateKey.isBlank() || knownHostKey.isBlank()) {
                     return null
                 }

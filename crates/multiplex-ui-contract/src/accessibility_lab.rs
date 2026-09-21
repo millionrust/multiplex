@@ -28,7 +28,7 @@ const DESTRUCTIVE: u64 = 17;
 const DIALOG: u64 = 20;
 const SAFE_DEFAULT: u64 = 21;
 const CONFIRM: u64 = 22;
-const SECRET_CANARY: &str = "TERMIRUST_AX_SECRET_CANARY_7bd50a";
+const SECRET_CANARY: &str = "MULTIPLEX_AX_SECRET_CANARY_7bd50a";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AccessibilityLabNode {

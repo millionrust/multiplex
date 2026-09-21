@@ -143,19 +143,19 @@ async fn host_survives_one_thousand_gui_drops_during_ordered_replay() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires TERMIRUST_REAL_AGENT_EXECUTABLE and TERMIRUST_REAL_AGENT_VERSION"]
+#[ignore = "requires MULTIPLEX_REAL_AGENT_EXECUTABLE and MULTIPLEX_REAL_AGENT_VERSION"]
 async fn real_managed_agent_survives_controller_restart() {
-    let executable = std::env::var_os("TERMIRUST_REAL_AGENT_EXECUTABLE")
+    let executable = std::env::var_os("MULTIPLEX_REAL_AGENT_EXECUTABLE")
         .map(std::path::PathBuf::from)
-        .expect("set TERMIRUST_REAL_AGENT_EXECUTABLE to the installed agent executable")
+        .expect("set MULTIPLEX_REAL_AGENT_EXECUTABLE to the installed agent executable")
         .canonicalize()
         .expect("the installed agent executable must resolve to a regular file");
-    let cwd = std::env::var_os("TERMIRUST_REAL_AGENT_CWD")
+    let cwd = std::env::var_os("MULTIPLEX_REAL_AGENT_CWD")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::env::current_dir().unwrap());
-    let runtime_id = std::env::var("TERMIRUST_REAL_AGENT_ID").unwrap_or_else(|_| "codex".into());
-    let runtime_version = std::env::var("TERMIRUST_REAL_AGENT_VERSION")
-        .expect("set TERMIRUST_REAL_AGENT_VERSION to the installed agent's numeric version");
+    let runtime_id = std::env::var("MULTIPLEX_REAL_AGENT_ID").unwrap_or_else(|_| "codex".into());
+    let runtime_version = std::env::var("MULTIPLEX_REAL_AGENT_VERSION")
+        .expect("set MULTIPLEX_REAL_AGENT_VERSION to the installed agent's numeric version");
     let fingerprint = fingerprint_executable(&executable).unwrap();
     let fixture = tempfile::tempdir().unwrap();
     let session_id = HostedSessionId::new();

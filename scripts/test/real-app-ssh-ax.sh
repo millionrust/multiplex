@@ -180,7 +180,7 @@ PY
 
 rm -f "$KNOWN_HOSTS_FILE"
 
-if [[ "${TERMIRUST_SKIP_RELEASE_BUILD:-0}" != "1" ]]; then
+if [[ "${MULTIPLEX_SKIP_RELEASE_BUILD:-${TERMIRUST_SKIP_RELEASE_BUILD:-0}}" != "1" ]]; then
   cargo build --release >/dev/null
 fi
 APP_BUNDLE="$TARGET_DIR/release/bundle/osx/TermiRust.app"

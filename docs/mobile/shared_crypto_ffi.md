@@ -50,8 +50,8 @@ Use `ios` or `android` instead of `all` to refresh one platform.
 The helper respects:
 
 ```text
-TERMIRUST_IOS_DIR
-TERMIRUST_ANDROID_DIR
+MULTIPLEX_IOS_DIR
+MULTIPLEX_ANDROID_DIR
 ```
 
 when the mobile source directories are not in their default monorepo locations.
@@ -139,8 +139,8 @@ Direct SSH/tmux smoke tests for both mobile apps:
 scripts/verify/mobile-mvp.sh --live-ssh
 ```
 
-The live smoke mode requires Docker Desktop to be running, or `TERMIRUST_MOBILE_TEST_SSH_*` variables pointing at a reachable SSH host.
-If `termirust-e2e-sshd:local` already exists locally, the smoke scripts reuse it. Set `TERMIRUST_MOBILE_REBUILD_SSH_IMAGE=1` to force a rebuild.
+The live smoke mode requires Docker Desktop to be running, or `MULTIPLEX_MOBILE_TEST_SSH_*` variables pointing at a reachable SSH host.
+If `termirust-e2e-sshd:local` already exists locally, the smoke scripts reuse it. Set `MULTIPLEX_MOBILE_REBUILD_SSH_IMAGE=1` to force a rebuild.
 
 After mobile linking:
 

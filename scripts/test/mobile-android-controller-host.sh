@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-ANDROID_DIR="${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/apps/android}"
+ANDROID_DIR="${MULTIPLEX_ANDROID_DIR:-${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/apps/android}}"
 ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 ADB="${ADB:-$ANDROID_HOME/platform-tools/adb}"
 EMULATOR="${EMULATOR:-$ANDROID_HOME/emulator/emulator}"

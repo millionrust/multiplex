@@ -1,0 +1,9 @@
+[package]
+name = "multiplex-env"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "Reads Multiplex's own environment variables, and the names they used to have"
+license = "MIT OR Apache-2.0"
+
+[dependencies]

@@ -106,7 +106,7 @@ struct BoundedTerminalBuffer: Sendable {
     private var bracketedPaste = false
     private var mouseMode = TerminalMouseMode.none
     private var mouseEncoding = TerminalMouseEncoding.default
-    #if !TERMIRUST_TERMINAL_FALLBACK_ONLY
+    #if !MULTIPLEX_TERMINAL_FALLBACK_ONLY
     private var nativeTerminal: NativeControllerTerminalSession?
     #endif
 
@@ -118,7 +118,7 @@ struct BoundedTerminalBuffer: Sendable {
         self.limits = limits
         self.viewport = viewport
         rows = Array(repeating: [], count: viewport.rows)
-        #if !TERMIRUST_TERMINAL_FALLBACK_ONLY
+        #if !MULTIPLEX_TERMINAL_FALLBACK_ONLY
         nativeTerminal = NativeControllerTerminalSession(viewport: viewport, limits: limits)
         #endif
     }
@@ -144,7 +144,7 @@ struct BoundedTerminalBuffer: Sendable {
         mouseMode = .none
         mouseEncoding = .default
         recalculateAccounting()
-        #if !TERMIRUST_TERMINAL_FALLBACK_ONLY
+        #if !MULTIPLEX_TERMINAL_FALLBACK_ONLY
         nativeTerminal = NativeControllerTerminalSession(viewport: next, limits: limits)
         #endif
     }
@@ -168,7 +168,7 @@ struct BoundedTerminalBuffer: Sendable {
         savedCursor.column = min(savedCursor.column, next.columns - 1)
         recalculateAccounting()
         enforceLimits()
-        #if !TERMIRUST_TERMINAL_FALLBACK_ONLY
+        #if !MULTIPLEX_TERMINAL_FALLBACK_ONLY
         updateNative { _ = try $0.resize(next) }
         #endif
     }
@@ -190,13 +190,13 @@ struct BoundedTerminalBuffer: Sendable {
             }
         }
         enforceLimits()
-        #if !TERMIRUST_TERMINAL_FALLBACK_ONLY
+        #if !MULTIPLEX_TERMINAL_FALLBACK_ONLY
         updateNative { try $0.feed(data) }
         #endif
     }
 
     func snapshot() -> BoundedTerminalSnapshot {
-        #if !TERMIRUST_TERMINAL_FALLBACK_ONLY
+        #if !MULTIPLEX_TERMINAL_FALLBACK_ONLY
         if let nativeSnapshot = try? nativeTerminal?.snapshot() {
             return BoundedTerminalSnapshot(
                 lines: nativeSnapshot.lines,
@@ -238,7 +238,7 @@ struct BoundedTerminalBuffer: Sendable {
         )
     }
 
-    #if !TERMIRUST_TERMINAL_FALLBACK_ONLY
+    #if !MULTIPLEX_TERMINAL_FALLBACK_ONLY
     private mutating func updateNative(
         _ operation: (NativeControllerTerminalSession) throws -> Void
     ) {

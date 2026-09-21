@@ -21,14 +21,14 @@ uses the executable's installed absolute path:
     "termirust": {
       "command": "/absolute/path/to/termirust-mcp",
       "env": {
-        "TERMIRUST_MCP_CAPABILITIES": "status.read,projects.read,connections.read,sessions.read,runtime.read"
+        "MULTIPLEX_MCP_CAPABILITIES": "status.read,projects.read,connections.read,sessions.read,runtime.read"
       }
     }
   }
 }
 ```
 
-Set `TERMIRUST_CONFIG_DIR` in the same `env` object only when Multiplex itself was started with a
+Set `MULTIPLEX_CONFIG_DIR` in the same `env` object only when Multiplex itself was started with a
 non-default configuration directory. Do not point it at a copied or untrusted data directory.
 
 ## Capabilities
@@ -56,7 +56,7 @@ startup instead of silently widening access.
 
 Action tools are disabled by default and need both controls below:
 
-1. Add each exact action capability to `TERMIRUST_MCP_CAPABILITIES` in the MCP client config.
+1. Add each exact action capability to `MULTIPLEX_MCP_CAPABILITIES` in the MCP client config.
 2. Create a short-lived local approval for exact Project and Session IDs.
 
 Available action capabilities are `sessions.launch`, `sessions.wait`, `sessions.attach`,

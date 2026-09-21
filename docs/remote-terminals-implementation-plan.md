@@ -179,7 +179,7 @@ open in the existing read-only terminal view.
    - Gotcha: the host calls `env_clear()` then forces `TERM`
      (`crates/termirust-session-host/src/host.rs:389-411`). Pass `PATH`, `HOME`, and
      `SHELL` explicitly, as `hosted_session.rs:242-258` does.
-2. **New crate `termirust-tmux`:** binary discovery (honor `TERMIRUST_TMUX_PATH` first, as
+2. **New crate `termirust-tmux`:** binary discovery (honor `MULTIPLEX_TMUX_PATH` first, as
    `local.rs:391-410` does), `tmux -V` probe, `list-sessions` parser, and attach arguments. Parser requirements: tolerate the no-server case, session names containing
    `|` and spaces (use a separator that cannot appear in a name, or parse field-by-field),
    and cap the session count.
@@ -238,7 +238,7 @@ timing-sensitive; a test that passes once has told you almost nothing.
 1. **Unit, no tmux.** Parser and encoder tests in `termirust-tmux`: real `list-sessions`
    output, the no-server stderr case, names with punctuation and spaces, truncation
    limits, and hex encoding of control bytes. Table-driven, fast, no processes.
-2. **Unit with a fake tmux.** `TERMIRUST_TMUX_PATH` is already the injection seam
+2. **Unit with a fake tmux.** `MULTIPLEX_TMUX_PATH` is already the injection seam
    (`local.rs:391-410`). Point it at a fixture script that prints canned output, including
    a failure case, and test discovery without a real server. Copy the injected-probe
    pattern at `local.rs:576-604`, which passes `is_file` and `version_probe` closures.

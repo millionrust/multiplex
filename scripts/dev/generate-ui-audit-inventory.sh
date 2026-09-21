@@ -26,9 +26,9 @@ cat >"$temporary" <<EOF
 version = 1
 baseline_commit = "$baseline"
 synthetic_canaries = [
-  "TERMIRUST_AUDIT_SECRET_CANARY_7bd50a",
-  "TERMIRUST_AUDIT_PATH_CANARY_32e146",
-  "TERMIRUST_AUDIT_BIDI_CANARY_9ac274",
+  "MULTIPLEX_AUDIT_SECRET_CANARY_7bd50a",
+  "MULTIPLEX_AUDIT_PATH_CANARY_32e146",
+  "MULTIPLEX_AUDIT_BIDI_CANARY_9ac274",
 ]
 EOF
 

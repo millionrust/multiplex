@@ -7,10 +7,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "tests/fixtures/mobile/mobile-cross-route-acceptance-v1.json"
 SWIFT_ROOT = Path(
-    os.environ.get("TERMIRUST_IOS_DIR", ROOT / "apps/ios")
+    os.environ.get("MULTIPLEX_IOS_DIR", os.environ.get("TERMIRUST_IOS_DIR", ROOT / "apps/ios"))
 )
 KOTLIN_ROOT = Path(
-    os.environ.get("TERMIRUST_ANDROID_DIR", ROOT / "apps/android")
+    os.environ.get("MULTIPLEX_ANDROID_DIR", os.environ.get("TERMIRUST_ANDROID_DIR", ROOT / "apps/android"))
 )
 NATIVE_COPIES = [
     SWIFT_ROOT / "MultiplexMobileTests/Fixtures/mobile-cross-route-acceptance-v1.json",

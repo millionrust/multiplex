@@ -42,21 +42,27 @@ run cargo clippy --all-targets --all-features
 section "Diff hygiene"
 run git diff --check
 
-if [[ -n "${TERMIRUST_TEST_SSH_HOST:-}" ]]; then
+# Resolved once, so the rest of the block reads a plain variable rather than repeating which
+# spelling of the name it came from.
+ssh_host="${MULTIPLEX_TEST_SSH_HOST:-${TERMIRUST_TEST_SSH_HOST:-}}"
+ssh_user="${MULTIPLEX_TEST_SSH_USER:-${TERMIRUST_TEST_SSH_USER:-}}"
+ssh_key="${MULTIPLEX_TEST_SSH_KEY:-${TERMIRUST_TEST_SSH_KEY:-}}"
+
+if [[ -n "$ssh_host" ]]; then
   section "Optional live SSH smoke"
 
   user_arg=()
-  if [[ -n "${TERMIRUST_TEST_SSH_USER:-}" ]]; then
-    user_arg=("${TERMIRUST_TEST_SSH_USER}@")
+  if [[ -n "$ssh_user" ]]; then
+    user_arg=("$ssh_user@")
   fi
 
-  port="${TERMIRUST_TEST_SSH_PORT:-22}"
+  port="${MULTIPLEX_TEST_SSH_PORT:-${TERMIRUST_TEST_SSH_PORT:-22}}"
   identity_args=()
-  if [[ -n "${TERMIRUST_TEST_SSH_KEY:-}" ]]; then
-    identity_args=(-i "$TERMIRUST_TEST_SSH_KEY")
+  if [[ -n "$ssh_key" ]]; then
+    identity_args=(-i "$ssh_key")
   fi
 
-  target="${user_arg[*]}${TERMIRUST_TEST_SSH_HOST}"
+  target="${user_arg[*]}$ssh_host"
   run ssh \
     -o BatchMode=yes \
     -o ConnectTimeout=8 \
@@ -67,7 +73,7 @@ if [[ -n "${TERMIRUST_TEST_SSH_HOST:-}" ]]; then
     "printf 'termirust-ssh-smoke-ok\n'; uname -a"
 else
   section "Optional live SSH smoke skipped"
-  printf '%s\n' "Set TERMIRUST_TEST_SSH_HOST, TERMIRUST_TEST_SSH_USER, TERMIRUST_TEST_SSH_PORT, and optionally TERMIRUST_TEST_SSH_KEY to test a real SSH target."
+  printf '%s\n' "Set MULTIPLEX_TEST_SSH_HOST, MULTIPLEX_TEST_SSH_USER, MULTIPLEX_TEST_SSH_PORT, and optionally MULTIPLEX_TEST_SSH_KEY to test a real SSH target."
 fi
 
 section "Done"

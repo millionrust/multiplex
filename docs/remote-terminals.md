@@ -87,7 +87,7 @@ Open a new Terminal or Zed tab and it appears on the phone.
 
 ### macOS and Linux
 
-Requires tmux 3.2 or later. The app looks for it at `$TERMIRUST_TMUX_PATH`, on `PATH`,
+Requires tmux 3.2 or later. The app looks for it at `$MULTIPLEX_TMUX_PATH`, on `PATH`,
 and in the usual Homebrew and system locations, and writes the absolute path it found
 into the init file (such as `/opt/homebrew/bin/tmux`, not the versioned Cellar directory
 behind it, so an upgrade keeps working) so tabs started with a minimal `PATH` still find it. If tmux is missing, the
@@ -149,7 +149,7 @@ One app-owned init file per shell, safe to delete —
 
 ```zsh
 # Managed by Multiplex. Turn off "Open new terminals in tmux" in Multiplex, or delete this file and the marked block in your shell startup file.
-if [[ -o interactive && -z "$TMUX" && -z "$TERMIRUST_NO_WRAP" ]]; then
+if [[ -o interactive && -z "$TMUX" && -z "$MULTIPLEX_NO_WRAP" ]]; then
   case "$TERM_PROGRAM" in
     Apple_Terminal|zed|iTerm.app|ghostty|WezTerm|vscode)
       if [[ -x '/opt/homebrew/bin/tmux' ]]; then
@@ -189,7 +189,7 @@ The guards matter:
 - `&& exit` instead of `exec`: if tmux cannot start, you keep a plain shell rather than a
   tab that closes the moment it opens. Detaching (`Ctrl-b d`) closes the tab and leaves
   the session running for the phone.
-- `TERMIRUST_NO_WRAP=1` is the escape hatch for any tool that misbehaves inside a
+- `MULTIPLEX_NO_WRAP=1` is the escape hatch for any tool that misbehaves inside a
   multiplexer — set it in that tool's environment, not globally.
 
 No `~/.tmux.conf` change is needed. The phone attaches with

@@ -428,7 +428,7 @@ fn read_host_failure_code(process: &mut Child) -> Option<String> {
 }
 
 fn default_host_executable() -> Result<PathBuf, String> {
-    if let Some(path) = std::env::var_os("TERMIRUST_SESSION_HOST_BIN") {
+    if let Some(path) = multiplex_env::var_os("MULTIPLEX_SESSION_HOST_BIN") {
         return Ok(PathBuf::from(path));
     }
     let current = std::env::current_exe().map_err(|error| error.to_string())?;

@@ -35,7 +35,7 @@ fn run_in_pty(arguments: &[&str], environment: &[(&str, &str)], send: Option<&[u
     let mut command = CommandBuilder::new(env!("CARGO_BIN_EXE_multiplex-tui"));
     command.args(arguments);
     command.env("TERM", "xterm-256color");
-    command.env("TERMIRUST_CONFIG_DIR", fixture.path());
+    command.env("MULTIPLEX_CONFIG_DIR", fixture.path());
     for (key, value) in environment {
         command.env(key, value);
     }
@@ -57,7 +57,7 @@ fn run_in_pty(arguments: &[&str], environment: &[(&str, &str)], send: Option<&[u
         status.success()
             || environment
                 .iter()
-                .any(|(key, _)| *key == "TERMIRUST_TUI_INJECT_PANIC_AFTER_INIT"),
+                .any(|(key, _)| *key == "MULTIPLEX_TUI_INJECT_PANIC_AFTER_INIT"),
         "unexpected status {status:?}; output: {}",
         String::from_utf8_lossy(&output)
     );
@@ -126,7 +126,7 @@ fn normal_and_inline_exit_restore_cursor_raw_mode_and_screen() {
 
     let inline = run_in_pty(
         &["--inline", "--no-color"],
-        &[("TERMIRUST_TUI_EXIT_AFTER_FIRST_DRAW", "1")],
+        &[("MULTIPLEX_TUI_EXIT_AFTER_FIRST_DRAW", "1")],
         None,
     );
     let output = String::from_utf8_lossy(&inline);
@@ -137,7 +137,7 @@ fn normal_and_inline_exit_restore_cursor_raw_mode_and_screen() {
 
 #[test]
 fn panic_hook_restores_terminal_once_before_reporting_failure() {
-    let output = run_in_pty(&[], &[("TERMIRUST_TUI_INJECT_PANIC_AFTER_INIT", "1")], None);
+    let output = run_in_pty(&[], &[("MULTIPLEX_TUI_INJECT_PANIC_AFTER_INIT", "1")], None);
     let output = String::from_utf8_lossy(&output);
     assert_eq!(
         output.matches("\u{1b}[?1049l").count(),
@@ -168,7 +168,7 @@ fn sigint_restores_terminal_and_exits_cleanly() {
     let writer = Arc::new(Mutex::new(pty.master.take_writer().unwrap()));
     let mut command = CommandBuilder::new(env!("CARGO_BIN_EXE_multiplex-tui"));
     command.env("TERM", "xterm-256color");
-    command.env("TERMIRUST_CONFIG_DIR", fixture.path());
+    command.env("MULTIPLEX_CONFIG_DIR", fixture.path());
     let mut child = pty.slave.spawn_command(command).unwrap();
     let pid = child.process_id().unwrap() as libc::pid_t;
     drop(pty.slave);
@@ -219,7 +219,7 @@ fn idle_process_has_bounded_cpu_and_memory() {
     let writer = Arc::new(Mutex::new(pty.master.take_writer().unwrap()));
     let mut command = CommandBuilder::new(env!("CARGO_BIN_EXE_multiplex-tui"));
     command.env("TERM", "xterm-256color");
-    command.env("TERMIRUST_CONFIG_DIR", fixture.path());
+    command.env("MULTIPLEX_CONFIG_DIR", fixture.path());
     let mut child = pty.slave.spawn_command(command).unwrap();
     let pid = child.process_id().unwrap();
     drop(pty.slave);

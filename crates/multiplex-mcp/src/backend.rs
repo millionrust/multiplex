@@ -757,7 +757,7 @@ impl LocalInspectionSource {
                 .config_root()
                 .join("mcp")
                 .join("browser-profiles"),
-            executable: std::env::var_os("TERMIRUST_BROWSER_EXECUTABLE").map(Into::into),
+            executable: multiplex_env::var_os("MULTIPLEX_BROWSER_EXECUTABLE").map(Into::into),
         });
         let browser_request = BrowserRequest {
             url: url.to_string(),

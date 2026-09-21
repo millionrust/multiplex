@@ -235,7 +235,7 @@ async fn packaged_human_attach_replays_writes_resizes_detaches_and_restores_term
     let mut command = CommandBuilder::new(env!("CARGO_BIN_EXE_multiplex-cli"));
     command.args(["session", "attach", &SESSION_ID.to_string(), "--write"]);
     command.env("TERM", "xterm-256color");
-    command.env("TERMIRUST_CONFIG_DIR", &seed.config_root);
+    command.env("MULTIPLEX_CONFIG_DIR", &seed.config_root);
     let mut child = pty.slave.spawn_command(command).unwrap();
     drop(pty.slave);
 
@@ -302,7 +302,7 @@ async fn packaged_human_attach_is_read_only_by_default_and_ctrl_c_restores_termi
     let mut command = CommandBuilder::new(env!("CARGO_BIN_EXE_multiplex-cli"));
     command.args(["session", "attach", &SESSION_ID.to_string()]);
     command.env("TERM", "xterm-256color");
-    command.env("TERMIRUST_CONFIG_DIR", &seed.config_root);
+    command.env("MULTIPLEX_CONFIG_DIR", &seed.config_root);
     let mut child = pty.slave.spawn_command(command).unwrap();
     drop(pty.slave);
 
@@ -359,7 +359,7 @@ fn packaged_attach(seed: &SeededStore, request_control: bool) -> std::process::O
         command.arg("--write");
     }
     command
-        .env("TERMIRUST_CONFIG_DIR", &seed.config_root)
+        .env("MULTIPLEX_CONFIG_DIR", &seed.config_root)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

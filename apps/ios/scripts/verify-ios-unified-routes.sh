@@ -111,7 +111,7 @@ else
   exit "$BUILD_STATUS"
 fi
 
-IOS_DESTINATION="${TERMIRUST_IOS_DESTINATION:-}"
+IOS_DESTINATION="${MULTIPLEX_IOS_DESTINATION:-${TERMIRUST_IOS_DESTINATION:-}}"
 if [[ -z "$IOS_DESTINATION" ]]; then
   simulator_id="$(
     xcrun simctl list devices available 2>/dev/null \

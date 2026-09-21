@@ -59,8 +59,8 @@ if [[ -f "$output" ]]; then
   cp -p "$output" "$history/report-${timestamp//:/-}.json"
 fi
 
-TERMIRUST_SPIKE_TIMESTAMP="$timestamp" \
-TERMIRUST_SPIKE_RUSTC="$(rustc --version)" \
+MULTIPLEX_SPIKE_TIMESTAMP="$timestamp" \
+MULTIPLEX_SPIKE_RUSTC="$(rustc --version)" \
 CARGO_TARGET_DIR="$root/target/browser-spike/build" \
   cargo run \
     --quiet \

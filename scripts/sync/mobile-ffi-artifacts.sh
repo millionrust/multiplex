@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-IOS_DIR="${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}"
-ANDROID_DIR="${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/apps/android}"
+IOS_DIR="${MULTIPLEX_IOS_DIR:-${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}}"
+ANDROID_DIR="${MULTIPLEX_ANDROID_DIR:-${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/apps/android}}"
 
 usage() {
   cat <<'USAGE'
@@ -13,8 +13,8 @@ Builds TermiRust's shared Rust mobile FFI artifacts and copies them into the
 mobile application directories in this repository.
 
 Environment overrides:
-  TERMIRUST_IOS_DIR       iOS app repo path
-  TERMIRUST_ANDROID_DIR   Android app repo path
+  MULTIPLEX_IOS_DIR       iOS app repo path
+  MULTIPLEX_ANDROID_DIR   Android app repo path
 USAGE
 }
 

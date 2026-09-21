@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-IOS_DIR="${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}"
-ANDROID_DIR="${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/apps/android}"
-IOS_DESTINATION="${TERMIRUST_IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 17 Pro}"
+IOS_DIR="${MULTIPLEX_IOS_DIR:-${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}}"
+ANDROID_DIR="${MULTIPLEX_ANDROID_DIR:-${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/apps/android}}"
+IOS_DESTINATION="${MULTIPLEX_IOS_DESTINATION:-${TERMIRUST_IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 17 Pro}}"
 MODE="local"
 CURRENT_PID=""
 STEP_INDEX=0
@@ -190,7 +190,7 @@ run_step "real bundled desktop and Host golden run" \
   "$ROOT_DIR/scripts/verify/desktop-host-golden-run.sh"
 
 if ! ios_runtime_available; then
-  status_line "FAIL" "live preflight requires an iOS runtime; install one in Xcode Settings > Components and set TERMIRUST_IOS_DESTINATION"
+  status_line "FAIL" "live preflight requires an iOS runtime; install one in Xcode Settings > Components and set MULTIPLEX_IOS_DESTINATION"
   exit 1
 fi
 status_line "PASS" "live preflight iOS destination"

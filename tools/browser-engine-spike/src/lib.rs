@@ -604,7 +604,7 @@ fn child_command(executable: &Path, kind: &str, profile: Option<&Path>) -> Comma
         .arg("--child")
         .arg(kind)
         .env_clear()
-        .env("TERMIRUST_BROWSER_SPIKE_CHILD", "1")
+        .env("MULTIPLEX_BROWSER_SPIKE_CHILD", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -684,7 +684,7 @@ fn wait_until(timeout: Duration, mut condition: impl FnMut() -> bool) -> bool {
 
 pub fn run_child(kind: &str, profile: Option<&Path>) -> Result<(), SpikeError> {
     if std::env::vars_os().count() != 1
-        || std::env::var("TERMIRUST_BROWSER_SPIKE_CHILD").as_deref() != Ok("1")
+        || std::env::var("MULTIPLEX_BROWSER_SPIKE_CHILD").as_deref() != Ok("1")
     {
         return Err(SpikeError::Probe(
             "fixture child environment was not empty".to_string(),

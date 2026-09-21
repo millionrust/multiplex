@@ -17,7 +17,7 @@ pub mod appearance;
 pub mod shell_integration;
 
 /// Overrides binary discovery with one exact tmux path.
-pub const TMUX_PATH_ENV: &str = "TERMIRUST_TMUX_PATH";
+pub const TMUX_PATH_ENV: &str = "MULTIPLEX_TMUX_PATH";
 /// The directory tmux keeps its server sockets under.
 pub const TMUX_TMPDIR_ENV: &str = "TMUX_TMPDIR";
 /// Listing stops after this many sessions.
@@ -120,7 +120,7 @@ pub struct Tmux {
 }
 
 impl Tmux {
-    /// Finds tmux the way the desktop app always has: `TERMIRUST_TMUX_PATH` exactly when
+    /// Finds tmux the way the desktop app always has: `MULTIPLEX_TMUX_PATH` exactly when
     /// set, otherwise `PATH` followed by the Homebrew and system locations. An app started
     /// from Finder has a minimal `PATH`, which is why the fixed locations matter.
     pub fn discover() -> Result<Self, TmuxError> {

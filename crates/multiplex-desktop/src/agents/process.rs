@@ -540,11 +540,11 @@ mod tests {
         let command = build_remote_structured_command(
             &definition,
             &["app-server".to_string(), "value; $(false)".to_string()],
-            &[("TERMIRUST_VALUE".to_string(), "token's value".to_string())],
+            &[("MULTIPLEX_VALUE".to_string(), "token's value".to_string())],
         )
         .unwrap();
 
-        assert!(command.contains("export TERMIRUST_VALUE='token'\"'\"'s value'"));
+        assert!(command.contains("export MULTIPLEX_VALUE='token'\"'\"'s value'"));
         assert!(command.contains("'/opt/agent'\"'\"'s bin/codex'"));
         assert!(command.contains("'/srv/repo'\"'\"'s; touch /tmp/nope'"));
         assert!(command.ends_with("'app-server' 'value; $(false)'"));

@@ -97,7 +97,7 @@ cargo deny check
 ```
 
 Docker-backed SSH and SFTP tests skip themselves without a daemon; set `DOCKER_HOST` and
-`TERMIRUST_DOCKER_FIXTURE_HOST` to run them.
+`MULTIPLEX_DOCKER_FIXTURE_HOST` to run them.
 
 Background reading, shortest path first: [the plan](remote-screens-implementation-plan.md) sections
 5 and 8; [the ADR](decisions/controller-security-v1.md) including all three amendments;

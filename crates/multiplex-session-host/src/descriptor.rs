@@ -369,6 +369,6 @@ mod tests {
             HostErrorCode::DescriptorTooLarge
         );
         assert!(!valid_environment_name("1BAD"));
-        assert!(valid_environment_name("TERMIRUST_TEST"));
+        assert!(valid_environment_name("MULTIPLEX_TEST"));
     }
 }

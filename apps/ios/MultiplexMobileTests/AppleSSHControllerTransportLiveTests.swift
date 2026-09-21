@@ -88,11 +88,11 @@ final class AppleSSHControllerTransportLiveTests: XCTestCase {
 
     private func liveEnvironment() throws -> LiveSSHEnvironment {
         let values = ProcessInfo.processInfo.environment
-        guard let portText = values["TERMIRUST_MOBILE_CONTROLLER_SSH_PORT"],
+        guard let portText = values["MULTIPLEX_MOBILE_CONTROLLER_SSH_PORT"],
               let port = UInt16(portText),
-              let hostKey = values["TERMIRUST_MOBILE_CONTROLLER_SSH_HOST_KEY"],
-              let privateKey = values["TERMIRUST_MOBILE_CONTROLLER_SSH_PRIVATE_KEY"],
-              let password = values["TERMIRUST_MOBILE_CONTROLLER_SSH_PASSWORD"] else {
+              let hostKey = values["MULTIPLEX_MOBILE_CONTROLLER_SSH_HOST_KEY"],
+              let privateKey = values["MULTIPLEX_MOBILE_CONTROLLER_SSH_PRIVATE_KEY"],
+              let password = values["MULTIPLEX_MOBILE_CONTROLLER_SSH_PASSWORD"] else {
             throw XCTSkip("Run through scripts/test/mobile-controller-ssh-transports.sh")
         }
         return LiveSSHEnvironment(

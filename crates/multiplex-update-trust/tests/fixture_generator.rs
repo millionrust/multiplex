@@ -13,23 +13,23 @@ const TARGET_NAME: &str = "stable/macos/aarch64/termirust-1.2.3.tar.zst";
 const SYNTHETIC_TARGET: &[u8] = b"TERMIRUST SYNTHETIC UPDATE TARGET - NEVER EXECUTE\n";
 
 #[tokio::test]
-#[ignore = "writes synthetic fixtures only when TERMIRUST_REGENERATE_UPDATE_FIXTURES=1"]
+#[ignore = "writes synthetic fixtures only when MULTIPLEX_REGENERATE_UPDATE_FIXTURES=1"]
 async fn generate_update_fixtures() {
     assert_eq!(
-        std::env::var("TERMIRUST_REGENERATE_UPDATE_FIXTURES").as_deref(),
+        std::env::var("MULTIPLEX_REGENERATE_UPDATE_FIXTURES").as_deref(),
         Ok("1"),
-        "set TERMIRUST_REGENERATE_UPDATE_FIXTURES=1 explicitly"
+        "set MULTIPLEX_REGENERATE_UPDATE_FIXTURES=1 explicitly"
     );
     generate().await.unwrap();
 }
 
 #[tokio::test]
-#[ignore = "writes a synthetic fixture only when TERMIRUST_REGENERATE_UPDATE_FIXTURES=1"]
+#[ignore = "writes a synthetic fixture only when MULTIPLEX_REGENERATE_UPDATE_FIXTURES=1"]
 async fn generate_delegated_fixture() {
     assert_eq!(
-        std::env::var("TERMIRUST_REGENERATE_UPDATE_FIXTURES").as_deref(),
+        std::env::var("MULTIPLEX_REGENERATE_UPDATE_FIXTURES").as_deref(),
         Ok("1"),
-        "set TERMIRUST_REGENERATE_UPDATE_FIXTURES=1 explicitly"
+        "set MULTIPLEX_REGENERATE_UPDATE_FIXTURES=1 explicitly"
     );
     let root = workspace_root();
     let fixture_root = root.join("tests/fixtures/update-tuf");

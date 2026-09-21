@@ -338,7 +338,7 @@ async fn serve_loop(
 }
 
 fn emit_test_diagnostic(stage: &str, code: RelayDiagnosticCode) {
-    if std::env::var_os("TERMIRUST_RELAY_TEST_DIAGNOSTICS").is_some() {
+    if multiplex_env::var_os("MULTIPLEX_RELAY_TEST_DIAGNOSTICS").is_some() {
         eprintln!(
             "relay test diagnostic: stage={stage} code={}",
             code.as_str()
@@ -351,7 +351,7 @@ fn emit_endpoint_test_diagnostic(
     role: multiplex_relay_protocol::RelayEndpointRole,
     code: Option<RelayDiagnosticCode>,
 ) {
-    if std::env::var_os("TERMIRUST_RELAY_TEST_DIAGNOSTICS").is_none() {
+    if multiplex_env::var_os("MULTIPLEX_RELAY_TEST_DIAGNOSTICS").is_none() {
         return;
     }
     let role = match role {

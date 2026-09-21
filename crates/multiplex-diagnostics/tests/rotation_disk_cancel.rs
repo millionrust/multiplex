@@ -181,7 +181,7 @@ fn symlinked_source_is_rejected_without_reading_its_target() {
     let handle = runtime.handle();
     handle.flush().unwrap();
     let target = temp.path().join("outside-secret");
-    fs::write(&target, b"TERMIRUST_TERMINAL_CANARY_7EFA").unwrap();
+    fs::write(&target, b"MULTIPLEX_TERMINAL_CANARY_7EFA").unwrap();
     symlink(&target, temp.path().join("diagnostics-0.jsonl")).unwrap();
 
     let error = match handle.prepare_export() {
@@ -189,7 +189,7 @@ fn symlinked_source_is_rejected_without_reading_its_target() {
         Err(error) => error,
     };
     assert_eq!(error.code, ExportErrorCode::PermissionDenied);
-    assert_eq!(fs::read(target).unwrap(), b"TERMIRUST_TERMINAL_CANARY_7EFA");
+    assert_eq!(fs::read(target).unwrap(), b"MULTIPLEX_TERMINAL_CANARY_7EFA");
 }
 
 #[test]

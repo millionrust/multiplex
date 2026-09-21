@@ -7,8 +7,8 @@
     "bundle_mib": 50
   },
   "canaries": [
-    "TERMIRUST_TERMINAL_CANARY_7EFA",
-    "TERMIRUST_PROMPT_CANARY_1A92",
+    "MULTIPLEX_TERMINAL_CANARY_7EFA",
+    "MULTIPLEX_PROMPT_CANARY_1A92",
     "password=client-secret",
     "Bearer client-token",
     "/Users/private/client-project",

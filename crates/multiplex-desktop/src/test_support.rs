@@ -68,11 +68,11 @@ fn docker_daemon_host() -> Option<String> {
 /// A daemon on another machine has to publish beyond its own loopback for this machine to
 /// connect, so this is only widened when the daemon is not local.
 ///
-/// `TERMIRUST_DOCKER_FIXTURE_HOST` names the address to reach that machine on, for a daemon
+/// `MULTIPLEX_DOCKER_FIXTURE_HOST` names the address to reach that machine on, for a daemon
 /// whose own name does not resolve to an address these ports are reachable at, such as a host
 /// on several private networks.
 fn fixture_host() -> String {
-    match std::env::var("TERMIRUST_DOCKER_FIXTURE_HOST") {
+    match multiplex_env::var("MULTIPLEX_DOCKER_FIXTURE_HOST") {
         Ok(host) if !host.trim().is_empty() => host.trim().to_owned(),
         _ => docker_daemon_host().unwrap_or_else(|| "127.0.0.1".to_owned()),
     }
@@ -595,7 +595,7 @@ impl DockerSshServer {
         let logs = run_command("docker", &["logs", &self.container_name], None)
             .unwrap_or_else(|error| error);
         let hint = if docker_daemon_host().is_some() {
-            "\nThe Docker daemon runs on another machine. Set TERMIRUST_DOCKER_FIXTURE_HOST to \
+            "\nThe Docker daemon runs on another machine. Set MULTIPLEX_DOCKER_FIXTURE_HOST to \
              an address that machine's published ports are reachable at."
         } else {
             ""

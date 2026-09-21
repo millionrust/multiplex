@@ -299,7 +299,7 @@ fn packaged_resize(seed: &SeededStore) -> std::process::Output {
             &ROWS.to_string(),
             "--json",
         ])
-        .env("TERMIRUST_CONFIG_DIR", &seed.config_root)
+        .env("MULTIPLEX_CONFIG_DIR", &seed.config_root)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

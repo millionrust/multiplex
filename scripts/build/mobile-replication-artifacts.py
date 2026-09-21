@@ -73,7 +73,7 @@ PINNED_NDK = "27.0.12077973"
 # The pin is what makes a shipped artifact reproducible. A build that only has to prove the
 # application still compiles does not need it, and a hosted runner does not get to choose its
 # NDK, so it may say so — loudly, and never for anything released.
-UNPINNED = os.environ.get("TERMIRUST_REPLICATION_ARTIFACTS_ALLOW_UNPINNED", "0") != "0"
+UNPINNED = os.environ.get("MULTIPLEX_REPLICATION_ARTIFACTS_ALLOW_UNPINNED", os.environ.get("TERMIRUST_REPLICATION_ARTIFACTS_ALLOW_UNPINNED", "0")) != "0"
 
 
 def require_pinned(what, expected, found):

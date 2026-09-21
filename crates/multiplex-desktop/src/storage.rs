@@ -114,7 +114,7 @@ pub(crate) fn app_dir() -> Result<PathBuf> {
         return Ok(path);
     }
 
-    let path = if let Some(explicit_dir) = std::env::var_os("TERMIRUST_CONFIG_DIR") {
+    let path = if let Some(explicit_dir) = multiplex_env::var_os("MULTIPLEX_CONFIG_DIR") {
         PathBuf::from(explicit_dir)
     } else {
         resolve_app_dir(&dirs::config_dir().unwrap_or(std::env::current_dir()?))?

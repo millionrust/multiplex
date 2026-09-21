@@ -4,7 +4,7 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 CONTAINER_NAME="termirust-mobile-controller-ssh-$$"
 IMAGE_NAME="termirust-mobile-controller-ssh:local"
-SIMULATOR_ID=${TERMIRUST_IOS_SIMULATOR_ID:-7F76A1D5-5CC3-44DD-8883-DA554B851C99}
+SIMULATOR_ID=${MULTIPLEX_IOS_SIMULATOR_ID:-${TERMIRUST_IOS_SIMULATOR_ID:-7F76A1D5-5CC3-44DD-8883-DA554B851C99}}
 
 command -v docker >/dev/null 2>&1 || {
     printf '%s\n' 'Docker is required for the native mobile SSH Controller transport test.' >&2
@@ -35,12 +35,12 @@ until docker exec "$CONTAINER_NAME" sh -c 'test -f /etc/ssh/ssh_host_ed25519_key
     sleep 1
 done
 
-export TERMIRUST_MOBILE_CONTROLLER_SSH_PORT="$PORT"
-export TERMIRUST_MOBILE_CONTROLLER_SSH_HOST_KEY
-TERMIRUST_MOBILE_CONTROLLER_SSH_HOST_KEY=$(docker exec "$CONTAINER_NAME" cat /etc/ssh/ssh_host_ed25519_key.pub)
-export TERMIRUST_MOBILE_CONTROLLER_SSH_PRIVATE_KEY
-TERMIRUST_MOBILE_CONTROLLER_SSH_PRIVATE_KEY=$(cat tests/fixtures/ssh-server/id_ed25519)
-export TERMIRUST_MOBILE_CONTROLLER_SSH_PASSWORD='termirust-pass'
+export MULTIPLEX_MOBILE_CONTROLLER_SSH_PORT="$PORT"
+export MULTIPLEX_MOBILE_CONTROLLER_SSH_HOST_KEY
+MULTIPLEX_MOBILE_CONTROLLER_SSH_HOST_KEY=$(docker exec "$CONTAINER_NAME" cat /etc/ssh/ssh_host_ed25519_key.pub)
+export MULTIPLEX_MOBILE_CONTROLLER_SSH_PRIVATE_KEY
+MULTIPLEX_MOBILE_CONTROLLER_SSH_PRIVATE_KEY=$(cat tests/fixtures/ssh-server/id_ed25519)
+export MULTIPLEX_MOBILE_CONTROLLER_SSH_PASSWORD='termirust-pass'
 
 ANDROID_HOME=${ANDROID_HOME:-"$HOME/Library/Android/sdk"}
 export ANDROID_HOME

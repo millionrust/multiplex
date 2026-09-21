@@ -150,7 +150,7 @@ if [[ "$STAGE" == "terminal-interaction" || "$STAGE" == "terminal-acceptance" ||
   xcrun swiftc \
     -swift-version 6 \
     -strict-concurrency=complete \
-    -D TERMIRUST_TERMINAL_FALLBACK_ONLY \
+    -D MULTIPLEX_TERMINAL_FALLBACK_ONLY \
     MultiplexMobile/Controller/ControllerReadOnlyAttach.swift \
     MultiplexMobile/Terminal/GeneratedTerminalCellWidth.swift \
     MultiplexMobile/Terminal/BoundedTerminalBuffer.swift \
@@ -174,7 +174,7 @@ if [[ "$STAGE" == "terminal-acceptance" || "$STAGE" == "route-contract" ]]; then
   xcrun swiftc \
     -swift-version 6 \
     -strict-concurrency=complete \
-    -D TERMIRUST_TERMINAL_FALLBACK_ONLY \
+    -D MULTIPLEX_TERMINAL_FALLBACK_ONLY \
     MultiplexMobile/Controller/ControllerReadOnlyAttach.swift \
     MultiplexMobile/Terminal/GeneratedTerminalCellWidth.swift \
     MultiplexMobile/Terminal/BoundedTerminalBuffer.swift \
@@ -242,7 +242,7 @@ if [[ "$STAGE" == "terminal-conformance" || "$STAGE" == "terminal-interaction" |
   xcrun swiftc \
     -swift-version 6 \
     -strict-concurrency=complete \
-    -D TERMIRUST_TERMINAL_FALLBACK_ONLY \
+    -D MULTIPLEX_TERMINAL_FALLBACK_ONLY \
     MultiplexMobile/Controller/ControllerReadOnlyAttach.swift \
     MultiplexMobile/Terminal/GeneratedTerminalCellWidth.swift \
     MultiplexMobile/Terminal/BoundedTerminalBuffer.swift \
@@ -254,7 +254,7 @@ if [[ "$STAGE" == "terminal-conformance" || "$STAGE" == "terminal-interaction" |
   xcrun swiftc \
     -swift-version 6 \
     -strict-concurrency=complete \
-    -D TERMIRUST_TERMINAL_FALLBACK_ONLY \
+    -D MULTIPLEX_TERMINAL_FALLBACK_ONLY \
     MultiplexMobile/Controller/ControllerReadOnlyAttach.swift \
     MultiplexMobile/Terminal/GeneratedTerminalCellWidth.swift \
     MultiplexMobile/Terminal/BoundedTerminalBuffer.swift \
@@ -264,7 +264,7 @@ if [[ "$STAGE" == "terminal-conformance" || "$STAGE" == "terminal-interaction" |
     MultiplexMobileTests/Fixtures/terminal-conformance-v2.json
 fi
 
-IOS_DESTINATION="${TERMIRUST_IOS_DESTINATION:-}"
+IOS_DESTINATION="${MULTIPLEX_IOS_DESTINATION:-${TERMIRUST_IOS_DESTINATION:-}}"
 if [[ -z "$IOS_DESTINATION" ]]; then
   simulator_id="$(
     xcrun simctl list devices available 2>/dev/null \

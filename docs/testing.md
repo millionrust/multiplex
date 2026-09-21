@@ -47,7 +47,7 @@ another machine:
 export DOCKER_HOST=ssh://build-box
 # Only when the daemon's own name does not resolve to an address its published ports are
 # reachable at, such as a host on several private networks:
-export TERMIRUST_DOCKER_FIXTURE_HOST=100.81.49.235
+export MULTIPLEX_DOCKER_FIXTURE_HOST=100.81.49.235
 cargo test -p termirust --locked
 ```
 
@@ -391,14 +391,14 @@ If Docker is unavailable, the rest of the suite still runs and the SSH E2E tests
 The default suite does not touch any real server. To verify that your local machine or a test VM accepts SSH, set these environment variables:
 
 ```bash
-TERMIRUST_TEST_SSH_HOST=localhost \
-TERMIRUST_TEST_SSH_USER="$(whoami)" \
-TERMIRUST_TEST_SSH_PORT=22 \
-TERMIRUST_TEST_SSH_KEY="$HOME/.ssh/termirust_test_key" \
+MULTIPLEX_TEST_SSH_HOST=localhost \
+MULTIPLEX_TEST_SSH_USER="$(whoami)" \
+MULTIPLEX_TEST_SSH_PORT=22 \
+MULTIPLEX_TEST_SSH_KEY="$HOME/.ssh/termirust_test_key" \
 ./scripts/test/auto.sh
 ```
 
-If you use your normal SSH agent or default key, omit `TERMIRUST_TEST_SSH_KEY`.
+If you use your normal SSH agent or default key, omit `MULTIPLEX_TEST_SSH_KEY`.
 
 This smoke check proves the target is reachable and authenticated before you test the app UI against the same host.
 
@@ -414,7 +414,7 @@ If the release binary is already up to date and you just want to rerun the
 desktop smoke faster, you can reuse it with:
 
 ```bash
-TERMIRUST_SKIP_RELEASE_BUILD=1 ./scripts/test/real-app-ssh-ax.sh
+MULTIPLEX_SKIP_RELEASE_BUILD=1 ./scripts/test/real-app-ssh-ax.sh
 ```
 
 That narrower smoke path:

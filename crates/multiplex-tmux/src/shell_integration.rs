@@ -26,7 +26,11 @@ pub const BLOCK_END: &str = "# <<< multiplex remote terminals <<<";
 pub const LEGACY_BLOCK_START: &str = "# >>> termirust remote terminals >>>";
 pub const LEGACY_BLOCK_END: &str = "# <<< termirust remote terminals <<<";
 /// Set to any non-empty value in an app's environment to keep its terminals out of tmux.
-pub const NO_WRAP_ENV: &str = "TERMIRUST_NO_WRAP";
+pub const NO_WRAP_ENV: &str = "MULTIPLEX_NO_WRAP";
+/// The name that switch had before the rename. A person who set it in their shell profile chose
+/// to keep an app out of tmux, and the generated snippet still honours that choice: finding the
+/// new name empty is not the same as being told to wrap.
+pub const LEGACY_NO_WRAP_ENV: &str = "TERMIRUST_NO_WRAP";
 /// `TERM_PROGRAM` values whose new terminals start inside tmux.
 pub const WRAPPED_TERMINAL_PROGRAMS: [&str; 6] = [
     "Apple_Terminal",
@@ -518,14 +522,14 @@ impl ShellIntegration {
             Shell::Bash => "multiplex-${PWD##*/}-$$",
         };
         let start = format!(
-            "{tmux} {utf8} $termirust_features new-session -s \"{session}\" \\; source-file -q {config} && exit"
+            "{tmux} {utf8} $multiplex_features new-session -s \"{session}\" \\; source-file -q {config} && exit"
         );
         match shell {
             Shell::Zsh => format!(
-                "{INIT_FILE_HEADER}\nif [[ -o interactive && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        termirust_terminal=()\n        [[ $COLORTERM == (truecolor|24bit) ]] && termirust_terminal+={truecolor}\n        case \"$TERM_PROGRAM\" in\n          {sync_programs}) termirust_terminal+={sync} ;;\n        esac\n        termirust_features=()\n        (( ${{#termirust_terminal}} )) && termirust_features=({features} ${{(j:,:)termirust_terminal}})\n        {start}\n        unset termirust_terminal termirust_features\n      fi\n      ;;\n  esac\nfi\n"
+                "{INIT_FILE_HEADER}\nif [[ -o interactive && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" && -z \"${LEGACY_NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        multiplex_terminal=()\n        [[ $COLORTERM == (truecolor|24bit) ]] && multiplex_terminal+={truecolor}\n        case \"$TERM_PROGRAM\" in\n          {sync_programs}) multiplex_terminal+={sync} ;;\n        esac\n        multiplex_features=()\n        (( ${{#multiplex_terminal}} )) && multiplex_features=({features} ${{(j:,:)multiplex_terminal}})\n        {start}\n        unset multiplex_terminal multiplex_features\n      fi\n      ;;\n  esac\nfi\n"
             ),
             Shell::Bash => format!(
-                "{INIT_FILE_HEADER}\nif [[ $- == *i* && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        termirust_terminal=\"\"\n        case \"$COLORTERM\" in\n          truecolor|24bit) termirust_terminal={truecolor} ;;\n        esac\n        case \"$TERM_PROGRAM\" in\n          {sync_programs}) termirust_terminal=\"${{termirust_terminal:+$termirust_terminal,}}{sync}\" ;;\n        esac\n        termirust_features=\"\"\n        [ -n \"$termirust_terminal\" ] && termirust_features=\"{features} $termirust_terminal\"\n        {start}\n        unset termirust_terminal termirust_features\n      fi\n      ;;\n  esac\nfi\n"
+                "{INIT_FILE_HEADER}\nif [[ $- == *i* && -z \"$TMUX\" && -z \"${NO_WRAP_ENV}\" && -z \"${LEGACY_NO_WRAP_ENV}\" ]]; then\n  case \"$TERM_PROGRAM\" in\n    {programs})\n      if [[ -x {tmux} ]]; then\n        multiplex_terminal=\"\"\n        case \"$COLORTERM\" in\n          truecolor|24bit) multiplex_terminal={truecolor} ;;\n        esac\n        case \"$TERM_PROGRAM\" in\n          {sync_programs}) multiplex_terminal=\"${{multiplex_terminal:+$multiplex_terminal,}}{sync}\" ;;\n        esac\n        multiplex_features=\"\"\n        [ -n \"$multiplex_terminal\" ] && multiplex_features=\"{features} $multiplex_terminal\"\n        {start}\n        unset multiplex_terminal multiplex_features\n      fi\n      ;;\n  esac\nfi\n"
             ),
         }
     }
@@ -780,11 +784,11 @@ mod tests {
         assert_eq!(zshrc.matches(BLOCK_START).count(), 1);
         let init =
             fs::read_to_string(home.path().join(".config/multiplex/shell-init.zsh")).unwrap();
-        assert!(init.contains(&format!("'{TMUX}' -u $termirust_features new-session")));
+        assert!(init.contains(&format!("'{TMUX}' -u $multiplex_features new-session")));
         // What the terminal can do is worked out before tmux starts.
         assert!(init.contains("$COLORTERM == (truecolor|24bit)"));
-        assert!(init.contains("zed|iTerm.app|ghostty|WezTerm|vscode) termirust_terminal+=sync"));
-        assert!(init.contains("unset termirust_terminal termirust_features"));
+        assert!(init.contains("zed|iTerm.app|ghostty|WezTerm|vscode) multiplex_terminal+=sync"));
+        assert!(init.contains("unset multiplex_terminal multiplex_features"));
         assert!(init.contains("Apple_Terminal|zed|"));
         assert!(init.contains("&& exit"));
         assert!(!init.contains("exec "));

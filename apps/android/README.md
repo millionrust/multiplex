@@ -64,8 +64,8 @@ python3 scripts/build/mobile-replication-artifacts.py sync --android --write
 
 The pinned NDK is what makes a released artifact reproducible; a build that only has to
 prove the application still compiles can waive it with
-`TERMIRUST_CONTROLLER_BINDINGS_ALLOW_UNPINNED=1` and
-`TERMIRUST_REPLICATION_ARTIFACTS_ALLOW_UNPINNED=1`, which say so on stderr.
+`MULTIPLEX_CONTROLLER_BINDINGS_ALLOW_UNPINNED=1` and
+`MULTIPLEX_REPLICATION_ARTIFACTS_ALLOW_UNPINNED=1`, which say so on stderr.
 
 Use the checked-in Gradle wrapper:
 

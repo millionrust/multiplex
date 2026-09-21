@@ -2,12 +2,12 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-IOS_DIR="${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}"
+IOS_DIR="${MULTIPLEX_IOS_DIR:-${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}}"
 RESOURCE_PATH="$IOS_DIR/MultiplexMobileTests/Fixtures/controller-v2.json"
 FIXTURE_BINARY="$ROOT_DIR/target/debug/examples/mobile_controller_fixture"
 HOST_BINARY="$ROOT_DIR/target/debug/multiplex-session-host"
-IOS_DESTINATION="${TERMIRUST_IOS_DESTINATION:-}"
-IOS_DEVELOPMENT_TEAM="${TERMIRUST_IOS_DEVELOPMENT_TEAM:-}"
+IOS_DESTINATION="${MULTIPLEX_IOS_DESTINATION:-${TERMIRUST_IOS_DESTINATION:-}}"
+IOS_DEVELOPMENT_TEAM="${MULTIPLEX_IOS_DEVELOPMENT_TEAM:-${TERMIRUST_IOS_DEVELOPMENT_TEAM:-}}"
 FIXTURE_ROOT=""
 FIXTURE_PID=""
 FIXTURE_LOG=""
@@ -94,7 +94,7 @@ if [[ -z "$IOS_DESTINATION" ]]; then
       | awk -F '[()]' '/iPhone/ { print $2; exit }'
   )"
   [[ -n "$simulator_id" ]] || {
-    status_line FAIL "no available iPhone simulator; set TERMIRUST_IOS_DESTINATION for an eligible device"
+    status_line FAIL "no available iPhone simulator; set MULTIPLEX_IOS_DESTINATION for an eligible device"
     exit 1
   }
   IOS_DESTINATION="platform=iOS Simulator,id=$simulator_id"
@@ -107,7 +107,7 @@ if [[ "$IOS_DESTINATION" == platform=iOS,* ]]; then
     } | sed -n 's/.*Apple Development:.*(\([[:alnum:]]\{10\}\)).*/\1/p' | head -1)"
   fi
   [[ -n "$IOS_DEVELOPMENT_TEAM" ]] || {
-    status_line FAIL "physical iOS testing requires TERMIRUST_IOS_DEVELOPMENT_TEAM or an Apple Development signing identity"
+    status_line FAIL "physical iOS testing requires MULTIPLEX_IOS_DEVELOPMENT_TEAM or an Apple Development signing identity"
     exit 1
   }
   XCODEBUILD_SIGNING_ARGS=(

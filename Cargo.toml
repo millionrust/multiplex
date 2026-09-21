@@ -16,6 +16,7 @@ members = [
     "crates/multiplex-desktop",
     "crates/multiplex-diagnostics",
     "crates/multiplex-domain",
+    "crates/multiplex-env",
     "crates/multiplex-host-protocol",
     "crates/multiplex-mcp",
     "crates/multiplex-mobile-ffi",

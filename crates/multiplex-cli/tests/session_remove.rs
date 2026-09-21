@@ -73,7 +73,7 @@ fn preview_is_non_mutating_and_packaged_binary_quarantines_exact_owned_data() {
 
     let preview = Command::new(binary)
         .args(["session", "remove", &SESSION_ID.to_string(), "--json"])
-        .env("TERMIRUST_CONFIG_DIR", &seed.config_root)
+        .env("MULTIPLEX_CONFIG_DIR", &seed.config_root)
         .output()
         .unwrap();
     assert!(preview.status.success());
@@ -97,7 +97,7 @@ fn preview_is_non_mutating_and_packaged_binary_quarantines_exact_owned_data() {
             "--confirmation-stdin",
             "--json",
         ])
-        .env("TERMIRUST_CONFIG_DIR", &seed.config_root)
+        .env("MULTIPLEX_CONFIG_DIR", &seed.config_root)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

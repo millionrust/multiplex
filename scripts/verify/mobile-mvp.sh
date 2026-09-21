@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-IOS_DIR="${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}"
-ANDROID_DIR="${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/apps/android}"
-IOS_DESTINATION="${TERMIRUST_IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 17 Pro}"
+IOS_DIR="${MULTIPLEX_IOS_DIR:-${TERMIRUST_IOS_DIR:-$ROOT_DIR/apps/ios}}"
+ANDROID_DIR="${MULTIPLEX_ANDROID_DIR:-${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/apps/android}}"
+IOS_DESTINATION="${MULTIPLEX_IOS_DESTINATION:-${TERMIRUST_IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 17 Pro}}"
 ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 
 run_live_ssh=false
@@ -22,22 +22,22 @@ Runs the local mobile MVP verification gates:
 
 Use --live-ssh to also run the iOS and Android direct SSH/tmux smoke tests.
 Those smoke tests require either Docker Desktop to be running or these env vars:
-  TERMIRUST_MOBILE_TEST_SSH_HOST
-  TERMIRUST_MOBILE_TEST_SSH_PORT
-  TERMIRUST_MOBILE_TEST_SSH_USER
-  TERMIRUST_MOBILE_TEST_SSH_KEY
-  TERMIRUST_MOBILE_TEST_KNOWN_HOST_KEY
+  MULTIPLEX_MOBILE_TEST_SSH_HOST
+  MULTIPLEX_MOBILE_TEST_SSH_PORT
+  MULTIPLEX_MOBILE_TEST_SSH_USER
+  MULTIPLEX_MOBILE_TEST_SSH_KEY
+  MULTIPLEX_MOBILE_TEST_KNOWN_HOST_KEY
 
 Use --live-controller to run the real Rust Host/Controller lifecycle against
 eligible iOS and Android simulator/device destinations.
 
 Path overrides:
-  TERMIRUST_IOS_DIR
-  TERMIRUST_ANDROID_DIR
-  TERMIRUST_IOS_DESTINATION
+  MULTIPLEX_IOS_DIR
+  MULTIPLEX_ANDROID_DIR
+  MULTIPLEX_IOS_DESTINATION
   ANDROID_HOME
-  TERMIRUST_MOBILE_TEST_SSH_IMAGE
-  TERMIRUST_MOBILE_REBUILD_SSH_IMAGE=1
+  MULTIPLEX_MOBILE_TEST_SSH_IMAGE
+  MULTIPLEX_MOBILE_REBUILD_SSH_IMAGE=1
 USAGE
 }
 
@@ -136,7 +136,7 @@ else
   cat <<'NOTE'
 
 Skipped live SSH/tmux smoke tests.
-Run with --live-ssh after starting Docker Desktop, or set TERMIRUST_MOBILE_TEST_SSH_* env vars for a reachable SSH host.
+Run with --live-ssh after starting Docker Desktop, or set MULTIPLEX_MOBILE_TEST_SSH_* env vars for a reachable SSH host.
 NOTE
 fi
 

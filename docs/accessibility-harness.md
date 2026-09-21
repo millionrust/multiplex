@@ -18,10 +18,10 @@ desktop compile.
 ## Launch
 
 ```bash
-TERMIRUST_AX_LOCALE=en-US \
-TERMIRUST_AX_THEME=dark \
-TERMIRUST_AX_SCALE=100 \
-TERMIRUST_AX_REDUCED_MOTION=1 \
+MULTIPLEX_AX_LOCALE=en-US \
+MULTIPLEX_AX_THEME=dark \
+MULTIPLEX_AX_SCALE=100 \
+MULTIPLEX_AX_REDUCED_MOTION=1 \
 ./target/debug/termirust --accessibility-harness
 ```
 

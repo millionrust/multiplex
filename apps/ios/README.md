@@ -58,7 +58,7 @@ python3 scripts/build/ios-replication-artifacts.py sync --write
 
 `--all` builds Android too, which needs NDK 27.1.12297006. The pinned toolchains are what
 make a released artifact reproducible; a build that only has to prove the application
-still compiles can waive them with `TERMIRUST_CONTROLLER_BINDINGS_ALLOW_UNPINNED=1`,
+still compiles can waive them with `MULTIPLEX_CONTROLLER_BINDINGS_ALLOW_UNPINNED=1`,
 which says so on stderr.
 
 ```bash

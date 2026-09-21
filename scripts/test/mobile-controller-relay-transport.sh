@@ -2,8 +2,8 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-BASE_SIMULATOR_ID=${TERMIRUST_IOS_SIMULATOR_ID:-7F76A1D5-5CC3-44DD-8883-DA554B851C99}
-PORT=${TERMIRUST_RELAY_TEST_PORT:-48787}
+BASE_SIMULATOR_ID=${MULTIPLEX_IOS_SIMULATOR_ID:-${TERMIRUST_IOS_SIMULATOR_ID:-7F76A1D5-5CC3-44DD-8883-DA554B851C99}}
+PORT=${MULTIPLEX_RELAY_TEST_PORT:-${TERMIRUST_RELAY_TEST_PORT:-48787}}
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/multiplex-relay-mobile.XXXXXX")
 SERVER_PID=
 HOST_PID=
@@ -57,7 +57,7 @@ cargo build -p multiplex-relay-server --bin multiplex-relay --locked
     --endpoint "wss://127.0.0.1:$PORT/relay/v1" \
     --spki-pin "sha256/$PIN" \
     --output-dir "$FIXTURE/packages" >/dev/null
-TERMIRUST_RELAY_TEST_DIAGNOSTICS=1 "$ROOT_DIR/target/debug/multiplex-relay" run \
+MULTIPLEX_RELAY_TEST_DIAGNOSTICS=1 "$ROOT_DIR/target/debug/multiplex-relay" run \
     --state "$FIXTURE/state/relay.json" \
     --bind "127.0.0.1:$PORT" \
     --cert "$FIXTURE/server-chain.pem" \
@@ -78,10 +78,10 @@ TEST_SIMULATOR_ID=$(xcrun simctl clone "$BASE_SIMULATOR_ID" "TermiRust Relay Tes
 xcrun simctl boot "$TEST_SIMULATOR_ID" >/dev/null 2>&1 || true
 xcrun simctl bootstatus "$TEST_SIMULATOR_ID" -b >/dev/null
 xcrun simctl keychain "$TEST_SIMULATOR_ID" add-root-cert "$FIXTURE/ca.pem"
-export TERMIRUST_MOBILE_RELAY_PACKAGE
-TERMIRUST_MOBILE_RELAY_PACKAGE=$(base64 < "$FIXTURE/packages/controller-route.json" | tr -d '\n')
+export MULTIPLEX_MOBILE_RELAY_PACKAGE
+MULTIPLEX_MOBILE_RELAY_PACKAGE=$(base64 < "$FIXTURE/packages/controller-route.json" | tr -d '\n')
 xcrun simctl spawn "$TEST_SIMULATOR_ID" launchctl setenv \
-    TERMIRUST_MOBILE_RELAY_PACKAGE "$TERMIRUST_MOBILE_RELAY_PACKAGE"
+    MULTIPLEX_MOBILE_RELAY_PACKAGE "$MULTIPLEX_MOBILE_RELAY_PACKAGE"
 
 cd "$ROOT_DIR/apps/ios"
 xcodegen generate --spec project.yml >/dev/null

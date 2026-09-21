@@ -2,11 +2,11 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-ANDROID_DIR="${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/apps/android}"
+ANDROID_DIR="${MULTIPLEX_ANDROID_DIR:-${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/apps/android}}"
 ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 ADB="${ADB:-$ANDROID_HOME/platform-tools/adb}"
 EMULATOR="${EMULATOR:-$ANDROID_HOME/emulator/emulator}"
-PORT="${TERMIRUST_RELAY_TEST_PORT:-48787}"
+PORT="${MULTIPLEX_RELAY_TEST_PORT:-${TERMIRUST_RELAY_TEST_PORT:-48787}}"
 PACKAGE_ASSET="$ANDROID_DIR/app/src/androidTest/assets/relay-live.json"
 CA_ASSET="$ANDROID_DIR/app/src/androidTest/assets/relay-live-ca.txt"
 FIXTURE=""
@@ -147,7 +147,7 @@ cargo build -p multiplex-relay-server --bin multiplex-relay --locked
   --endpoint "wss://127.0.0.1:$PORT/relay/v1" \
   --spki-pin "sha256/$PIN" \
   --output-dir "$FIXTURE/packages" >/dev/null
-TERMIRUST_RELAY_TEST_DIAGNOSTICS=1 "$ROOT_DIR/target/debug/multiplex-relay" run \
+MULTIPLEX_RELAY_TEST_DIAGNOSTICS=1 "$ROOT_DIR/target/debug/multiplex-relay" run \
   --state "$FIXTURE/state/relay.json" --bind "127.0.0.1:$PORT" \
   --cert "$FIXTURE/server-chain.pem" --key "$FIXTURE/server.key" \
   >"$FIXTURE/server.log" 2>&1 &

@@ -205,7 +205,7 @@ async fn packaged_cli_sends_once_and_disconnect_leaves_durable_host_running() {
             "--input-stdin",
             "--json",
         ])
-        .env("TERMIRUST_CONFIG_DIR", &seed.config_root)
+        .env("MULTIPLEX_CONFIG_DIR", &seed.config_root)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -297,7 +297,7 @@ async fn writer_lease_contention_fails_without_sending_or_stealing() {
 
     let mut child = Command::new(env!("CARGO_BIN_EXE_multiplex-cli"))
         .args(["session", "input", &SESSION_ID.to_string(), "--input-stdin"])
-        .env("TERMIRUST_CONFIG_DIR", &seed.config_root)
+        .env("MULTIPLEX_CONFIG_DIR", &seed.config_root)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -327,7 +327,7 @@ async fn stale_recorded_host_identity_is_rejected_before_input_dispatch() {
 
     let mut child = Command::new(env!("CARGO_BIN_EXE_multiplex-cli"))
         .args(["session", "input", &SESSION_ID.to_string(), "--input-stdin"])
-        .env("TERMIRUST_CONFIG_DIR", &seed.config_root)
+        .env("MULTIPLEX_CONFIG_DIR", &seed.config_root)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

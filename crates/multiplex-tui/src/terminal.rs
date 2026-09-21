@@ -179,7 +179,7 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
     let (sender, receiver) = mpsc::sync_channel(EVENT_QUEUE_CAPACITY);
     spawn_signal_thread(sender.clone())?;
     let mut session = TerminalSession::enter(options.inline)?;
-    if std::env::var_os("TERMIRUST_TUI_INJECT_PANIC_AFTER_INIT").is_some() {
+    if multiplex_env::var_os("MULTIPLEX_TUI_INJECT_PANIC_AFTER_INIT").is_some() {
         panic!("injected terminal restoration test");
     }
 
@@ -233,7 +233,7 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
                 render_resume(frame, &resume, render_options);
             }
         })?;
-        if std::env::var_os("TERMIRUST_TUI_EXIT_AFTER_FIRST_DRAW").is_some() {
+        if multiplex_env::var_os("MULTIPLEX_TUI_EXIT_AFTER_FIRST_DRAW").is_some() {
             break;
         }
         let deadline = nearest_deadline(

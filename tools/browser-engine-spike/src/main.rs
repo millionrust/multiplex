@@ -31,10 +31,10 @@ fn run() -> Result<(), SpikeError> {
     }
 
     let args = parse_run_args(&arguments)?;
-    let generated_at = std::env::var("TERMIRUST_SPIKE_TIMESTAMP")
-        .map_err(|_| SpikeError::InvalidArgument("TERMIRUST_SPIKE_TIMESTAMP is required"))?;
-    let rustc = std::env::var("TERMIRUST_SPIKE_RUSTC")
-        .map_err(|_| SpikeError::InvalidArgument("TERMIRUST_SPIKE_RUSTC is required"))?;
+    let generated_at = std::env::var("MULTIPLEX_SPIKE_TIMESTAMP")
+        .map_err(|_| SpikeError::InvalidArgument("MULTIPLEX_SPIKE_TIMESTAMP is required"))?;
+    let rustc = std::env::var("MULTIPLEX_SPIKE_RUSTC")
+        .map_err(|_| SpikeError::InvalidArgument("MULTIPLEX_SPIKE_RUSTC is required"))?;
     let executable = std::env::current_exe()?;
     let scratch = args
         .output

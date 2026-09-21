@@ -71,7 +71,7 @@ pub struct LocalFleetSource {
 
 impl LocalFleetSource {
     pub fn discover() -> Result<Self, FleetLoadError> {
-        let config_root = match std::env::var_os("TERMIRUST_CONFIG_DIR") {
+        let config_root = match multiplex_env::var_os("MULTIPLEX_CONFIG_DIR") {
             Some(path) if !path.is_empty() => Some(PathBuf::from(path)),
             Some(_) => None,
             // The same lookup the CLI uses: the current directory when it is there, and what the
@@ -82,7 +82,7 @@ impl LocalFleetSource {
             diagnostic: TuiDiagnostic {
                 code: "config-unavailable",
                 summary: "Multiplex data is unavailable",
-                recovery: "Set TERMIRUST_CONFIG_DIR to the existing Multiplex data directory.",
+                recovery: "Set MULTIPLEX_CONFIG_DIR to the existing Multiplex data directory.",
             },
             recovery_required: false,
         })?;
@@ -272,7 +272,7 @@ fn map_store_error(error: StoreError) -> FleetLoadError {
         StoreError::Io { .. } => (
             "store-unavailable",
             "Multiplex metadata is unavailable",
-            "Open the desktop app once or verify TERMIRUST_CONFIG_DIR, then press r.",
+            "Open the desktop app once or verify MULTIPLEX_CONFIG_DIR, then press r.",
             false,
         ),
         StoreError::UnsafeEntry { .. } | StoreError::TooLarge { .. } => (

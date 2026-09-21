@@ -9,8 +9,8 @@ use multiplex_diagnostics::{
 use common::{runtime, safe_diagnostic};
 
 const CANARIES: &[&str] = &[
-    "TERMIRUST_TERMINAL_CANARY_7EFA",
-    "TERMIRUST_PROMPT_CANARY_1A92",
+    "MULTIPLEX_TERMINAL_CANARY_7EFA",
+    "MULTIPLEX_PROMPT_CANARY_1A92",
     "password=client-secret",
     "Bearer client-token",
     "/Users/private/client-project",
@@ -57,7 +57,7 @@ fn unknown_or_secret_bearing_source_entry_fails_closed() {
     handle.flush().unwrap();
     fs::write(
         temp.path().join("diagnostics-0.jsonl"),
-        br#"{"schema_version":1,"occurred_at_unix_ms":10,"code":"app_started","severity":"info","user_message_id":"app_lifecycle","recovery":[],"correlation_id":"00000000000000000000000000000000","safe_context":{},"terminal_output":"TERMIRUST_TERMINAL_CANARY_7EFA"}
+        br#"{"schema_version":1,"occurred_at_unix_ms":10,"code":"app_started","severity":"info","user_message_id":"app_lifecycle","recovery":[],"correlation_id":"00000000000000000000000000000000","safe_context":{},"terminal_output":"MULTIPLEX_TERMINAL_CANARY_7EFA"}
 "#,
     )
     .unwrap();

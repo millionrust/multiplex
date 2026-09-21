@@ -270,7 +270,7 @@ fn packaged_binary_waits_against_the_disposable_authoritative_repository() {
             "1",
             "--json",
         ])
-        .env("TERMIRUST_CONFIG_DIR", &seed.config_root)
+        .env("MULTIPLEX_CONFIG_DIR", &seed.config_root)
         .output()
         .unwrap();
     assert!(

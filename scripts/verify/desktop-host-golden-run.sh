@@ -107,9 +107,9 @@ status_line "PASS" "disposable Docker SSH fixture"
 status_line "RUN" "separate Host and Controller replay/writer/revocation proof"
 cd "$ROOT_DIR"
 cargo build -p multiplex-session-host >/dev/null
-TERMIRUST_N02_HOST_BIN="$HOST_BINARY" \
-TERMIRUST_N02_SSH_PORT="$SSH_PORT" \
-TERMIRUST_N02_SSH_KEY="$SSH_KEY" \
+MULTIPLEX_N02_HOST_BIN="$HOST_BINARY" \
+MULTIPLEX_N02_SSH_PORT="$SSH_PORT" \
+MULTIPLEX_N02_SSH_KEY="$SSH_KEY" \
   cargo test -p multiplex-controller-listener \
     --test desktop_host_golden \
     bundled_desktop_host_controller_golden_run -- --exact --nocapture
@@ -181,7 +181,7 @@ Path(state_path).write_text(json.dumps(state), encoding="utf-8")
 PY
 
 status_line "RUN" "bundled desktop local PTY and SSH restore"
-TERMIRUST_CONFIG_DIR="$CONFIG_DIR" \
+MULTIPLEX_CONFIG_DIR="$CONFIG_DIR" \
   /usr/bin/python3 -c \
     'import os, sys; os.setsid(); os.execv(sys.argv[1], sys.argv[1:])' \
     "$APP_BINARY" >"$APP_STDOUT" 2>"$APP_STDERR" &

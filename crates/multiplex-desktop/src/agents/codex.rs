@@ -884,7 +884,7 @@ sleep 1
         let executable = "/usr/local/bin/termirust-fake-codex";
         server
             .exec(&format!(
-                "cat > {executable} <<'TERMIRUST_EOF'\n#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'fake-codex 1.0\\n'; exit 0; fi\nread initialize\nprintf '%s\\n' '{{\"id\":1,\"result\":{{\"userAgent\":\"fake\"}}}}'\nread initialized\nread thread_start\nprintf '%s\\n' '{{\"id\":2,\"result\":{{\"thread\":{{\"id\":\"remote-thread\"}},\"model\":\"fake\",\"modelProvider\":\"fake\",\"cwd\":\"/home/termirust\",\"approvalPolicy\":\"on-request\",\"approvalsReviewer\":\"user\",\"sandbox\":{{\"type\":\"readOnly\",\"networkAccess\":false}}}}}}'\nread turn_start\nprintf '%s\\n' '{{\"id\":100,\"result\":{{\"turn\":{{\"id\":\"remote-turn\",\"items\":[],\"status\":\"inProgress\",\"error\":null}}}}}}'\nprintf '%s\\n' '{{\"method\":\"turn/started\",\"params\":{{\"threadId\":\"remote-thread\",\"turn\":{{\"id\":\"remote-turn\",\"items\":[],\"status\":\"inProgress\",\"error\":null}}}}}}'\nprintf '%s\\n' '{{\"method\":\"item/agentMessage/delta\",\"params\":{{\"threadId\":\"remote-thread\",\"turnId\":\"remote-turn\",\"itemId\":\"item-1\",\"delta\":\"remote-codex-ok\"}}}}'\nprintf '%s\\n' '{{\"method\":\"turn/completed\",\"params\":{{\"threadId\":\"remote-thread\",\"turn\":{{\"id\":\"remote-turn\",\"items\":[],\"status\":\"completed\",\"error\":null}}}}}}'\nTERMIRUST_EOF\nchmod 755 {executable}"
+                "cat > {executable} <<'MULTIPLEX_EOF'\n#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'fake-codex 1.0\\n'; exit 0; fi\nread initialize\nprintf '%s\\n' '{{\"id\":1,\"result\":{{\"userAgent\":\"fake\"}}}}'\nread initialized\nread thread_start\nprintf '%s\\n' '{{\"id\":2,\"result\":{{\"thread\":{{\"id\":\"remote-thread\"}},\"model\":\"fake\",\"modelProvider\":\"fake\",\"cwd\":\"/home/termirust\",\"approvalPolicy\":\"on-request\",\"approvalsReviewer\":\"user\",\"sandbox\":{{\"type\":\"readOnly\",\"networkAccess\":false}}}}}}'\nread turn_start\nprintf '%s\\n' '{{\"id\":100,\"result\":{{\"turn\":{{\"id\":\"remote-turn\",\"items\":[],\"status\":\"inProgress\",\"error\":null}}}}}}'\nprintf '%s\\n' '{{\"method\":\"turn/started\",\"params\":{{\"threadId\":\"remote-thread\",\"turn\":{{\"id\":\"remote-turn\",\"items\":[],\"status\":\"inProgress\",\"error\":null}}}}}}'\nprintf '%s\\n' '{{\"method\":\"item/agentMessage/delta\",\"params\":{{\"threadId\":\"remote-thread\",\"turnId\":\"remote-turn\",\"itemId\":\"item-1\",\"delta\":\"remote-codex-ok\"}}}}'\nprintf '%s\\n' '{{\"method\":\"turn/completed\",\"params\":{{\"threadId\":\"remote-thread\",\"turn\":{{\"id\":\"remote-turn\",\"items\":[],\"status\":\"completed\",\"error\":null}}}}}}'\nMULTIPLEX_EOF\nchmod 755 {executable}"
             ))
             .expect("unable to install fake remote Codex");
         let request = ConnectRequest {
@@ -1103,10 +1103,10 @@ sleep 1
     }
 
     #[test]
-    #[ignore = "requires TERMIRUST_RUN_LIVE_AGENT_TESTS=1, an authenticated Codex CLI, and network access"]
+    #[ignore = "requires MULTIPLEX_RUN_LIVE_AGENT_TESTS=1, an authenticated Codex CLI, and network access"]
     fn live_codex_app_server_smoke() {
-        if std::env::var("TERMIRUST_RUN_LIVE_AGENT_TESTS").as_deref() != Ok("1") {
-            eprintln!("skipping live Codex smoke; set TERMIRUST_RUN_LIVE_AGENT_TESTS=1");
+        if multiplex_env::var("MULTIPLEX_RUN_LIVE_AGENT_TESTS").as_deref() != Ok("1") {
+            eprintln!("skipping live Codex smoke; set MULTIPLEX_RUN_LIVE_AGENT_TESTS=1");
             return;
         }
         let working_directory = std::env::temp_dir().join("termirust-live-codex-smoke");
@@ -1116,7 +1116,7 @@ sleep 1
             working_directory,
             permission_policy: AgentPermissionPolicy::ReadOnly,
             initial_prompt: Some(
-                "Reply with exactly TERMIRUST_CODEX_LIVE_OK. Do not use tools.".to_string(),
+                "Reply with exactly MULTIPLEX_CODEX_LIVE_OK. Do not use tools.".to_string(),
             ),
         })
         .expect("launch live Codex app-server");
@@ -1134,13 +1134,13 @@ sleep 1
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(error) => panic!("live Codex event channel failed: {error}"),
             }
-            if succeeded && response.contains("TERMIRUST_CODEX_LIVE_OK") {
+            if succeeded && response.contains("MULTIPLEX_CODEX_LIVE_OK") {
                 break;
             }
         }
         assert!(succeeded, "Codex did not report a successful turn");
         assert!(
-            response.contains("TERMIRUST_CODEX_LIVE_OK"),
+            response.contains("MULTIPLEX_CODEX_LIVE_OK"),
             "Codex response did not contain the expected marker: {response:?}"
         );
     }

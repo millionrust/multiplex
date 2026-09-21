@@ -326,7 +326,7 @@ fn likely_user_copy(literal: &str) -> bool {
         "https://",
         "src/",
         "tests/",
-        "TERMIRUST_",
+        "MULTIPLEX_",
     ]
     .iter()
     .any(|prefix| trimmed.starts_with(prefix))

@@ -188,18 +188,18 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 cargo fmt
 cargo check
 cargo run            # debug build; use --release for performance testing
-TERMIRUST_TRACE_FOCUS=1 cargo run   # log every keyboard focus change to stderr
+MULTIPLEX_TRACE_FOCUS=1 cargo run   # log every keyboard focus change to stderr
 cargo test --workspace --all-targets --locked --no-fail-fast   # everything, as CI runs it
 cargo nextest run --workspace --lib --bins --tests --examples --locked  # the same minus the
   # benches, as the Windows job runs it, in about two thirds of the time. nextest gives every
   # test its own process, so what may not run at once is declared in .config/nextest.toml.
-TERMIRUST_TUI_PROBE="bun run app.ts" cargo test -p multiplex --bin multiplex -- \
+MULTIPLEX_TUI_PROBE="bun run app.ts" cargo test -p multiplex --bin multiplex -- \
   a_terminal_interface_program_renders --ignored --nocapture   # drive a real TUI program
                                                                # through the emulator
-TERMIRUST_CLIPPY_BASE=<sha> python3 scripts/dev/clippy-changed.py  # the changed-line Clippy
+MULTIPLEX_CLIPPY_BASE=<sha> python3 scripts/dev/clippy-changed.py  # the changed-line Clippy
   # policy as CI runs it. Its base defaults to HEAD, so running it with a clean working tree
   # reads no changed lines and always passes; CI passes the sha the push started from.
-TERMIRUST_PERF_BUDGETS=1 cargo test --workspace --bench '*' --locked  # enforce the throughput
+MULTIPLEX_PERF_BUDGETS=1 cargo test --workspace --bench '*' --locked  # enforce the throughput
   # budgets. The benches always run and always print their p50/p95; the thresholds in
   # tests/support/perf_budget.rs are only asserted when `CI` is unset, because a hosted runner
   # overshoots them by more than ten times without anything in the code changing. Set this to
@@ -208,9 +208,15 @@ cargo run -p multiplex-slate --example gallery  # Slate component gallery
 cargo run -p multiplex-ui-contract --bin generate-tokens  # after editing design/tokens.toml; also writes the mobile SlateTokens.swift and SlateTokens.kt
 ```
 
+Every variable this workspace defines is spelled `MULTIPLEX_SOMETHING`. It was
+`TERMIRUST_SOMETHING` before the rename, and both are still read: the shipped crates go
+through `multiplex-env`, and the scripts write `${MULTIPLEX_X:-${TERMIRUST_X:-default}}`.
+The old name is a fallback, never an override, so putting the new one in front of a command
+does what it looks like. New code uses the new name only.
+
 The Docker-backed SSH/SFTP tests carry their fixture files in the image, so they also run
 against a daemon on another machine through `DOCKER_HOST`. Such a daemon publishes the
-fixture's port on its own machine, so set `TERMIRUST_DOCKER_FIXTURE_HOST` to an address that
+fixture's port on its own machine, so set `MULTIPLEX_DOCKER_FIXTURE_HOST` to an address that
 machine is reachable at when its own name does not resolve to one (a host on several private
 networks). Tests skip themselves when no daemon answers.
 
@@ -218,7 +224,7 @@ On macOS, GPUI may need access to the system shader cache during first compile/r
 
 On macOS, `.cargo/config.toml` runs binaries through `scripts/dev/run-signed.sh`, which re-signs the
 desktop app with a stable identifier and your Apple Development identity (or
-`TERMIRUST_CODESIGN_IDENTITY`) so Keychain and Local Network permissions survive rebuilds.
+`MULTIPLEX_CODESIGN_IDENTITY`) so Keychain and Local Network permissions survive rebuilds.
 
 Structured diagnostics are stored under `<data dir>/multiplex/diagnostics` with
 bounded rotation and retention. See [docs/diagnostics.md](docs/diagnostics.md).

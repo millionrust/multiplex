@@ -8,7 +8,7 @@ printf '%s\n' "==> Browser capability unit and contract tests"
 cargo fmt --all -- --check
 cargo test -p multiplex-browser -p multiplex-mcp --locked
 
-browser="${TERMIRUST_BROWSER_EXECUTABLE:-}"
+browser="${MULTIPLEX_BROWSER_EXECUTABLE:-${TERMIRUST_BROWSER_EXECUTABLE:-}}"
 if [[ -z "$browser" ]]; then
   for candidate in \
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
@@ -26,11 +26,11 @@ fi
 
 if [[ -n "$browser" && -x "$browser" ]]; then
   printf '%s\n' "==> Live isolated-browser containment and cancellation"
-  TERMIRUST_BROWSER_EXECUTABLE="$browser" \
+  MULTIPLEX_BROWSER_EXECUTABLE="$browser" \
     cargo test -p multiplex-browser --locked -- --ignored --nocapture
   printf '%s\n' "PASS: live isolated browser executed"
 else
-  printf '%s\n' "SKIPPED(browser): install Chrome/Chromium or set TERMIRUST_BROWSER_EXECUTABLE"
+  printf '%s\n' "SKIPPED(browser): install Chrome/Chromium or set MULTIPLEX_BROWSER_EXECUTABLE"
 fi
 
 printf '%s\n' "==> Browser strict Clippy and static security policy"

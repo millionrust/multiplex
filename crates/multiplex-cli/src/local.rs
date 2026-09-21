@@ -99,14 +99,14 @@ pub fn discovered_config_root(config_dir: PathBuf) -> PathBuf {
 
 impl CliPaths {
     pub fn discover() -> Result<Self, CliError> {
-        let config_root = std::env::var_os("TERMIRUST_CONFIG_DIR")
+        let config_root = multiplex_env::var_os("MULTIPLEX_CONFIG_DIR")
             .map(PathBuf::from)
             .or_else(|| dirs::config_dir().map(discovered_config_root))
             .ok_or_else(|| {
                 CliError::new(
                     ErrorCode::Unavailable,
                     "Multiplex configuration directory is unavailable",
-                    "Set TERMIRUST_CONFIG_DIR to the existing Multiplex data directory.",
+                    "Set MULTIPLEX_CONFIG_DIR to the existing Multiplex data directory.",
                 )
             })?;
         let current = std::env::current_exe().map_err(|_| {
@@ -116,7 +116,7 @@ impl CliPaths {
                 "Reinstall Multiplex and try again.",
             )
         })?;
-        let host_executable = std::env::var_os("TERMIRUST_SESSION_HOST_BIN")
+        let host_executable = multiplex_env::var_os("MULTIPLEX_SESSION_HOST_BIN")
             .map(PathBuf::from)
             .unwrap_or_else(|| sibling_binary(&current, "multiplex-session-host"));
         Ok(Self::new(config_root, host_executable))

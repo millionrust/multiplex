@@ -586,7 +586,7 @@ both platforms: the phone's Swift and Kotlin now name `ObserveScreens`, `Control
   `windows-capture` was rejected for. `cargo deny check` is green on advisories, bans, licences
   and sources.
 - [x] `cargo test --workspace --all-targets --locked` and `cargo deny check` green
-  **Green: 2,003 passed, 0 failed**, with `TERMIRUST_DOCKER_FIXTURE_HOST` set. `cargo deny check`
+  **Green: 2,003 passed, 0 failed**, with `MULTIPLEX_DOCKER_FIXTURE_HOST` set. `cargo deny check`
   is green on advisories, bans, licences and sources, and the lockfile is current so `--locked`
   does not have to change it.
   Getting there took three fixes that were each a test being wrong rather than the product.

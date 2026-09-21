@@ -6,7 +6,7 @@ final class DirectSSHIntegrationTests: XCTestCase {
     func testDirectSSHAttachesToPersistentTmuxSessionAndSurvivesReconnect() async throws {
         guard let config = LiveSSHSmokeConfig.load() else {
             throw XCTSkip(
-                "Set TERMIRUST_MOBILE_TEST_SSH_HOST, TERMIRUST_MOBILE_TEST_SSH_PORT, TERMIRUST_MOBILE_TEST_SSH_USER, TERMIRUST_MOBILE_TEST_SSH_KEY, and TERMIRUST_MOBILE_TEST_KNOWN_HOST_KEY to run this live SSH smoke."
+                "Set MULTIPLEX_MOBILE_TEST_SSH_HOST, MULTIPLEX_MOBILE_TEST_SSH_PORT, MULTIPLEX_MOBILE_TEST_SSH_USER, MULTIPLEX_MOBILE_TEST_SSH_KEY, and MULTIPLEX_MOBILE_TEST_KNOWN_HOST_KEY to run this live SSH smoke."
             )
         }
 
@@ -100,13 +100,13 @@ private struct LiveSSHSmokeConfig {
 
     static func load() -> Self? {
         let values = envValues().merging(fileValues()) { envValue, _ in envValue }
-        guard let host = values["TERMIRUST_MOBILE_TEST_SSH_HOST"], !host.isEmpty,
-              let portText = values["TERMIRUST_MOBILE_TEST_SSH_PORT"],
+        guard let host = values["MULTIPLEX_MOBILE_TEST_SSH_HOST"], !host.isEmpty,
+              let portText = values["MULTIPLEX_MOBILE_TEST_SSH_PORT"],
               let port = UInt16(portText),
-              let username = values["TERMIRUST_MOBILE_TEST_SSH_USER"], !username.isEmpty,
-              let privateKey = decodedValue(values, "TERMIRUST_MOBILE_TEST_SSH_KEY"),
+              let username = values["MULTIPLEX_MOBILE_TEST_SSH_USER"], !username.isEmpty,
+              let privateKey = decodedValue(values, "MULTIPLEX_MOBILE_TEST_SSH_KEY"),
               !privateKey.isEmpty,
-              let knownHostKey = decodedValue(values, "TERMIRUST_MOBILE_TEST_KNOWN_HOST_KEY"),
+              let knownHostKey = decodedValue(values, "MULTIPLEX_MOBILE_TEST_KNOWN_HOST_KEY"),
               !knownHostKey.isEmpty else {
             return nil
         }

@@ -134,7 +134,7 @@ fn validate_inventory(inventory: &Inventory) -> Result<usize, String> {
         || inventory
             .synthetic_canaries
             .iter()
-            .any(|value| !value.starts_with("TERMIRUST_AUDIT_"))
+            .any(|value| !value.starts_with("MULTIPLEX_AUDIT_"))
     {
         return Err("inventory must contain at least three synthetic audit canaries".to_string());
     }
