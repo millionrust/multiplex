@@ -11,13 +11,13 @@
 //! TERMIRUST_WRITE_SCREEN_FIXTURE=1 cargo test -p multiplex-screen-bindings --test golden_session
 //! ```
 
+use multiplex_screen_bindings::{ScreenEvent, ScreenRect, ScreenViewer};
 use multiplex_screen_codec::{FrameBuffer, Rect, Size};
 use multiplex_screen_protocol::{FrameReader, Profile, SurfaceInfo, encode_frame};
 use multiplex_screen_session::{
     Grants, HostConfig, HostSession, ResumeStore, TicketVerifier, ViewerSession,
 };
 use sha2::{Digest, Sha256};
-use multiplex_screen_bindings::{ScreenEvent, ScreenRect, ScreenViewer};
 
 const TICKET: [u8; 32] = [0x5C; 32];
 const SURFACE: u32 = 1;

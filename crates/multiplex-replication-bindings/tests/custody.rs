@@ -7,13 +7,13 @@ use std::collections::{HashMap, hash_map::Entry};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use multiplex_replication_security::{
-    ReplicationSecretBackend, ReplicationSecretKind, ReplicationSecretRef,
-    ReplicationSecretStoreError,
-};
 use multiplex_replication_bindings::{
     MobileReplicationError, MobileReplicationProduct, NativeReplicationSecretBackend,
     ReplicationCustody, ReplicationSecureStore, ReplicationStorageError,
+};
+use multiplex_replication_security::{
+    ReplicationSecretBackend, ReplicationSecretKind, ReplicationSecretRef,
+    ReplicationSecretStoreError,
 };
 
 /// Resolves a path the way the rest of the workspace does. `std::fs::canonicalize` answers with

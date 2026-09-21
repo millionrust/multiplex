@@ -1,13 +1,13 @@
 //! The phone boundary against a real host session: pixels in, drawn rectangles out.
 
+use multiplex_screen_bindings::{
+    ScreenBindingError, ScreenCapability, ScreenEvent, ScreenPointerButton, ScreenRect,
+    ScreenViewer,
+};
 use multiplex_screen_codec::{FrameBuffer, Rect, Size};
 use multiplex_screen_protocol::{FrameReader, SurfaceInfo, encode_frame};
 use multiplex_screen_session::{
     Grants, HostConfig, HostEvent, HostSession, ResumeStore, TicketVerifier,
-};
-use multiplex_screen_bindings::{
-    ScreenBindingError, ScreenCapability, ScreenEvent, ScreenPointerButton, ScreenRect,
-    ScreenViewer,
 };
 
 const TICKET: [u8; 32] = [7; 32];

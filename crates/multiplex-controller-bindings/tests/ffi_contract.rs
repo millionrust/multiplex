@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use serde::Deserialize;
 use multiplex_controller_bindings::{
     AuthorizationDecision, ControllerBindingError, ControllerCapability, ControllerFrameKind,
     ControllerSecurityEngine, PairingConfirmation, PairingRole, PairingStartRequest,
     SecureBlobError, SecureBlobStore,
 };
+use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct Vector {
@@ -269,11 +269,11 @@ fn fixture_key(start: u8) -> [u8; 32] {
 
 #[test]
 fn ffi_code_pairing_matches_the_code_vectors_and_confirms_without_a_sas() {
+    use multiplex_controller_bindings::{CodePairingFinishRequest, CodePairingStartRequest};
     use multiplex_controller_security::{
         CodeKeyExchange, PairingCode, PairingMachine, PairingNonce, PairingRole as CoreRole,
         RevocationEpoch, StaticPrivateKey, decode_offer,
     };
-    use multiplex_controller_bindings::{CodePairingFinishRequest, CodePairingStartRequest};
 
     let vector: CodeVector = serde_json::from_str(include_str!(
         "../../multiplex-controller-security/tests/vectors/controller-code-v2.json"

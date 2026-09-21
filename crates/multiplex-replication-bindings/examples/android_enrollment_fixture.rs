@@ -1,14 +1,14 @@
 //! Disposable desktop side of the Android acceptance test. Never uses user custody.
 use multiplex_domain::{ReplicationCollectionId, ReplicationRecordId, ReplicationRecordKey};
+use multiplex_replication_bindings::{
+    NativeReplicationSecretBackend, ReplicationSecureStore, ReplicationStorageError,
+};
 use multiplex_store::{ReplicationEnrollmentRequest, ReplicationProductService};
 use std::{
     collections::{HashMap, hash_map::Entry},
     fs,
     io::Read,
     sync::{Arc, Mutex},
-};
-use multiplex_replication_bindings::{
-    NativeReplicationSecretBackend, ReplicationSecureStore, ReplicationStorageError,
 };
 use zeroize::Zeroizing;
 
