@@ -7345,6 +7345,7 @@ version = "0.0.2"
 dependencies = [
  "libc",
  "portable-pty",
+ "serde_json",
  "tempfile",
 ]
 

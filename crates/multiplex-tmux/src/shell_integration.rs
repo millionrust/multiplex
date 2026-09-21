@@ -157,6 +157,16 @@ pub struct FileChange {
 }
 
 impl FileChange {
+    /// A change to `path`, written in place (no dotfile-manager symlink to follow).
+    pub(crate) fn at(path: PathBuf, before: Option<String>, after: Option<String>) -> Self {
+        Self {
+            write_path: path.clone(),
+            path,
+            before,
+            after,
+        }
+    }
+
     /// A compact line diff with [`DIFF_CONTEXT_LINES`] of context.
     pub fn diff(&self) -> Vec<DiffLine> {
         line_diff(
@@ -600,7 +610,7 @@ fn append_block(contents: &str, block: &str) -> String {
     result
 }
 
-fn read_optional(path: &Path) -> Result<Option<String>, IntegrationError> {
+pub(crate) fn read_optional(path: &Path) -> Result<Option<String>, IntegrationError> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.is_file() => Ok(Some(fs::read_to_string(path)?)),
         Ok(metadata) if metadata.file_type().is_symlink() => match fs::metadata(path) {
@@ -630,7 +640,7 @@ fn resolve_write_path(path: &Path) -> Result<PathBuf, IntegrationError> {
     }
 }
 
-fn write_atomically(path: &Path, contents: &str) -> Result<(), IntegrationError> {
+pub(crate) fn write_atomically(path: &Path, contents: &str) -> Result<(), IntegrationError> {
     let directory = path
         .parent()
         .ok_or(IntegrationError::NotAFile(path.to_path_buf()))?;

@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 
 pub mod appearance;
 pub mod shell_integration;
+pub mod terminal_profiles;
 
 /// Overrides binary discovery with one exact tmux path.
 pub const TMUX_PATH_ENV: &str = "MULTIPLEX_TMUX_PATH";

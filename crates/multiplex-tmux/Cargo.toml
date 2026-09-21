@@ -7,6 +7,7 @@ description = "UI-free tmux discovery, session listing, and attach arguments for
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+serde_json = "1.0"
 libc = "0.2"
 
 [dev-dependencies]
