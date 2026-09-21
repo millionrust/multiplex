@@ -134,6 +134,14 @@ impl CliPaths {
         }
     }
 
+    pub fn host_executable(&self) -> &Path {
+        &self.host_executable
+    }
+
+    pub fn runtime_parent(&self) -> &Path {
+        &self.runtime_parent
+    }
+
     pub fn config_root(&self) -> &Path {
         &self.config_root
     }
@@ -549,7 +557,7 @@ impl LocalCommandService {
         ));
         Self::with_adapters(
             paths,
-            Arc::new(ProcessHostLauncher),
+            Arc::new(ProcessHostLauncher::default()),
             Arc::new(LocalHostController),
             Arc::new(SystemClock),
             Arc::new(RandomIds),
@@ -2428,7 +2436,42 @@ impl SshControllerCommandExecutor for UnavailableSshController {
     }
 }
 
-struct ProcessHostLauncher;
+/// A new session with no controlling terminal, so the window's hangup never reaches the Host.
+#[cfg(unix)]
+fn detach_from_terminal(command: &mut Command) {
+    use std::os::unix::process::CommandExt as _;
+    // SAFETY: setsid is async-signal-safe and touches no memory; it runs in the child between
+    // fork and exec, where nothing else does.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+}
+
+/// No console, so closing the window, which ends every process attached to its console, does not
+/// end the Host; the Host's own pseudo-console is separate from it.
+#[cfg(windows)]
+fn detach_from_terminal(command: &mut Command) {
+    use std::os::windows::process::CommandExt as _;
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+}
+
+#[cfg(not(any(unix, windows)))]
+fn detach_from_terminal(_: &mut Command) {}
+
+#[derive(Default)]
+pub(crate) struct ProcessHostLauncher {
+    /// Whether the Host leaves this terminal behind. A Host started from a terminal window is
+    /// otherwise in that window's process group (Unix) or attached to its console (Windows), and
+    /// closing the window ends it; `shell` starts Hosts that must outlive the window.
+    pub(crate) detached: bool,
+}
 
 impl HostLauncher for ProcessHostLauncher {
     fn launch(
@@ -2439,12 +2482,15 @@ impl HostLauncher for ProcessHostLauncher {
     ) -> Result<HostLaunchOutcome, CliError> {
         let host_executable = fs::canonicalize(host_executable)
             .map_err(|_| unavailable("Multiplex session Host companion is unavailable"))?;
-        let mut child = Command::new(host_executable)
+        let mut command = Command::new(host_executable);
+        command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(map_process)?;
+            .stderr(Stdio::piped());
+        if self.detached {
+            detach_from_terminal(&mut command);
+        }
+        let mut child = command.spawn().map_err(map_process)?;
         let write_result = child.stdin.as_mut().map_or_else(
             || Err(()),
             |stdin| {

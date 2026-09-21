@@ -2,8 +2,8 @@ use std::io::Write as _;
 
 use multiplex_cli::{
     Cancellation, CliCommand, CliPaths, ControllerSshAction, LocalCommandService,
-    LocalSessionAttachExecutor, SystemSshControllerExecutor, failure_output, parse_args,
-    read_removal_confirmation, read_session_input, run_parsed, write_output,
+    LocalSessionAttachExecutor, ShellLauncher, SystemSshControllerExecutor, failure_output,
+    parse_args, read_removal_confirmation, read_session_input, run_parsed, write_output,
 };
 
 fn main() {
@@ -26,6 +26,11 @@ fn main() {
             std::process::exit(2);
         }
     };
+    // `shell` is what a terminal profile runs instead of the shell, so it is not part of the
+    // command grammar: everything after `--` belongs to the shell, flags included.
+    if arguments.first().map(String::as_str) == Some("shell") {
+        run_shell(&arguments[1..], &cancellation);
+    }
     let wants_json = arguments.iter().any(|argument| argument == "--json");
     let width = std::env::var("COLUMNS")
         .ok()
@@ -105,6 +110,29 @@ fn main() {
     let mut service = LocalCommandService::open(paths);
     let output = run_parsed(Some(&mut service), invocation, width, &cancellation);
     exit_with_output(output);
+}
+
+/// `multiplex-cli shell [-- PROGRAM ARGS...]`.
+fn run_shell(arguments: &[String], cancellation: &multiplex_cli::Cancellation) -> ! {
+    let (program, rest) = match arguments {
+        [] => (None, Vec::new()),
+        [separator, program, rest @ ..] if separator == "--" => {
+            (Some(program.clone()), rest.to_vec())
+        }
+        _ => {
+            let _ = writeln!(
+                std::io::stderr(),
+                "error[usage]: multiplex-cli shell [-- PROGRAM ARGS...]"
+            );
+            std::process::exit(2);
+        }
+    };
+    let result = CliPaths::discover()
+        .and_then(|paths| ShellLauncher::new(paths).execute(program, rest, cancellation));
+    match result {
+        Ok(code) => std::process::exit(code),
+        Err(error) => exit_with_output(failure_output(error, false, 80)),
+    }
 }
 
 fn exit_with_output(output: multiplex_cli::RunOutput) -> ! {

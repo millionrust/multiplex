@@ -17,6 +17,19 @@ use crate::remote_ssh::{append_key_bytes, is_cancel_key, is_leader_key};
 use crate::{Cancellation, CliCommand, CliError, CliPaths, ErrorCode, LocalCommandService};
 
 const LIVE_POLL_INTERVAL: Duration = Duration::from_millis(40);
+/// A shell someone is typing into shows each keystroke's echo within this, where inspecting a
+/// session can wait longer.
+const SHELL_POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+/// How an interactive attach behaves.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AttachStyle {
+    /// `session attach`: announces itself, and Ctrl-C detaches.
+    Inspect,
+    /// `shell`: the window is the terminal. Nothing is announced, Ctrl-C goes to the program,
+    /// and only Ctrl-] then d detaches, leaving the session running.
+    Shell,
+}
 const MAX_INTERACTIVE_INPUT_BYTES: usize = 16 * 1024;
 
 pub struct LocalSessionAttachExecutor {
@@ -74,14 +87,20 @@ impl LocalSessionAttachExecutor {
             .enable_all()
             .build()
             .map_err(|_| terminal_unavailable("unable to initialize interactive attach"))?;
-        runtime.block_on(run_attach(*session_id, validated, cancellation))
+        runtime.block_on(run_attach(
+            *session_id,
+            validated,
+            cancellation,
+            AttachStyle::Inspect,
+        ))
     }
 }
 
-async fn run_attach(
+pub(crate) async fn run_attach(
     session_id: HostedSessionId,
     validated: ValidatedSessionAttach,
     cancellation: &Cancellation,
+    style: AttachStyle,
 ) -> Result<(), CliError> {
     let async_cancel = CancellationToken::new();
     let mut nonce = [0_u8; 32];
@@ -128,21 +147,26 @@ async fn run_attach(
         return Ok(());
     }
 
-    let mode = if validated.request.request_control {
-        "writer input enabled"
-    } else {
-        "read-only observer"
-    };
-    writeln!(
-        std::io::stderr(),
-        "Attached to the durable local Host ({mode}). Detach with Ctrl-] then d."
-    )
-    .map_err(|_| output_unavailable())?;
+    if style == AttachStyle::Inspect {
+        let mode = if validated.request.request_control {
+            "writer input enabled"
+        } else {
+            "read-only observer"
+        };
+        writeln!(
+            std::io::stderr(),
+            "Attached to the durable local Host ({mode}). Detach with Ctrl-] then d."
+        )
+        .map_err(|_| output_unavailable())?;
+    }
     enable_raw_mode()
         .map_err(|_| terminal_unavailable("interactive terminal mode is unavailable"))?;
     let _raw_mode = RawModeGuard;
     let mut events = EventStream::new();
-    let mut ticker = tokio::time::interval(LIVE_POLL_INTERVAL);
+    let mut ticker = tokio::time::interval(match style {
+        AttachStyle::Inspect => LIVE_POLL_INTERVAL,
+        AttachStyle::Shell => SHELL_POLL_INTERVAL,
+    });
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut columns = validated.request.columns;
     let mut rows = validated.request.rows;
@@ -157,7 +181,7 @@ async fn run_attach(
                     .map_err(|_| terminal_unavailable("interactive terminal input is unavailable"))?;
                 match event {
                     TerminalEvent::Key(key) if key.kind != KeyEventKind::Release => {
-                        if is_cancel_key(&key) {
+                        if style == AttachStyle::Inspect && is_cancel_key(&key) {
                             break;
                         }
                         if leader {
