@@ -53,9 +53,8 @@ exclude = [
 
 [workspace.package]
 version = "0.0.1"
-# The locked all-target dependency graph requires Rust 1.88. Development and
-# CI use the newer pinned toolchain declared in rust-toolchain.toml.
-rust-version = "1.88"
+# The toolchain pinned in rust-toolchain.toml; no older compiler is supported.
+rust-version = "1.98"
 
 [profile.dev]
 opt-level = 1

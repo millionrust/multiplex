@@ -57,15 +57,10 @@ metadata = json.loads(subprocess.check_output(
     text=True,
 ))
 versions = {package["name"]: package.get("rust_version") for package in metadata["packages"]}
-# Slate sits on gpui-pre, whose dependencies need a newer compiler; the CI MSRV job excludes it.
-expected_versions = {"multiplex-slate": "1.92"}
-unexpected = {
-    name: version
-    for name, version in versions.items()
-    if version != expected_versions.get(name, "1.88")
-}
+# Every package declares the pinned toolchain; there is no separate minimum.
+unexpected = {name: version for name, version in versions.items() if version != "1.98"}
 if unexpected:
-    print(f"Workspace packages must declare rust-version 1.88 (multiplex-slate 1.92): {unexpected}", file=sys.stderr)
+    print(f"Workspace packages must declare rust-version 1.98, the pinned toolchain: {unexpected}", file=sys.stderr)
     raise SystemExit(1)
 
 policy = Path("deny.toml").read_text()

@@ -110,7 +110,7 @@ members = [${members%,}]
 resolver = \"3\"
 
 [workspace.package]
-rust-version = \"1.88\"
+rust-version = \"1.98\"
 EOF
         cargo $SUBCOMMAND $selected $ARGS
       "

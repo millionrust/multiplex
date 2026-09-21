@@ -160,42 +160,6 @@ jobs:
       - name: Repeat canvas tmux capability regression
         run: ./scripts/test/repeat.sh 25 ui::app::tests::canvas_persistent_local_terminal_opens_or_explains_missing_tmux
 
-  msrv:
-    name: Rust 1.88 MSRV
-    if: inputs.windows_probe == ''
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: dtolnay/rust-toolchain@1.88.0
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          # CI has been red, and rust-cache saves nothing from a failed job by default, so every
-          # run rebuilt the whole workspace from scratch.
-          cache-on-failure: true
-
-      - name: Linux build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libxkbcommon-dev libxkbcommon-x11-dev libssl-dev libfontconfig1-dev libdbus-1-dev \
-            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
-            libpipewire-0.3-dev libspa-0.2-dev libclang-dev \
-            pkg-config
-
-      - name: Check minimum supported Rust version
-        # multiplex-screen-transport is excluded from the all-features pass and checked on its
-        # own below: its `iroh` feature is the Stage B QUIC route, off by default, and the QUIC
-        # stack it pulls in needs Rust 1.91. The crate itself, as it ships, builds at the MSRV.
-        run: |
-          cargo +1.88.0 check --workspace --exclude multiplex-slate \
-            --exclude multiplex-screen-transport --all-targets --all-features --locked
-          cargo +1.88.0 check -p multiplex-screen-transport --all-targets --locked
-
   # Split three ways, because the Windows suite spends almost all of its time running tests one
   # binary at a time: measured on 355cc81, twelve minutes compiling from a warm cache, then
   # fifty-four running 178 test binaries in sequence on a four-core machine. nextest runs every
