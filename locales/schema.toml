@@ -4610,6 +4610,58 @@ id = "remote-terminals-wrap-label"
 context = "Label for the setup that starts new terminals inside tmux."
 description = "Open new terminals in tmux label"
 [[messages]]
+id = "remote-terminals-profiles-label"
+context = "Settings subhead."
+description = "Heading for adding a Multiplex profile to terminal apps"
+[[messages]]
+id = "remote-terminals-profiles-description"
+context = "Settings control help."
+description = "Explains terminal profiles and that nothing else changes"
+[[messages]]
+id = "remote-terminals-profiles-none"
+context = "Settings status."
+description = "No terminal app that takes a profile is installed"
+[[messages]]
+id = "remote-terminals-profile-status-on"
+context = "Settings status."
+description = "The Multiplex profile is in this terminal app"
+[[messages]]
+id = "remote-terminals-profile-status-off"
+context = "Settings status."
+description = "The Multiplex profile is not in this terminal app"
+[[messages]]
+id = "remote-terminals-profile-status-outdated"
+context = "Settings status."
+description = "The profile runs a launcher from a moved or older install"
+[[messages]]
+id = "remote-terminals-profile-status-manual"
+context = "Settings status."
+description = "VS Code settings already set terminal profiles; shows text to add by hand"
+[[messages]]
+id = "remote-terminals-profile-add-action"
+context = "Button."
+description = "Previews adding the Multiplex profile"
+[[messages]]
+id = "remote-terminals-profile-update-action"
+context = "Button."
+description = "Previews repairing an outdated Multiplex profile"
+[[messages]]
+id = "remote-terminals-profile-remove-action"
+context = "Button."
+description = "Previews removing the Multiplex profile"
+[[messages]]
+id = "remote-terminals-profile-applied-notice"
+context = "Status notice."
+description = "Confirms the profile was added"
+[[messages]]
+id = "remote-terminals-profile-removed-notice"
+context = "Status notice."
+description = "Confirms the profile was removed"
+[[messages]]
+id = "remote-terminals-profile-default-hint"
+context = "Settings control help."
+description = "How to make the Multiplex profile the default in Windows Terminal"
+[[messages]]
 id = "remote-terminals-wrap-description"
 context = "Explains the shell startup change and that already open terminals stay unreachable."
 description = "Open new terminals in tmux explanation"

@@ -8,6 +8,7 @@ use multiplex_tmux::Tmux;
 use multiplex_tmux::shell_integration::{
     ChangePlan, DiffLine, FileChange, IntegrationError, IntegrationStatus, Shell, ShellIntegration,
 };
+use multiplex_tmux::terminal_profiles::{ProfileStatus, ProfileTarget, TerminalProfiles};
 
 use crate::controller::background_service::{self, ServiceError, ServiceStatus};
 
@@ -78,6 +79,13 @@ pub(super) enum RemoteTerminalVerification {
     Failed,
 }
 
+/// A reviewed change to one terminal app's Multiplex profile.
+pub(super) struct PendingProfileChange {
+    target: ProfileTarget,
+    enable: bool,
+    plan: ChangePlan,
+}
+
 pub(super) struct PendingRemoteTerminalChange {
     kind: RemoteTerminalChange,
     plan: ChangePlan,
@@ -93,6 +101,32 @@ pub(super) struct RemoteTerminalsState {
     verification: RemoteTerminalVerification,
     service: Box<dyn BackgroundServiceControl>,
     service_status: ServiceStatus,
+    /// The terminal apps that can take a Multiplex profile, and `multiplex-cli` beside this app
+    /// for the profile to run. `None` where there is no launcher to point at.
+    profiles: Option<TerminalProfiles>,
+    profile_statuses: Vec<(ProfileTarget, ProfileStatus)>,
+    pending_profile: Option<PendingProfileChange>,
+}
+
+/// The profiles for this machine, pointing at the `multiplex-cli` shipped beside this app.
+#[cfg(not(test))]
+fn terminal_profiles(home: Option<&PathBuf>) -> Option<TerminalProfiles> {
+    let home = home?;
+    let name = if cfg!(windows) {
+        "multiplex-cli.exe"
+    } else {
+        "multiplex-cli"
+    };
+    let launcher = std::env::current_exe().ok()?.parent()?.join(name);
+    launcher
+        .is_file()
+        .then(|| TerminalProfiles::for_this_machine(home, launcher))
+}
+
+/// Tests never read or write the developer's own terminal settings.
+#[cfg(test)]
+fn terminal_profiles(_: Option<&PathBuf>) -> Option<TerminalProfiles> {
+    None
 }
 
 /// The tmux path written into the startup file: the absolute path tmux was found at, such as
@@ -122,7 +156,11 @@ impl RemoteTerminalsState {
             #[cfg(test)]
             service: Box::new(UnsupportedBackgroundService),
             service_status: ServiceStatus::Unsupported,
+            profiles: None,
+            profile_statuses: Vec::new(),
+            pending_profile: None,
         };
+        state.profiles = terminal_profiles(state.home.as_ref());
         state.refresh();
         state
     }
@@ -153,6 +191,17 @@ impl RemoteTerminalsState {
     /// Re-reads tmux and the user's files. Cheap: one `tmux -V` and a few small reads.
     pub(super) fn refresh(&mut self) {
         self.service_status = self.service.status();
+        self.profile_statuses = self
+            .profiles
+            .as_ref()
+            .map(|profiles| {
+                ProfileTarget::ALL
+                    .into_iter()
+                    .map(|target| (target, profiles.status(target)))
+                    .filter(|(_, status)| *status != ProfileStatus::Unavailable)
+                    .collect()
+            })
+            .unwrap_or_default();
         if cfg!(windows) || self.home.is_none() {
             self.tmux = None;
             self.availability = TmuxAvailability::Unsupported;
@@ -343,6 +392,61 @@ impl MultiplexApp {
         cx.notify();
     }
 
+    pub(super) fn review_profile_change(
+        &mut self,
+        target: ProfileTarget,
+        enable: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(profiles) = self.remote_terminals.profiles.as_ref() else {
+            return;
+        };
+        let plan = if enable {
+            profiles.enable_plan(target)
+        } else {
+            profiles.disable_plan(target)
+        };
+        match plan {
+            Ok(plan) => {
+                self.remote_terminals.pending_profile = Some(PendingProfileChange {
+                    target,
+                    enable,
+                    plan,
+                });
+                self.error_message.clear();
+            }
+            Err(error) => {
+                self.remote_terminals.pending_profile = None;
+                self.error_message = integration_error_message(&error);
+            }
+        }
+        cx.notify();
+    }
+
+    pub(super) fn apply_profile_change(&mut self, cx: &mut Context<Self>) {
+        let Some(pending) = self.remote_terminals.pending_profile.take() else {
+            return;
+        };
+        match pending.plan.apply() {
+            Ok(()) => {
+                self.status_message = if pending.enable {
+                    localization::remote_terminals_profile_applied_notice()
+                } else {
+                    localization::remote_terminals_profile_removed_notice()
+                };
+                self.error_message.clear();
+            }
+            Err(error) => self.error_message = integration_error_message(&error),
+        }
+        self.remote_terminals.refresh();
+        cx.notify();
+    }
+
+    pub(super) fn cancel_profile_change(&mut self, cx: &mut Context<Self>) {
+        self.remote_terminals.pending_profile = None;
+        cx.notify();
+    }
+
     pub(super) fn cancel_remote_terminal_change(&mut self, cx: &mut Context<Self>) {
         self.remote_terminals.pending = None;
         cx.notify();
@@ -471,6 +575,11 @@ impl MultiplexApp {
                 ),
             ))
             .child(self.settings_subhead(
+                localization::remote_terminals_profiles_label(),
+                localization::remote_terminals_profiles_description(),
+            ))
+            .child(self.render_terminal_profiles(cx))
+            .child(self.settings_subhead(
                 localization::remote_terminals_wrap_label(),
                 localization::remote_terminals_wrap_description(),
             ))
@@ -566,6 +675,199 @@ impl MultiplexApp {
                     .text_size(px(theme::TYPE_MICRO_SIZE))
                     .text_color(theme::text_muted())
                     .child(localization::remote_terminals_no_wrap_hint()),
+            )
+            .into_any_element()
+    }
+
+    fn render_terminal_profiles(&self, cx: &Context<Self>) -> AnyElement {
+        let state = &self.remote_terminals;
+        if state.profile_statuses.is_empty() {
+            return div()
+                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                .text_color(theme::text_muted())
+                .child(localization::remote_terminals_profiles_none())
+                .into_any_element();
+        }
+        let mono = theme::current_design_tokens().font_mono_family().0;
+        v_flex()
+            .gap_2()
+            .children(
+                state
+                    .profile_statuses
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (target, status))| {
+                        let target = *target;
+                        let (status_text, action) = match status {
+                            ProfileStatus::On => (
+                                localization::remote_terminals_profile_status_on(),
+                                Some((
+                                    false,
+                                    localization::remote_terminals_profile_remove_action(),
+                                )),
+                            ),
+                            ProfileStatus::Outdated => (
+                                localization::remote_terminals_profile_status_outdated(),
+                                Some((
+                                    true,
+                                    localization::remote_terminals_profile_update_action(),
+                                )),
+                            ),
+                            ProfileStatus::NeedsManualEdit { .. } => {
+                                (localization::remote_terminals_profile_status_manual(), None)
+                            }
+                            ProfileStatus::Off | ProfileStatus::Unavailable => (
+                                localization::remote_terminals_profile_status_off(),
+                                Some((true, localization::remote_terminals_profile_add_action())),
+                            ),
+                        };
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                h_flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .flex_wrap()
+                                    .gap_3()
+                                    .child(
+                                        v_flex()
+                                            .child(
+                                                div()
+                                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                                    .text_color(theme::text_main())
+                                                    .child(target.label()),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                                    .text_color(theme::text_muted())
+                                                    .child(status_text),
+                                            ),
+                                    )
+                                    .when_some(action, |this, (enable, label)| {
+                                        this.child(
+                                            Button::new(("remote-terminals-profile", index))
+                                                .small()
+                                                .label(label)
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.review_profile_change(target, enable, cx);
+                                                })),
+                                        )
+                                    }),
+                            )
+                            .when_some(
+                                match status {
+                                    ProfileStatus::NeedsManualEdit { manual } => {
+                                        Some(manual.clone())
+                                    }
+                                    _ => None,
+                                },
+                                |this, manual| {
+                                    this.child(
+                                        div()
+                                            .font_family(mono)
+                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                            .text_color(theme::text_main())
+                                            .child(manual),
+                                    )
+                                },
+                            )
+                            .when(
+                                target == ProfileTarget::WindowsTerminal
+                                    && *status == ProfileStatus::On,
+                                |this| {
+                                    this.child(
+                                        div()
+                                            .text_size(px(theme::TYPE_MICRO_SIZE))
+                                            .text_color(theme::text_muted())
+                                            .child(
+                                                localization::remote_terminals_profile_default_hint(
+                                                ),
+                                            ),
+                                    )
+                                },
+                            )
+                    }),
+            )
+            .when_some(state.pending_profile.as_ref(), |this, pending| {
+                this.child(self.render_profile_preview(pending, cx))
+            })
+            .into_any_element()
+    }
+
+    fn render_profile_preview(
+        &self,
+        pending: &PendingProfileChange,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let mono = theme::current_design_tokens().font_mono_family().0;
+        let body = if pending.plan.is_empty() {
+            div()
+                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                .text_color(theme::text_muted())
+                .child(localization::remote_terminals_preview_empty())
+                .into_any_element()
+        } else {
+            v_flex()
+                .gap_3()
+                .children(
+                    pending
+                        .plan
+                        .changes
+                        .iter()
+                        .map(|change| render_file_change(change, mono)),
+                )
+                .into_any_element()
+        };
+        v_flex()
+            .debug_selector(|| "remote-terminals-profile-preview".to_string())
+            .gap_3()
+            .p(px(theme::SPACE_3))
+            .rounded(px(theme::CONTROL_RADIUS))
+            .border_1()
+            .border_color(theme::border())
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                    .font_medium()
+                    .text_color(theme::text_main())
+                    .child(localization::remote_terminals_preview_title()),
+            )
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                    .text_color(theme::text_muted())
+                    .child(pending.target.label()),
+            )
+            .child(body)
+            .child(
+                h_flex()
+                    .gap_2()
+                    .when(!pending.plan.is_empty(), |this| {
+                        let destructive = !pending.enable;
+                        this.child(
+                            Button::new("remote-terminals-profile-apply")
+                                .small()
+                                .when(destructive, |button| button.danger())
+                                .when(!destructive, |button| button.primary())
+                                .label(if destructive {
+                                    localization::remote_terminals_remove_action()
+                                } else {
+                                    localization::remote_terminals_apply_action()
+                                })
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.apply_profile_change(cx);
+                                })),
+                        )
+                    })
+                    .child(
+                        Button::new("remote-terminals-profile-cancel")
+                            .small()
+                            .label(localization::remote_terminals_cancel_action())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.cancel_profile_change(cx);
+                            })),
+                    ),
             )
             .into_any_element()
     }

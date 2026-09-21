@@ -622,6 +622,58 @@ static_message!(
     remote_terminals_discovery_saved,
     RemoteTerminalsDiscoverySavedArgs
 );
+static_message!(
+    remote_terminals_profiles_label,
+    RemoteTerminalsProfilesLabelArgs
+);
+static_message!(
+    remote_terminals_profiles_description,
+    RemoteTerminalsProfilesDescriptionArgs
+);
+static_message!(
+    remote_terminals_profiles_none,
+    RemoteTerminalsProfilesNoneArgs
+);
+static_message!(
+    remote_terminals_profile_status_on,
+    RemoteTerminalsProfileStatusOnArgs
+);
+static_message!(
+    remote_terminals_profile_status_off,
+    RemoteTerminalsProfileStatusOffArgs
+);
+static_message!(
+    remote_terminals_profile_status_outdated,
+    RemoteTerminalsProfileStatusOutdatedArgs
+);
+static_message!(
+    remote_terminals_profile_status_manual,
+    RemoteTerminalsProfileStatusManualArgs
+);
+static_message!(
+    remote_terminals_profile_add_action,
+    RemoteTerminalsProfileAddActionArgs
+);
+static_message!(
+    remote_terminals_profile_update_action,
+    RemoteTerminalsProfileUpdateActionArgs
+);
+static_message!(
+    remote_terminals_profile_remove_action,
+    RemoteTerminalsProfileRemoveActionArgs
+);
+static_message!(
+    remote_terminals_profile_applied_notice,
+    RemoteTerminalsProfileAppliedNoticeArgs
+);
+static_message!(
+    remote_terminals_profile_removed_notice,
+    RemoteTerminalsProfileRemovedNoticeArgs
+);
+static_message!(
+    remote_terminals_profile_default_hint,
+    RemoteTerminalsProfileDefaultHintArgs
+);
 static_message!(remote_terminals_wrap_label, RemoteTerminalsWrapLabelArgs);
 static_message!(
     remote_terminals_wrap_description,
