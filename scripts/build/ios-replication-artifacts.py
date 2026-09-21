@@ -63,10 +63,11 @@ def build():
     if not run("rustc", "--version", capture=True).startswith("rustc 1.98.1 "):
         raise RuntimeError("Rust 1.98.1 required")
     run("rustup", "component", "add", "llvm-tools-preview")
-    run("cargo", "build", "--locked", "-p", "multiplex-replication-bindings", "--lib")
-    run("cargo", "build", "--locked", "-p", "multiplex-controller-bindings", "--features", "bindgen-cli", "--bin", "uniffi-bindgen")
+    host_args, host_env, host_profile = shared.host_build()
+    run("cargo", "build", "--locked", "-p", "multiplex-replication-bindings", "--lib", *host_args, env=host_env)
+    run("cargo", "build", "--locked", "-p", "multiplex-controller-bindings", "--features", "bindgen-cli", "--bin", "uniffi-bindgen", *host_args, env=host_env)
     target = Path(json.loads(run("cargo", "metadata", "--no-deps", "--format-version", "1", capture=True))["target_directory"])
-    generator = str(target / "debug/uniffi-bindgen")
+    generator = str(target / host_profile / "uniffi-bindgen")
     if run(generator, "--version", capture=True).strip() != "uniffi-bindgen 0.32.0":
         raise RuntimeError("UniFFI version mismatch")
     with tempfile.TemporaryDirectory(prefix="replication-ios-") as temp:
@@ -75,7 +76,7 @@ def build():
         sources = staged / "Sources"
         sources.mkdir(parents=True)
         generated = work / "generated"
-        run(generator, "generate", str(target / f"debug/lib{STEM}.dylib"), "--language", "swift", "--no-format", "--out-dir", str(generated))
+        run(generator, "generate", str(target / host_profile / f"lib{STEM}.dylib"), "--language", "swift", "--no-format", "--out-dir", str(generated))
         swift = generated / f"{NAME}.swift"
         (sources / swift.name).write_text("\n".join(line.rstrip() for line in swift.read_text().splitlines()) + "\n")
         headers = work / "headers"

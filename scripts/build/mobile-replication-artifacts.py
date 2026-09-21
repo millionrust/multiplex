@@ -13,6 +13,19 @@ import tempfile
 from owned_process import run_owned
 
 
+def host_build():
+    """Cargo arguments, environment, and profile directory for the host library and generator.
+
+    Normally a debug build. When CI shares one target directory, the controller and screen scripts
+    have already built the same generator there as an unstripped release build, so this matches
+    them and reuses it instead of compiling UniFFI and its dependencies a second time. The bindings
+    generated from either are byte-identical.
+    """
+    if os.environ.get("MULTIPLEX_MOBILE_CARGO_TARGET_DIR"):
+        return ["--release"], dict(os.environ, CARGO_PROFILE_RELEASE_STRIP="none"), "release"
+    return [], dict(os.environ), "debug"
+
+
 def slice_target(work):
     """The cargo target directory for one slice: new and empty unless CI shares one.
 
@@ -127,12 +140,13 @@ def build():
     if not Path(readelf).is_file():
         raise RuntimeError(f"Android NDK llvm-readelf missing at {readelf}")
     space()
-    run("cargo", "build", "--locked", "-p", "multiplex-replication-bindings", "--lib")
+    host_args, host_env, host_profile = host_build()
+    run("cargo", "build", "--locked", "-p", "multiplex-replication-bindings", "--lib", *host_args, env=host_env)
     # The existing pinned generator is shared, without changing Controller outputs.
     run("cargo", "build", "--locked", "-p", "multiplex-controller-bindings",
-        "--features", "bindgen-cli", "--bin", "uniffi-bindgen")
+        "--features", "bindgen-cli", "--bin", "uniffi-bindgen", *host_args, env=host_env)
     target = Path(json.loads(run("cargo", "metadata", "--no-deps", "--format-version", "1", capture=True))["target_directory"])
-    generator = str(target / "debug/uniffi-bindgen")
+    generator = str(target / host_profile / "uniffi-bindgen")
     if run(generator, "--version", capture=True).strip() != "uniffi-bindgen 0.32.0":
         raise RuntimeError("UniFFI version mismatch")
     with tempfile.TemporaryDirectory(prefix="replication-build-") as temp:
@@ -141,7 +155,7 @@ def build():
         generated = staged / "kotlin"
         generated.mkdir(parents=True)
         ext = "dylib" if platform.system() == "Darwin" else "so"
-        run(generator, "generate", str(target / f"debug/lib{STEM}.{ext}"),
+        run(generator, "generate", str(target / host_profile / f"lib{STEM}.{ext}"),
             "--language", "kotlin", "--no-format", "--out-dir", str(generated))
         for path in generated.rglob("*.kt"):
             path.write_text("\n".join(line.rstrip() for line in path.read_text().splitlines()).rstrip() + "\n")

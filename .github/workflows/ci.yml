@@ -426,6 +426,10 @@ jobs:
       # The Kotlin conformance tests call the generated bindings through JNA on the build
       # machine, so they need the host build of the library the APK packages for each ABI.
       - name: Build Controller bindings for Kotlin unit tests
+        # Unstripped, as the binding scripts build it into the same shared target directory; a
+        # stripped build here would be thrown away and redone by the next step.
+        env:
+          CARGO_PROFILE_RELEASE_STRIP: none
         run: |
           cargo build --locked --release -p multiplex-controller-bindings --lib
           mkdir -p apps/android/app/src/test/native/linux-x86-64
