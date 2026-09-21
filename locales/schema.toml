@@ -7515,6 +7515,10 @@ id = "settings-local-shell-cwd-label"
 context = "Settings form label."
 description = "Local shell working directory label"
 [[messages]]
+id = "settings-local-shell-detected-label"
+context = "Settings form label."
+description = "Label above the buttons for the shells found on this Windows PC"
+[[messages]]
 id = "settings-local-shell-description"
 context = "Settings control help."
 description = "Local shell description"

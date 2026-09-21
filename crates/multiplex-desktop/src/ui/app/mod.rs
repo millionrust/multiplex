@@ -5692,6 +5692,24 @@ impl MultiplexApp {
         cx.notify();
     }
 
+    /// A shell picked from the ones this PC has: the program and the arguments that go with it.
+    #[cfg(target_os = "windows")]
+    fn choose_local_shell(
+        &mut self,
+        program: String,
+        args: Vec<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.saved.settings.default_local_shell.program = program;
+        self.saved.settings.default_local_shell.args = args;
+        self.save_settings();
+        self.load_settings_inputs(window, cx);
+        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
+        self.error_message.clear();
+        cx.notify();
+    }
+
     fn save_local_shell_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let program = self
             .settings_inputs
@@ -5714,6 +5732,11 @@ impl MultiplexApp {
             .value()
             .trim()
             .to_string();
+        // Arguments belong to the program they were chosen with: PowerShell's -NoLogo would be an
+        // error to Command Prompt. A program typed by hand starts with none.
+        if !program.eq_ignore_ascii_case(&self.saved.settings.default_local_shell.program) {
+            self.saved.settings.default_local_shell.args = Vec::new();
+        }
         self.saved.settings.default_local_shell.program = program.clone();
         self.saved.settings.default_local_shell.cwd = (!cwd.is_empty()).then_some(cwd.clone());
         self.save_settings();

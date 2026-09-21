@@ -1514,6 +1514,7 @@ settings-reconnect-delay-label = Reconnect delay
 settings-reconnect-delay-description = Delay between automatic SSH reconnect attempts.
 settings-local-shell-program-label = Shell program
 settings-local-shell-cwd-label = Working directory
+settings-local-shell-detected-label = Shells on this PC
 settings-local-shell-description = Executable and optional working directory used by new local terminals.
 settings-keyboard-shortcuts-title = Keyboard shortcuts
 settings-keyboard-shortcuts-description = Current commands use Command on macOS and Control on other platforms.

@@ -1760,6 +1760,7 @@ settings-library-value = ⁧yrarbiL nepO⁩
 settings-local-shell-args-hint = ⁧.yrotcerid putrats lanoitpo dna elbatucexe siht esu slanimret lacol weN⁩
 settings-local-shell-cwd-label = ⁧yrotcerid gnikroW⁩
 settings-local-shell-description = ⁧.slanimret lacol wen yb desu yrotcerid gnikrow lanoitpo dna elbatucexE⁩
+settings-local-shell-detected-label = ⁧CP siht no sllehS⁩
 settings-local-shell-program-label = ⁧margorp llehS⁩
 settings-local-shell-title = ⁧llehs lacoL⁩
 settings-locale-english = ⁧(setatS detinU) hsilgnE⁩

@@ -1760,6 +1760,7 @@ settings-library-value = ⟦Øþéñ Ļîƀŕåŕý~~~⟧
 settings-local-shell-args-hint = ⟦Ñéŵ ļøçåļ ţéŕɱîñåļš ûšé ţĥîš éẋéçûţåƀļé åñð øþţîøñåļ šţåŕţûþ ðîŕéçţøŕý.~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 settings-local-shell-cwd-label = ⟦Ŵøŕķîñĝ ðîŕéçţøŕý~~~~~⟧
 settings-local-shell-description = ⟦Éẋéçûţåƀļé åñð øþţîøñåļ ŵøŕķîñĝ ðîŕéçţøŕý ûšéð ƀý ñéŵ ļøçåļ ţéŕɱîñåļš.~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+settings-local-shell-detected-label = ⟦Šĥéļļš øñ ţĥîš ÞÇ~~~~~⟧
 settings-local-shell-program-label = ⟦Šĥéļļ þŕøĝŕåɱ~~~~⟧
 settings-local-shell-title = ⟦Ļøçåļ šĥéļļ~~~⟧
 settings-locale-english = ⟦Éñĝļîšĥ (Ûñîţéð Šţåţéš)~~~~~~~~⟧

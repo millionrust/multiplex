@@ -30,6 +30,57 @@ fn library_copy(id: MessageId) -> String {
 }
 
 impl MultiplexApp {
+    /// One button per shell found on this PC, the current one highlighted, so choosing a shell
+    /// does not mean knowing where Windows keeps it. Other platforms type a path.
+    #[cfg(target_os = "windows")]
+    fn detected_shell_choices(&self, cx: &Context<Self>) -> Option<Div> {
+        let current = self.saved.settings.default_local_shell.program.clone();
+        let shells = crate::models::detected_windows_shells();
+        Some(
+            v_flex()
+                .gap_2()
+                .child(
+                    div()
+                        .text_size(px(theme::TYPE_BODY_SIZE))
+                        .font_medium()
+                        .text_color(theme::text_main())
+                        .child(library_copy(MessageId::SettingsLocalShellDetectedLabel)),
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .flex_wrap()
+                        .children(shells.into_iter().enumerate().map(|(index, shell)| {
+                            let selected = shell.program.eq_ignore_ascii_case(&current);
+                            Button::new(("settings-local-shell-detected", index))
+                                .small()
+                                .custom(Self::action_button_style(
+                                    if selected {
+                                        theme::ActionTone::Accent
+                                    } else {
+                                        theme::ActionTone::Neutral
+                                    },
+                                    cx,
+                                ))
+                                .label(shell.label)
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.choose_local_shell(
+                                        shell.program.clone(),
+                                        shell.args.clone(),
+                                        window,
+                                        cx,
+                                    );
+                                }))
+                        })),
+                ),
+        )
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn detected_shell_choices(&self, _: &Context<Self>) -> Option<Div> {
+        None
+    }
+
     // termirust-ui-surface:vault-keys-snippets:start
     fn keychain_tab_control(&self, cx: &Context<Self>) -> Div {
         let tab = self.keychain_tab;
@@ -2559,6 +2610,7 @@ impl MultiplexApp {
             library_copy(MessageId::SettingsLocalShellDescription),
             v_flex()
                 .gap_3()
+                .children(self.detected_shell_choices(cx))
                 .child(self.form_field(
                     library_copy(MessageId::SettingsLocalShellProgramLabel),
                     Input::new(&self.settings_inputs.local_shell_program),

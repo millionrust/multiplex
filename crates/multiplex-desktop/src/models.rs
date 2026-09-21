@@ -2146,15 +2146,85 @@ fn normalize_port_forward_rules(
     normalized
 }
 
+/// A shell found on this Windows PC, as Settings offers it.
+#[cfg(target_os = "windows")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DetectedShell {
+    pub label: &'static str,
+    pub program: String,
+    pub args: Vec<String>,
+}
+
+/// The shells this PC has, newest PowerShell first: PowerShell 7, Windows PowerShell, Command
+/// Prompt, and WSL when a distribution can be started. Command Prompt is always there.
+#[cfg(target_os = "windows")]
+pub fn detected_windows_shells() -> Vec<DetectedShell> {
+    let path_dirs: Vec<std::path::PathBuf> = std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).collect())
+        .unwrap_or_default();
+    let on_path = |name: &str| {
+        path_dirs
+            .iter()
+            .map(|dir| dir.join(name))
+            .find(|candidate| candidate.is_file())
+    };
+    let system_root = std::env::var_os("SystemRoot")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
+    let program_files = std::env::var_os("ProgramFiles").map(std::path::PathBuf::from);
+    let no_logo = || vec!["-NoLogo".to_string()];
+
+    let mut shells = Vec::new();
+    let pwsh = on_path("pwsh.exe").or_else(|| {
+        program_files
+            .map(|dir| dir.join(r"PowerShell\7\pwsh.exe"))
+            .filter(|candidate| candidate.is_file())
+    });
+    if let Some(pwsh) = pwsh {
+        shells.push(DetectedShell {
+            label: "PowerShell 7",
+            program: pwsh.display().to_string(),
+            args: no_logo(),
+        });
+    }
+    let windows_powershell = system_root.join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
+    if windows_powershell.is_file() {
+        shells.push(DetectedShell {
+            label: "Windows PowerShell",
+            program: windows_powershell.display().to_string(),
+            args: no_logo(),
+        });
+    }
+    shells.push(DetectedShell {
+        label: "Command Prompt",
+        program: std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string()),
+        args: Vec::new(),
+    });
+    let wsl = system_root.join(r"System32\wsl.exe");
+    if wsl.is_file() {
+        shells.push(DetectedShell {
+            label: "WSL",
+            program: wsl.display().to_string(),
+            args: Vec::new(),
+        });
+    }
+    shells
+}
+
 fn default_local_shell_config() -> LocalShellConfig {
+    // PowerShell when the PC has it, as Windows Terminal defaults to, and Command Prompt otherwise.
+    // No working directory: a local terminal then starts in the home folder, rather than wherever
+    // Windows happened to start the app.
     #[cfg(target_os = "windows")]
     {
+        let shell = detected_windows_shells()
+            .into_iter()
+            .next()
+            .expect("Command Prompt is always offered");
         LocalShellConfig {
-            program: std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string()),
-            args: Vec::new(),
-            cwd: std::env::current_dir()
-                .ok()
-                .map(|path| path.display().to_string()),
+            program: shell.program,
+            args: shell.args,
+            cwd: None,
         }
     }
 
