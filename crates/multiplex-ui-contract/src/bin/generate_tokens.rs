@@ -34,7 +34,7 @@ fn run() -> Result<(), String> {
     let fixture_path = root.join("design/generated/tokens-contract.json");
     let swift_path = root.join("apps/ios/MultiplexMobile/Views/SlateTokens.swift");
     let kotlin_path =
-        root.join("apps/android/app/src/main/java/com/termirust/mobile/ui/SlateTokens.kt");
+        root.join("apps/android/app/src/main/java/com/multiplex/mobile/ui/SlateTokens.kt");
     let (manifest, source) = load_manifest(&manifest_path).map_err(|error| error.to_string())?;
     let artifacts = generate_artifacts(&manifest, &source).map_err(|error| error.to_string())?;
 

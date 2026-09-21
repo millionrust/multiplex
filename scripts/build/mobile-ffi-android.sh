@@ -17,7 +17,9 @@ if [[ -z "$ANDROID_NDK" || ! -d "$ANDROID_NDK" ]]; then
   exit 1
 fi
 
+# The NDK ships one prebuilt toolchain per build host, and the Linux one is what CI has.
 HOST_TAG="darwin-x86_64"
+[[ "$(uname -s)" == "Linux" ]] && HOST_TAG="linux-x86_64"
 TOOLCHAIN="$ANDROID_NDK/toolchains/llvm/prebuilt/$HOST_TAG/bin"
 LLVM_READELF="$TOOLCHAIN/llvm-readelf"
 

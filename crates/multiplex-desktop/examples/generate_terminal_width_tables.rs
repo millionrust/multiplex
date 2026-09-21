@@ -172,7 +172,7 @@ fn render_kotlin(zero: &[ScalarRange], wide: &[ScalarRange]) -> String {
         "// Source: unicode-width {UNICODE_WIDTH_VERSION}. Do not edit manually.\n"
     )
     .unwrap();
-    writeln!(output, "package com.termirust.mobile.controller\n").unwrap();
+    writeln!(output, "package com.multiplex.mobile.controller\n").unwrap();
     writeln!(output, "internal object GeneratedTerminalCellWidth {{").unwrap();
     writeln!(
         output,

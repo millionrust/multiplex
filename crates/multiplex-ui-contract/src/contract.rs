@@ -892,7 +892,7 @@ fn generate_kotlin(
         "// Source: design/tokens.toml (sha256:{source_hash})\n\n"
     ));
     output.push_str(
-        "package com.termirust.mobile.ui\n\n\
+        "package com.multiplex.mobile.ui\n\n\
 /** The Slate themes a token resolves against. */\n\
 enum class SlateTheme {\n    Light,\n    Dark,\n    HighContrast,\n    Recording,\n}\n\n\
 data class SlateTypography(val size: Float, val lineHeight: Float, val weight: Int)\n\n\
