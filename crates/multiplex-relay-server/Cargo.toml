@@ -11,7 +11,7 @@ name = "multiplex-relay"
 path = "src/main.rs"
 
 [dependencies]
-multiplex-env = { path = "../multiplex-env" }
+multiplex-env = { version = "0.0.2", path = "../multiplex-env" }
 futures-util = { version = "=0.3.32", features = ["sink"] }
 base64 = "=0.22.1"
 fs2 = "=0.4.3"

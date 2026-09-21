@@ -7,7 +7,7 @@ description = "Capability-scoped local MCP server for TermiRust"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-multiplex-env = { path = "../multiplex-env" }
+multiplex-env = { version = "0.0.2", path = "../multiplex-env" }
 base64 = "0.22"
 fs2 = "0.4"
 rand = "0.8"

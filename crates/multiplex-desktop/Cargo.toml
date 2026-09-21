@@ -36,7 +36,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 ] }
 
 [dependencies]
-multiplex-env = { path = "../multiplex-env" }
+multiplex-env = { version = "0.0.2", path = "../multiplex-env" }
 aes-gcm-siv = "0.11"
 alacritty_terminal = { version = "0.26.0", default-features = false }
 anyhow = "1.0"
