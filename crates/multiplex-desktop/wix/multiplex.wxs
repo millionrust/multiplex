@@ -8,7 +8,7 @@
   folder Windows itself uses.
 
   Built by .github/workflows/release.yml with WiX 5:
-    wix build multiplex.wxs -arch x64 -d Version=0.0.2 -d SourceDir=<release folder> -o Multiplex.msi
+    wix build multiplex.wxs -arch x64 -d Version=X.Y.Z -d SourceDir=<release folder> -o Multiplex.msi
 
   The UpgradeCode never changes: it is how a newer Multiplex replaces an older one in place.
 -->

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to publish under (e.g. v0.0.2). Leave blank to dry-run without publishing."
+        description: "Tag to publish under (e.g. v0.0.3). Leave blank to dry-run without publishing."
         required: false
         default: ""
 

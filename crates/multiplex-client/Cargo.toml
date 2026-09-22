@@ -1,6 +1,6 @@
 [package]
 name = "multiplex-client"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2024"
 rust-version.workspace = true
 description = "Conforming local client for TermiRust session Hosts"
@@ -13,9 +13,9 @@ prost = "0.14"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
-multiplex-domain = { version = "0.0.2", path = "../multiplex-domain" }
-multiplex-host-protocol = { version = "0.0.2", path = "../multiplex-host-protocol" }
-multiplex-store = { version = "0.0.2", path = "../multiplex-store" }
+multiplex-domain = { version = "0.0.3", path = "../multiplex-domain" }
+multiplex-host-protocol = { version = "0.0.3", path = "../multiplex-host-protocol" }
+multiplex-store = { version = "0.0.3", path = "../multiplex-store" }
 tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 uuid = { version = "1.22", features = ["v4"] }
@@ -30,4 +30,4 @@ windows-sys = { version = "0.61", features = [
 
 [dev-dependencies]
 tempfile = "3.27"
-multiplex-session-host = { version = "0.0.2", path = "../multiplex-session-host" }
+multiplex-session-host = { version = "0.0.3", path = "../multiplex-session-host" }

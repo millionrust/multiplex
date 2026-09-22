@@ -1,13 +1,13 @@
 [package]
 name = "multiplex-screen-capture"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2024"
 rust-version.workspace = true
 description = "Display capture with damage for TermiRust Remote Screens: a platform-neutral source trait, a replay source, and the macOS ScreenCaptureKit backend"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-multiplex-screen-codec = { version = "0.0.2", path = "../multiplex-screen-codec" }
+multiplex-screen-codec = { version = "0.0.3", path = "../multiplex-screen-codec" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = "0.24"

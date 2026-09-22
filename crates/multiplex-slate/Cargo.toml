@@ -10,7 +10,7 @@ publish = false
 [dependencies]
 gpui = { package = "gpui-pre", version = "0.3.4" }
 gpui-base = "0.6.1"
-multiplex-ui-contract = { version = "0.0.2", path = "../multiplex-ui-contract" }
+multiplex-ui-contract = { version = "0.0.3", path = "../multiplex-ui-contract" }
 
 [dev-dependencies]
 gpui = { package = "gpui-pre", version = "0.3.4", features = ["test-support"] }

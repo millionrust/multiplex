@@ -108,8 +108,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.millionrust.multiplex
-        MARKETING_VERSION: 0.0.2
-        CURRENT_PROJECT_VERSION: 2
+        MARKETING_VERSION: 0.0.3
+        CURRENT_PROJECT_VERSION: 3
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: MultiplexMobile/Info.plist
         TARGETED_DEVICE_FAMILY: "1,2"
