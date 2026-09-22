@@ -1,6 +1,28 @@
 # Implementation plan: reaching a paired computer by its best route
 
-Status: **proposal.** Written 2026-09-21.
+Status: **phases 1–2 in progress.** Written 2026-09-21; the planner landed 2026-09-22.
+
+## What was built, and where it differs from the design below
+
+- **The planner is four pure functions, not an event-driven state machine:** `plan_routes`,
+  `network_fingerprint`, `remember_route`, and `route_advice` in
+  `crates/multiplex-controller-bindings/src/route_plan.rs`, exported to Swift and Kotlin. Phases
+  1–2 need no state between events; the state machine comes with migration (phase 4).
+- **The race is won by the transport connecting, not by the Noise handshake.** The listener
+  counts every connection that leaves mid-handshake as a failed login against its source address
+  (five in ten minutes, `AuthRateLimiter`). Racing handshakes would cancel the losers mid-way and
+  lock the phone's Tailscale address out after a few evenings at home. Losing attempts are
+  closed before any byte is sent, which the listener does not count. The handshake still decides
+  whether the winner is this computer; a wrong host fails the connection as it did before.
+- **A remembered tunnel never jumps ahead of a local address on the phone's own subnet.** Memory
+  promotes the address that worked on this network, but if Tailscale won once at home, promoting
+  it would keep the phone on Tailscale there for good. The local address keeps its head start
+  and Tailscale follows 250 ms later.
+- The per-attempt limits are 3 s for a local address and 6 s for a tunnel, not 1.5 s and 3 s: the
+  attempts run in parallel, so a limit only frees the socket and a short one would drop a slow
+  but working Wi-Fi. A host with one address gets the whole 12 s, as before.
+- The shared cases are `tests/fixtures/controller-routes/route-plan-v1.json`, copied into both
+  apps' test resources by `scripts/sync/mobile-controller-bindings.sh`.
 
 ## Goal
 

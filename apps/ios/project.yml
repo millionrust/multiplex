@@ -138,6 +138,7 @@ targets:
       - MultiplexMobileTests/ReplicationDocumentReaderTests.swift
       - MultiplexMobileTests/ControllerFleetCacheTests.swift
       - MultiplexMobileTests/ControllerPairingFleetTests.swift
+      - MultiplexMobileTests/ControllerRouteRaceTests.swift
       - MultiplexMobileTests/ControllerReadOnlyTerminalTests.swift
       - MultiplexMobileTests/ControllerTerminalViewModelTests.swift
       - MultiplexMobileTests/ControllerWriterTests.swift

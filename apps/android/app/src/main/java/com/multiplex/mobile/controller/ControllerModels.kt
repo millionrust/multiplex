@@ -12,6 +12,7 @@ object ControllerLimits {
     const val MAX_PAGE_BYTES = 1 * 1_024 * 1_024
     const val MAX_TITLE_CODE_POINTS = 256
     const val MAX_HOST_ROUTES = 8
+    const val MAX_REMEMBERED_NETWORKS = 8
 }
 
 @Serializable
@@ -22,6 +23,21 @@ data class HostRoute(
     init {
         require(address.isNotBlank() && address.toByteArray().size <= 255)
         require(port in 1..65_535)
+    }
+}
+
+/** The address that last connected on one network, named by the route planner's fingerprint. */
+@Serializable
+data class RememberedRouteRecord(
+    val fingerprint: String,
+    val address: String,
+    val port: Int,
+) {
+    val route: HostRoute get() = HostRoute(address, port)
+
+    fun validate() {
+        // Building the route checks the address and port.
+        require(ROUTE_FINGERPRINT_PATTERN.matches(fingerprint) && route.port == port)
     }
 }
 
@@ -44,6 +60,8 @@ data class PairedHostRecord(
     // Records saved before multiple routes existed only carry `route`.
     val routes: List<HostRoute> = listOf(route),
     @SerialName("discovery_id") val discoveryId: String? = null,
+    // Which address worked on each network the phone connected from, newest first.
+    @SerialName("route_memory") val routeMemory: List<RememberedRouteRecord> = emptyList(),
 ) {
     fun validate() {
         require(schemaVersion == 1)
@@ -55,6 +73,8 @@ data class PairedHostRecord(
         require(routes.size in 1..ControllerLimits.MAX_HOST_ROUTES && routes.first() == route)
         require(routes.toSet().size == routes.size)
         require(discoveryId == null || DISCOVERY_ID_PATTERN.matches(discoveryId))
+        require(routeMemory.size <= ControllerLimits.MAX_REMEMBERED_NETWORKS)
+        routeMemory.forEach(RememberedRouteRecord::validate)
     }
 
     // Moves `preferred` to the front, adding it when new and dropping overflow from the end.
@@ -66,6 +86,7 @@ data class PairedHostRecord(
 }
 
 internal val DISCOVERY_ID_PATTERN = Regex("^[0-9a-f]{32}$")
+internal val ROUTE_FINGERPRINT_PATTERN = Regex("^[0-9a-f]{32}$")
 
 @Serializable
 enum class ControllerSessionOrigin {
@@ -178,6 +199,8 @@ data class ControllerUiState(
     val selectedRoute: ControllerRemoteRouteKind = ControllerRemoteRouteKind.PRIVATE_NETWORK,
     val routeProjections: List<AndroidControllerRouteProjection> = emptyList(),
     val routeError: String? = null,
+    /** How the last connection went, when the route planner has something to say about it. */
+    val routeAdvice: String? = null,
 )
 
 data class ControllerTerminalUiState(

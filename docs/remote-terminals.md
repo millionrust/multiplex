@@ -279,7 +279,10 @@ Existing tmux sessions keep running; `tmux kill-server` ends them.
 - **Discovery over a VPN.** The listener announces itself with Bonjour (`_termirust._tcp`,
   named by an opaque identifier, not the computer name) only on Wi-Fi and Ethernet.
   Multicast does not cross Tailscale, so type the address once there; the phone then keeps
-  every address it learns. The listener never opens a firewall hole and never binds a
+  every address it learns. It tries them together rather than in turn: the one that worked on
+  this network first, then local addresses on the phone's own subnet, then Tailscale 250 ms
+  later, so it stays on the local network at home even with Tailscale on
+  (`docs/route-selection-plan.md`). The listener never opens a firewall hole and never binds a
   public, loopback, or wildcard address; macOS may prompt for the incoming-connection
   permission.
 
@@ -295,3 +298,5 @@ Remaining:
    the background service and its tray icon, and a paired phone typing into a session.
 2. **More terminal apps**: Ghostty and WezTerm take a command in their configuration files;
    Terminal.app profiles live in a property list.
+3. **Moving a live session to a better route** and the Host sending its current addresses:
+   phases 3–6 of `docs/route-selection-plan.md`.

@@ -17,6 +17,8 @@ final class ControllerViewModel: ObservableObject {
     @Published private(set) var routeProjections: [AppleControllerRouteProjection]
     @Published private(set) var routeSelectionError: AppleControllerRouteCoordinatorError?
     @Published private(set) var routeConfigurationError: String?
+    /// What the last attempt to reach the selected computer suggests, beyond its state.
+    @Published private(set) var routeAdvice: ControllerRouteAdvice?
 
     private var routeConnections: AppleControllerRouteConnections
     private let controllerBlobStore: any SecureBlobStore
@@ -613,6 +615,7 @@ final class ControllerViewModel: ObservableObject {
         syncRouteProjections()
         let startedAt = Date()
         var attempt = 1
+        routeAdvice = nil
 
         while !Task.isCancelled, state.selectedHostID == host.id {
             state = replacing(connection: .connecting, sessions: state.sessions)
@@ -622,6 +625,11 @@ final class ControllerViewModel: ObservableObject {
                 }
                 guard !Task.isCancelled, state.selectedHostID == host.id else { return }
                 var refreshedHost = try snapshot.connectedRoute.map { try host.preferring($0) } ?? host
+                if let connectedRoute = snapshot.connectedRoute,
+                   let fingerprint = snapshot.routeFingerprint {
+                    refreshedHost = try refreshedHost.remembering(connectedRoute, on: fingerprint)
+                }
+                routeAdvice = snapshot.routeAdvice
                 if host.capabilityBits != snapshot.capabilityBits {
                     refreshedHost = try refreshedHost.replacing(capabilityBits: snapshot.capabilityBits)
                 }
@@ -654,6 +662,8 @@ final class ControllerViewModel: ObservableObject {
                 )
                 return
             } catch {
+                guard !Task.isCancelled, state.selectedHostID == host.id else { return }
+                routeAdvice = await connectionActor.lastRouteAdvice(hostID: host.id)
                 guard !Task.isCancelled, state.selectedHostID == host.id else { return }
                 let elapsed = Date().timeIntervalSince(startedAt)
                 let delay = Self.shouldRetry(error)

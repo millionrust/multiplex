@@ -11,6 +11,12 @@ import com.multiplex.controller.security.ControllerSecurityEngine
 import com.multiplex.controller.security.PairingConfirmation
 import com.multiplex.controller.security.PairingRole
 import com.multiplex.controller.security.PairingStartRequest
+import com.multiplex.controller.security.PhoneNetwork
+import com.multiplex.controller.security.RememberedRoute
+import com.multiplex.controller.security.RouteAdvice
+import com.multiplex.controller.security.planRoutes
+import com.multiplex.controller.security.rememberRoute
+import com.multiplex.controller.security.routeAdvice as adviseOnRoutes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -37,6 +43,7 @@ class ControllerConnection internal constructor(
     blobStore: ControllerSecureBlobStore,
     private val clockMillis: () -> Long = System::currentTimeMillis,
     private val transportFactory: ControllerTransportFactory = TcpControllerTransportFactory,
+    private val phoneNetwork: ControllerPhoneNetworkSource = ControllerPhoneNetworkSource.Unknown,
 ) : ControllerConnecting {
     private val engine = ControllerSecurityEngine(blobStore)
     private val mutex = Mutex()
@@ -46,8 +53,19 @@ class ControllerConnection internal constructor(
     @Volatile private var activeTerminal: ActiveTerminalConnection? = null
     private var pendingPairing: PendingPairing? = null
     private val connectedRoutes = ConcurrentHashMap<String, HostRoute>()
+    private val connectedMemory = ConcurrentHashMap<String, List<RememberedRouteRecord>>()
+    private val adviceByHost = ConcurrentHashMap<String, RouteAdvice>()
+    private val discoveredRoutes = ConcurrentHashMap<String, List<HostRoute>>()
 
     override fun connectedRoute(hostId: String): HostRoute? = connectedRoutes[hostId]
+
+    override fun connectedRouteMemory(hostId: String): List<RememberedRouteRecord>? = connectedMemory[hostId]
+
+    override fun routeAdvice(hostId: String): RouteAdvice? = adviceByHost[hostId]
+
+    override fun noteDiscoveredRoutes(hostId: String, routes: List<HostRoute>) {
+        if (routes.isEmpty()) discoveredRoutes.remove(hostId) else discoveredRoutes[hostId] = routes
+    }
 
     override suspend fun beginPairing(
         offerText: String,
@@ -1083,24 +1101,48 @@ class ControllerConnection internal constructor(
     private fun randomBytes(size: Int): ByteArray = ByteArray(size).also(random::nextBytes)
     private fun uptimeMillis(): Long = android.os.SystemClock.elapsedRealtime()
 
-    // Tries each route in order and returns the first that accepts a connection. Only a failure
-    // to connect moves on; nothing has been sent to a route that failed.
-    private fun openFirstReachable(routes: List<HostRoute>): Pair<ControllerDuplexTransport, HostRoute> {
-        var failure: IOException? = null
-        for (route in routes) {
-            try {
-                return transportFactory.open(route) to route
-            } catch (error: IOException) {
-                failure = error
-            }
-        }
-        throw failure ?: IOException("no route to the Host")
+    // Races the routes as the shared planner orders and times them, and returns the first that
+    // accepts a connection. Nothing has been sent to any other route, and none is left open.
+    private suspend fun openFirstReachable(
+        routes: List<HostRoute>,
+        discovered: List<HostRoute> = emptyList(),
+        remembered: List<RememberedRouteRecord> = emptyList(),
+        onRaced: (PhoneNetwork, ControllerRouteRaceResult) -> Unit = { _, _ -> },
+    ): Pair<ControllerDuplexTransport, HostRoute> {
+        val network = phoneNetwork.current()
+        val plan = planRoutes(
+            routes.map(HostRoute::toRouteAddress),
+            discovered.map(HostRoute::toRouteAddress),
+            network,
+            remembered.map { RememberedRoute(it.fingerprint, it.route.toRouteAddress()) },
+        )
+        val result = ControllerRouteRace.race(plan, transportFactory)
+        onRaced(network, result)
+        val transport = result.transport ?: throw checkNotNull(result.failure)
+        return transport to checkNotNull(result.route)
     }
 
-    // SSH and relay transports ignore the route, so only the direct TCP transport walks the list.
-    private fun openHost(host: PairedHostRecord): ControllerDuplexTransport {
-        val candidates = if (transportFactory === TcpControllerTransportFactory) host.routes else listOf(host.route)
-        val (transport, route) = openFirstReachable(candidates)
+    // SSH and relay transports ignore the route, so only the direct TCP transport races the list.
+    private suspend fun openHost(host: PairedHostRecord): ControllerDuplexTransport {
+        if (transportFactory !== TcpControllerTransportFactory) {
+            val transport = transportFactory.open(host.route)
+            connectedRoutes[host.id] = host.route
+            return transport
+        }
+        val discovered = discoveredRoutes.remove(host.id).orEmpty()
+        val (transport, route) = openFirstReachable(host.routes, discovered, host.routeMemory) { network, result ->
+            val saved = (host.routes + discovered).distinct().map(HostRoute::toRouteAddress)
+            adviceByHost[host.id] = adviseOnRoutes(saved, network, result.outcomes)
+            val fingerprint = network.fingerprint
+            val won = result.route
+            if (fingerprint != null && won != null) {
+                connectedMemory[host.id] = rememberRoute(
+                    host.routeMemory.map { RememberedRoute(it.fingerprint, it.route.toRouteAddress()) },
+                    fingerprint,
+                    won.toRouteAddress(),
+                ).map { RememberedRouteRecord(it.fingerprint, it.route.address, it.route.port.toInt()) }
+            }
+        }
         connectedRoutes[host.id] = route
         return transport
     }

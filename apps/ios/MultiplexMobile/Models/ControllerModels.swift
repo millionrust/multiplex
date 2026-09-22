@@ -37,6 +37,46 @@ struct HostRoute: Codable, Hashable, Sendable {
     }
 }
 
+/// The address that last connected to a Host on one network, by that network's fingerprint.
+struct RememberedRouteRecord: Codable, Hashable, Sendable {
+    static let maxPerHost = 8
+
+    let fingerprint: String
+    let address: String
+    let port: UInt16
+
+    init(fingerprint: String, route: HostRoute) throws {
+        guard fingerprint.utf8.count == 32,
+              fingerprint.utf8.allSatisfy({ (0x30...0x39).contains($0) || (0x61...0x66).contains($0) }) else {
+            throw ControllerModelError.invalidRoute
+        }
+        self.fingerprint = fingerprint
+        self.address = route.address
+        self.port = route.port
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            fingerprint: try values.decode(String.self, forKey: .fingerprint),
+            route: try HostRoute(
+                address: try values.decode(String.self, forKey: .address),
+                port: try values.decode(UInt16.self, forKey: .port)
+            )
+        )
+    }
+
+    var remembered: RememberedRoute {
+        RememberedRoute(fingerprint: fingerprint, route: RouteAddress(address: address, port: port))
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case fingerprint
+        case address
+        case port
+    }
+}
+
 struct PairedHostRecord: Codable, Identifiable, Hashable, Sendable {
     static let currentSchemaVersion = 1
 
@@ -55,6 +95,9 @@ struct PairedHostRecord: Codable, Identifiable, Hashable, Sendable {
     let pairedAt: Date
     /// The Bonjour `id` the Host announces, used to find it again after its address changes.
     let discoveryId: String?
+    /// Which address connected last on each network the phone has reached the Host from, newest
+    /// first, so the route race tries it first there next time.
+    let routeMemory: [RememberedRouteRecord]
 
     var route: HostRoute { routes[0] }
 
@@ -98,10 +141,13 @@ struct PairedHostRecord: Codable, Identifiable, Hashable, Sendable {
         sessionGeneration: UInt64,
         capabilityBits: UInt16,
         pairedAt: Date = .now,
-        discoveryId: String? = nil
+        discoveryId: String? = nil,
+        routeMemory: [RememberedRouteRecord] = []
     ) throws {
         let uniqueRoutes = Self.uniqued(routes)
-        guard hostStaticPublicKey.count == 32,
+        guard routeMemory.count <= RememberedRouteRecord.maxPerHost,
+              Set(routeMemory.map(\.fingerprint)).count == routeMemory.count,
+              hostStaticPublicKey.count == 32,
               identityGeneration > 0,
               !uniqueRoutes.isEmpty,
               uniqueRoutes.count <= HostRoute.maxRoutesPerHost,
@@ -124,6 +170,7 @@ struct PairedHostRecord: Codable, Identifiable, Hashable, Sendable {
         self.capabilityBits = capabilityBits
         self.pairedAt = pairedAt
         self.discoveryId = discoveryId ?? Self.discoveryID(hostStaticPublicKey: hostStaticPublicKey)
+        self.routeMemory = routeMemory
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -141,6 +188,7 @@ struct PairedHostRecord: Codable, Identifiable, Hashable, Sendable {
         case capabilityBits
         case pairedAt
         case discoveryId
+        case routeMemory
     }
 
     /// Records saved before a Host could have several addresses carry only `route`.
@@ -161,7 +209,12 @@ struct PairedHostRecord: Codable, Identifiable, Hashable, Sendable {
             sessionGeneration: try values.decode(UInt64.self, forKey: .sessionGeneration),
             capabilityBits: try values.decode(UInt16.self, forKey: .capabilityBits),
             pairedAt: try values.decode(Date.self, forKey: .pairedAt),
-            discoveryId: try values.decodeIfPresent(String.self, forKey: .discoveryId)
+            discoveryId: try values.decodeIfPresent(String.self, forKey: .discoveryId),
+            // Records saved before routes were remembered per network carry none. A memory that
+            // does not read back is dropped rather than losing the pairing with it.
+            routeMemory: Self.readableMemory(
+                (try? values.decodeIfPresent([RememberedRouteRecord].self, forKey: .routeMemory)) ?? []
+            )
         )
         guard schemaVersion == Self.currentSchemaVersion else {
             throw ControllerModelError.invalidHost
@@ -186,6 +239,7 @@ struct PairedHostRecord: Codable, Identifiable, Hashable, Sendable {
         try values.encode(capabilityBits, forKey: .capabilityBits)
         try values.encode(pairedAt, forKey: .pairedAt)
         try values.encodeIfPresent(discoveryId, forKey: .discoveryId)
+        try values.encode(routeMemory, forKey: .routeMemory)
     }
 
     var fingerprint: String {
@@ -197,9 +251,25 @@ struct PairedHostRecord: Codable, Identifiable, Hashable, Sendable {
         try replacing(routes: [route] + routes.filter { $0 != route })
     }
 
+    /// The same record remembering that `route` connected on the network `fingerprint` names.
+    func remembering(_ route: HostRoute, on fingerprint: String) throws -> PairedHostRecord {
+        let memory = rememberRoute(
+            remembered: routeMemory.map(\.remembered),
+            fingerprint: fingerprint,
+            route: RouteAddress(route)
+        )
+        return try replacing(routeMemory: try memory.map { entry in
+            try RememberedRouteRecord(
+                fingerprint: entry.fingerprint,
+                route: try HostRoute(address: entry.route.address, port: entry.route.port)
+            )
+        })
+    }
+
     func replacing(
         routes: [HostRoute]? = nil,
-        capabilityBits: UInt16? = nil
+        capabilityBits: UInt16? = nil,
+        routeMemory: [RememberedRouteRecord]? = nil
     ) throws -> PairedHostRecord {
         try PairedHostRecord(
             id: id,
@@ -213,7 +283,8 @@ struct PairedHostRecord: Codable, Identifiable, Hashable, Sendable {
             sessionGeneration: sessionGeneration,
             capabilityBits: capabilityBits ?? self.capabilityBits,
             pairedAt: pairedAt,
-            discoveryId: discoveryId
+            discoveryId: discoveryId,
+            routeMemory: routeMemory ?? self.routeMemory
         )
     }
 
@@ -223,6 +294,12 @@ struct PairedHostRecord: Codable, Identifiable, Hashable, Sendable {
         hasher.update(data: Data("multiplex-host-fingerprint-v1\0".utf8))
         hasher.update(data: hostStaticPublicKey)
         return hasher.finalize().prefix(16).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func readableMemory(_ memory: [RememberedRouteRecord]) -> [RememberedRouteRecord] {
+        var seen = Set<String>()
+        return Array(memory.filter { seen.insert($0.fingerprint).inserted }
+            .prefix(RememberedRouteRecord.maxPerHost))
     }
 
     private static func uniqued(_ routes: [HostRoute]) -> [HostRoute] {
@@ -381,6 +458,10 @@ struct ControllerFleetSnapshot: Equatable, Sendable {
     let sessions: [ControllerSessionSummary]
     /// The direct address that answered, when the transport connects by address.
     var connectedRoute: HostRoute? = nil
+    /// The network the phone reached it from, for remembering `connectedRoute` there.
+    var routeFingerprint: String? = nil
+    /// What the route race suggests telling the person, if anything.
+    var routeAdvice: ControllerRouteAdvice? = nil
 }
 
 enum ControllerConnectionState: Equatable, Sendable {

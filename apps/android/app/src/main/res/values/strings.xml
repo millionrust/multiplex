@@ -194,6 +194,10 @@
     <string name="route_error_degraded">The selected route failed. Retry it explicitly; Multiplex did not switch routes.</string>
     <string name="route_error_configuration_invalid">Check the SSH endpoint, port, username, host-key pin, and credential.</string>
     <string name="route_error_generic">The connection route could not be changed.</string>
+    <string name="route_advice_tailscale_exit_node">Connected over Tailscale because this network could not reach the computer directly. If Tailscale uses an exit node, turn on “Allow local network access” in Tailscale.</string>
+    <string name="route_advice_remote_access_off">The computer turned the connection away. Check that Remote access is on in Multiplex on the computer.</string>
+    <string name="route_advice_not_on_network">This phone is not on the computer\'s network, and no Tailscale, SSH, or relay route is set up.</string>
+    <string name="route_advice_needs_remote_route">Away from the computer\'s network. Set up Tailscale, SSH, or a relay to connect from here.</string>
     <string name="enrollment_title">Enrollment</string>
     <string name="enrollment_back">Back to devices</string>
     <string name="enrollment_reload">Reload request</string>

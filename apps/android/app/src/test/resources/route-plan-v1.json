@@ -1,0 +1,514 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "home Wi-Fi, first visit: the local address leads",
+      "saved": [
+        {
+          "address": "192.168.1.20",
+          "port": 7420
+        },
+        {
+          "address": "100.101.102.103",
+          "port": 7420
+        }
+      ],
+      "discovered": [],
+      "link": "wifi",
+      "phone_addresses": [
+        {
+          "address": "192.168.1.55",
+          "prefix_length": 24
+        },
+        {
+          "address": "fe80::1c2d:3e4f:5a6b:7c8d",
+          "prefix_length": 64
+        }
+      ],
+      "fingerprint": "home",
+      "remembered": [],
+      "expected": {
+        "deadline_millis": 12000,
+        "attempts": [
+          {
+            "address": "192.168.1.20",
+            "port": 7420,
+            "kind": "local_network",
+            "tier": 1,
+            "start_after_millis": 0,
+            "timeout_millis": 3000
+          },
+          {
+            "address": "100.101.102.103",
+            "port": 7420,
+            "kind": "tailscale",
+            "tier": 2,
+            "start_after_millis": 250,
+            "timeout_millis": 6000
+          }
+        ]
+      }
+    },
+    {
+      "name": "home Wi-Fi with Tailscale on, Tailscale worked last: local still leads",
+      "saved": [
+        {
+          "address": "100.101.102.103",
+          "port": 7420
+        },
+        {
+          "address": "fd7a:115c:a1e0::1234",
+          "port": 7420
+        },
+        {
+          "address": "192.168.1.20",
+          "port": 7420
+        }
+      ],
+      "discovered": [],
+      "link": "wifi",
+      "phone_addresses": [
+        {
+          "address": "192.168.1.55",
+          "prefix_length": 24
+        },
+        {
+          "address": "fe80::1c2d:3e4f:5a6b:7c8d",
+          "prefix_length": 64
+        }
+      ],
+      "fingerprint": "home",
+      "remembered": [],
+      "expected": {
+        "deadline_millis": 12000,
+        "attempts": [
+          {
+            "address": "192.168.1.20",
+            "port": 7420,
+            "kind": "local_network",
+            "tier": 1,
+            "start_after_millis": 0,
+            "timeout_millis": 3000
+          },
+          {
+            "address": "100.101.102.103",
+            "port": 7420,
+            "kind": "tailscale",
+            "tier": 2,
+            "start_after_millis": 250,
+            "timeout_millis": 6000
+          },
+          {
+            "address": "fd7a:115c:a1e0::1234",
+            "port": 7420,
+            "kind": "tailscale",
+            "tier": 2,
+            "start_after_millis": 350,
+            "timeout_millis": 6000
+          }
+        ]
+      }
+    },
+    {
+      "name": "home Wi-Fi, second visit: the remembered address goes alone at first",
+      "saved": [
+        {
+          "address": "100.101.102.103",
+          "port": 7420
+        },
+        {
+          "address": "192.168.1.20",
+          "port": 7420
+        }
+      ],
+      "discovered": [],
+      "link": "wifi",
+      "phone_addresses": [
+        {
+          "address": "192.168.1.55",
+          "prefix_length": 24
+        },
+        {
+          "address": "fe80::1c2d:3e4f:5a6b:7c8d",
+          "prefix_length": 64
+        }
+      ],
+      "fingerprint": "home",
+      "remembered": [
+        {
+          "fingerprint": "home",
+          "route": {
+            "address": "192.168.1.20",
+            "port": 7420
+          }
+        }
+      ],
+      "expected": {
+        "deadline_millis": 12000,
+        "attempts": [
+          {
+            "address": "192.168.1.20",
+            "port": 7420,
+            "kind": "local_network",
+            "tier": 0,
+            "start_after_millis": 0,
+            "timeout_millis": 3000
+          },
+          {
+            "address": "100.101.102.103",
+            "port": 7420,
+            "kind": "tailscale",
+            "tier": 2,
+            "start_after_millis": 250,
+            "timeout_millis": 6000
+          }
+        ]
+      }
+    },
+    {
+      "name": "Tailscale remembered at home: the local address still leads",
+      "saved": [
+        {
+          "address": "192.168.1.20",
+          "port": 7420
+        },
+        {
+          "address": "100.101.102.103",
+          "port": 7420
+        }
+      ],
+      "discovered": [],
+      "link": "wifi",
+      "phone_addresses": [
+        {
+          "address": "192.168.1.55",
+          "prefix_length": 24
+        },
+        {
+          "address": "fe80::1c2d:3e4f:5a6b:7c8d",
+          "prefix_length": 64
+        }
+      ],
+      "fingerprint": "home",
+      "remembered": [
+        {
+          "fingerprint": "home",
+          "route": {
+            "address": "100.101.102.103",
+            "port": 7420
+          }
+        }
+      ],
+      "expected": {
+        "deadline_millis": 12000,
+        "attempts": [
+          {
+            "address": "192.168.1.20",
+            "port": 7420,
+            "kind": "local_network",
+            "tier": 1,
+            "start_after_millis": 0,
+            "timeout_millis": 3000
+          },
+          {
+            "address": "100.101.102.103",
+            "port": 7420,
+            "kind": "tailscale",
+            "tier": 2,
+            "start_after_millis": 250,
+            "timeout_millis": 6000
+          }
+        ]
+      }
+    },
+    {
+      "name": "the computer moved to a new address: Bonjour's leads",
+      "saved": [
+        {
+          "address": "192.168.1.20",
+          "port": 7420
+        },
+        {
+          "address": "100.101.102.103",
+          "port": 7420
+        }
+      ],
+      "discovered": [
+        {
+          "address": "192.168.1.31",
+          "port": 7420
+        }
+      ],
+      "link": "wifi",
+      "phone_addresses": [
+        {
+          "address": "192.168.1.55",
+          "prefix_length": 24
+        },
+        {
+          "address": "fe80::1c2d:3e4f:5a6b:7c8d",
+          "prefix_length": 64
+        }
+      ],
+      "fingerprint": "home",
+      "remembered": [],
+      "expected": {
+        "deadline_millis": 12000,
+        "attempts": [
+          {
+            "address": "192.168.1.31",
+            "port": 7420,
+            "kind": "local_network",
+            "tier": 1,
+            "start_after_millis": 0,
+            "timeout_millis": 3000
+          },
+          {
+            "address": "192.168.1.20",
+            "port": 7420,
+            "kind": "local_network",
+            "tier": 1,
+            "start_after_millis": 100,
+            "timeout_millis": 3000
+          },
+          {
+            "address": "100.101.102.103",
+            "port": 7420,
+            "kind": "tailscale",
+            "tier": 2,
+            "start_after_millis": 250,
+            "timeout_millis": 6000
+          }
+        ]
+      }
+    },
+    {
+      "name": "cellular with Tailscale: Tailscale first, local addresses last",
+      "saved": [
+        {
+          "address": "192.168.1.20",
+          "port": 7420
+        },
+        {
+          "address": "100.101.102.103",
+          "port": 7420
+        },
+        {
+          "address": "fd7a:115c:a1e0::1234",
+          "port": 7420
+        }
+      ],
+      "discovered": [],
+      "link": "cellular",
+      "phone_addresses": [
+        {
+          "address": "100.72.14.9",
+          "prefix_length": 10
+        }
+      ],
+      "fingerprint": "cellular",
+      "remembered": [
+        {
+          "fingerprint": "home",
+          "route": {
+            "address": "192.168.1.20",
+            "port": 7420
+          }
+        }
+      ],
+      "expected": {
+        "deadline_millis": 12000,
+        "attempts": [
+          {
+            "address": "100.101.102.103",
+            "port": 7420,
+            "kind": "tailscale",
+            "tier": 2,
+            "start_after_millis": 0,
+            "timeout_millis": 6000
+          },
+          {
+            "address": "fd7a:115c:a1e0::1234",
+            "port": 7420,
+            "kind": "tailscale",
+            "tier": 2,
+            "start_after_millis": 250,
+            "timeout_millis": 6000
+          },
+          {
+            "address": "192.168.1.20",
+            "port": 7420,
+            "kind": "local_network",
+            "tier": 3,
+            "start_after_millis": 500,
+            "timeout_millis": 6000
+          }
+        ]
+      }
+    },
+    {
+      "name": "someone else's Wi-Fi on a different subnet",
+      "saved": [
+        {
+          "address": "192.168.1.20",
+          "port": 7420
+        },
+        {
+          "address": "10.0.0.8",
+          "port": 7420
+        },
+        {
+          "address": "100.101.102.103",
+          "port": 7420
+        }
+      ],
+      "discovered": [],
+      "link": "wifi",
+      "phone_addresses": [
+        {
+          "address": "10.9.0.4",
+          "prefix_length": 16
+        }
+      ],
+      "fingerprint": "cafe",
+      "remembered": [
+        {
+          "fingerprint": "home",
+          "route": {
+            "address": "192.168.1.20",
+            "port": 7420
+          }
+        }
+      ],
+      "expected": {
+        "deadline_millis": 12000,
+        "attempts": [
+          {
+            "address": "100.101.102.103",
+            "port": 7420,
+            "kind": "tailscale",
+            "tier": 2,
+            "start_after_millis": 0,
+            "timeout_millis": 6000
+          },
+          {
+            "address": "192.168.1.20",
+            "port": 7420,
+            "kind": "local_network",
+            "tier": 3,
+            "start_after_millis": 500,
+            "timeout_millis": 6000
+          },
+          {
+            "address": "10.0.0.8",
+            "port": 7420,
+            "kind": "local_network",
+            "tier": 3,
+            "start_after_millis": 600,
+            "timeout_millis": 6000
+          }
+        ]
+      }
+    },
+    {
+      "name": "a host with one address",
+      "saved": [
+        {
+          "address": "192.168.1.20",
+          "port": 7420
+        }
+      ],
+      "discovered": [],
+      "link": "wifi",
+      "phone_addresses": [
+        {
+          "address": "192.168.1.55",
+          "prefix_length": 24
+        },
+        {
+          "address": "fe80::1c2d:3e4f:5a6b:7c8d",
+          "prefix_length": 64
+        }
+      ],
+      "fingerprint": null,
+      "remembered": [],
+      "expected": {
+        "deadline_millis": 12000,
+        "attempts": [
+          {
+            "address": "192.168.1.20",
+            "port": 7420,
+            "kind": "local_network",
+            "tier": 1,
+            "start_after_millis": 0,
+            "timeout_millis": 12000
+          }
+        ]
+      }
+    },
+    {
+      "name": "a duplicate and a link-local address",
+      "saved": [
+        {
+          "address": "192.168.1.20",
+          "port": 7420
+        },
+        {
+          "address": "fe80::aa:bbff:fecc:ddee",
+          "port": 7420
+        },
+        {
+          "address": "192.168.1.20",
+          "port": 7420
+        },
+        {
+          "address": "100.101.102.103",
+          "port": 7420
+        }
+      ],
+      "discovered": [],
+      "link": "wifi",
+      "phone_addresses": [
+        {
+          "address": "192.168.1.55",
+          "prefix_length": 24
+        },
+        {
+          "address": "fe80::1c2d:3e4f:5a6b:7c8d",
+          "prefix_length": 64
+        }
+      ],
+      "fingerprint": null,
+      "remembered": [],
+      "expected": {
+        "deadline_millis": 12000,
+        "attempts": [
+          {
+            "address": "192.168.1.20",
+            "port": 7420,
+            "kind": "local_network",
+            "tier": 1,
+            "start_after_millis": 0,
+            "timeout_millis": 3000
+          },
+          {
+            "address": "fe80::aa:bbff:fecc:ddee",
+            "port": 7420,
+            "kind": "local_network",
+            "tier": 1,
+            "start_after_millis": 100,
+            "timeout_millis": 3000
+          },
+          {
+            "address": "100.101.102.103",
+            "port": 7420,
+            "kind": "tailscale",
+            "tier": 2,
+            "start_after_millis": 250,
+            "timeout_millis": 6000
+          }
+        ]
+      }
+    }
+  ]
+}

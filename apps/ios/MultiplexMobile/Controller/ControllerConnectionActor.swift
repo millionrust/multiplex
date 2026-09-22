@@ -81,6 +81,16 @@ private final class NWControllerDuplexConnection: ControllerDuplexConnection, @u
                         }
                     case .failed(let error):
                         if gate.claim() { continuation.resume(throwing: error) }
+                    case .waiting(let error):
+                        // Waiting will not change a refusal or a missing route, and the route
+                        // race moves on to the next address as soon as this one fails.
+                        if case .posix(let code) = error,
+                           [.ECONNREFUSED, .ENETUNREACH, .EHOSTUNREACH].contains(code),
+                           gate.claim() {
+                            connection.stateUpdateHandler = nil
+                            connection.cancel()
+                            continuation.resume(throwing: error)
+                        }
                     case .cancelled:
                         if gate.claim() { continuation.resume(throwing: CancellationError()) }
                     default:
@@ -194,6 +204,8 @@ protocol ControllerConnecting: Sendable {
     ) async throws
     func forgetDeviceSecret(host: PairedHostRecord) async throws
     func cancel() async
+    /// What the last attempt to reach `hostID` suggests telling the person, if anything.
+    func lastRouteAdvice(hostID: String) async -> ControllerRouteAdvice?
 }
 
 final class AppleControllerRouteConnections: @unchecked Sendable {
@@ -263,6 +275,12 @@ final class AppleControllerRouteConnections: @unchecked Sendable {
 }
 
 extension ControllerConnecting {
+    /// Only a transport that chooses between a Host's addresses has advice to give.
+    func lastRouteAdvice(hostID: String) async -> ControllerRouteAdvice? {
+        _ = hostID
+        return nil
+    }
+
     /// A transport that cannot carry screens says so, rather than every one of them having to.
     func watchScreen(
         host: PairedHostRecord,
@@ -570,8 +588,6 @@ actor ControllerConnectionActor: ControllerConnecting {
     private static let handshakeTimeout: Duration = .seconds(30)
     /// The Host gives a code pairing connection this long, from its hello to its acknowledgement.
     private static let codePairingTimeout: Duration = .seconds(60)
-    /// Used per address when a Host has several, so one unreachable address cannot use up the budget.
-    private static let routeAttemptTimeout: Duration = .seconds(10)
     private static let discoveryLookupTimeout: Duration = .seconds(3)
     private static let codePairingShareBytes = 32
     private static let codePairingOfferBytes = 84
@@ -579,18 +595,31 @@ actor ControllerConnectionActor: ControllerConnecting {
     private let securityEngine: ControllerSecurityEngine
     private let transportFactory: ControllerTransportFactory
     private let discovery: (any ControllerComputerLookup)?
+    private let networkProvider: any ControllerPhoneNetworkProviding
     private var connection: (any ControllerDuplexConnection)?
+    /// Per Host: the network the last race ran on, and what it suggests telling the person.
+    private var lastRouteFingerprints: [String: String] = [:]
+    private var lastRouteAdvices: [String: ControllerRouteAdvice] = [:]
     private var pairing: PendingPairing?
     private var activeTerminal: ActiveTerminalConnection?
 
     init(
         blobStore: SecureBlobStore,
         transportFactory: ControllerTransportFactory = .tcp,
-        discovery: (any ControllerComputerLookup)? = nil
+        discovery: (any ControllerComputerLookup)? = nil,
+        networkProvider: (any ControllerPhoneNetworkProviding)? = nil
     ) throws {
         self.securityEngine = try ControllerSecurityEngine(blobs: blobStore)
         self.transportFactory = transportFactory
         self.discovery = discovery
+        // Only a transport that connects by address races routes and needs to watch the network.
+        self.networkProvider = networkProvider ?? (transportFactory.openEndpoint == nil
+            ? ControllerFixedPhoneNetwork(network: PhoneNetwork(link: .other, addresses: [], fingerprint: nil))
+            : ControllerPhoneNetworkMonitor())
+    }
+
+    func lastRouteAdvice(hostID: String) -> ControllerRouteAdvice? {
+        lastRouteAdvices[hostID]
     }
 
     func beginPairing(
@@ -980,6 +1009,8 @@ actor ControllerConnectionActor: ControllerConnecting {
             )
         }
         snapshot.connectedRoute = connectedRoute
+        snapshot.routeFingerprint = lastRouteFingerprints[host.id]
+        snapshot.routeAdvice = lastRouteAdvices[host.id]
         return snapshot
     }
 
@@ -1508,40 +1539,97 @@ actor ControllerConnectionActor: ControllerConnecting {
         connection = nil
     }
 
-    /// Connects to the first of `routes` that answers. Transports that do not connect by
-    /// address only ever use the first route.
+    /// Connects to the best of `routes` that answers, racing them as the shared route planner
+    /// says. Transports that do not connect by address only ever use the first route.
     private func openFirstRoute(
         _ routes: [HostRoute],
         deadline: ContinuousClock.Instant? = nil
     ) async throws -> (network: any ControllerDuplexConnection, route: HostRoute) {
-        let candidates = transportFactory.openEndpoint == nil ? Array(routes.prefix(1)) : routes
-        var lastError: Error = ControllerPairingError.connectionClosed
-        for route in candidates {
-            var timeout = candidates.count == 1 ? Self.handshakeTimeout : Self.routeAttemptTimeout
-            if let deadline { timeout = min(timeout, Self.remaining(until: deadline)) }
-            do {
-                let network = try await withTimeout(timeout) {
-                    try await self.transportFactory.open(route)
-                }
-                return (network, route)
-            } catch {
-                if Task.isCancelled { throw CancellationError() }
-                lastError = error
-            }
+        do {
+            let raced = try await raceRoutes(routes, deadline: deadline)
+            return (raced.network, raced.route)
+        } catch let raced as RacedRouteFailure {
+            throw raced.failure.underlying
         }
-        throw lastError
     }
 
-    /// Opens a paired Host by its saved routes, most recently working first. When none answers
-    /// and the Host is announcing itself on this network, its Bonjour service is tried instead
-    /// and the address it resolves to is returned so it can be saved.
+    /// Races `routes`, reporting the phone's network and how each attempt ended so the caller
+    /// can remember the winner and explain a failure. Throws `RacedRouteFailure` when
+    /// every address failed.
+    private func raceRoutes(
+        _ routes: [HostRoute],
+        deadline: ContinuousClock.Instant? = nil,
+        remembered: [RememberedRoute] = []
+    ) async throws -> RacedRoute {
+        guard transportFactory.openEndpoint != nil else {
+            guard let route = routes.first else { throw ControllerPairingError.connectionClosed }
+            var timeout = Self.handshakeTimeout
+            if let deadline { timeout = min(timeout, Self.remaining(until: deadline)) }
+            let network = try await withTimeout(timeout) {
+                try await self.transportFactory.open(route)
+            }
+            return RacedRoute(network: network, route: route, phone: nil, outcomes: [])
+        }
+        let phone = networkProvider.currentNetwork()
+        let plan = planRoutes(
+            saved: routes.map { RouteAddress($0) },
+            discovered: [],
+            network: phone,
+            remembered: remembered
+        )
+        do {
+            let winner = try await ControllerRouteRace.run(
+                plan,
+                deadline: deadline,
+                open: transportFactory.open
+            )
+            return RacedRoute(
+                network: winner.network,
+                route: winner.route,
+                phone: phone,
+                outcomes: winner.outcomes
+            )
+        } catch let failure as ControllerRouteRaceFailure {
+            throw RacedRouteFailure(phone: phone, failure: failure)
+        }
+    }
+
+    /// Keeps what a race to `host` found: the network it ran on, so the winner can be remembered
+    /// for it, and the advice for the person.
+    private func recordRace(
+        for host: PairedHostRecord,
+        phone: PhoneNetwork?,
+        outcomes: [AttemptOutcome]
+    ) {
+        guard let phone else {
+            lastRouteFingerprints[host.id] = nil
+            lastRouteAdvices[host.id] = nil
+            return
+        }
+        lastRouteFingerprints[host.id] = phone.fingerprint
+        lastRouteAdvices[host.id] = ControllerRouteAdvice(routeAdvice(
+            saved: host.routes.map { RouteAddress($0) },
+            network: phone,
+            outcomes: outcomes
+        ))
+    }
+
+    /// Opens a paired Host by racing its saved routes, the one that worked on this network
+    /// first. When none answers and the Host is announcing itself on this network, its Bonjour
+    /// service is tried instead and the address it resolves to is returned so it can be saved.
     private func openHostConnection(
         _ host: PairedHostRecord
     ) async throws -> (network: any ControllerDuplexConnection, route: HostRoute?) {
         do {
-            let opened = try await openFirstRoute(host.routes)
-            return (opened.network, transportFactory.openEndpoint == nil ? nil : opened.route)
-        } catch {
+            let raced = try await raceRoutes(
+                host.routes,
+                remembered: host.routeMemory.map(\.remembered)
+            )
+            recordRace(for: host, phone: raced.phone, outcomes: raced.outcomes)
+            return (raced.network, transportFactory.openEndpoint == nil ? nil : raced.route)
+        } catch let raced as RacedRouteFailure {
+            recordRace(for: host, phone: raced.phone, outcomes: raced.failure.outcomes)
+            let error = raced.failure.underlying
             guard !Task.isCancelled,
                   let openEndpoint = transportFactory.openEndpoint,
                   let discovery,
@@ -1559,6 +1647,8 @@ actor ControllerConnectionActor: ControllerConnecting {
                 network.cancel()
                 throw error
             }
+            // Bonjour found it on this network, so nothing is left to advise.
+            lastRouteAdvices[host.id] = nil
             return (network, route)
         }
     }
@@ -2047,6 +2137,19 @@ private final class ConnectionStartGate: @unchecked Sendable {
         completed = true
         return true
     }
+}
+
+private struct RacedRoute: Sendable {
+    let network: any ControllerDuplexConnection
+    let route: HostRoute
+    /// The phone's network, when the transport chooses between addresses.
+    let phone: PhoneNetwork?
+    let outcomes: [AttemptOutcome]
+}
+
+private struct RacedRouteFailure: Error {
+    let phone: PhoneNetwork
+    let failure: ControllerRouteRaceFailure
 }
 
 private struct AuthenticatedSessionResult: Sendable {

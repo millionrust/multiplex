@@ -55,6 +55,7 @@ struct ControllerRootView: View {
         } detail: {
             ControllerSessionFleetView(
                 state: viewModel.state,
+                routeAdvice: viewModel.routeAdvice,
                 routes: viewModel.routeProjections,
                 routeSelectionError: viewModel.routeSelectionError,
                 onRetry: viewModel.retry,
@@ -393,6 +394,7 @@ private struct ControllerScreenPlaceholder: View {
 
 private struct ControllerSessionFleetView: View {
     let state: ControllerViewState
+    let routeAdvice: ControllerRouteAdvice?
     let routes: [AppleControllerRouteProjection]
     let routeSelectionError: AppleControllerRouteCoordinatorError?
     let onRetry: () -> Void
@@ -415,7 +417,7 @@ private struct ControllerSessionFleetView: View {
             } else {
                 List {
                     Section {
-                        ControllerStatusBanner(state: state, onRetry: onRetry)
+                        ControllerStatusBanner(state: state, advice: routeAdvice, onRetry: onRetry)
                     }
                     if canWatch {
                         Section("This Computer's Screen") {
@@ -863,6 +865,7 @@ private struct SSHControllerConfigurationView: View {
 
 private struct ControllerStatusBanner: View {
     let state: ControllerViewState
+    var advice: ControllerRouteAdvice?
     let onRetry: () -> Void
 
     var body: some View {
@@ -893,9 +896,30 @@ private struct ControllerStatusBanner: View {
                 detailText
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if let adviceMessage {
+                    Text(adviceMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    /// Said only while it still fits: the Tailscale note once connected, the rest after a failure.
+    private var adviceMessage: LocalizedStringKey? {
+        switch (advice, state.connection) {
+        case (.localNetworkBlockedWhileTailscaleWorks?, .readyReadOnly):
+            return "Connected over Tailscale because this network could not reach the computer directly. If Tailscale uses an exit node, turn on “Allow local network access” in Tailscale."
+        case (.remoteAccessOff?, .failed):
+            return "The computer turned the connection away. Check that Remote access is on in Multiplex on the computer."
+        case (.notOnComputersNetwork?, .failed):
+            return "This phone is not on the computer's network, and no Tailscale, SSH, or relay route is set up."
+        case (.needsRemoteRoute?, .failed):
+            return "Away from the computer's network. Set up Tailscale, SSH, or a relay to connect from here."
+        default:
+            return nil
+        }
     }
 
     @ViewBuilder

@@ -650,6 +650,13 @@ private fun ControllerRouteSelector(
                 color = MaterialTheme.colorScheme.error,
             )
         }
+        state.routeAdvice?.let { advice ->
+            Text(
+                controllerRouteAdvice(advice),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
     HorizontalDivider()
 }
@@ -1009,6 +1016,14 @@ private fun controllerRouteStatus(projection: AndroidControllerRouteProjection):
     projection.phase == ControllerRemoteRoutePhase.RECONNECTING -> stringResource(com.multiplex.mobile.R.string.route_status_reconnecting)
     projection.phase == ControllerRemoteRoutePhase.REVOKED -> stringResource(com.multiplex.mobile.R.string.route_status_revoked)
     else -> stringResource(com.multiplex.mobile.R.string.route_status_ready)
+}
+
+@Composable
+private fun controllerRouteAdvice(advice: String): String = when (advice) {
+    "route_advice_tailscale_exit_node" -> stringResource(com.multiplex.mobile.R.string.route_advice_tailscale_exit_node)
+    "route_advice_remote_access_off" -> stringResource(com.multiplex.mobile.R.string.route_advice_remote_access_off)
+    "route_advice_not_on_network" -> stringResource(com.multiplex.mobile.R.string.route_advice_not_on_network)
+    else -> stringResource(com.multiplex.mobile.R.string.route_advice_needs_remote_route)
 }
 
 @Composable

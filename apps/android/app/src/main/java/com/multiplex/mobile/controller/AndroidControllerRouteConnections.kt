@@ -23,6 +23,15 @@ interface ControllerConnecting : AutoCloseable {
     /** The route the last connection to [hostId] used, when this connection picks routes. */
     fun connectedRoute(hostId: String): HostRoute?
 
+    /** Which address worked on which network for [hostId], after its last connection. */
+    fun connectedRouteMemory(hostId: String): List<RememberedRouteRecord>? = null
+
+    /** What to tell the person about how the last connection to [hostId] went, if anything. */
+    fun routeAdvice(hostId: String): com.multiplex.controller.security.RouteAdvice? = null
+
+    /** Addresses Bonjour just resolved for [hostId], tried early by its next connection. */
+    fun noteDiscoveredRoutes(hostId: String, routes: List<HostRoute>) = Unit
+
     suspend fun fetchSessions(
         host: PairedHostRecord,
         progress: suspend (ControllerConnectionState) -> Unit = {},

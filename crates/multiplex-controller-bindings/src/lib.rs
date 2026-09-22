@@ -1,7 +1,8 @@
 //! Narrow generated boundary for Controller-v1 wire, crypto, and authorization.
 //!
 //! This crate deliberately owns no transport, retry loop, runtime, filesystem, terminal,
-//! application lifecycle, or user interface.
+//! application lifecycle, or user interface. `route_plan` decides the order in which a phone
+//! tries a computer's addresses, as pure policy; the apps own the sockets.
 
 use std::fmt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -22,6 +23,14 @@ const PRIVATE_KEY_BYTES: usize = 32;
 const MAX_OPAQUE_KEY_ID_BYTES: usize = 128;
 const MAX_SECURE_BLOB_BYTES: usize = 4 * 1024;
 const MAX_HANDSHAKE_MESSAGE_BYTES: usize = 256;
+
+mod route_plan;
+
+pub use route_plan::{
+    AttemptOutcome, AttemptResult, PhoneAddress, PhoneLink, PhoneNetwork, PlannedAttempt,
+    RememberedRoute, RouteAddress, RouteAdvice, RouteKind, RoutePlan, network_fingerprint,
+    plan_routes, remember_route, route_advice, route_kind,
+};
 
 uniffi::setup_scaffolding!();
 

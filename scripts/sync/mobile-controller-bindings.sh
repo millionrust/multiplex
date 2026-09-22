@@ -31,6 +31,9 @@ ANDROID_KOTLIN="$ANDROID_DIR/app/src/main/java/com/multiplex/controller/security
 ANDROID_FIXTURE="$ANDROID_DIR/app/src/test/resources/controller-v2.json"
 ANDROID_TEST_NATIVE="$ANDROID_DIR/app/src/test/native"
 FIXTURE="$ROOT_DIR/crates/multiplex-controller-security/tests/vectors/controller-v2.json"
+ROUTE_FIXTURE="$ROOT_DIR/tests/fixtures/controller-routes/route-plan-v1.json"
+IOS_ROUTE_FIXTURE="$IOS_DIR/MultiplexMobileTests/Fixtures/route-plan-v1.json"
+ANDROID_ROUTE_FIXTURE="$ANDROID_DIR/app/src/test/resources/route-plan-v1.json"
 
 if [[ "$MODE" == "--write" ]]; then
   if [[ "$DO_IOS" -eq 1 ]]; then
@@ -39,11 +42,13 @@ if [[ "$MODE" == "--write" ]]; then
     cp -R "$SOURCE/ios/MultiplexControllerSecurity.xcframework" "$IOS_FRAMEWORK"
     cp "$SOURCE/ios/Sources/MultiplexControllerSecurity.swift" "$IOS_SWIFT"
     cp "$FIXTURE" "$IOS_FIXTURE"
+    cp "$ROUTE_FIXTURE" "$IOS_ROUTE_FIXTURE"
   fi
   if [[ "$DO_ANDROID" -eq 1 ]]; then
     mkdir -p "$(dirname "$ANDROID_KOTLIN")" "$(dirname "$ANDROID_FIXTURE")"
     cp "$SOURCE/android/kotlin/com/multiplex/controller/security/multiplex_controller_bindings.kt" "$ANDROID_KOTLIN"
     cp "$FIXTURE" "$ANDROID_FIXTURE"
+    cp "$ROUTE_FIXTURE" "$ANDROID_ROUTE_FIXTURE"
     rm -rf "$ANDROID_TEST_NATIVE"
     mkdir -p "$ANDROID_TEST_NATIVE"
     cp -R "$SOURCE/kotlin-test/." "$ANDROID_TEST_NATIVE/"
@@ -60,10 +65,12 @@ if [[ "$DO_IOS" -eq 1 ]]; then
   diff -qr "$SOURCE/ios/MultiplexControllerSecurity.xcframework" "$IOS_FRAMEWORK"
   cmp "$SOURCE/ios/Sources/MultiplexControllerSecurity.swift" "$IOS_SWIFT"
   cmp "$FIXTURE" "$IOS_FIXTURE"
+  cmp "$ROUTE_FIXTURE" "$IOS_ROUTE_FIXTURE"
 fi
 if [[ "$DO_ANDROID" -eq 1 ]]; then
   cmp "$SOURCE/android/kotlin/com/multiplex/controller/security/multiplex_controller_bindings.kt" "$ANDROID_KOTLIN"
   cmp "$FIXTURE" "$ANDROID_FIXTURE"
+  cmp "$ROUTE_FIXTURE" "$ANDROID_ROUTE_FIXTURE"
   for abi in arm64-v8a armeabi-v7a x86 x86_64; do
     cmp "$SOURCE/android/jniLibs/$abi/$LIB" "$ANDROID_DIR/app/src/main/jniLibs/$abi/$LIB"
   done

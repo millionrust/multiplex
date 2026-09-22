@@ -30,7 +30,13 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     private val routeConfigurationStore = ControllerRouteConfigurationStore(application)
     private val routeCredentialStore = ControllerRouteCredentialStore(mobileSecrets)
     private val routeConnections = AndroidControllerRouteConnections(
-        privateNetwork = ControllerConnection(secureBlobs),
+        privateNetwork = ControllerConnection(
+            secureBlobs,
+            phoneNetwork = AndroidPhoneNetworkSource(
+                application,
+                application.getSharedPreferences("controller-routes-v1", 0),
+            ),
+        ),
         ssh = null,
         selfHostedRelay = null,
     )
@@ -56,6 +62,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     private var terminalResize: Job? = null
     private var terminalRuntime: ActiveTerminalRuntime? = null
     private var routeError: String? = null
+    private var routeAdvice: String? = null
 
     init {
         val persisted = routePreferences.getString(SELECTED_ROUTE_KEY, null)
@@ -657,6 +664,8 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 markAuthenticated(route)
                 var updated = connection.connectedRoute(host.id)?.let(host::preferringRoute) ?: host
+                connection.connectedRouteMemory(host.id)?.let { updated = updated.copy(routeMemory = it) }
+                routeAdvice = adviceKey(connection.routeAdvice(host.id))
                 if (updated.discoveryId == null) {
                     updated = updated.copy(discoveryId = discoveryIdFor(updated))
                 }
@@ -691,6 +700,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
                         ?.filterNot { it in host.routes }
                         .orEmpty()
                     if (fresh.isNotEmpty()) {
+                        connection.noteDiscoveredRoutes(host.id, fresh)
                         host = fresh.asReversed().fold(host) { record, candidate -> record.preferringRoute(candidate) }
                         continue
                     }
@@ -699,6 +709,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
                     System.currentTimeMillis() - started < 90_000
                 markRouteFailure(route, retryable = willRetry, mutationInFlight = false)
                 if (!willRetry) {
+                    routeAdvice = if (reachedHost) null else adviceKey(connection.routeAdvice(host.id))
                     _state.value = makeState(
                         host.id,
                         ControllerConnectionState.Failed(classify(error)),
@@ -729,6 +740,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
             selectedRoute = selectedRoute(),
             routeProjections = routeCoordinator.projections,
             routeError = routeError,
+            routeAdvice = routeAdvice,
         )
     }
 
@@ -1224,7 +1236,21 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
             selectedRoute = selectedRoute(),
             routeProjections = routeCoordinator.projections,
             routeError = routeError,
+            routeAdvice = routeAdvice,
         )
+    }
+
+    // What the route planner advises after a race, as a key the screen turns into a sentence.
+    private fun adviceKey(advice: com.multiplex.controller.security.RouteAdvice?): String? = when (advice) {
+        com.multiplex.controller.security.RouteAdvice.LOCAL_NETWORK_BLOCKED_WHILE_TAILSCALE_WORKS ->
+            "route_advice_tailscale_exit_node"
+        com.multiplex.controller.security.RouteAdvice.REMOTE_ACCESS_OFF -> "route_advice_remote_access_off"
+        com.multiplex.controller.security.RouteAdvice.NOT_ON_COMPUTERS_NETWORK -> "route_advice_not_on_network"
+        com.multiplex.controller.security.RouteAdvice.NEEDS_REMOTE_ROUTE -> "route_advice_needs_remote_route"
+        com.multiplex.controller.security.RouteAdvice.NONE,
+        com.multiplex.controller.security.RouteAdvice.COMPUTER_UNREACHABLE,
+        null,
+        -> null
     }
 
     private fun routeSelectionError(error: AndroidControllerRouteCoordinatorException) = when (error.transition) {
