@@ -824,6 +824,24 @@ static_message!(
 static_message!(remote_screens_watching_none, RemoteScreensWatchingNoneArgs);
 static_message!(remote_screens_stop_action, RemoteScreensStopActionArgs);
 static_message!(watched_computers_title, WatchedComputersTitleArgs);
+static_message!(devices_view_description, DevicesViewDescriptionArgs);
+static_message!(chrome_home_tooltip, ChromeHomeTooltipArgs);
+static_message!(settings_section_about, SettingsSectionAboutArgs);
+static_message!(
+    settings_section_about_description,
+    SettingsSectionAboutDescriptionArgs
+);
+static_message!(about_version_label, AboutVersionLabelArgs);
+static_message!(about_build_label, AboutBuildLabelArgs);
+static_message!(about_platform_label, AboutPlatformLabelArgs);
+static_message!(about_license_label, AboutLicenseLabelArgs);
+static_message!(about_source_label, AboutSourceLabelArgs);
+static_message!(about_copy_action, AboutCopyActionArgs);
+static_message!(about_copied, AboutCopiedArgs);
+static_message!(sftp_nav_label, SftpNavLabelArgs);
+static_message!(devices_add_computer_action, DevicesAddComputerActionArgs);
+static_message!(devices_settings_action, DevicesSettingsActionArgs);
+static_message!(devices_remote_access_off, DevicesRemoteAccessOffArgs);
 static_message!(
     watched_computers_description,
     WatchedComputersDescriptionArgs

@@ -107,6 +107,8 @@ pub(super) struct RemoteDevicesState {
     watched_name: String,
     watched_pairing: bool,
     watched_failure: Option<String>,
+    /// Whether the Devices view shows the form that adds a computer. Settings always shows it.
+    watched_form_open: bool,
     /// A one-picture-a-second preview per computer, while Devices is on screen.
     watched_previews:
         std::collections::HashMap<String, crate::controller::watch_session::WatchSession>,
@@ -194,6 +196,7 @@ impl RemoteDevicesState {
                     watched_name: String::new(),
                     watched_pairing: false,
                     watched_failure: None,
+                    watched_form_open: false,
                     watched_previews: std::collections::HashMap::new(),
                 };
                 if state.network_policy.enabled {
@@ -269,6 +272,7 @@ impl RemoteDevicesState {
             watched_name: String::new(),
             watched_pairing: false,
             watched_failure: None,
+            watched_form_open: false,
             watched_previews: std::collections::HashMap::new(),
         }
     }
@@ -316,6 +320,7 @@ impl RemoteDevicesState {
             watched_name: String::new(),
             watched_pairing: false,
             watched_failure: None,
+            watched_form_open: false,
             watched_previews: std::collections::HashMap::new(),
         }
     }
@@ -333,6 +338,14 @@ impl RemoteDevicesState {
             self.watched_pairing,
             self.watched_failure.as_deref(),
         )
+    }
+
+    pub(super) fn watched_form_open(&self) -> bool {
+        self.watched_form_open
+    }
+
+    pub(super) fn toggle_watched_form(&mut self) {
+        self.watched_form_open = !self.watched_form_open;
     }
 
     pub(super) fn set_watched_address(&mut self, value: String) {
@@ -1069,7 +1082,6 @@ impl MultiplexApp {
     /// Everything above this is Multiplex as a host. Without this section the desktop can only be
     /// watched, never watch.
     fn render_watched_computers_section(&self, cx: &Context<Self>) -> AnyElement {
-        let (_, _, _, pairing, failure) = self.remote_devices.watched_form();
         let computers = self.remote_devices.watched();
         v_flex()
             .id("watched-computers")
@@ -1094,6 +1106,30 @@ impl MultiplexApp {
                             .child(localization::watched_computers_description()),
                     ),
             )
+            .child(self.render_watched_computer_form(cx))
+            .when(computers.is_empty(), |this| {
+                this.child(
+                    div()
+                        .text_size(px(theme::TYPE_MICRO_SIZE))
+                        .text_color(theme::text_muted())
+                        .child(localization::watched_computers_none()),
+                )
+            })
+            .children(
+                computers
+                    .iter()
+                    .map(|computer| self.render_watched_computer_row(computer, cx)),
+            )
+            .into_any_element()
+    }
+
+    /// The address, code, and name fields that pair this computer with another one.
+    fn render_watched_computer_form(&self, cx: &Context<Self>) -> AnyElement {
+        let (_, _, _, pairing, failure) = self.remote_devices.watched_form();
+        v_flex()
+            .w_full()
+            .min_w_0()
+            .gap_2()
             .child(
                 h_flex()
                     .items_end()
@@ -1101,6 +1137,8 @@ impl MultiplexApp {
                     .gap_2()
                     .child(
                         v_flex()
+                            .min_w(px(theme::HOST_SIDEBAR_WIDTH))
+                            .flex_1()
                             .gap_1()
                             .child(
                                 div()
@@ -1112,6 +1150,7 @@ impl MultiplexApp {
                     )
                     .child(
                         v_flex()
+                            .w(px(theme::PAIRING_CODE_WIDTH))
                             .gap_1()
                             .child(
                                 div()
@@ -1123,6 +1162,8 @@ impl MultiplexApp {
                     )
                     .child(
                         v_flex()
+                            .min_w(px(theme::HOST_SIDEBAR_WIDTH))
+                            .flex_1()
                             .gap_1()
                             .child(
                                 div()
@@ -1135,7 +1176,7 @@ impl MultiplexApp {
                     .child(
                         Button::new("watched-computers-pair")
                             .debug_selector(|| "watched-computers-pair".to_string())
-                            .xsmall()
+                            .small()
                             .primary()
                             .label(if pairing {
                                 localization::watched_computers_pairing()
@@ -1156,19 +1197,6 @@ impl MultiplexApp {
                         .child(message),
                 )
             })
-            .when(computers.is_empty(), |this| {
-                this.child(
-                    div()
-                        .text_size(px(theme::TYPE_MICRO_SIZE))
-                        .text_color(theme::text_muted())
-                        .child(localization::watched_computers_none()),
-                )
-            })
-            .children(
-                computers
-                    .iter()
-                    .map(|computer| self.render_watched_computer_row(computer, cx)),
-            )
             .into_any_element()
     }
 
@@ -1347,7 +1375,19 @@ impl MultiplexApp {
         )
     }
 
+    /// The sidebar's Devices destination: what is paired with this computer, and a way to add
+    /// more. Everything else about remote access lives in Settings → Remote Devices.
     pub(super) fn render_devices_view(&self, cx: &Context<Self>) -> AnyElement {
+        let ready = matches!(
+            self.remote_devices.listener_state,
+            ListenerState::Ready { .. }
+        );
+        let pairing_busy = matches!(
+            self.remote_devices.pairing_state,
+            PairingUiState::Generating | PairingUiState::Waiting | PairingUiState::SasReady
+        );
+        let form_open = self.remote_devices.watched_form_open();
+        let computers = self.remote_devices.watched();
         v_flex()
             .id("devices-view")
             .debug_selector(|| "devices-view".to_string())
@@ -1356,25 +1396,82 @@ impl MultiplexApp {
             .min_h_0()
             .bg(theme::library_bg())
             .child(
-                v_flex()
+                h_flex()
                     .flex_none()
-                    .gap(px(theme::SPACE_2))
+                    .items_center()
+                    .justify_between()
+                    .flex_wrap()
+                    .gap(px(theme::SPACE_3))
                     .px(px(theme::SPACE_6))
                     .py(px(theme::SPACE_5))
                     .border_b_1()
                     .border_color(theme::border())
                     .child(
-                        div()
-                            .text_size(px(theme::TYPE_HEADING_SIZE))
-                            .font_semibold()
-                            .text_color(theme::text_main())
-                            .child(localization::remote_devices_title()),
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .gap(px(theme::SPACE_2))
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_HEADING_SIZE))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child(localization::remote_devices_title()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(localization::devices_view_description()),
+                            ),
                     )
                     .child(
-                        div()
-                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                            .text_color(theme::text_muted())
-                            .child(localization::remote_devices_description()),
+                        h_flex()
+                            .flex_wrap()
+                            .gap_2()
+                            .child(
+                                Button::new("remote-devices-pair-phone")
+                                    .debug_selector(|| "remote-devices-pair-phone".to_string())
+                                    .small()
+                                    .primary()
+                                    .icon(IconName::Plus)
+                                    .label(localization::remote_devices_pair_phone_action())
+                                    .disabled(pairing_busy)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.pair_phone_from_devices(cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("devices-add-computer")
+                                    .debug_selector(|| "devices-add-computer".to_string())
+                                    .small()
+                                    .icon(IconName::Plus)
+                                    .label(localization::devices_add_computer_action())
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.remote_devices.toggle_watched_form();
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("devices-settings")
+                                    .debug_selector(|| "devices-settings".to_string())
+                                    .small()
+                                    .ghost()
+                                    .icon(IconName::Settings)
+                                    .label(localization::devices_settings_action())
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.activate_library_section(
+                                            NavSection::Settings,
+                                            window,
+                                            cx,
+                                        );
+                                        this.select_settings_section(
+                                            multiplex_ui_contract::SettingsSectionId::RemoteDevices,
+                                            window,
+                                            cx,
+                                        );
+                                    })),
+                            ),
                     ),
             )
             .child(
@@ -1386,9 +1483,130 @@ impl MultiplexApp {
                     .min_h_0()
                     .overflow_y_scroll()
                     .p(px(theme::SPACE_6))
-                    .child(self.render_remote_devices_content(cx)),
+                    .gap_3()
+                    .when(!ready, |this| {
+                        this.child(
+                            div()
+                                .px_3()
+                                .py_2()
+                                .rounded(px(theme::CONTROL_RADIUS))
+                                .bg(theme::with_alpha(theme::warning(), 0.08))
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                .text_color(theme::text_muted())
+                                .child(localization::devices_remote_access_off()),
+                        )
+                    })
+                    .when_some(self.render_pairing_code_card(cx), |this, card| {
+                        this.child(card)
+                    })
+                    .child(self.render_trusted_remote_devices(cx))
+                    .child(self.settings_divider())
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                    .font_medium()
+                                    .text_color(theme::text_main())
+                                    .child(localization::watched_computers_title()),
+                            )
+                            .when(form_open, |this| {
+                                this.child(
+                                    div()
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                        .text_color(theme::text_muted())
+                                        .child(localization::watched_computers_description()),
+                                )
+                                .child(self.render_watched_computer_form(cx))
+                            })
+                            .when(computers.is_empty() && !form_open, |this| {
+                                this.child(
+                                    div()
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                        .text_color(theme::text_muted())
+                                        .child(localization::watched_computers_none()),
+                                )
+                            })
+                            .children(
+                                computers
+                                    .iter()
+                                    .map(|computer| self.render_watched_computer_row(computer, cx)),
+                            ),
+                    ),
             )
             .into_any_element()
+    }
+
+    fn render_pairing_code_card(&self, cx: &Context<Self>) -> Option<AnyElement> {
+        let recording_friendly = self.activity_center.policy().recording_friendly;
+        let code = self.remote_devices.pairing_code.clone()?;
+        let minutes_left = self
+            .remote_devices
+            .pairing_code_expires_at
+            .map(|expires_at| expires_at.saturating_sub(unix_seconds()).div_ceil(60))
+            .unwrap_or_default();
+        let tailscale = self.remote_devices.tailscale_address();
+        let card = v_flex()
+            .gap_2()
+            .p_3()
+            .rounded(px(theme::CONTROL_RADIUS))
+            .border_1()
+            .border_color(theme::with_alpha(theme::accent(), 0.45))
+            .bg(theme::accent_soft())
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                    .text_color(theme::text_muted())
+                    .child(localization::remote_devices_pairing_code_help()),
+            )
+            .child(
+                div()
+                    .debug_selector(|| "remote-devices-pairing-code".to_string())
+                    .text_size(px(theme::TYPE_TITLE_SIZE))
+                    .font_family(theme::current_design_tokens().font_mono_family().0)
+                    .font_semibold()
+                    .text_color(theme::text_main())
+                    .child(grouped_pairing_code(&code)),
+            )
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                    .text_color(theme::text_muted())
+                    .child(format!(
+                        "{} | {}",
+                        localization::remote_devices_pairing_code_expiry(minutes_left),
+                        localization::remote_devices_pairing_code_attempts(
+                            self.remote_devices.pairing_code_attempts_left
+                        )
+                    )),
+            )
+            .when_some(tailscale, |this, address| {
+                this.child(
+                    div()
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                        .text_color(theme::text_muted())
+                        .child(localization::remote_devices_pairing_tailscale_hint(
+                            &if recording_friendly {
+                                localization::remote_devices_private_address_hidden()
+                            } else {
+                                address
+                            },
+                        )),
+                )
+            })
+            .child(
+                h_flex().child(
+                    Button::new("remote-devices-stop-code-pairing")
+                        .debug_selector(|| "remote-devices-stop-code-pairing".to_string())
+                        .small()
+                        .label(localization::remote_devices_pairing_code_stop_action())
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.stop_code_pairing(cx);
+                        })),
+                ),
+            );
+        Some(card.into_any_element())
     }
 
     fn render_remote_route_section(&self, cx: &Context<Self>) -> AnyElement {
@@ -1406,74 +1624,7 @@ impl MultiplexApp {
             self.remote_devices.pairing_state,
             PairingUiState::Generating | PairingUiState::Waiting | PairingUiState::SasReady
         );
-        let pairing_code = self.remote_devices.pairing_code.clone();
-        let code_card = pairing_code.map(|code| {
-            let minutes_left = self
-                .remote_devices
-                .pairing_code_expires_at
-                .map(|expires_at| expires_at.saturating_sub(unix_seconds()).div_ceil(60))
-                .unwrap_or_default();
-            let tailscale = self.remote_devices.tailscale_address();
-            v_flex()
-                .gap_2()
-                .p_3()
-                .rounded(px(theme::CONTROL_RADIUS))
-                .border_1()
-                .border_color(theme::with_alpha(theme::accent(), 0.45))
-                .bg(theme::accent_soft())
-                .child(
-                    div()
-                        .text_size(px(theme::TYPE_CAPTION_SIZE))
-                        .text_color(theme::text_muted())
-                        .child(localization::remote_devices_pairing_code_help()),
-                )
-                .child(
-                    div()
-                        .debug_selector(|| "remote-devices-pairing-code".to_string())
-                        .text_size(px(theme::TYPE_TITLE_SIZE))
-                        .font_family(theme::current_design_tokens().font_mono_family().0)
-                        .font_semibold()
-                        .text_color(theme::text_main())
-                        .child(grouped_pairing_code(&code)),
-                )
-                .child(
-                    div()
-                        .text_size(px(theme::TYPE_CAPTION_SIZE))
-                        .text_color(theme::text_muted())
-                        .child(format!(
-                            "{} | {}",
-                            localization::remote_devices_pairing_code_expiry(minutes_left),
-                            localization::remote_devices_pairing_code_attempts(
-                                self.remote_devices.pairing_code_attempts_left
-                            )
-                        )),
-                )
-                .when_some(tailscale, |this, address| {
-                    this.child(
-                        div()
-                            .text_size(px(theme::TYPE_CAPTION_SIZE))
-                            .text_color(theme::text_muted())
-                            .child(localization::remote_devices_pairing_tailscale_hint(
-                                &if recording_friendly {
-                                    localization::remote_devices_private_address_hidden()
-                                } else {
-                                    address
-                                },
-                            )),
-                    )
-                })
-                .child(
-                    h_flex().child(
-                        Button::new("remote-devices-stop-code-pairing")
-                            .debug_selector(|| "remote-devices-stop-code-pairing".to_string())
-                            .small()
-                            .label(localization::remote_devices_pairing_code_stop_action())
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.stop_code_pairing(cx);
-                            })),
-                    ),
-                )
-        });
+        let code_card = self.render_pairing_code_card(cx);
         let content = v_flex()
             .gap_2()
             .child(
@@ -2130,6 +2281,24 @@ impl MultiplexApp {
             }
         }
         cx.notify();
+    }
+
+    /// Pair phone from the Devices view: turns remote access on first when it is off, since a
+    /// phone cannot pair with a computer that is not listening.
+    fn pair_phone_from_devices(&mut self, cx: &mut Context<Self>) {
+        if !matches!(
+            self.remote_devices.listener_state,
+            ListenerState::Ready { .. }
+        ) {
+            self.enable_remote_listener(cx);
+            if !matches!(
+                self.remote_devices.listener_state,
+                ListenerState::Ready { .. }
+            ) {
+                return;
+            }
+        }
+        self.begin_code_pairing(cx);
     }
 
     fn begin_code_pairing(&mut self, cx: &mut Context<Self>) {

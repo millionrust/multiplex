@@ -11729,3 +11729,78 @@ description = "Recent Hosts heading"
 id = "logs-view-switched-status"
 context = "Status after switching to the Logs library view."
 description = "Switched to Logs"
+
+[[messages]]
+id = "devices-view-description"
+context = "Description under the Devices heading in the sidebar destination, which lists paired devices only."
+description = "Devices view description"
+
+[[messages]]
+id = "devices-add-computer-action"
+context = "Button in the Devices view that shows the form for pairing with another computer to watch its screen."
+description = "Add computer action"
+
+[[messages]]
+id = "devices-settings-action"
+context = "Button in the Devices view that opens Settings at Remote Devices, where every remote access option lives."
+description = "Remote access settings action"
+
+[[messages]]
+id = "devices-remote-access-off"
+context = "Shown in the Devices view while the remote access listener is off."
+description = "Remote access off notice"
+
+[[messages]]
+id = "chrome-home-tooltip"
+context = "Tooltip on the house icon at the start of the top bar, which returns from a terminal tab to the library."
+description = "Home tooltip"
+
+[[messages]]
+id = "sftp-nav-label"
+context = "Sidebar row that opens the SFTP file browser. SFTP is a protocol name and is not translated."
+description = "SFTP sidebar label"
+
+[[messages]]
+id = "settings-section-about"
+context = "Settings section showing the app's version and build details."
+description = "About section title"
+
+[[messages]]
+id = "settings-section-about-description"
+context = "Description of the About section in Settings."
+description = "About section description"
+
+[[messages]]
+id = "about-version-label"
+context = "Label for the app's version number in Settings → About."
+description = "Version label"
+
+[[messages]]
+id = "about-build-label"
+context = "Label for the source commit the app was built from, in Settings → About."
+description = "Build label"
+
+[[messages]]
+id = "about-platform-label"
+context = "Label for the operating system and processor the app was built for, in Settings → About."
+description = "Platform label"
+
+[[messages]]
+id = "about-license-label"
+context = "Label for the app's software license, in Settings → About."
+description = "License label"
+
+[[messages]]
+id = "about-source-label"
+context = "Label for the link to the app's source code repository, in Settings → About."
+description = "Source code label"
+
+[[messages]]
+id = "about-copy-action"
+context = "Button in Settings → About that copies the version details for a bug report."
+description = "Copy details action"
+
+[[messages]]
+id = "about-copied"
+context = "Status shown after the version details were copied."
+description = "Details copied status"

@@ -30,10 +30,11 @@ pub enum SettingsSectionId {
     Keyboard,
     StoragePrivacyDiagnostics,
     RemoteDevices,
+    About,
 }
 
 impl SettingsSectionId {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Appearance,
         Self::Terminal,
         Self::ProjectsSessions,
@@ -42,6 +43,7 @@ impl SettingsSectionId {
         Self::Keyboard,
         Self::StoragePrivacyDiagnostics,
         Self::RemoteDevices,
+        Self::About,
     ];
 
     pub const fn title(self) -> MessageId {
@@ -54,6 +56,7 @@ impl SettingsSectionId {
             Self::Keyboard => MessageId::SettingsSectionKeyboard,
             Self::StoragePrivacyDiagnostics => MessageId::SettingsSectionStoragePrivacyDiagnostics,
             Self::RemoteDevices => MessageId::SettingsSectionRemoteDevices,
+            Self::About => MessageId::SettingsSectionAbout,
         }
     }
 
@@ -69,6 +72,7 @@ impl SettingsSectionId {
                 MessageId::SettingsSectionStoragePrivacyDiagnosticsDescription
             }
             Self::RemoteDevices => MessageId::SettingsSectionRemoteDevicesDescription,
+            Self::About => MessageId::SettingsSectionAboutDescription,
         }
     }
 }
@@ -105,10 +109,11 @@ pub enum SettingId {
     MobilePairing,
     SharedFolderSync,
     SyncFolder,
+    About,
 }
 
 impl SettingId {
-    pub const ALL: [Self; 30] = [
+    pub const ALL: [Self; 31] = [
         Self::Theme,
         Self::DevelopmentLocale,
         Self::TerminalFontSize,
@@ -139,6 +144,7 @@ impl SettingId {
         Self::MobilePairing,
         Self::SharedFolderSync,
         Self::SyncFolder,
+        Self::About,
     ];
 
     pub const fn section(self) -> SettingsSectionId {
@@ -171,6 +177,7 @@ impl SettingId {
             | Self::SharedFolderSync
             | Self::SyncFolder => SettingsSectionId::StoragePrivacyDiagnostics,
             Self::RemoteDevices => SettingsSectionId::RemoteDevices,
+            Self::About => SettingsSectionId::About,
         }
     }
 
@@ -206,6 +213,7 @@ impl SettingId {
             Self::MobilePairing => MessageId::SettingsMobilePairingLabel,
             Self::SharedFolderSync => MessageId::SettingsSharedFolderSyncTitle,
             Self::SyncFolder => MessageId::SettingsSyncFolderLabel,
+            Self::About => MessageId::SettingsSectionAbout,
         }
     }
 
@@ -241,6 +249,7 @@ impl SettingId {
             Self::MobilePairing => MessageId::SettingsMobilePairingDescription,
             Self::SharedFolderSync => MessageId::SettingsSharedFolderSyncDescription,
             Self::SyncFolder => MessageId::SettingsSyncFolderDescription,
+            Self::About => MessageId::SettingsSectionAboutDescription,
         }
     }
 
@@ -268,7 +277,7 @@ impl SettingId {
             Self::Theme | Self::DevelopmentLocale | Self::NotificationMode => {
                 SettingControlKind::Choice
             }
-            Self::CliStatus | Self::KeyboardShortcuts | Self::RemoteDevices => {
+            Self::CliStatus | Self::KeyboardShortcuts | Self::RemoteDevices | Self::About => {
                 SettingControlKind::Status
             }
             Self::Onboarding
@@ -962,7 +971,7 @@ mod tests {
 
     #[test]
     fn unavailable_future_controls_are_absent_from_built_inventory() {
-        assert_eq!(SettingId::ALL.len(), 30);
+        assert_eq!(SettingId::ALL.len(), 31);
         assert!(
             SettingId::ALL
                 .iter()

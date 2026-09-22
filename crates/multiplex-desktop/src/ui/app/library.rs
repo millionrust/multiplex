@@ -1893,6 +1893,7 @@ impl MultiplexApp {
             SettingsSectionId::Keyboard => app_icon(ICON_KEYBOARD),
             SettingsSectionId::StoragePrivacyDiagnostics => app_icon(ICON_SHIELD_CHECK),
             SettingsSectionId::RemoteDevices => IconName::Globe.into(),
+            SettingsSectionId::About => IconName::Info.into(),
         }
     }
 
@@ -2179,6 +2180,7 @@ impl MultiplexApp {
         let keyboard_visible = section_visible(SettingsSectionId::Keyboard);
         let storage_visible = section_visible(SettingsSectionId::StoragePrivacyDiagnostics);
         let remote_devices_visible = section_visible(SettingsSectionId::RemoteDevices);
+        let about_visible = section_visible(SettingsSectionId::About);
         let theme_preset = self.saved.settings.theme_preset;
         let terminal_font_size = self.saved.settings.terminal_font_size;
         let restore_workspaces_on_launch = self.saved.settings.restore_workspaces_on_launch;
@@ -3477,6 +3479,7 @@ impl MultiplexApp {
         let notification_card = self.render_notification_settings_card(cx);
         let remote_devices_card = self.render_remote_devices_settings_card(cx);
         let cli_card = self.render_cli_settings_card(cx);
+        let about_card = self.render_about_settings_card(cx);
 
         let nav = v_flex()
             .id("settings-nav")
@@ -3668,6 +3671,12 @@ impl MultiplexApp {
                                     ),
                                 )
                                 .child(remote_devices_card)
+                            })
+                            .when(about_visible, |this| {
+                                this.child(
+                                    self.settings_hierarchy_heading(SettingsSectionId::About),
+                                )
+                                .child(about_card)
                             })
                             .overflow_y_scrollbar(),
                     ),

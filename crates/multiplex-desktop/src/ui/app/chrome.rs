@@ -645,48 +645,47 @@ impl MultiplexApp {
             .border_color(theme::with_alpha(theme::border_dark(), 0.5))
             .child(self.render_window_controls(cx))
             .child(
-                self.render_chrome_tab(
-                    "chrome-hosts",
-                    Icon::new(IconName::Globe),
-                    "Hosts",
-                    library_active && self.nav_section != NavSection::Sftp,
-                    None,
-                    None,
-                )
-                .debug_selector(|| "chrome-hosts".to_string())
-                .cursor_pointer()
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.open_workspace_tab_menu = None;
-                    this.activate_library(window, cx);
-                })),
-            )
-            .child(
-                self.render_chrome_tab(
-                    "chrome-sftp",
-                    Icon::new(IconName::Folder),
-                    "SFTP",
-                    library_active && self.nav_section == NavSection::Sftp,
-                    None,
-                    None,
-                )
-                .debug_selector(|| "chrome-sftp".to_string())
-                .cursor_pointer()
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.open_workspace_tab_menu = None;
-                    let active = this
-                        .active_workspace_id
-                        .and_then(|wid| this.workspaces.iter().find(|w| w.id == wid))
-                        .map(|w| (w.id, w.active_pane_id));
-                    if let Some((wid, pid)) = active {
-                        this.open_workspace_files_for_pane(wid, pid, cx);
+                h_flex()
+                    .id("chrome-home")
+                    .debug_selector(|| "chrome-home".to_string())
+                    .flex_shrink_0()
+                    .items_center()
+                    .justify_center()
+                    .size(px(theme::SHELL_COMPACT_CONTROL_HEIGHT))
+                    .rounded(px(theme::SHELL_SPACE_DENSE))
+                    .border_1()
+                    .border_color(if library_active {
+                        theme::with_alpha(theme::border(), 0.8)
                     } else {
-                        this.open_files_library(
-                            super::artifact_gallery::FilesLibraryTab::Sftp,
-                            window,
-                            cx,
-                        );
-                    }
-                })),
+                        gpui::transparent_black()
+                    })
+                    .bg(if library_active {
+                        theme::chrome_tab_active()
+                    } else {
+                        gpui::transparent_black()
+                    })
+                    .when(library_active, |this| this.shadow(theme::popover_shadow()))
+                    .when(!library_active, |this| {
+                        this.hover(|style| style.bg(theme::chrome_tab()))
+                    })
+                    .cursor_pointer()
+                    .tooltip(|window, cx| {
+                        gpui_component::tooltip::Tooltip::new(localization::chrome_home_tooltip())
+                            .build(window, cx)
+                    })
+                    .child(
+                        super::app_icon(super::ICON_HOUSE)
+                            .size(px(theme::ICON_SIZE_DEFAULT))
+                            .text_color(if library_active {
+                                theme::accent()
+                            } else {
+                                theme::text_muted_dark()
+                            }),
+                    )
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_workspace_tab_menu = None;
+                        this.activate_library(window, cx);
+                    })),
             )
             .when(!self.workspaces.is_empty(), |this| {
                 this.child(
@@ -953,9 +952,31 @@ impl MultiplexApp {
         cx: &Context<Self>,
     ) -> Stateful<Div> {
         let _ = cx;
+        let badge = (section == NavSection::Activity && self.activity_center.visible_count() > 0)
+            .then(|| self.activity_center.visible_count());
+        self.nav_row(
+            id,
+            format!("nav-card-{}", nav_section_key(section)),
+            section.icon(),
+            section.label(),
+            active,
+            badge,
+        )
+    }
+
+    /// One row of the library sidebar.
+    fn nav_row(
+        &self,
+        id: impl Into<ElementId>,
+        selector: String,
+        icon: Icon,
+        label: String,
+        active: bool,
+        badge: Option<usize>,
+    ) -> Stateful<Div> {
         h_flex()
             .id(id)
-            .debug_selector(|| format!("nav-card-{}", nav_section_key(section)))
+            .debug_selector(move || selector.clone())
             .w_full()
             .items_center()
             .gap(px(theme::SHELL_SPACE_COMPACT))
@@ -976,9 +997,7 @@ impl MultiplexApp {
                 })
             })
             .child(
-                section
-                    .icon()
-                    .size(px(theme::ICON_SIZE_DEFAULT))
+                icon.size(px(theme::ICON_SIZE_DEFAULT))
                     .text_color(if active {
                         theme::accent()
                     } else {
@@ -996,28 +1015,25 @@ impl MultiplexApp {
                     } else {
                         theme::text_main()
                     })
-                    .child(section.label()),
+                    .child(label),
             )
-            .when(
-                section == NavSection::Activity && self.activity_center.visible_count() > 0,
-                |this| {
-                    this.child(
-                        div()
-                            .min_w(px(theme::SHELL_NAV_BADGE_WIDTH))
-                            .h(px(theme::SHELL_NAV_BADGE_HEIGHT))
-                            .px_1()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded(px(theme::SPACE_3))
-                            .bg(theme::accent())
-                            .text_size(px(theme::TYPE_CAPTION_SIZE))
-                            .font_semibold()
-                            .text_color(theme::library_bg())
-                            .child(self.activity_center.visible_count().min(99).to_string()),
-                    )
-                },
-            )
+            .when_some(badge, |this, count| {
+                this.child(
+                    div()
+                        .min_w(px(theme::SHELL_NAV_BADGE_WIDTH))
+                        .h(px(theme::SHELL_NAV_BADGE_HEIGHT))
+                        .px_1()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(theme::SPACE_3))
+                        .bg(theme::accent())
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                        .font_semibold()
+                        .text_color(theme::library_bg())
+                        .child(count.min(99).to_string()),
+                )
+            })
     }
 
     pub(super) fn render_library_sidebar(&self, cx: &Context<Self>) -> AnyElement {
@@ -1045,9 +1061,13 @@ impl MultiplexApp {
                         NavSection::Settings,
                     ]
                     .into_iter()
-                    .map(|section| {
-                        let active = self.nav_section == section;
-                        self.nav_card(("nav-card", nav_section_key(section)), section, active, cx)
+                    .flat_map(|section| {
+                        // SFTP and Files / Artifacts are two tabs of one view, each with its row.
+                        let sftp_tab = self.sftp_library_tab_active();
+                        let active = self.nav_section == section
+                            && (section != NavSection::Sftp || !sftp_tab);
+                        let card = self
+                            .nav_card(("nav-card", nav_section_key(section)), section, active, cx)
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 if section == NavSection::Sftp {
                                     this.open_files_library(
@@ -1059,7 +1079,26 @@ impl MultiplexApp {
                                     this.activate_library_section(section, window, cx);
                                 }
                             }))
+                            .into_any_element();
+                        let sftp = (section == NavSection::Sessions).then(|| {
+                            self.nav_row(
+                                "nav-card-sftp",
+                                "nav-card-sftp".to_string(),
+                                IconName::FolderOpen.into(),
+                                localization::sftp_nav_label(),
+                                self.nav_section == NavSection::Sftp && sftp_tab,
+                                None,
+                            )
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_files_library(
+                                    super::artifact_gallery::FilesLibraryTab::Sftp,
+                                    window,
+                                    cx,
+                                );
+                            }))
                             .into_any_element()
+                        });
+                        std::iter::once(card).chain(sftp)
                     }),
                 ),
             )

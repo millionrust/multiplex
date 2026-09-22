@@ -1,3 +1,4 @@
+mod about;
 mod activity_center;
 mod artifact_gallery;
 mod canvas;
@@ -193,6 +194,7 @@ const ICON_TAG: &str = "icons/tag.svg";
 const ICON_CALENDAR: &str = "icons/calendar.svg";
 const ICON_PANEL_COLLAPSE_RIGHT: &str = "icons/panel-collapse-right.svg";
 const ICON_PALETTE: &str = "icons/palette.svg";
+const ICON_HOUSE: &str = "icons/house.svg";
 const ICON_KEYBOARD: &str = "icons/keyboard.svg";
 
 fn app_icon(path: &'static str) -> Icon {
@@ -28017,7 +28019,8 @@ sleep 1
         );
         for selector in [
             "remote-devices-pair-phone",
-            "remote-devices-stop-listener",
+            "devices-add-computer",
+            "devices-settings",
             "remote-devices-pairing-code",
             "remote-devices-stop-code-pairing",
         ] {
@@ -28042,7 +28045,12 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    app.activate_library_section(NavSection::Devices, window, cx);
+                    app.activate_library_section(NavSection::Settings, window, cx);
+                    app.select_settings_section(
+                        multiplex_ui_contract::SettingsSectionId::RemoteDevices,
+                        window,
+                        cx,
+                    );
                 })
             })
             .expect("window update should succeed");
@@ -28052,7 +28060,7 @@ sleep 1
         });
 
         let click = |cx: &mut TestAppContext, selector: &'static str| {
-            scroll_selector_into_view(window, cx, "devices-scroll", selector);
+            scroll_selector_into_view(window, cx, "settings-scroll-viewport", selector);
             let point = selector_click_center(window, cx, selector);
             let mut visual = VisualTestContext::from_window(window.into(), cx);
             visual.simulate_click(point, gpui::Modifiers::none());
@@ -28092,13 +28100,18 @@ sleep 1
                         Some(home_path.clone()),
                         Some("/bin/zsh".to_string()),
                     );
-                    app.activate_library_section(NavSection::Devices, window, cx);
+                    app.activate_library_section(NavSection::Settings, window, cx);
+                    app.select_settings_section(
+                        multiplex_ui_contract::SettingsSectionId::RemoteDevices,
+                        window,
+                        cx,
+                    );
                 })
             })
             .expect("window update should succeed");
 
         let click = |cx: &mut TestAppContext, selector: &'static str| {
-            scroll_selector_into_view(window, cx, "devices-scroll", selector);
+            scroll_selector_into_view(window, cx, "settings-scroll-viewport", selector);
             let point = selector_click_center(window, cx, selector);
             let mut visual = VisualTestContext::from_window(window.into(), cx);
             visual.simulate_click(point, gpui::Modifiers::none());
@@ -28233,7 +28246,12 @@ sleep 1
                     app.remote_terminals =
                         super::remote_terminals::RemoteTerminalsState::open(None, None)
                             .with_service(Box::new(service));
-                    app.activate_library_section(NavSection::Devices, window, cx);
+                    app.activate_library_section(NavSection::Settings, window, cx);
+                    app.select_settings_section(
+                        multiplex_ui_contract::SettingsSectionId::RemoteDevices,
+                        window,
+                        cx,
+                    );
                 })
             })
             .expect("window update should succeed");
@@ -28241,7 +28259,7 @@ sleep 1
             scroll_selector_into_view(
                 window,
                 cx,
-                "devices-scroll",
+                "settings-scroll-viewport",
                 "remote-terminals-service-toggle",
             );
             let point = selector_click_center(window, cx, "remote-terminals-service-toggle");
@@ -30850,32 +30868,23 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_chrome_hosts_and_sftp_tabs_click_switch_views(cx: &mut TestAppContext) {
+    fn e2e_chrome_home_and_sidebar_sftp_switch_views(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         if !DockerSshServer::docker_available() {
-            eprintln!("skipping chrome hosts/sftp click e2e: Docker is unavailable");
+            eprintln!("skipping chrome home/sftp click e2e: Docker is unavailable");
             return;
         }
 
         let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
         let (app, window) = open_test_app(cx);
 
-        let sftp_click = selector_click_center(window, cx, "chrome-sftp");
+        let sftp_click = selector_click_center(window, cx, "nav-card-sftp");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(sftp_click, gpui::Modifiers::none());
 
         app.read_with(cx, |app, _| {
             assert_eq!(app.nav_section, NavSection::Sftp);
-            assert_eq!(app.active_workspace_id, None);
-            assert!(app.error_message.is_empty());
-        });
-
-        let hosts_click = selector_click_center(window, cx, "chrome-hosts");
-        let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(hosts_click, gpui::Modifiers::none());
-
-        app.read_with(cx, |app, _| {
-            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert!(app.sftp_library_tab_active());
             assert_eq!(app.active_workspace_id, None);
             assert!(app.error_message.is_empty());
         });
@@ -30896,23 +30905,12 @@ sleep 1
             pane.connected.then_some(())
         });
 
-        let sftp_click = selector_click_center(window, cx, "chrome-sftp");
+        let home_click = selector_click_center(window, cx, "chrome-home");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(sftp_click, gpui::Modifiers::none());
-
-        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
-            let workspace = app.workspace(workspace_id)?;
-            let browser = workspace.sftp.as_ref()?;
-            (workspace.view_mode == WorkspaceViewMode::Files && !browser.loading).then_some(())
-        });
-
-        let hosts_click = selector_click_center(window, cx, "chrome-hosts");
-        let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(hosts_click, gpui::Modifiers::none());
+        visual.simulate_click(home_click, gpui::Modifiers::none());
 
         app.read_with(cx, |app, _| {
             assert_eq!(app.active_workspace_id, None);
-            assert_eq!(app.nav_section, NavSection::Hosts);
             assert!(app.workspace(workspace_id).is_some());
             assert!(app.error_message.is_empty());
         });

@@ -6,7 +6,7 @@ rust-version.workspace = true
 description = "Native desktop SSH client built with GPUI"
 authors = ["Multiplex contributors"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/jacobsam/terminal"
+repository = "https://github.com/millionrust/multiplex"
 readme = "../../README.md"
 default-run = "multiplex"
 
