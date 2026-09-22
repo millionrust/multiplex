@@ -52,9 +52,9 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   **Pair phone** shows a six-digit code (CPace bound into the Noise XX pairing, three attempts,
   five minutes); the QR offer and SAS comparison remain under "Other ways to pair".
 - Paired mobile controllers can list, watch, and type into tmux sessions the app did not
-  create when "Show tmux sessions" is on, over LAN, SSH, and relay routes. Devices also offers a previewed,
-  reversible shell startup change that starts new Terminal, Zed, iTerm2, Ghostty, WezTerm,
-  and VS Code terminal tabs inside tmux, and on macOS a LaunchAgent
+  create while the retired tmux startup change is still installed (there is no separate
+  switch), over LAN, SSH, and relay routes. That change, which started new terminal tabs inside
+  tmux, can only be checked and removed now; nothing turns it on. On macOS a LaunchAgent
   (`multiplex controller-service`) that keeps the LAN listener up after the app quits.
   See `docs/remote-terminals.md`.
 - A "Multiplex" terminal profile, added from Devices to Windows Terminal (a fragment file),
@@ -62,8 +62,7 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   `multiplex-cli shell`: the user's own shell in a Session Host, started detached so it outlives
   the window, recorded under `console-sessions/` and listed to paired devices on every route.
   The window takes the writer lease only while typed in. Nothing outside the profile is wrapped.
-  This is the recommended path and the only one on Windows; the tmux startup change stays as the
-  advanced opt-in on macOS and Linux.
+  This is the only way to add terminals; the tmux startup change is retired.
 - Windows: the Session Host runs there too (named pipe with a single-SID DACL, a job object per
   session; `docs/decisions/windows-session-host.md`), the background listener starts from the
   user's `Run` key with a notification-area icon, and paired devices can view and control the

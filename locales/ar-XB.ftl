@@ -1543,11 +1543,6 @@ remote-terminals-diff-skipped = { $count ->
    *[other] { $count }⁧senil degnahcnu ⁩
     [zero] ⁧senil degnahcnu oN⁩
     }
-remote-terminals-discovery-description = ⁧.tcennocer secived detcennoc os ,renetsil eht stratser siht gnignahC .secived deriap rof retupmoc siht no noisses xumt yreve stsiL⁩
-remote-terminals-discovery-hide = ⁧ediH⁩
-remote-terminals-discovery-label = ⁧snoisses xumt wohS⁩
-remote-terminals-discovery-saved = ⁧.detadpu gnirahs noisses xumt⁩
-remote-terminals-discovery-show = ⁧wohS⁩
 remote-terminals-file-created = ⁧elif weN⁩
 remote-terminals-file-deleted = ⁧deteled eb lliW⁩
 remote-terminals-file-edited = ⁧detidE⁩
@@ -1595,8 +1590,8 @@ remote-terminals-verify-failed = ⁧.strats xumt taht kcehc dna lanimret a nepO 
 remote-terminals-verify-ok = ⁧.meht ees nac secived deriaP .yltcerroc detsil era snoisses xumt⁩
 remote-terminals-verify-ok-hidden = ⁧.no si snoisses xumt wohS litnu snoisses ees tonnac secived deriap tub ,skrow xumt⁩
 remote-terminals-verify-running = ⁧xumt gnikcehC⁩
-remote-terminals-wrap-description = ⁧.niaga meht nepo uoy litnu elbahcaernu yats nepo ydaerla era taht slanimreT .elif putrats llehs ruoy ot kcolb dekram eno sddA⁩
-remote-terminals-wrap-label = ⁧xumt ni slanimret wen nepO⁩
+remote-terminals-wrap-description = ⁧.snoisses xumt ruoy ees llits secived deriap ,syats ti elihW .devomer eb ylno nac putes siht os ,ti secalper evoba eliforp lanimret xelpitluM ehT .xumt edisni lanimret wen yreve detrats noisrev reilrae nA⁩
+remote-terminals-wrap-label = ⁧(deriter) putes putrats xumt⁩
 remote-terminals-write-error = ⁧.niaga yrt neht ,snoissimrep rieht kcehC .selif putrats llehs ruoy etadpu ton dluoc xelpitluM⁩
 runtime-capabilities-none = ⁧seitilibapac citnames deifirev oN⁩
 runtime-capability-approvals = ⁧stseuqer lavorppA⁩

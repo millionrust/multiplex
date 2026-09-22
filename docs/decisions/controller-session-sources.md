@@ -34,7 +34,9 @@ Every route serves the same sources, through one type, `RepositoryBridgeSources`
   socket location is always derived from the pointer's own location, never read from it, so
   the file cannot redirect a reader. A reader ignores the file unless it is a regular,
   non-symlink file owned by the current user with no group or other permission bits.
-- **tmux sessions** are served only when the user turned on "Show tmux sessions". The LAN
+- **tmux sessions** are served only while the tmux startup setup ("Open new terminals in
+  tmux") is installed; the app keeps the saved setting in step with it, and there is no
+  separate switch (since 2026-09-22). The LAN
   listener receives the setting in its launch descriptor; the SSH and relay bridges read the
   saved setting at the start of each connection, so turning sharing off applies to the next
   connection on every route.

@@ -2048,6 +2048,7 @@ impl MultiplexApp {
         app.repair_session_group_references();
         app.refresh_global_search_index();
         app.refresh_wrapped_tmux_behavior(cx);
+        app.sync_remote_tmux_sessions();
 
         if app.saved.settings.restore_workspaces_on_launch {
             app.restore_saved_workspaces(window, cx);
@@ -28118,12 +28119,7 @@ sleep 1
             visual.run_until_parked();
         };
 
-        click(cx, "remote-terminals-sharing-0");
-        app.read_with(cx, |app, _| {
-            assert!(app.saved.settings.remote_tmux_sessions);
-            assert!(app.remote_devices.tmux_sessions());
-        });
-        click(cx, "remote-terminals-sharing-1");
+        // Nothing is listed until the setup is on; there is no separate switch for it.
         app.read_with(cx, |app, _| {
             assert!(!app.saved.settings.remote_tmux_sessions);
             assert!(!app.remote_devices.tmux_sessions());
@@ -28137,22 +28133,43 @@ sleep 1
             return;
         }
 
-        click(cx, "remote-terminals-review-enable");
-        app.read_with(cx, |app, _| {
-            assert!(app.remote_terminals.has_pending_change());
-        });
-        assert_eq!(
-            std::fs::read_to_string(&zshrc).unwrap(),
-            original,
-            "reviewing must not write"
-        );
+        // The setup is retired: nothing in the interface turns it on.
+        {
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            assert!(
+                visual
+                    .debug_bounds("remote-terminals-review-enable")
+                    .is_none()
+            );
+            assert!(
+                visual
+                    .debug_bounds("remote-terminals-review-disable")
+                    .is_none()
+            );
+        }
+        // An install from an earlier version, made the way that version made it.
+        let install = |cx: &mut TestAppContext| {
+            app.update(cx, |app, cx| {
+                app.review_remote_terminal_change(
+                    super::remote_terminals::RemoteTerminalChange::Enable,
+                    cx,
+                );
+                assert!(app.remote_terminals.has_pending_change());
+            });
+            assert_eq!(
+                std::fs::read_to_string(&zshrc).unwrap(),
+                original,
+                "reviewing must not write"
+            );
+        };
+        install(cx);
         click(cx, "remote-terminals-cancel");
         app.read_with(cx, |app, _| {
             assert!(!app.remote_terminals.has_pending_change());
         });
         assert_eq!(std::fs::read_to_string(&zshrc).unwrap(), original);
 
-        click(cx, "remote-terminals-review-enable");
+        install(cx);
         click(cx, "remote-terminals-apply");
         app.read_with(cx, |app, _| {
             assert!(!app.remote_terminals.has_pending_change());
@@ -28166,6 +28183,8 @@ sleep 1
                 app.status_message,
                 localization::remote_terminals_applied_notice()
             );
+            assert!(app.saved.settings.remote_tmux_sessions);
+            assert!(app.remote_devices.tmux_sessions());
         });
         let installed = std::fs::read_to_string(&zshrc).unwrap();
         assert!(installed.starts_with(original));
@@ -28187,6 +28206,8 @@ sleep 1
                 app.status_message,
                 localization::remote_terminals_removed_notice()
             );
+            assert!(!app.saved.settings.remote_tmux_sessions);
+            assert!(!app.remote_devices.tmux_sessions());
         });
         assert_eq!(std::fs::read_to_string(&zshrc).unwrap(), original);
         assert!(

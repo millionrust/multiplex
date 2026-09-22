@@ -312,23 +312,26 @@ impl MultiplexApp {
         let _ = cx;
     }
 
-    pub(super) fn update_remote_tmux_sessions(&mut self, enabled: bool, cx: &mut Context<Self>) {
-        self.saved.settings.remote_tmux_sessions = enabled;
+    /// Paired devices see tmux sessions exactly while the tmux startup setup is on: turning it
+    /// on is the choice to reach terminals through tmux, so there is no second switch for it.
+    /// A change restarts the listener, so this only writes when the answer changed.
+    pub(super) fn sync_remote_tmux_sessions(&mut self) {
+        let listed = !matches!(self.remote_terminals.status, IntegrationStatus::Off);
+        if self.saved.settings.remote_tmux_sessions == listed {
+            return;
+        }
+        self.saved.settings.remote_tmux_sessions = listed;
         self.save_settings();
         if self
             .remote_devices
-            .set_tmux_sessions(enabled, &self.controller_coordinator)
-            .is_ok()
+            .set_tmux_sessions(listed, &self.controller_coordinator)
+            .is_err()
         {
-            self.status_message = localization::remote_terminals_discovery_saved();
-            self.error_message.clear();
-        } else {
             self.error_message = localization::remote_devices_operation_failed();
         }
         if self.remote_terminals.verification == RemoteTerminalVerification::Passed {
             self.remote_terminals.verification = RemoteTerminalVerification::Idle;
         }
-        cx.notify();
     }
 
     pub(super) fn review_remote_terminal_change(
@@ -337,6 +340,11 @@ impl MultiplexApp {
         cx: &mut Context<Self>,
     ) {
         self.remote_terminals.refresh();
+        // The setup is retired: nothing turns it on any more, only removal is offered.
+        #[cfg(not(test))]
+        if kind == RemoteTerminalChange::Enable {
+            return;
+        }
         if kind == RemoteTerminalChange::Enable
             && self.remote_terminals.availability != TmuxAvailability::Ready
         {
@@ -389,6 +397,7 @@ impl MultiplexApp {
             Err(error) => self.error_message = integration_error_message(&error),
         }
         self.remote_terminals.refresh();
+        self.sync_remote_tmux_sessions();
         cx.notify();
     }
 
@@ -559,123 +568,101 @@ impl MultiplexApp {
                             .child(localization::remote_terminals_description()),
                     ),
             )
-            .child(self.settings_choice_row(
-                localization::remote_terminals_discovery_label(),
-                localization::remote_terminals_discovery_description(),
-                self.segmented_control(
-                    "remote-terminals-sharing",
-                    [
-                        (true, localization::remote_terminals_discovery_show()),
-                        (false, localization::remote_terminals_discovery_hide()),
-                    ],
-                    sharing,
-                    false,
-                    cx,
-                    |this, enabled, _, cx| this.update_remote_tmux_sessions(enabled, cx),
-                ),
-            ))
             .child(self.settings_subhead(
                 localization::remote_terminals_profiles_label(),
                 localization::remote_terminals_profiles_description(),
             ))
             .child(self.render_terminal_profiles(cx))
-            .child(self.settings_subhead(
-                localization::remote_terminals_wrap_label(),
-                localization::remote_terminals_wrap_description(),
-            ))
-            .child(
-                h_flex()
-                    .items_center()
-                    .justify_between()
-                    .flex_wrap()
-                    .gap_3()
-                    .child(
-                        div()
-                            .debug_selector(|| "remote-terminals-status".to_string())
-                            .text_size(px(theme::TYPE_CAPTION_SIZE))
-                            .text_color(theme::text_muted())
-                            .child(status_text),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .flex_wrap()
-                            .child(
-                                Button::new("remote-terminals-review-enable")
-                                    .debug_selector(|| "remote-terminals-review-enable".to_string())
-                                    .small()
-                                    .label(localization::remote_terminals_review_enable_action())
-                                    .disabled(state.availability != TmuxAvailability::Ready)
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.review_remote_terminal_change(
-                                            RemoteTerminalChange::Enable,
-                                            cx,
-                                        );
-                                    })),
-                            )
-                            .when(installed, |this| {
-                                this.child(
-                                    Button::new("remote-terminals-review-disable")
-                                        .debug_selector(|| {
-                                            "remote-terminals-review-disable".to_string()
-                                        })
+            // The tmux startup setup is retired in favour of the Multiplex terminal profile: it
+            // can be checked and removed where it is still installed, and never turned on.
+            .when(installed || state.pending.is_some(), |this| {
+                this.child(self.settings_subhead(
+                    localization::remote_terminals_wrap_label(),
+                    localization::remote_terminals_wrap_description(),
+                ))
+                .child(
+                    h_flex()
+                        .items_center()
+                        .justify_between()
+                        .flex_wrap()
+                        .gap_3()
+                        .child(
+                            div()
+                                .debug_selector(|| "remote-terminals-status".to_string())
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                .text_color(theme::text_muted())
+                                .child(status_text),
+                        )
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .flex_wrap()
+                                .when(installed, |this| {
+                                    this.child(
+                                        Button::new("remote-terminals-review-disable")
+                                            .debug_selector(|| {
+                                                "remote-terminals-review-disable".to_string()
+                                            })
+                                            .small()
+                                            .label(
+                                                localization::remote_terminals_review_disable_action(),
+                                            )
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.review_remote_terminal_change(
+                                                    RemoteTerminalChange::Disable,
+                                                    cx,
+                                                );
+                                            })),
+                                    )
+                                })
+                                .child(
+                                    Button::new("remote-terminals-verify")
+                                        .debug_selector(|| "remote-terminals-verify".to_string())
                                         .small()
-                                        .label(
-                                            localization::remote_terminals_review_disable_action(),
+                                        .label(localization::remote_terminals_verify_action())
+                                        .disabled(
+                                            state.verification == RemoteTerminalVerification::Running,
                                         )
                                         .on_click(cx.listener(|this, _, _, cx| {
-                                            this.review_remote_terminal_change(
-                                                RemoteTerminalChange::Disable,
-                                                cx,
-                                            );
+                                            this.check_remote_terminal_setup(cx);
                                         })),
-                                )
-                            })
-                            .child(
-                                Button::new("remote-terminals-verify")
-                                    .debug_selector(|| "remote-terminals-verify".to_string())
-                                    .small()
-                                    .label(localization::remote_terminals_verify_action())
-                                    .disabled(
-                                        state.verification == RemoteTerminalVerification::Running,
-                                    )
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.check_remote_terminal_setup(cx);
-                                    })),
-                            ),
-                    ),
-            )
-            .when_some(availability_message(state.availability), |this, message| {
-                this.child(
-                    div()
-                        .text_size(px(theme::TYPE_CAPTION_SIZE))
-                        .text_color(theme::warning())
-                        .child(message),
+                                ),
+                        ),
                 )
-            })
-            .when_some(state.pending.as_ref(), |this, pending| {
-                this.child(self.render_remote_terminal_preview(pending, cx))
-            })
-            .when_some(verification_text, |this, (message, color)| {
-                this.child(
-                    div()
-                        .debug_selector(|| "remote-terminals-verification".to_string())
-                        .text_size(px(theme::TYPE_CAPTION_SIZE))
-                        .text_color(color)
-                        .child(message),
-                )
+                .when_some(availability_message(state.availability), |this, message| {
+                    this.child(
+                        div()
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                            .text_color(theme::warning())
+                            .child(message),
+                    )
+                })
+                .when_some(state.pending.as_ref(), |this, pending| {
+                    this.child(self.render_remote_terminal_preview(pending, cx))
+                })
+                .when_some(verification_text, |this, (message, color)| {
+                    this.child(
+                        div()
+                            .debug_selector(|| "remote-terminals-verification".to_string())
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                            .text_color(color)
+                            .child(message),
+                    )
+                })
             })
             .child(self.settings_subhead(
                 localization::remote_terminals_service_label(),
                 localization::remote_terminals_service_description(),
             ))
             .child(self.render_background_service_row(cx))
-            .child(
-                div()
-                    .text_size(px(theme::TYPE_MICRO_SIZE))
-                    .text_color(theme::text_muted())
-                    .child(localization::remote_terminals_no_wrap_hint()),
-            )
+            .when(installed, |this| {
+                this.child(
+                    div()
+                        .text_size(px(theme::TYPE_MICRO_SIZE))
+                        .text_color(theme::text_muted())
+                        .child(localization::remote_terminals_no_wrap_hint()),
+                )
+            })
             .into_any_element()
     }
 

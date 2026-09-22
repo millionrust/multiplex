@@ -3,8 +3,9 @@
 Status: **built, awaiting testing on real Windows hardware.** On every platform, a terminal
 opened with the **Multiplex profile** (Windows Terminal, Visual Studio Code, iTerm2) runs your
 own shell in a session paired devices can list, watch, and type into, and the session outlives
-its window. On macOS and Linux, tmux sessions are listed too, and new terminals can be started
-inside tmux after showing you the exact file changes. On macOS and Windows the listener can keep
+its window. The earlier tmux startup setup (macOS and Linux) is retired: where it is still
+installed, its tmux sessions stay listed and it can be removed, but it can no longer be turned
+on. On macOS and Windows the listener can keep
 running after you quit the app.
 
 This is the guide a person follows when they want the terminals on their computer to
@@ -43,7 +44,7 @@ reachable from then on.
 - Live desktop panes (the terminals in the desktop window) are published to the
   Controller and are attachable on every route. The SSH and relay routes find them through
   a user-only pointer file the running app publishes.
-- **tmux sessions**, when "Show tmux sessions" is on: every session on your default tmux
+- **tmux sessions**, while "Open new terminals in tmux" is on: every session on your default tmux
   server appears in the phone's session list as a live terminal, including sessions
   Multiplex did not create, on every route. Watching and typing work; a
   tmux session is never resized or ended by the phone. Requires tmux 3.2 or later.
@@ -53,9 +54,9 @@ reachable from then on.
   folder the window opened in, and attaches the window to it. Paired devices list it as
   "pwsh in projects". Nothing else changes: scripts, `cmd /c`, `powershell -Command`, and every
   other program keep starting the plain shell.
-- **Setup for new terminals** (macOS and Linux, advanced), which starts every new tab in
-  Terminal, Zed, iTerm2, Ghostty, WezTerm, and the VS Code terminal inside tmux. Previewed,
-  applied, and removed from the desktop app.
+- **The retired tmux startup setup** (macOS and Linux), which an earlier version installed to
+  start every new tab in Terminal, Zed, iTerm2, Ghostty, WezTerm, and the VS Code terminal
+  inside tmux. The desktop app now only checks and removes it; the Multiplex profile replaces it.
 - Local panes marked persistent already run inside `tmux new-session -A -s <name>`.
 
 Not yet: approval prompts answered from the phone (`Approval` returns an error on both
@@ -79,18 +80,14 @@ Devices), and nothing touches your files until you have seen the change.
    and comparing an eight-character code remains available under **Other ways to pair**.
    New devices are observe-only; granting input is a separate, explicit toggle per
    device.
-2. **Show tmux sessions.** Under "Terminals opened in other apps", choose **Show**. The
-   listener restarts, so a connected phone reconnects once.
-3. **Open new terminals in tmux.** Choose **Review changes**. The app lists every file it
-   will create or edit, with the exact lines, and writes them only when you choose
-   **Apply changes**. If a file changes between your review and Apply, nothing is written
-   and you are asked to review again.
-4. **Check setup.** The app starts a throwaway tmux session, confirms it appears in the
-   listing a phone would see, and ends it. Your own sessions are left alone.
+2. **Add the Multiplex profile** to your terminal app under "Terminal profiles", and open new
+   terminals with it.
 
-Open a new Terminal or Zed tab and it appears on the phone.
+If an earlier version installed the tmux startup setup, "tmux startup setup (retired)" shows
+**Review removal** and **Check setup**. Until you remove it, new tabs still start inside tmux
+and paired devices still see your tmux sessions; removing it stops both.
 
-## What the setup writes
+## What the retired tmux setup wrote
 
 ### macOS and Linux
 
@@ -260,9 +257,9 @@ Every change is reversible from the same section, or by hand:
 1. **Review removal**, then **Remove from my files**. This deletes the marked block and
    the init files and leaves the rest of your startup file exactly as it was. By hand:
    delete the marked block in `~/.zshrc` and the files in `~/.config/termirust/`.
-2. Choose **Hide** under "Show tmux sessions".
-3. Choose **Stop running in background**, or run `termirust controller-service remove`.
-4. Revoke paired devices. Revocation increments the epoch and closes live channels.
+   Paired devices stop seeing tmux sessions at the same time.
+2. Choose **Stop running in background**, or run `termirust controller-service remove`.
+3. Revoke paired devices. Revocation increments the epoch and closes live channels.
 
 Existing tmux sessions keep running; `tmux kill-server` ends them.
 

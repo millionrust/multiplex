@@ -4586,26 +4586,6 @@ id = "remote-terminals-description"
 context = "Explanation below the remote terminals heading naming the supported terminal apps."
 description = "Remote terminals section explanation"
 [[messages]]
-id = "remote-terminals-discovery-label"
-context = "Label for the choice that lists tmux sessions to paired devices."
-description = "Show tmux sessions label"
-[[messages]]
-id = "remote-terminals-discovery-description"
-context = "Explains tmux session sharing and that changing it restarts the listener."
-description = "Show tmux sessions explanation"
-[[messages]]
-id = "remote-terminals-discovery-show"
-context = "Segmented choice that lists tmux sessions to paired devices."
-description = "Show tmux sessions choice"
-[[messages]]
-id = "remote-terminals-discovery-hide"
-context = "Segmented choice that hides tmux sessions from paired devices."
-description = "Hide tmux sessions choice"
-[[messages]]
-id = "remote-terminals-discovery-saved"
-context = "Notice after changing whether paired devices see tmux sessions."
-description = "tmux session sharing saved notice"
-[[messages]]
 id = "remote-terminals-wrap-label"
 context = "Label for the setup that starts new terminals inside tmux."
 description = "Open new terminals in tmux label"

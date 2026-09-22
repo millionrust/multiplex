@@ -603,26 +603,6 @@ pub fn recovery_error_verification() -> String {
 static_message!(remote_terminals_title, RemoteTerminalsTitleArgs);
 static_message!(remote_terminals_description, RemoteTerminalsDescriptionArgs);
 static_message!(
-    remote_terminals_discovery_label,
-    RemoteTerminalsDiscoveryLabelArgs
-);
-static_message!(
-    remote_terminals_discovery_description,
-    RemoteTerminalsDiscoveryDescriptionArgs
-);
-static_message!(
-    remote_terminals_discovery_show,
-    RemoteTerminalsDiscoveryShowArgs
-);
-static_message!(
-    remote_terminals_discovery_hide,
-    RemoteTerminalsDiscoveryHideArgs
-);
-static_message!(
-    remote_terminals_discovery_saved,
-    RemoteTerminalsDiscoverySavedArgs
-);
-static_message!(
     remote_terminals_profiles_label,
     RemoteTerminalsProfilesLabelArgs
 );
