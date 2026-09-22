@@ -52,7 +52,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.0.3"
+version = "0.0.4"
 # The toolchain pinned in rust-toolchain.toml; no older compiler is supported.
 rust-version = "1.98"
 

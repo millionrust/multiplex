@@ -1,6 +1,6 @@
 [package]
 name = "multiplex-screen-video"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2024"
 rust-version.workspace = true
 description = "Hardware video encoding for the TermiRust Remote Screens motion path: low-latency HEVC with long-term references, over VideoToolbox on macOS"
