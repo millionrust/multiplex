@@ -2322,6 +2322,21 @@ transfer-summary = { $count ->
    *[other] { $count }⟦ ƒîļéš ţŕåñšƒéŕŕéð (~~~~~~⟧{ $bytes }⟦)⟧
     [zero] ⟦Ñø ƒîļéš ţŕåñšƒéŕŕéð~~~~~~⟧
     }
+update-automatic-description = ⟦Ñéŵ ṽéŕšîøñš ðøŵñļøåð îñ ţĥé ƀåçķĝŕøûñð åñð îñšţåļļ ŵĥéñ ýøû ŕéšţåŕţ. Ŵĥéñ øƒƒ, ţĥé åþþ øñļý ţéļļš ýøû øñé îš åṽåîļåƀļé.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+update-automatic-label = ⟦Ðøŵñļøåð ûþðåţéš åûţøɱåţîçåļļý~~~~~~~~~~⟧
+update-automatic-off = ⟦Øƒƒ⟧
+update-automatic-on = ⟦Øñ⟧
+update-available-action = ⟦Ûþðåţé åṽåîļåƀļé~~~~~⟧
+update-check-action = ⟦Çĥéçķ ƒøŕ ûþðåţéš~~~~~⟧
+update-open-page-action = ⟦Øþéñ ŕéļéåšé þåĝé~~~~~⟧
+update-restart-action = ⟦Ŕéšţåŕţ ţø Ûþðåţé~~~~~⟧
+update-status-checking = ⟦Çĥéçķîñĝ ƒøŕ ûþðåţéš…~~~~~~~⟧
+update-status-current = ⟦Ṁûļţîþļéẋ îš ûþ ţø ðåţé.~~~~~~~~⟧
+update-status-development = ⟦Ţĥîš îš å ðéṽéļøþɱéñţ ƀûîļð, šø îţ ðøéš ñøţ ûþðåţé îţšéļƒ.~~~~~~~~~~~~~~~~~~~~~~⟧
+update-status-downloading = ⟦Ðøŵñļøåðîñĝ Ṁûļţîþļéẋ ~~~~~~~⟧{ $version }⟦…⟧
+update-status-failed = ⟦Çøûļð ñøţ çĥéçķ ƒøŕ ûþðåţéš. Ţŕý åĝåîñ ļåţéŕ.~~~~~~~~~~~~~~~~⟧
+update-status-manual = ⟦Ṁûļţîþļéẋ ~~⟧{ $version }⟦ îš åṽåîļåƀļé. Ðøŵñļøåð îţ ƒŕøɱ ţĥé ŕéļéåšé þåĝé.~~~~~~~~~~~~~~~~~~⟧
+update-status-ready = ⟦Ṁûļţîþļéẋ ~~⟧{ $version }⟦ îš ŕéåðý. Ŕéšţåŕţ ţø ûþðåţé.~~~~~~~~~~⟧
 vault-delete-action = ⟦Ðéļéţé Ṽåûļţ~~~⟧
 vault-description-field = ⟦Ðéšçŕîþţîøñ~~~⟧
 vault-draft-cleared = ⟦Ṽåûļţ ðŕåƒţ çļéåŕéð.~~~~~~⟧

@@ -75,6 +75,12 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 - Write-capable local coding agents default to app-managed Git worktrees with
   conservative status inspection and clean-only removal.
 - Settings view for appearance theme, terminal font, default local shell, workspace restore, history limits, and import/export. A section sidebar shows one section at a time; search spans every section. Choices use the compact segmented control (`segmented_control` in `ui/app/mod.rs`).
+- Desktop updates (`src/update/`, `docs/decisions/desktop-updates.md`): the app checks GitHub
+  Releases after launch and every six hours, downloads the macOS universal zip or the Windows MSI
+  in the background, checks its `.sha256`, and shows "Restart to Update" at the right end of the
+  top bar; `multiplex --apply-update` installs it after the app quits. Linux and portable Windows
+  copies get "Update available" and the release page. Settings → About shows the version, build
+  commit, and update controls. Development builds never update.
 - TOFU known-host pinning; Known Hosts view supports deleting pinned host keys.
 - Keychain view shows imported key type, public key availability, and an "Add Key File" picker.
 - Build/distribution metadata for cargo-bundle (macOS .app, Linux deb/rpm) lives in `crates/multiplex-desktop/Cargo.toml`; per-platform release flow is in `docs/building.md`.
@@ -260,6 +266,9 @@ ID is `com.millionrust.multiplex` on every platform.
    `gh release edit vX.Y.Z --draft=false`. The notes should say how to open each unsigned build
    (right-click → Open on macOS, SmartScreen → Run anyway on Windows, uninstall before updating
    the APK, re-sign the `.ipa`) and what is not built yet.
+
+The desktop updater finds its package by asset name, so the macOS zip and both MSIs, and their
+`.sha256` files, keep their names (`docs/decisions/desktop-updates.md`).
 
 A tag is never moved once pushed. If a tag build cannot be published, fix the workflow on `dev` and
 release the next patch version (v0.0.1 is a tag without a release for that reason). A job that

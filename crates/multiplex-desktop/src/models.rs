@@ -745,6 +745,9 @@ pub struct AppSettings {
     /// Lets paired devices that may watch screens see this computer's displays.
     #[serde(default)]
     pub remote_screen_sharing: bool,
+    /// Only tell the person about new versions instead of downloading them in the background.
+    #[serde(default)]
+    pub manual_updates: bool,
     /// What the compositor's portal gave us for reopening a screen grant without asking again.
     /// Only Wayland produces one; it is opaque and names no screen.
     #[serde(default)]
@@ -806,6 +809,7 @@ impl Default for AppSettings {
             mobile_device_keys: Vec::new(),
             remote_tmux_sessions: false,
             remote_screen_sharing: false,
+            manual_updates: false,
             remote_screen_restore_token: None,
         }
     }

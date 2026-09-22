@@ -942,6 +942,7 @@ impl MultiplexApp {
                             .text_color(theme::text_muted_dark()),
                     ),
             )
+            .children(self.render_update_chrome_button(cx))
     }
 
     fn nav_card(

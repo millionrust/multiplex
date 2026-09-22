@@ -38,6 +38,7 @@ mod sftp;
 mod terminal_grid;
 mod transcript_export;
 mod types;
+mod updates;
 mod vault_key_snippet;
 mod workspace;
 mod worktree_launch;
@@ -1427,6 +1428,7 @@ pub struct MultiplexApp {
     activity_center: ActivityCenterState,
     remote_devices: RemoteDevicesState,
     remote_terminals: remote_terminals::RemoteTerminalsState,
+    updates: updates::UpdateState,
     desktop_panes: DesktopPaneRegistry,
     _desktop_pane_bridge_server: Option<DesktopPaneBridgeServer>,
     dev_url_ui: DevUrlUiState,
@@ -1877,6 +1879,7 @@ impl MultiplexApp {
             activity_center,
             remote_devices,
             remote_terminals: remote_terminals::RemoteTerminalsState::open_default(),
+            updates: updates::UpdateState::open(),
             desktop_panes,
             _desktop_pane_bridge_server: desktop_pane_bridge_server,
             dev_url_ui: DevUrlUiState::open_default(cx),
@@ -2049,6 +2052,7 @@ impl MultiplexApp {
         app.refresh_global_search_index();
         app.refresh_wrapped_tmux_behavior(cx);
         app.sync_remote_tmux_sessions();
+        app.start_update_checks(cx);
 
         if app.saved.settings.restore_workspaces_on_launch {
             app.restore_saved_workspaces(window, cx);
@@ -30934,6 +30938,55 @@ sleep 1
             assert_eq!(app.active_workspace_id, None);
             assert!(app.workspace(workspace_id).is_some());
             assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn the_top_bar_offers_an_update_only_when_there_is_one(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let shown = |cx: &mut TestAppContext| {
+            window
+                .update(cx, |_, window, _| window.refresh())
+                .expect("window update should succeed");
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.run_until_parked();
+            visual.debug_bounds("chrome-update").is_some()
+        };
+        assert!(!shown(cx), "a test build never offers an update");
+
+        let set = |cx: &mut TestAppContext, status: super::updates::UpdateStatus| {
+            app.update(cx, |app, cx| {
+                app.updates.status = status;
+                cx.notify();
+            });
+        };
+        // gpui keeps every debug bound it has ever recorded, so absence is checked before the
+        // button first appears.
+        set(cx, super::updates::UpdateStatus::UpToDate);
+        assert!(!shown(cx));
+        set(
+            cx,
+            super::updates::UpdateStatus::Manual {
+                version: crate::update::Version(9, 9, 9),
+                page: crate::update::RELEASES_PAGE.to_owned(),
+            },
+        );
+        assert!(shown(cx));
+        set(
+            cx,
+            super::updates::UpdateStatus::Ready(crate::update::Staged {
+                version: crate::update::Version(9, 9, 9),
+                installer: crate::update::Installer::MacAppZip,
+                path: std::path::PathBuf::from("staged.zip"),
+            }),
+        );
+        assert!(shown(cx));
+        app.read_with(cx, |app, _| {
+            assert!(matches!(
+                app.updates.status,
+                super::updates::UpdateStatus::Ready(_)
+            ));
         });
     }
 

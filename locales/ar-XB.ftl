@@ -2322,6 +2322,21 @@ transfer-summary = { $count ->
    *[other] { $count }⁧) derrefsnart selif ⁩{ $bytes }⁧(⁩
     [zero] ⁧derrefsnart selif oN⁩
     }
+update-automatic-description = ⁧.elbaliava si eno uoy sllet ylno ppa eht ,ffo nehW .tratser uoy nehw llatsni dna dnuorgkcab eht ni daolnwod snoisrev weN⁩
+update-automatic-label = ⁧yllacitamotua setadpu daolnwoD⁩
+update-automatic-off = ⁧ffO⁩
+update-automatic-on = ⁧nO⁩
+update-available-action = ⁧elbaliava etadpU⁩
+update-check-action = ⁧setadpu rof kcehC⁩
+update-open-page-action = ⁧egap esaeler nepO⁩
+update-restart-action = ⁧etadpU ot tratseR⁩
+update-status-checking = ⁧…setadpu rof gnikcehC⁩
+update-status-current = ⁧.etad ot pu si xelpitluM⁩
+update-status-development = ⁧.flesti etadpu ton seod ti os ,dliub tnempoleved a si sihT⁩
+update-status-downloading = ⁧ xelpitluM gnidaolnwoD⁩{ $version }⁧…⁩
+update-status-failed = ⁧.retal niaga yrT .setadpu rof kcehc ton dluoC⁩
+update-status-manual = ⁧ xelpitluM⁩{ $version }⁧.egap esaeler eht morf ti daolnwoD .elbaliava si ⁩
+update-status-ready = ⁧ xelpitluM⁩{ $version }⁧.etadpu ot tratseR .ydaer si ⁩
 vault-delete-action = ⁧tluaV eteleD⁩
 vault-description-field = ⁧noitpircseD⁩
 vault-draft-cleared = ⁧.deraelc tfard tluaV⁩

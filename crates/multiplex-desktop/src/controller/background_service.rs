@@ -655,6 +655,29 @@ pub fn remove() -> Result<(), ServiceError> {
     Err(ServiceError("service.unsupported"))
 }
 
+/// Before an update replaces the app's files: a running service holds `multiplex.exe` open on
+/// Windows, and the installer cannot replace a file in use. macOS replaces the bundle while it
+/// runs, so there is nothing to stop there.
+pub fn stop_for_update() {
+    #[cfg(windows)]
+    if let Ok(app_root) = crate::storage::app_dir() {
+        stop_running_service(&crate::controller_runtime_parent(&app_root));
+    }
+}
+
+/// After an update: an installed service is started again from the new files. A service that
+/// was never installed stays that way.
+pub fn restart_after_update() {
+    #[cfg(target_os = "macos")]
+    if launch_agent_path().is_some_and(|plist| plist.is_file()) {
+        let _ = launchctl(&["kickstart", "-k", &launchctl_service_target()]);
+    }
+    #[cfg(windows)]
+    if windows_run::read().is_some() {
+        let _ = install();
+    }
+}
+
 /// Asks a running service to exit, and waits until its lock is free or the wait runs out.
 #[cfg(windows)]
 fn stop_running_service(runtime_parent: &Path) {

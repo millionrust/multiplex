@@ -27,6 +27,7 @@ mod terminal;
 #[cfg(test)]
 mod test_support;
 mod ui;
+mod update;
 mod worktree_launch;
 
 use gpui::*;
@@ -248,6 +249,11 @@ fn uninstall_cleanup() {
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some(update::APPLY_UPDATE_COMMAND) {
+        let arguments: Vec<String> = std::env::args().skip(2).collect();
+        update::apply::run(&arguments);
+        return;
+    }
     if std::env::args().nth(1).as_deref() == Some(UNINSTALL_CLEANUP_MODE) {
         uninstall_cleanup();
         return;

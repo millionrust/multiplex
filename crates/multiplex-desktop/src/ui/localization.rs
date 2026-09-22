@@ -818,6 +818,27 @@ static_message!(about_license_label, AboutLicenseLabelArgs);
 static_message!(about_source_label, AboutSourceLabelArgs);
 static_message!(about_copy_action, AboutCopyActionArgs);
 static_message!(about_copied, AboutCopiedArgs);
+static_message!(update_restart_action, UpdateRestartActionArgs);
+static_message!(update_available_action, UpdateAvailableActionArgs);
+static_message!(update_check_action, UpdateCheckActionArgs);
+static_message!(update_status_checking, UpdateStatusCheckingArgs);
+static_message!(update_status_current, UpdateStatusCurrentArgs);
+pub fn update_status_downloading(version: &str) -> String {
+    text(&UpdateStatusDownloadingArgs::new(UserData::new(version)))
+}
+pub fn update_status_ready(version: &str) -> String {
+    text(&UpdateStatusReadyArgs::new(UserData::new(version)))
+}
+pub fn update_status_manual(version: &str) -> String {
+    text(&UpdateStatusManualArgs::new(UserData::new(version)))
+}
+static_message!(update_status_failed, UpdateStatusFailedArgs);
+static_message!(update_status_development, UpdateStatusDevelopmentArgs);
+static_message!(update_automatic_label, UpdateAutomaticLabelArgs);
+static_message!(update_automatic_description, UpdateAutomaticDescriptionArgs);
+static_message!(update_automatic_on, UpdateAutomaticOnArgs);
+static_message!(update_automatic_off, UpdateAutomaticOffArgs);
+static_message!(update_open_page_action, UpdateOpenPageActionArgs);
 static_message!(sftp_nav_label, SftpNavLabelArgs);
 static_message!(devices_add_computer_action, DevicesAddComputerActionArgs);
 static_message!(devices_settings_action, DevicesSettingsActionArgs);

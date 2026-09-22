@@ -11784,3 +11784,96 @@ description = "Copy details action"
 id = "about-copied"
 context = "Status shown after the version details were copied."
 description = "Details copied status"
+
+[[messages]]
+id = "update-restart-action"
+context = "Button at the right end of the top bar once an update has downloaded; restarts the app into the new version."
+description = "Restart to update action"
+
+[[messages]]
+id = "update-available-action"
+context = "Button at the right end of the top bar when a newer version exists but this copy cannot install it itself; opens the release page."
+description = "Update available action"
+
+[[messages]]
+id = "update-check-action"
+context = "Button in Settings → About that asks for a newer version now."
+description = "Check for updates action"
+
+[[messages]]
+id = "update-status-checking"
+context = "Shown in Settings → About while the app asks for a newer version."
+description = "Checking status"
+
+[[messages]]
+id = "update-status-current"
+context = "Shown in Settings → About when no newer version exists."
+description = "Up to date status"
+
+[[messages]]
+id = "update-status-downloading"
+context = "Shown in Settings → About while a newer version downloads in the background."
+description = "Downloading status"
+
+[[messages.args]]
+name = "version"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "update-status-ready"
+context = "Shown in Settings → About once a newer version has downloaded and been checked."
+description = "Ready status"
+
+[[messages.args]]
+name = "version"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "update-status-manual"
+context = "Shown in Settings → About when a newer version exists but this copy cannot install it itself, such as on Linux or a portable Windows copy."
+description = "Manual update status"
+
+[[messages.args]]
+name = "version"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "update-status-failed"
+context = "Shown in Settings → About when checking or downloading failed."
+description = "Update failed status"
+
+[[messages]]
+id = "update-status-development"
+context = "Shown in Settings → About in builds made from source."
+description = "Development build status"
+
+[[messages]]
+id = "update-automatic-label"
+context = "Label of the Settings → About choice whether new versions download in the background."
+description = "Automatic updates label"
+
+[[messages]]
+id = "update-automatic-description"
+context = "Description of the automatic update choice in Settings → About."
+description = "Automatic updates description"
+
+[[messages]]
+id = "update-automatic-on"
+context = "Choice that turns background update downloads on."
+description = "Automatic updates on"
+
+[[messages]]
+id = "update-automatic-off"
+context = "Choice that turns background update downloads off."
+description = "Automatic updates off"
+
+[[messages]]
+id = "update-open-page-action"
+context = "Button in Settings → About that opens the newest release's page in the browser."
+description = "Open release page action"

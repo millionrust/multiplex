@@ -52,6 +52,9 @@ libc = "0.2"
 portable-pty = "0.9"
 qrcode = { version = "0.14", default-features = false }
 rand = "0.8"
+# Update checks and downloads from GitHub Releases; the same client and TLS stack as
+# multiplex-browser, so no second HTTP stack is linked.
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "blocking"] }
 # russh 0.60's key types take an RNG through rand_core 0.10's traits, which rand 0.8's `OsRng`
 # does not implement. Both are the operating system's source; only the trait shape differs. Kept
 # under an alias and used only where russh needs it, rather than moving every call site.

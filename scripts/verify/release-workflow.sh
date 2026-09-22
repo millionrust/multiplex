@@ -27,6 +27,11 @@ grep -F 'triple: x86_64-apple-darwin' "$workflow" >/dev/null
 grep -F 'output-file: dist/Multiplex-${{ matrix.target.name }}.spdx.json' "$workflow" >/dev/null
 grep -F 'uses: actions/attest@v4' "$workflow" >/dev/null
 grep -F 'draft: true' "$workflow" >/dev/null
+# The desktop updater finds its package by these names (docs/decisions/desktop-updates.md).
+grep -F 'shasum -a 256 Multiplex-macos-universal.zip > Multiplex-macos-universal.zip.sha256' "$workflow" >/dev/null
+grep -F -e '- name: windows-x86_64' "$workflow" >/dev/null
+grep -F -e '- name: windows-aarch64' "$workflow" >/dev/null
+grep -F '[IO.File]::WriteAllText("$msi.sha256", "$hash  Multiplex-${{ matrix.target.name }}.msi`n")' "$workflow" >/dev/null
 if grep -F 'macos-13' "$workflow" >/dev/null; then
   printf '%s\n' 'release workflow uses the retired macos-13 runner' >&2
   exit 1

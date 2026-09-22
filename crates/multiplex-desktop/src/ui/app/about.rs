@@ -87,6 +87,7 @@ impl MultiplexApp {
                     SOURCE_URL.to_owned(),
                     false,
                 ))
+                .child(self.render_update_settings(cx))
                 .child(
                     h_flex().pt_2().gap_2().child(
                         Button::new("about-copy-details")
