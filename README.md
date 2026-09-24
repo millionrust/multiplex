@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="design/brand/multiplex-mark.png" alt="" width="104" height="104">
+</p>
+
 # Multiplex
 
 **Your terminals and screens, wherever you are.**

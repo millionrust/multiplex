@@ -51,6 +51,9 @@ render "$BRAND/icon-macos.svg" 1024 "$DESKTOP_ICONS/app@2x.png"
 cp "$BRAND/icon-macos.svg" "$DESKTOP_ICONS/app.svg"
 printf '        %s\n' "${DESKTOP_ICONS#"$ROOT_DIR"/}/app.svg"
 
+printf 'readme\n'
+render "$BRAND/icon-rounded.svg" 256 "$BRAND/multiplex-mark.png"
+
 printf 'iOS\n'
 render "$BRAND/icon-ios.svg" 1024 "$IOS_ICONSET/AppIcon.png"
 
