@@ -9,7 +9,7 @@ pub(super) const MAX_SPLIT_RATIO: f32 = 0.92;
 /// How close a dragged divider must come to a third or a half to snap to it.
 pub(super) const RATIO_SNAP_DISTANCE: f32 = 0.02;
 /// How far one keyboard resize moves a divider, as a share of its split.
-pub(super) const KEYBOARD_RESIZE_STEP: f32 = 0.05;
+pub(super) const KEYBOARD_DIVIDER_STEP: f32 = 0.05;
 
 /// Recursive split layout for a workspace — a binary tree of panes.
 #[derive(Clone, Debug)]

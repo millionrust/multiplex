@@ -9762,7 +9762,7 @@ impl MultiplexApp {
                 layout.nudge_ratio(
                     active,
                     direction.axis(),
-                    direction.sign() * split_tree::KEYBOARD_RESIZE_STEP,
+                    direction.sign() * split_tree::KEYBOARD_DIVIDER_STEP,
                 )
             });
         if !moved {
@@ -24942,7 +24942,9 @@ sleep 1
 
         let before = root_ratio(cx);
         press("secondary-shift-alt-right", cx);
-        assert!((root_ratio(cx) - (before + super::split_tree::KEYBOARD_RESIZE_STEP)).abs() < 1e-5);
+        assert!(
+            (root_ratio(cx) - (before + super::split_tree::KEYBOARD_DIVIDER_STEP)).abs() < 1e-5
+        );
 
         press("secondary-shift-enter", cx);
         window

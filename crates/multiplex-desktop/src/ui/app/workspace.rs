@@ -2,7 +2,7 @@
 //! view, terminal pane (cells/rows), workspace body and shell wrapper.
 //! All methods are part of `MultiplexApp`.
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use gpui::AppContext as _;
 use gpui::prelude::FluentBuilder as _;
@@ -75,8 +75,15 @@ fn drop_zone_at(
 ) -> DropZone {
     let width = f32::from(bounds.size.width).max(1.0);
     let height = f32::from(bounds.size.height).max(1.0);
-    let rx = (f32::from(position.x) - f32::from(bounds.origin.x)) / width;
-    let ry = (f32::from(position.y) - f32::from(bounds.origin.y)) / height;
+    drop_zone_for(
+        (f32::from(position.x) - f32::from(bounds.origin.x)) / width,
+        (f32::from(position.y) - f32::from(bounds.origin.y)) / height,
+        center,
+    )
+}
+
+/// The zone at `(rx, ry)`, as fractions of the pane from its top-left corner.
+fn drop_zone_for(rx: f32, ry: f32, center: bool) -> DropZone {
     if center && (0.3..0.7).contains(&rx) && (0.3..0.7).contains(&ry) {
         return DropZone::Center;
     }
@@ -106,27 +113,27 @@ fn center_zone_guide() -> MotionRect {
     MotionRect::new(0.3, 0.3, 0.4, 0.4)
 }
 
-const PANE_HEADER_HEIGHT: f32 = 30.0;
+const PANE_HEADER_HEIGHT: f32 = theme::SPLIT_PANE_HEADER_HEIGHT;
 /// How far the content of panes without focus fades back in a split.
 const INACTIVE_PANE_OPACITY: f32 = 0.66;
-const PANE_HEADER_BUTTON: f32 = 24.0;
-const PANE_STATUS_DOT: f32 = 8.0;
-const PANE_RENAME_WIDTH: f32 = 180.0;
-const PANE_BROADCAST_BADGE_SIZE: f32 = 10.0;
-const DROP_PREVIEW_INSET: f32 = 3.0;
+const PANE_HEADER_BUTTON: f32 = theme::SPLIT_PANE_HEADER_BUTTON;
+const PANE_STATUS_DOT: f32 = theme::SPLIT_PANE_STATUS_DOT;
+const PANE_RENAME_WIDTH: f32 = theme::SPLIT_PANE_RENAME_WIDTH;
+const PANE_BROADCAST_BADGE_SIZE: f32 = theme::SPLIT_PANE_BADGE_TEXT;
+const DROP_PREVIEW_INSET: f32 = theme::SPLIT_DROP_PREVIEW_INSET;
 
 /// The divider line stops short of the panes' rounded corners.
-const DIVIDER_LINE_INSET: f32 = 6.0;
-const DIVIDER_LINE_WIDTH: f32 = 2.0;
-const DIVIDER_READOUT_WIDTH: f32 = 76.0;
-const DIVIDER_READOUT_HEIGHT: f32 = 22.0;
-const ZOOM_PILL_HEIGHT: f32 = 30.0;
+const DIVIDER_LINE_INSET: f32 = theme::SPLIT_DIVIDER_LINE_INSET;
+const DIVIDER_LINE_WIDTH: f32 = theme::SPLIT_DIVIDER_LINE_WIDTH;
+const DIVIDER_READOUT_WIDTH: f32 = theme::SPLIT_DIVIDER_READOUT_WIDTH;
+const DIVIDER_READOUT_HEIGHT: f32 = theme::SPLIT_DIVIDER_READOUT_HEIGHT;
+const ZOOM_PILL_HEIGHT: f32 = theme::SPLIT_PILL_HEIGHT;
 /// How close to the bottom of the window the pointer brings up the layout bar.
-const SPLIT_LAYOUT_BAR_REVEAL: f32 = 72.0;
-const SPLIT_LAYOUT_BUTTON_SIZE: f32 = 28.0;
+const SPLIT_LAYOUT_BAR_REVEAL: f32 = theme::SPLIT_LAYOUT_BAR_REVEAL;
+const SPLIT_LAYOUT_BUTTON_SIZE: f32 = theme::SPLIT_LAYOUT_BUTTON_SIZE;
 /// Preset glyphs are the preset's own layout, drawn at a tenth of this size.
-const PRESET_GLYPH_WIDTH: f32 = 22.0;
-const PRESET_GLYPH_HEIGHT: f32 = 16.0;
+const PRESET_GLYPH_WIDTH: f32 = theme::SPLIT_PRESET_GLYPH_WIDTH;
+const PRESET_GLYPH_HEIGHT: f32 = theme::SPLIT_PRESET_GLYPH_HEIGHT;
 
 pub(super) fn preset_message(preset: SplitPreset) -> MessageId {
     match preset {
@@ -168,7 +175,7 @@ fn preset_glyph(preset: SplitPreset, group: SharedString) -> Div {
                 .top(px(rect.y / SCALE))
                 .w(px(rect.width / SCALE))
                 .h(px(rect.height / SCALE))
-                .rounded(px(2.0))
+                .rounded(px(theme::SPLIT_PRESET_GLYPH_RADIUS))
                 .border_1()
                 .border_color(theme::text_muted_dark())
                 .group_hover(group.clone(), |style| {
@@ -1848,19 +1855,17 @@ impl MultiplexApp {
                 },
                 cx,
             ));
-        h_flex()
-            .absolute()
-            .bottom(px(theme::SPACE_4))
-            .left_0()
-            .right_0()
-            .justify_center()
-            .child(bar)
-            .with_animation(
-                "split-layout-bar",
-                Animation::new(motion::MotionSpeed::DropPreview.animation_duration()),
-                |element, delta| element.opacity(delta),
-            )
-            .into_any_element()
+        motion::fade_in(
+            h_flex()
+                .absolute()
+                .bottom(px(theme::SPACE_4))
+                .left_0()
+                .right_0()
+                .justify_center()
+                .child(bar),
+            "split-layout-bar",
+            motion::MotionSpeed::DropPreview,
+        )
     }
 
     fn split_layout_bar_text_button(
@@ -1905,7 +1910,7 @@ impl MultiplexApp {
             .as_ref()?
             .leaf_count()
             .saturating_sub(1);
-        Some(
+        Some(motion::fade_in(
             h_flex()
                 .id("split-zoom-pill")
                 .debug_selector(|| "split-zoom-pill".to_string())
@@ -1949,14 +1954,10 @@ impl MultiplexApp {
                                     this.restore_zoomed_pane(window, cx);
                                 })),
                         ),
-                )
-                .with_animation(
-                    ("split-zoom-pill", pane_id),
-                    Animation::new(motion::MotionSpeed::Quick.animation_duration()),
-                    |element, delta| element.opacity(delta),
-                )
-                .into_any_element(),
-        )
+                ),
+            ("split-zoom-pill", pane_id),
+            motion::MotionSpeed::Quick,
+        ))
     }
 
     fn render_pane_divider(
@@ -2254,13 +2255,11 @@ impl MultiplexApp {
                 if sliding {
                     overlay.into_any_element()
                 } else {
-                    overlay
-                        .with_animation(
-                            ("split-drop-zone-fade", pane_id),
-                            Animation::new(motion::MotionSpeed::DropPreview.animation_duration()),
-                            |element, delta| element.opacity(delta),
-                        )
-                        .into_any_element()
+                    motion::fade_in(
+                        overlay,
+                        ("split-drop-zone-fade", pane_id),
+                        motion::MotionSpeed::DropPreview,
+                    )
                 }
             })
     }
@@ -2348,14 +2347,11 @@ impl MultiplexApp {
             .rounded_full()
             .bg(status_color);
         let dot = if connecting {
-            dot.with_animation(
+            motion::pulse(
+                dot,
                 ("pane-status-pulse", pane_id),
-                Animation::new(Duration::from_millis(1200))
-                    .repeat()
-                    .with_easing(gpui::pulsating_between(0.35, 1.0)),
-                |dot, delta| dot.opacity(delta),
+                motion::MotionSpeed::StatusPulse,
             )
-            .into_any_element()
         } else {
             dot.into_any_element()
         };
@@ -2514,15 +2510,9 @@ fn workspace_sftp_text(message: MessageId) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::{Bounds, point, size};
 
     fn at(x: f32, y: f32, center: bool) -> DropZone {
-        let bounds = Bounds::new(point(px(100.0), px(50.0)), size(px(400.0), px(200.0)));
-        drop_zone_at(
-            bounds,
-            point(px(100.0 + x * 400.0), px(50.0 + y * 200.0)),
-            center,
-        )
+        drop_zone_for(x, y, center)
     }
 
     #[test]

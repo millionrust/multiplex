@@ -88,6 +88,13 @@ allowed_use = "Visible focus indication."
 values = { system = "#74A7F2", light = "#2A64C8", dark = "#74A7F2", high_contrast = "#FFFF00", recording_friendly = "#FFFFFF" }
 
 [[tokens]]
+key = "color.canvas.guide"
+category = "color"
+description = "Line showing what a dragged canvas node has lined up with."
+allowed_use = "Canvas alignment guides only; distinct from focus, links, and warnings."
+values = { system = "#E86FB0", light = "#B8337F", dark = "#E86FB0", high_contrast = "#FF00FF", recording_friendly = "#FF6EC7" }
+
+[[tokens]]
 key = "color.status.idle"
 category = "color"
 description = "Idle status color."
@@ -1167,6 +1174,22 @@ description = "Panel transition."
 allowed_use = "Panel transitions without bounce or parallax."
 reduced_motion = "motion.instant"
 values = { system = "240ms", light = "240ms", dark = "240ms", high_contrast = "240ms", recording_friendly = "240ms" }
+
+[[tokens]]
+key = "motion.status_pulse"
+category = "duration"
+description = "One cycle of the pulse on a pane that is still connecting."
+allowed_use = "Pane and node connection status dots only."
+reduced_motion = "motion.instant"
+values = { system = "1200ms", light = "1200ms", dark = "1200ms", high_contrast = "1200ms", recording_friendly = "1200ms" }
+
+[[tokens]]
+key = "motion.attention_pulse"
+category = "duration"
+description = "One cycle of the pulse on the dot of something that needs the user."
+allowed_use = "Attention indicators only."
+reduced_motion = "motion.instant"
+values = { system = "1000ms", light = "1000ms", dark = "1000ms", high_contrast = "1000ms", recording_friendly = "1000ms" }
 
 [[tokens]]
 key = "motion.layout_morph"

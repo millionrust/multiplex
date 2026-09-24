@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "2ce889de152255eb732cb62210296a0200e2975cf8806bba6d16978de7c81b17",
+  "sourceSha256": "b4287e64065b613b5161e06cd48c8476ad07f4e44e225d42f8bec0fe5639e730",
   "statuses": [
     {
       "color": "color.status.attention",
@@ -303,6 +303,20 @@
         "light": "#E3E6EA",
         "recording_friendly": "#30343B",
         "system": "#22262C"
+      }
+    },
+    {
+      "allowedUse": "Canvas alignment guides only; distinct from focus, links, and warnings.",
+      "category": "color",
+      "description": "Line showing what a dragged canvas node has lined up with.",
+      "key": "color.canvas.guide",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#E86FB0",
+        "high_contrast": "#FF00FF",
+        "light": "#B8337F",
+        "recording_friendly": "#FF6EC7",
+        "system": "#E86FB0"
       }
     },
     {
@@ -2210,6 +2224,20 @@
       }
     },
     {
+      "allowedUse": "Attention indicators only.",
+      "category": "duration",
+      "description": "One cycle of the pulse on the dot of something that needs the user.",
+      "key": "motion.attention_pulse",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "1000ms",
+        "high_contrast": "1000ms",
+        "light": "1000ms",
+        "recording_friendly": "1000ms",
+        "system": "1000ms"
+      }
+    },
+    {
       "allowedUse": "Canvas fit, tidy, and jump-to-node camera moves.",
       "category": "duration",
       "description": "The canvas view flying to fit content or to a node.",
@@ -2445,6 +2473,20 @@
         "light": "240ms",
         "recording_friendly": "240ms",
         "system": "240ms"
+      }
+    },
+    {
+      "allowedUse": "Pane and node connection status dots only.",
+      "category": "duration",
+      "description": "One cycle of the pulse on a pane that is still connecting.",
+      "key": "motion.status_pulse",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "1200ms",
+        "high_contrast": "1200ms",
+        "light": "1200ms",
+        "recording_friendly": "1200ms",
+        "system": "1200ms"
       }
     },
     {

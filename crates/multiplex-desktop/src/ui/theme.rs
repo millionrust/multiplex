@@ -285,6 +285,11 @@ pub fn accent_soft() -> Hsla {
     token_color(current_design_tokens().color_selection())
 }
 
+/// Canvas alignment guides.
+pub fn canvas_guide() -> Hsla {
+    token_color(current_design_tokens().color_canvas_guide())
+}
+
 pub fn focus_ring() -> Hsla {
     token_color(current_design_tokens().color_focus())
 }
@@ -741,6 +746,43 @@ pub const CANVAS_PANEL_MEDIUM_WIDTH: f32 = CANVAS_PROJECT_PANEL_WIDTH - SPACE_8 
 pub const CANVAS_PANEL_LARGE_WIDTH: f32 = CANVAS_PROJECT_PANEL_WIDTH + SPACE_6 - SPACE_2;
 pub const CANVAS_PROJECT_FILES_WIDTH: f32 =
     CANVAS_PROJECT_PANEL_WIDTH + SPACE_9 + SPACE_7 + SPACE_2;
+// Split panes: header, dividers, drop preview, zoom pill, and layout bar.
+pub const SPLIT_PANE_HEADER_HEIGHT: f32 = SPACE_7 - SPACE_1;
+pub const SPLIT_PANE_HEADER_BUTTON: f32 = SPACE_6;
+pub const SPLIT_PANE_STATUS_DOT: f32 = SPACE_3;
+pub const SPLIT_PANE_RENAME_WIDTH: f32 = SPACE_9 + SPACE_9 + SPACE_8 + SPACE_4;
+pub const SPLIT_PANE_BADGE_TEXT: f32 = TYPE_NANO_SIZE;
+pub const SPLIT_DROP_PREVIEW_INSET: f32 = SPACE_MICRO;
+pub const SPLIT_DIVIDER_LINE_INSET: f32 = SPACE_DENSE;
+pub const SPLIT_DIVIDER_LINE_WIDTH: f32 = SPACE_1;
+pub const SPLIT_DIVIDER_READOUT_WIDTH: f32 = SPACE_9 + SPACE_4;
+pub const SPLIT_DIVIDER_READOUT_HEIGHT: f32 = SPACE_5 + SPACE_DENSE;
+pub const SPLIT_PILL_HEIGHT: f32 = SPACE_7 - SPACE_1;
+pub const SPLIT_LAYOUT_BAR_REVEAL: f32 = SPACE_9 + SPACE_3;
+pub const SPLIT_LAYOUT_BUTTON_SIZE: f32 = SPACE_7 - SPACE_2;
+pub const SPLIT_PRESET_GLYPH_WIDTH: f32 = SPACE_5 + SPACE_DENSE;
+pub const SPLIT_PRESET_GLYPH_HEIGHT: f32 = SPACE_5;
+pub const SPLIT_PRESET_GLYPH_RADIUS: f32 = SPACE_1;
+// Canvas: snapping, groups, Tidy, zoomed-out cards, ports, links, and camera flights.
+pub const CANVAS_SNAP_GRID: f32 = SPACE_3;
+pub const CANVAS_SNAP_SCREEN_DISTANCE: f32 = SPACE_DENSE + BORDER_HAIRLINE;
+pub const CANVAS_SNAP_GAP: f32 = SPACE_7;
+pub const CANVAS_GROUP_PADDING: f32 = SPACE_6 + SPACE_2;
+pub const CANVAS_GROUP_LABEL_ROOM: f32 = SPACE_8 + SPACE_3;
+pub const CANVAS_TIDY_ROW_GAP: f32 = SPACE_8 + SPACE_3;
+pub const CANVAS_TIDY_GAP: f32 = SPACE_8;
+pub const CANVAS_CARD_PADDING: f32 = SPACE_5 + SPACE_1;
+pub const CANVAS_CARD_GAP: f32 = SPACE_3;
+pub const CANVAS_CARD_DOT: f32 = SPACE_COMPACT;
+pub const CANVAS_CARD_TITLE_TEXT: f32 = TYPE_TITLE_SIZE;
+pub const CANVAS_CARD_STATUS_TEXT: f32 = TYPE_BODY_SIZE;
+pub const CANVAS_CARD_OUTPUT_TEXT: f32 = TYPE_CAPTION_SIZE;
+pub const CANVAS_PORT_DOT: f32 = SPACE_4 + SPACE_1;
+pub const CANVAS_LINK_LABEL_WIDTH: f32 = SPACE_8 + SPACE_8;
+pub const CANVAS_LINK_LABEL_HEIGHT: f32 = SPACE_5 + SPACE_2;
+pub const CANVAS_FLY_PADDING: f32 = SPACE_9 + SPACE_6 + SPACE_1;
+pub const CANVAS_ATTENTION_PILL_HEIGHT: f32 = SPACE_7 - SPACE_1;
+pub const CANVAS_ATTENTION_DOT: f32 = SPACE_3;
 
 #[cfg(test)]
 mod tests {

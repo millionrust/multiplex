@@ -105,10 +105,9 @@ impl LayoutCommand {
             LayoutCommand::SplitDown => message(MessageId::PaletteSplitDown),
             LayoutCommand::ZoomPane => message(MessageId::PaletteZoomPane),
             LayoutCommand::Equalize => message(MessageId::PaletteEqualize),
-            LayoutCommand::Preset(preset) => format!(
-                "{} {}",
-                message(MessageId::PaletteLayoutPrefix),
-                message(super::workspace::preset_message(preset))
+            LayoutCommand::Preset(preset) => localization::dynamic_user_data_message(
+                MessageId::PaletteLayoutPreset,
+                vec![message(super::workspace::preset_message(preset))],
             ),
             LayoutCommand::ShowCanvas => message(MessageId::PaletteShowCanvas),
             LayoutCommand::ShowSplit => message(MessageId::PaletteShowSplit),

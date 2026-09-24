@@ -22,6 +22,10 @@ pub(super) enum MotionSpeed {
     CameraStep,
     /// A drop preview sliding between the zones of a pane.
     DropPreview,
+    /// One cycle of a still-connecting status dot.
+    StatusPulse,
+    /// One cycle of the dot on something that needs the user.
+    AttentionPulse,
 }
 
 impl MotionSpeed {
@@ -38,16 +42,56 @@ impl MotionSpeed {
             MotionSpeed::Camera => tokens.motion_camera(false),
             MotionSpeed::CameraStep => tokens.motion_camera_step(false),
             MotionSpeed::DropPreview => tokens.motion_drop_preview(false),
+            MotionSpeed::StatusPulse => tokens.motion_status_pulse(false),
+            MotionSpeed::AttentionPulse => tokens.motion_attention_pulse(false),
         })
     }
 }
 
-impl MotionSpeed {
-    /// The duration for a GPUI element animation, which needs a length above
-    /// zero even when motion is reduced to nothing.
-    pub(super) fn animation_duration(self) -> Duration {
-        self.duration().max(Duration::from_millis(1))
+/// Fade `element` in over `speed`, or show it at once when motion is off.
+pub(super) fn fade_in<E>(
+    element: E,
+    id: impl Into<gpui::ElementId>,
+    speed: MotionSpeed,
+) -> gpui::AnyElement
+where
+    E: gpui::IntoElement + gpui::Styled + 'static,
+{
+    use gpui::{AnimationExt as _, IntoElement as _};
+    let duration = speed.duration();
+    if duration.is_zero() {
+        return element.into_any_element();
     }
+    element
+        .with_animation(id, gpui::Animation::new(duration), |element, delta| {
+            element.opacity(delta)
+        })
+        .into_any_element()
+}
+
+/// Pulse `element` for as long as it is shown, or hold it still when motion is off.
+pub(super) fn pulse<E>(
+    element: E,
+    id: impl Into<gpui::ElementId>,
+    speed: MotionSpeed,
+) -> gpui::AnyElement
+where
+    E: gpui::IntoElement + gpui::Styled + 'static,
+{
+    use gpui::{AnimationExt as _, IntoElement as _};
+    let duration = speed.duration();
+    if duration.is_zero() {
+        return element.into_any_element();
+    }
+    element
+        .with_animation(
+            id,
+            gpui::Animation::new(duration)
+                .repeat()
+                .with_easing(gpui::pulsating_between(0.35, 1.0)),
+            |element, delta| element.opacity(delta),
+        )
+        .into_any_element()
 }
 
 /// `cubic-bezier(.2, .8, .2, 1)`: a quick start that settles gently, with no
@@ -307,13 +351,18 @@ mod tests {
         }
     }
 
+    /// A transition timed by the real layout token, which tests otherwise zero.
+    fn duration() -> Duration {
+        theme::motion_duration(theme::current_design_tokens().motion_layout_morph(false))
+    }
+
     fn transition(from: &[(u64, MotionRect)]) -> (LayoutTransition, Instant) {
         let now = Instant::now();
         let transition = LayoutTransition {
             workspace_id: 1,
             from: from.iter().copied().collect(),
             started: now,
-            duration: Duration::from_millis(400),
+            duration: duration(),
         };
         (transition, now)
     }
@@ -327,10 +376,10 @@ mod tests {
         let first = transition.frames(start, &[(1, b)], |_| true);
         assert_eq!(first[0].rect, a);
 
-        let halfway = transition.frames(start + Duration::from_millis(200), &[(1, b)], |_| true);
+        let halfway = transition.frames(start + duration() / 2, &[(1, b)], |_| true);
         assert!(halfway[0].rect.x > 50.0 && halfway[0].rect.x < 100.0);
 
-        let done = start + Duration::from_millis(400);
+        let done = start + duration();
         assert!(transition.is_finished(done));
         assert_eq!(transition.frames(done, &[(1, b)], |_| true)[0].rect, b);
     }
@@ -345,11 +394,7 @@ mod tests {
         assert_eq!(frames[2].pane_id, 3);
         assert_eq!(frames[2].opacity, 0.0);
 
-        let end = transition.frames(
-            start + Duration::from_millis(400),
-            &[(1, a), (3, a)],
-            |_| true,
-        );
+        let end = transition.frames(start + duration(), &[(1, a), (3, a)], |_| true);
         assert_eq!(end[0].opacity, 0.0);
         assert_eq!(end[2].opacity, 1.0);
     }

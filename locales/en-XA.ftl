@@ -468,14 +468,15 @@ attention-pill-count = { $count ->
    *[other] { $count }⟦ ñééð ýøû~~⟧
     [zero] ⟦Ñøţĥîñĝ ñééðš ýøû~~~~~⟧
     }
-attention-pill-jump = ⟦ĵûɱþ⟧
-attention-pill-open-canvas = ⟦øþéñ øñ çåñṽåš~~~~⟧
+attention-pill-jump = { $value1 }⟦ · ĵûɱþ →~~⟧
+attention-pill-open-canvas = { $value1 }⟦ · øþéñ øñ çåñṽåš →~~~~~~⟧
 autocomplete-applied-argument-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ åŕĝûɱéñţ.~~~~~~~~~~~~⟧
 autocomplete-applied-builtin-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ ƀûîļţîñ.~~~~~~~~~~~~⟧
 autocomplete-applied-context-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ çøñţéẋţ.~~~~~~~~~~~~⟧
 autocomplete-applied-history-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ ĥîšţøŕý.~~~~~~~~~~~~⟧
 autocomplete-applied-path-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ þåţĥ.~~~~~~~~~~~⟧
 autocomplete-applied-snippet-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ šñîþþéţ.~~~~~~~~~~~~⟧
+canvas-card-status = { $value1 }⟦ øñ ⟧{ $value2 }
 canvas-link-context-label = ⟦çøñţéẋţ~⟧
 canvas-link-dependency-label = ⟦ŕûñš åƒţéŕ~~⟧
 canvas-link-remove-tooltip = ⟦Ŕéɱøṽé ţĥîš ļîñķ~~~~~⟧
@@ -1278,7 +1279,7 @@ palette-git-branch = ⟦Ĝîţ ƀŕåñçĥ~~⟧
 palette-group-snippet-detail = ⟦Šñîþþéţ · ~~⟧{ $group }⟦ · ⟧{ $command }
 palette-history-detail = ⟦Ĥîšţøŕý · ~~⟧{ $scope }
 palette-kubernetes-pod = ⟦Ķûƀéŕñéţéš þøð~~~~⟧
-palette-layout-prefix = ⟦Ļåýøûţ:~⟧
+palette-layout-preset = ⟦Ļåýøûţ: ~~⟧{ $value1 }
 palette-parent-directory = ⟦Þåŕéñţ ðîŕéçţøŕý~~~~~⟧
 palette-pinned-group-snippet-detail = ⟦Þîññéð šñîþþéţ · ~~~~~⟧{ $group }⟦ · ⟧{ $command }
 palette-pinned-snippet-detail = ⟦Þîññéð šñîþþéţ · ~~~~~⟧{ $command }

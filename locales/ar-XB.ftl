@@ -468,14 +468,15 @@ attention-pill-count = { $count ->
    *[other] { $count }⁧uoy deen ⁩
     [zero] ⁧uoy sdeen gnihtoN⁩
     }
-attention-pill-jump = ⁧pmuj⁩
-attention-pill-open-canvas = ⁧savnac no nepo⁩
+attention-pill-jump = { $value1 }⁧→ pmuj · ⁩
+attention-pill-open-canvas = { $value1 }⁧→ savnac no nepo · ⁩
 autocomplete-applied-argument-status = ⁧.tnemugra morf deilppa etelpmocotuA⁩
 autocomplete-applied-builtin-status = ⁧.nitliub morf deilppa etelpmocotuA⁩
 autocomplete-applied-context-status = ⁧.txetnoc morf deilppa etelpmocotuA⁩
 autocomplete-applied-history-status = ⁧.yrotsih morf deilppa etelpmocotuA⁩
 autocomplete-applied-path-status = ⁧.htap morf deilppa etelpmocotuA⁩
 autocomplete-applied-snippet-status = ⁧.teppins morf deilppa etelpmocotuA⁩
+canvas-card-status = { $value1 }⁧ no ⁩{ $value2 }
 canvas-link-context-label = ⁧txetnoc⁩
 canvas-link-dependency-label = ⁧retfa snur⁩
 canvas-link-remove-tooltip = ⁧knil siht evomeR⁩
@@ -1278,7 +1279,7 @@ palette-git-branch = ⁧hcnarb tiG⁩
 palette-group-snippet-detail = ⁧ · teppinS⁩{ $group }⁧ · ⁩{ $command }
 palette-history-detail = ⁧ · yrotsiH⁩{ $scope }
 palette-kubernetes-pod = ⁧dop setenrebuK⁩
-palette-layout-prefix = ⁧:tuoyaL⁩
+palette-layout-preset = ⁧ :tuoyaL⁩{ $value1 }
 palette-parent-directory = ⁧yrotcerid tneraP⁩
 palette-pinned-group-snippet-detail = ⁧ · teppins denniP⁩{ $group }⁧ · ⁩{ $command }
 palette-pinned-snippet-detail = ⁧ · teppins denniP⁩{ $command }

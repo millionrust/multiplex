@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use gpui::AnimationExt as _;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, App, ClipboardItem, Context, CursorStyle, Div, Focusable as _,
@@ -301,14 +300,14 @@ fn canvas_reveal_delta(
 }
 
 /// Nodes line up to an 8-unit grid when nothing nearby lines up with them.
-pub(super) const CANVAS_SNAP_GRID: f32 = 8.0;
+pub(super) const CANVAS_SNAP_GRID: f32 = theme::CANVAS_SNAP_GRID;
 /// How close, on screen, an edge or centre must come to another's to snap.
-pub(super) const CANVAS_SNAP_SCREEN_DISTANCE: f32 = 7.0;
+pub(super) const CANVAS_SNAP_SCREEN_DISTANCE: f32 = theme::CANVAS_SNAP_SCREEN_DISTANCE;
 /// Nodes placed side by side snap to this gap between them.
-pub(super) const CANVAS_SNAP_GAP: f32 = 32.0;
+pub(super) const CANVAS_SNAP_GAP: f32 = theme::CANVAS_SNAP_GAP;
 /// Space a new group frame leaves around what it wraps, and above it for its label.
-const CANVAS_GROUP_PADDING: f32 = 28.0;
-const CANVAS_GROUP_LABEL_ROOM: f32 = 56.0;
+const CANVAS_GROUP_PADDING: f32 = theme::CANVAS_GROUP_PADDING;
+const CANVAS_GROUP_LABEL_ROOM: f32 = theme::CANVAS_GROUP_LABEL_ROOM;
 
 /// A line drawn while a node snaps into line with another, in world units.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -396,9 +395,9 @@ pub(super) fn canvas_snap_move(
     (dx, dy, guides)
 }
 
-/// The pink of alignment guides: distinct from the accent, links, and warnings.
+/// Alignment guides: distinct from the accent, links, and warnings.
 fn canvas_guide_color() -> gpui::Hsla {
-    gpui::rgb(0xE86FB0).into()
+    theme::canvas_guide()
 }
 
 /// The columns and rows a terminal node holds: set by its size on the canvas at
@@ -490,8 +489,8 @@ pub(super) struct AttentionItem {
     title: String,
 }
 
-const ATTENTION_PILL_HEIGHT: f32 = 30.0;
-const PANE_ATTENTION_DOT: f32 = 8.0;
+const ATTENTION_PILL_HEIGHT: f32 = theme::CANVAS_ATTENTION_PILL_HEIGHT;
+const PANE_ATTENTION_DOT: f32 = theme::CANVAS_ATTENTION_DOT;
 
 /// What a zoomed-out node's card says.
 struct CanvasNodeCard {
@@ -501,12 +500,12 @@ struct CanvasNodeCard {
     selected: bool,
 }
 
-const CANVAS_CARD_PADDING: f32 = 18.0;
-const CANVAS_CARD_GAP: f32 = 8.0;
-const CANVAS_CARD_DOT: f32 = 10.0;
-const CANVAS_CARD_TITLE_SIZE: f32 = 19.0;
-const CANVAS_CARD_STATUS_SIZE: f32 = 13.0;
-const CANVAS_CARD_OUTPUT_SIZE: f32 = 12.5;
+const CANVAS_CARD_PADDING: f32 = theme::CANVAS_CARD_PADDING;
+const CANVAS_CARD_GAP: f32 = theme::CANVAS_CARD_GAP;
+const CANVAS_CARD_DOT: f32 = theme::CANVAS_CARD_DOT;
+const CANVAS_CARD_TITLE_SIZE: f32 = theme::CANVAS_CARD_TITLE_TEXT;
+const CANVAS_CARD_STATUS_SIZE: f32 = theme::CANVAS_CARD_STATUS_TEXT;
+const CANVAS_CARD_OUTPUT_SIZE: f32 = theme::CANVAS_CARD_OUTPUT_TEXT;
 /// Draw a link as dashes along its curve, shifted along by `phase` of a dash.
 fn paint_dashed_link(
     window: &mut Window,
@@ -550,11 +549,11 @@ fn paint_dashed_link(
 }
 
 /// The dot on a node's edge that a context link is dragged out of or into.
-const CANVAS_PORT_SIZE: f32 = 14.0;
-const CANVAS_LINK_LABEL_WIDTH: f32 = 96.0;
-const CANVAS_LINK_LABEL_HEIGHT: f32 = 20.0;
+const CANVAS_PORT_SIZE: f32 = theme::CANVAS_PORT_DOT;
+const CANVAS_LINK_LABEL_WIDTH: f32 = theme::CANVAS_LINK_LABEL_WIDTH;
+const CANVAS_LINK_LABEL_HEIGHT: f32 = theme::CANVAS_LINK_LABEL_HEIGHT;
 /// Room left around a node the camera flies to.
-const CANVAS_FLY_PADDING: f32 = 90.0;
+const CANVAS_FLY_PADDING: f32 = theme::CANVAS_FLY_PADDING;
 
 /// Below this zoom, terminal and agent nodes are drawn as readable cards.
 pub(super) const CANVAS_CARD_ZOOM: f32 = 0.55;
@@ -1592,8 +1591,8 @@ impl CanvasWorkspaceState {
     /// groups stacked, then the loose nodes in rows of three with notes last.
     /// Sizes are kept; only places change.
     pub(super) fn tidy(&mut self) {
-        const ROW_GAP: f32 = 56.0;
-        const LOOSE_GAP: f32 = 48.0;
+        const ROW_GAP: f32 = theme::CANVAS_TIDY_ROW_GAP;
+        const LOOSE_GAP: f32 = theme::CANVAS_TIDY_GAP;
         const PER_ROW: usize = 3;
         let mut groups: Vec<(CanvasNodeId, Vec<CanvasNodeId>, CanvasRect)> = self
             .nodes
@@ -9697,11 +9696,14 @@ impl MultiplexApp {
                     .as_ref()
                     .is_some_and(|layout| layout.contains(pane_id))
             });
-        let action = localization::static_message(if only_on_canvas {
-            multiplex_ui_contract::MessageId::AttentionPillOpenCanvas
-        } else {
-            multiplex_ui_contract::MessageId::AttentionPillJump
-        });
+        let detail = localization::dynamic_user_data_message(
+            if only_on_canvas {
+                multiplex_ui_contract::MessageId::AttentionPillOpenCanvas
+            } else {
+                multiplex_ui_contract::MessageId::AttentionPillJump
+            },
+            vec![first.title.clone()],
+        );
         Some(
             h_flex()
                 .id("attention-pill")
@@ -9733,30 +9735,21 @@ impl MultiplexApp {
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.jump_to_attention(first.clone(), window, cx);
                 }))
-                .child(
+                .child(motion::pulse(
                     div()
                         .size(px(PANE_ATTENTION_DOT))
                         .rounded_full()
-                        .bg(theme::warning())
-                        .with_animation(
-                            "attention-pill-pulse",
-                            gpui::Animation::new(std::time::Duration::from_millis(1000))
-                                .repeat()
-                                .with_easing(gpui::pulsating_between(0.35, 1.0)),
-                            |dot, delta| dot.opacity(delta),
-                        ),
-                )
+                        .bg(theme::warning()),
+                    "attention-pill-pulse",
+                    MotionSpeed::AttentionPulse,
+                ))
                 .child(
                     div()
                         .font_semibold()
                         .text_color(theme::warning())
                         .child(localization::attention_pill_count(items.len())),
                 )
-                .child(
-                    div()
-                        .text_color(theme::text_secondary())
-                        .child(format!("{} \u{00b7} {action} \u{2192}", items[0].title)),
-                )
+                .child(div().text_color(theme::text_secondary()).child(detail))
                 .into_any_element(),
         )
     }
@@ -10258,7 +10251,10 @@ impl MultiplexApp {
                 opacity,
                 CanvasNodeCard {
                     title,
-                    status: format!("{status} \u{00b7} {location}"),
+                    status: localization::dynamic_user_data_message(
+                        multiplex_ui_contract::MessageId::CanvasCardStatus,
+                        vec![status.clone(), location.clone()],
+                    ),
                     needs_attention,
                     selected,
                 },

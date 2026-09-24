@@ -2413,19 +2413,20 @@ attention-pill-count = { $count ->
     [many] { $count } need you
    *[other] { $count } need you
     }
-attention-pill-jump = jump
-attention-pill-open-canvas = open on canvas
+attention-pill-jump = { $value1 } · jump →
+attention-pill-open-canvas = { $value1 } · open on canvas →
 palette-split-right = Split Right
 palette-split-down = Split Down
 palette-zoom-pane = Zoom or Restore Pane
 palette-equalize = Equalize Panes
-palette-layout-prefix = Layout:
+palette-layout-preset = Layout: { $value1 }
 palette-show-canvas = Switch to Canvas
 palette-show-split = Switch to Split
 palette-fit-canvas = Fit Canvas
 palette-tidy-canvas = Tidy Canvas
 palette-toggle-broadcast = Toggle Broadcast Input
 palette-toggle-snap = Toggle Canvas Snapping
+canvas-card-status = { $value1 } on { $value2 }
 local-terminal-split-launching-status = Launching split local terminal...
 workspace-disconnecting-status = Disconnecting workspace...
 pane-closed-status = Pane closed.
