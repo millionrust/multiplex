@@ -2564,7 +2564,7 @@ impl MultiplexApp {
         });
         if let Some(selected) = selected.as_ref() {
             let viewport = window.viewport_size();
-            let viewport_width = f32::from(viewport.width);
+            let viewport_width = f32::from(viewport.width) - self.workspace_rail_width();
             let viewport_height =
                 (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT)
                     .max(1.0);
@@ -2750,7 +2750,7 @@ impl MultiplexApp {
             return;
         }
         let viewport = window.viewport_size();
-        let viewport_width: f32 = viewport.width.into();
+        let viewport_width: f32 = f32::from(viewport.width) - self.workspace_rail_width();
         let viewport_height: f32 = viewport.height.into();
         let screen_center = CanvasPoint::new(
             viewport_width / 2.0,
@@ -2803,10 +2803,10 @@ impl MultiplexApp {
         cx.notify();
     }
 
-    fn canvas_local_point(&self, position: Point<gpui::Pixels>) -> CanvasPoint {
+    pub(super) fn canvas_local_point(&self, position: Point<gpui::Pixels>) -> CanvasPoint {
         let point = point_from_pixels(position);
         CanvasPoint::new(
-            point.x,
+            point.x - self.workspace_rail_width(),
             point.y - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT,
         )
     }
@@ -2958,7 +2958,7 @@ impl MultiplexApp {
         cx.notify();
     }
 
-    fn focus_canvas_activity_node(
+    pub(super) fn focus_canvas_activity_node(
         &mut self,
         node_id: CanvasNodeId,
         window: &mut Window,
@@ -2968,7 +2968,7 @@ impl MultiplexApp {
             return;
         };
         let viewport = window.viewport_size();
-        let viewport_width = f32::from(viewport.width);
+        let viewport_width = f32::from(viewport.width) - self.workspace_rail_width();
         let viewport_height =
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
         let pane_id = self
@@ -3360,7 +3360,7 @@ impl MultiplexApp {
     fn zoom_canvas(&mut self, factor: f32, window: &mut Window, cx: &mut Context<Self>) {
         let viewport = window.viewport_size();
         let center = CanvasPoint::new(
-            f32::from(viewport.width) / 2.0,
+            (f32::from(viewport.width) - self.workspace_rail_width()) / 2.0,
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
         );
         let origin = self.canvas_camera_origin();
@@ -3497,7 +3497,7 @@ impl MultiplexApp {
     fn reset_canvas_zoom(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let viewport = window.viewport_size();
         let center = CanvasPoint::new(
-            f32::from(viewport.width) / 2.0,
+            (f32::from(viewport.width) - self.workspace_rail_width()) / 2.0,
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
         );
         let origin = self.canvas_camera_origin();
@@ -3514,9 +3514,10 @@ impl MultiplexApp {
         let viewport = window.viewport_size();
         let canvas_coordinator = self.canvas_coordinator.clone();
         let origin = self.canvas_camera_origin();
+        let body_width = f32::from(viewport.width) - self.workspace_rail_width();
         if let Some(workspace) = self.active_workspace_mut() {
             workspace.canvas.fit_to_content(
-                f32::from(viewport.width),
+                body_width,
                 (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT)
                     .max(1.0),
                 &canvas_coordinator,
@@ -3547,7 +3548,7 @@ impl MultiplexApp {
         let pane_id = self.spawn_pane(request, window, cx);
         let viewport = window.viewport_size();
         let screen_center = CanvasPoint::new(
-            f32::from(viewport.width) / 2.0,
+            (f32::from(viewport.width) - self.workspace_rail_width()) / 2.0,
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
         );
         let placement = self.canvas_add_anchor.map(|(_, world)| world);
@@ -3647,7 +3648,7 @@ impl MultiplexApp {
         }
         let viewport = window.viewport_size();
         let screen_center = CanvasPoint::new(
-            f32::from(viewport.width) / 2.0,
+            (f32::from(viewport.width) - self.workspace_rail_width()) / 2.0,
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
         );
         self.active_workspace()
@@ -4929,7 +4930,7 @@ impl MultiplexApp {
         };
         let viewport = window.viewport_size();
         let screen_center = CanvasPoint::new(
-            f32::from(viewport.width) / 2.0,
+            (f32::from(viewport.width) - self.workspace_rail_width()) / 2.0,
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
         );
         let canvas_coordinator = self.canvas_coordinator.clone();
@@ -7205,7 +7206,7 @@ impl MultiplexApp {
             return div().into_any_element();
         };
         let screen = canvas_node_render_rect(node.0.canvas.transform, node.1);
-        let viewport_width = f32::from(window.viewport_size().width);
+        let viewport_width = f32::from(window.viewport_size().width) - self.workspace_rail_width();
         let viewport_height = f32::from(window.viewport_size().height);
         let menu_width = 300.0;
         let menu_gap = 8.0;
@@ -8546,7 +8547,8 @@ impl MultiplexApp {
     }
 
     fn render_canvas_toolbar(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
-        let compact_toolbar = f32::from(window.viewport_size().width) < 1280.0;
+        let compact_toolbar =
+            (f32::from(window.viewport_size().width) - self.workspace_rail_width()) < 1280.0;
         let zoom_percent = self
             .active_workspace()
             .map(|workspace| (workspace.canvas.transform.zoom * 100.0).round() as i32)
@@ -8956,8 +8958,10 @@ impl MultiplexApp {
         else {
             return div().into_any_element();
         };
-        let panel_width = CANVAS_PROJECT_PANEL_WIDTH
-            .min((f32::from(window.viewport_size().width) - 24.0).max(320.0));
+        let panel_width = CANVAS_PROJECT_PANEL_WIDTH.min(
+            ((f32::from(window.viewport_size().width) - self.workspace_rail_width()) - 24.0)
+                .max(320.0),
+        );
         let dirty = self.canvas_project_editor_is_dirty(cx);
         let can_go_up = panel.current_directory != panel.root;
         let current_label = panel
@@ -9324,7 +9328,7 @@ impl MultiplexApp {
     ) {
         self.interrupt_canvas_camera();
         let viewport = window.viewport_size();
-        let viewport_width = f32::from(viewport.width);
+        let viewport_width = f32::from(viewport.width) - self.workspace_rail_width();
         let viewport_height =
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
         let local = self.canvas_local_point(position);
@@ -9367,7 +9371,7 @@ impl MultiplexApp {
             return div().into_any_element();
         };
         let viewport = window.viewport_size();
-        let viewport_width = f32::from(viewport.width);
+        let viewport_width = f32::from(viewport.width) - self.workspace_rail_width();
         let viewport_height =
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
         let transform = self.displayed_canvas_transform(workspace);
@@ -10088,7 +10092,7 @@ impl MultiplexApp {
         cx: &mut Context<Self>,
     ) {
         let viewport = window.viewport_size();
-        let width = f32::from(viewport.width);
+        let width = f32::from(viewport.width) - self.workspace_rail_width();
         let height =
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
         let origin = self.canvas_camera_origin();
@@ -12106,7 +12110,7 @@ impl MultiplexApp {
         }
         let workspace_id = workspace.id;
         let viewport = window.viewport_size();
-        let viewport_width = f32::from(viewport.width);
+        let viewport_width = f32::from(viewport.width) - self.workspace_rail_width();
         let viewport_height =
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
         let transform = self.displayed_canvas_transform(workspace);
@@ -12117,6 +12121,7 @@ impl MultiplexApp {
         // Motion is tracked in window coordinates; the canvas body starts below
         // the chrome and the canvas toolbar.
         let body_top = theme::CHROME_HEIGHT + CANVAS_TOOLBAR_HEIGHT;
+        let body_left = self.workspace_rail_width();
         let mut node_indices: Vec<_> = (0..workspace.canvas.nodes.len()).collect();
         node_indices.sort_by_key(|index| {
             let node = &workspace.canvas.nodes[*index];
@@ -12171,6 +12176,11 @@ impl MultiplexApp {
             .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| {
                 this.handle_canvas_scroll(event, window, cx);
             }))
+            .on_drop(
+                cx.listener(|this, drag: &super::host_rail::RailDrag, window, cx| {
+                    this.drop_rail_item_on_canvas(drag.item.clone(), window, cx);
+                }),
+            )
             .child(self.render_canvas_edges(
                 transform,
                 transition.map_or(1.0, |transition| transition.progress(now)),
@@ -12193,7 +12203,7 @@ impl MultiplexApp {
                 None => canvas_node_render_rect(transform, node),
             };
             let target = MotionRect::new(
-                settled.x,
+                settled.x + body_left,
                 settled.y + body_top,
                 settled.width,
                 settled.height,
@@ -12206,7 +12216,7 @@ impl MultiplexApp {
                 drawn.insert(pane_id, rect);
             }
             let screen = CanvasRect {
-                x: rect.x,
+                x: rect.x - body_left,
                 y: rect.y - body_top,
                 width: rect.width,
                 height: rect.height,

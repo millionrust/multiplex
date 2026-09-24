@@ -11272,6 +11272,56 @@ sensitivity = "sensitive"
 bidi = "isolate"
 
 [[messages]]
+id = "host-rail-hosts-heading"
+context = "Heading over the saved hosts in the rail beside a workspace."
+description = "Hosts heading"
+
+[[messages]]
+id = "host-rail-new-heading"
+context = "Heading over the new-session items in the rail beside a workspace."
+description = "New heading"
+
+[[messages]]
+id = "host-rail-local-terminal"
+context = "Rail item that opens a local terminal next to the focused pane."
+description = "Local terminal"
+
+[[messages]]
+id = "host-rail-claude-agent"
+context = "Rail item that starts a Claude Code agent on the canvas."
+description = "Claude Code agent"
+
+[[messages]]
+id = "host-rail-tip"
+context = "Hint at the foot of the workspace rail."
+description = "How to use the rail"
+
+[[messages]]
+id = "host-rail-empty"
+context = "Shown in the workspace rail when no hosts are saved."
+description = "No saved hosts"
+
+[[messages]]
+id = "host-rail-collapse"
+context = "Tooltip on the button that hides the workspace rail."
+description = "Hide the rail"
+
+[[messages]]
+id = "host-rail-expand"
+context = "Tooltip on the button that shows the workspace rail."
+description = "Show the rail"
+
+[[messages]]
+id = "host-rail-open-tooltip"
+context = "Tooltip on a rail host that is already open in this workspace."
+description = "Go to the open session"
+
+[[messages]]
+id = "host-rail-new-tooltip"
+context = "Tooltip on a rail host that is not open in this workspace yet."
+description = "Open next to the focused pane"
+
+[[messages]]
 id = "local-terminal-split-launching-status"
 context = "Status while launching a local terminal in a split pane."
 description = "Launching split local terminal"

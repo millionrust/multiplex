@@ -24,6 +24,11 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   drags freely), show the ratio while dragged, and even out on double-click. A pane can be zoomed
   to fill the split (Cmd+Shift+Enter) with a pill to restore it; a layout bar that appears near
   the bottom edge applies one-click presets and Equalize. Inactive panes dim.
+- A rail beside every workspace (`ui/app/host_rail.rs`) lists saved hosts, a local terminal, and a
+  Claude Code agent. A host already open in the tab shows a live dot and a click goes to it; any
+  other click opens the item next to the focused pane (or on the canvas). Items drag onto a split
+  pane's edge or onto the canvas. It collapses to a strip and is left out of windows too narrow
+  for it; the workspace body lays itself out beside it (`workspace_rail_width`).
 - Each pane is its own SSH session and PTY; a native local terminal can also be opened and behaves like any other pane.
 - Quick connect: type `user@host` or `ssh user@host:port` in the search bar.
 - Reconnect button on disconnected/errored panes; optional automatic reconnect after non-user-initiated SSH drops, configurable in Settings.
@@ -235,10 +240,15 @@ cargo fmt
 cargo check
 cargo run            # debug build; use --release for performance testing
 MULTIPLEX_TRACE_FOCUS=1 cargo run   # log every keyboard focus change to stderr
-cargo test --workspace --all-targets --locked --no-fail-fast   # everything, as CI runs it
-cargo nextest run --workspace --lib --bins --tests --examples --locked  # the same minus the
-  # benches, as the Windows job runs it, in about two thirds of the time. nextest gives every
-  # test its own process, so what may not run at once is declared in .config/nextest.toml.
+cargo nextest run --workspace --lib --bins --tests --examples --locked --no-fail-fast
+  # the way to run tests: every test in its own process, tests from every binary at once, so
+  # the workspace finishes in a fraction of `cargo test`'s time (the desktop suite alone goes
+  # from ~33s to ~23s). Install it once with `cargo install cargo-nextest --locked`;
+  # scripts/verify/rust.sh uses it whenever it is installed. What may not run at once is
+  # declared in .config/nextest.toml. Narrow a run with -p and a filter, for example
+  # `cargo nextest run -p multiplex --bins -E 'test(split)'`.
+cargo test --workspace --all-targets --locked --no-fail-fast   # the fallback without nextest;
+  # also the only way to run the benches (`cargo test --workspace --bench '*'`).
 MULTIPLEX_TUI_PROBE="bun run app.ts" cargo test -p multiplex --bin multiplex -- \
   a_terminal_interface_program_renders --ignored --nocapture   # drive a real TUI program
                                                                # through the emulator

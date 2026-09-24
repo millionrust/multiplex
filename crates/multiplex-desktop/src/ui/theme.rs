@@ -763,6 +763,19 @@ pub const SPLIT_LAYOUT_BUTTON_SIZE: f32 = SPACE_7 - SPACE_2;
 pub const SPLIT_PRESET_GLYPH_WIDTH: f32 = SPACE_5 + SPACE_DENSE;
 pub const SPLIT_PRESET_GLYPH_HEIGHT: f32 = SPACE_5;
 pub const SPLIT_PRESET_GLYPH_RADIUS: f32 = SPACE_1;
+// The host rail beside a workspace: saved hosts and new sessions.
+pub const WORKSPACE_HOST_RAIL_WIDTH: f32 = HOST_SIDEBAR_WIDTH - SPACE_7 - SPACE_1;
+pub const WORKSPACE_HOST_RAIL_COLLAPSED_WIDTH: f32 = SPACE_7 + SPACE_2;
+/// Narrower windows leave the rail out, as they need every column for terminals.
+pub const WORKSPACE_HOST_RAIL_MIN_WINDOW: f32 = HOST_SIDEBAR_WIDTH
+    + HOST_SIDEBAR_WIDTH
+    + HOST_SIDEBAR_WIDTH
+    + HOST_SIDEBAR_WIDTH
+    + SPACE_9
+    + SPACE_8
+    + SPACE_7;
+pub const WORKSPACE_HOST_RAIL_ROW_HEIGHT: f32 = SPACE_7 - SPACE_1;
+pub const WORKSPACE_HOST_RAIL_DOT: f32 = SPACE_DENSE;
 // Canvas: snapping, groups, Tidy, zoomed-out cards, ports, links, and camera flights.
 pub const CANVAS_SNAP_GRID: f32 = SPACE_3;
 pub const CANVAS_SNAP_SCREEN_DISTANCE: f32 = SPACE_DENSE + BORDER_HAIRLINE;

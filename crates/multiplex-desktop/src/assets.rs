@@ -89,6 +89,8 @@ const ICONS: &[(&str, &[u8])] = &[
     icon!("menu"),
     icon!("minus"),
     icon!("panel-left"),
+    icon!("panel-left-close"),
+    icon!("panel-left-open"),
     icon!("panel-right-close"),
     icon!("panel-right-open"),
     icon!("replace"),

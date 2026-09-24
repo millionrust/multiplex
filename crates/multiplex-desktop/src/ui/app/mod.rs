@@ -12,6 +12,7 @@ mod controller_coordinator;
 mod dev_urls;
 mod editor;
 mod global_search;
+mod host_rail;
 mod hosted_session;
 mod hosts;
 mod key_lifecycle;
@@ -1331,6 +1332,11 @@ pub struct MultiplexApp {
     canvas_add_anchor: Option<(canvas::CanvasPoint, canvas::CanvasPoint)>,
     /// Canvas nodes gliding to places a rearrangement such as Tidy gave them.
     canvas_node_motion: Option<canvas::CanvasNodeMotion>,
+    /// The rail of hosts and new sessions beside the workspace is open.
+    host_rail_open: bool,
+    /// The width the rail took on the last frame, which the workspace body
+    /// is pushed right by.
+    host_rail_width: std::cell::Cell<f32>,
     /// The canvas node under the pointer, which shows its link port.
     canvas_hovered_node: Option<crate::models::CanvasNodeId>,
     /// The pane each workspace has zoomed to fill its split, if any.
@@ -1799,6 +1805,8 @@ impl MultiplexApp {
             canvas_add_anchor: None,
             canvas_node_motion: None,
             canvas_hovered_node: None,
+            host_rail_open: true,
+            host_rail_width: std::cell::Cell::new(0.0),
             split_layout_bar_revealed: false,
             canvas_interaction: None,
             canvas_add_menu_open: false,
@@ -9372,7 +9380,7 @@ impl MultiplexApp {
         } else {
             0.0
         };
-        let body_width = viewport_width.max(320.0);
+        let body_width = (viewport_width - self.workspace_rail_width()).max(320.0);
         let body_height = (viewport_height - theme::CHROME_HEIGHT - search_height).max(180.0);
         if let Some(pane_id) = self.zoomed_pane_in(workspace.id) {
             panes.push(PaneRect {
@@ -9422,7 +9430,7 @@ impl MultiplexApp {
                         canvas::canvas_terminal_grid_size(node.rect, char_width, line_height);
                     let mut layout = self.with_rendered_grid(PaneLayout {
                         pane_id,
-                        cell_x: rect.x + TERMINAL_INNER_PADDING_X,
+                        cell_x: rect.x + self.workspace_rail_width() + TERMINAL_INNER_PADDING_X,
                         cell_y: rect.y
                             + theme::CHROME_HEIGHT
                             + CANVAS_TOOLBAR_HEIGHT
@@ -9470,7 +9478,7 @@ impl MultiplexApp {
                 let rows = (cell_height / line_height).floor().max(1.0) as u16;
                 PaneLayout {
                     pane_id: rect.pane_id,
-                    cell_x: rect.x + TERMINAL_INNER_PADDING_X,
+                    cell_x: rect.x + self.workspace_rail_width() + TERMINAL_INNER_PADDING_X,
                     cell_y: rect.y + body_origin_y + TERMINAL_INNER_PADDING_Y,
                     cell_width,
                     cell_height,
@@ -17489,7 +17497,8 @@ mod tests {
             };
             assert_eq!(grouped_note_ids, std::slice::from_ref(&note_id));
             let note = workspace.canvas.node_mut(&note_id).unwrap();
-            note.rect.x = 850.0;
+            // Far enough left to stay on screen beside the host rail.
+            note.rect.x = 650.0;
             note.rect.y = 180.0;
             let note_rect = note.rect;
             workspace.canvas.node_mut(&group_id).unwrap().rect =
@@ -24249,9 +24258,13 @@ sleep 1
 
         let handle_center =
             dynamic_selector_click_center(window, cx, format!("pane-divider-{divider_id}"));
+        // Drag along the split from where the handle is drawn, however far the
+        // body sits from the window's edge.
+        let _ = (moved_x, moved_y);
+        let distance = px(crate::ui::theme::SPACE_9 + crate::ui::theme::SPACE_7);
         let moved = match axis {
-            SplitAxis::Horizontal => point(px(moved_x), handle_center.y),
-            SplitAxis::Vertical => point(handle_center.x, px(moved_y)),
+            SplitAxis::Horizontal => point(handle_center.x + distance, handle_center.y),
+            SplitAxis::Vertical => point(handle_center.x, handle_center.y + distance),
         };
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_mouse_down(handle_center, MouseButton::Left, gpui::Modifiers::none());
@@ -25265,6 +25278,100 @@ sleep 1
                     assert_eq!(
                         app.workspace(workspace_id).unwrap().layout_mode,
                         WorkspaceLayoutMode::Split
+                    );
+                })
+            })
+            .expect("window update should succeed");
+    }
+
+    #[gpui::test]
+    fn e2e_host_rail_opens_beside_the_focused_pane_where_dropped_and_respects_the_cap(
+        cx: &mut TestAppContext,
+    ) {
+        use super::host_rail::RailItem;
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: crate::test_support::test_shell_program(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let (workspace_id, first) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(first)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+        let rects = |cx: &mut TestAppContext| {
+            window
+                .update(cx, |_, window, cx| {
+                    app.read_with(cx, |app, _| app.workspace_split_rects(window).0)
+                })
+                .expect("window update should succeed")
+        };
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_rail_item(RailItem::LocalTerminal, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+        let right = app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).unwrap();
+            assert_eq!(workspace.pane_ids.len(), 2);
+            workspace.active_pane_id
+        });
+        let placed = rects(cx);
+        let at =
+            |rects: &[super::PaneRect], id| *rects.iter().find(|rect| rect.pane_id == id).unwrap();
+        assert!(at(&placed, first).x < at(&placed, right).x);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.split_drop_target = Some((first, DropZone::Top));
+                    app.drop_rail_item_on_pane(RailItem::LocalTerminal, first, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+        let above = app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).unwrap();
+            assert_eq!(workspace.pane_ids.len(), 3);
+            assert_eq!(app.split_drop_target, None);
+            workspace.active_pane_id
+        });
+        let placed = rects(cx);
+        assert_eq!(at(&placed, above).x, at(&placed, first).x);
+        assert!(at(&placed, above).y < at(&placed, first).y);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.apply_split_preset(super::split_tree::SplitPreset::GridOfSix, window, cx);
+                    app.activate_rail_item(RailItem::LocalTerminal, window, cx);
+                    assert_eq!(
+                        app.workspace(workspace_id)
+                            .unwrap()
+                            .layout
+                            .as_ref()
+                            .unwrap()
+                            .leaf_count(),
+                        MAX_SPLIT_PANES
+                    );
+                    assert_eq!(
+                        app.error_message,
+                        localization::workspace_split_cap_error(MAX_SPLIT_PANES)
                     );
                 })
             })
