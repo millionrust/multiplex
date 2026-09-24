@@ -414,6 +414,16 @@ pub fn local_tmux_version() -> Result<String> {
     local_tmux_probe().map(|(_, version)| version)
 }
 
+/// Whether a local terminal can be made resumable at all.
+///
+/// Asked for every local pane that opens, so the answer — which runs `tmux -V` — is kept. A tmux
+/// installed while the app is running is picked up at the next launch; the alternative is probing
+/// a missing binary every time a terminal opens.
+pub fn local_tmux_available() -> bool {
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| local_tmux_probe().is_ok())
+}
+
 fn local_tmux_probe() -> Result<(PathBuf, String)> {
     let tmux = multiplex_tmux::Tmux::discover()?;
     Ok((tmux.executable().to_path_buf(), tmux.version().to_owned()))

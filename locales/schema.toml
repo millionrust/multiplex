@@ -7477,6 +7477,14 @@ id = "settings-persistent-sessions-fresh-value"
 context = "Settings choice value."
 description = "Resumable remote sessions off value"
 [[messages]]
+id = "settings-persistent-local-sessions-label"
+context = "Settings control label."
+description = "Resumable local terminals label"
+[[messages]]
+id = "settings-persistent-local-sessions-description"
+context = "Settings control help."
+description = "Resumable local terminals description"
+[[messages]]
 id = "settings-auto-reconnect-label"
 context = "Settings control label."
 description = "Automatic reconnect label"

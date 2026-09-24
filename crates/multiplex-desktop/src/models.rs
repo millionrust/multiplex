@@ -372,6 +372,26 @@ pub fn default_persistent_session_name_from_id(id: &str) -> String {
     format!("tr-{slug}")
 }
 
+/// What a local tmux session the app made is called.
+///
+/// The prefix is how the app tells its own sessions apart from the ones the person keeps: closing
+/// a tab kills a session with this prefix and leaves every other one running.
+pub const LOCAL_PERSISTENT_SESSION_PREFIX: &str = "tr-local-";
+
+/// A name no other pane will take, kept in the saved workspace so the next launch attaches to the
+/// same session rather than starting a second one.
+pub fn local_persistent_session_name(session_id: u64) -> String {
+    format!(
+        "{LOCAL_PERSISTENT_SESSION_PREFIX}{session_id}-{}",
+        crate::ui::util::current_unix_millis()
+    )
+}
+
+/// Whether this is a local tmux session the app made, and may therefore end.
+pub fn is_app_owned_local_session(name: &str) -> bool {
+    name.starts_with(LOCAL_PERSISTENT_SESSION_PREFIX)
+}
+
 pub fn default_persistent_session_name_for_endpoint(
     username: &str,
     host: &str,
@@ -759,6 +779,10 @@ pub struct AppSettings {
     /// Set once the hosts saved before resumable sessions became the default were switched over.
     #[serde(default)]
     pub persistent_sessions_adopted: bool,
+    /// Run local terminals inside tmux, so closing the app leaves what they are running alive and
+    /// the next launch attaches to it again. Ignored where tmux is not installed.
+    #[serde(default = "default_persistent_local_sessions")]
+    pub persistent_local_sessions: bool,
 }
 
 fn default_confirm_multiline_paste() -> bool {
@@ -793,6 +817,10 @@ fn default_persistent_remote_sessions() -> bool {
     true
 }
 
+fn default_persistent_local_sessions() -> bool {
+    true
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -824,6 +852,7 @@ impl Default for AppSettings {
             remote_screen_restore_token: None,
             persistent_remote_sessions: default_persistent_remote_sessions(),
             persistent_sessions_adopted: false,
+            persistent_local_sessions: default_persistent_local_sessions(),
         }
     }
 }

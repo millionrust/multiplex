@@ -79,10 +79,21 @@ impl MultiplexApp {
         if let Ok(tmux) = multiplex_tmux::Tmux::discover()
             && let Ok(listing) = tmux.list_sessions()
         {
+            let open_in_a_pane = self
+                .panes
+                .iter()
+                .filter(|pane| pane.request.persistent_session)
+                .filter_map(|pane| pane.request.persistent_session_name.clone())
+                .collect::<std::collections::HashSet<_>>();
             for session in listing.sessions {
                 // A session this app started is already in the library above it.
                 if session.name.starts_with("multiplex-") || session.name.starts_with("termirust-")
                 {
+                    continue;
+                }
+                // A pane in this window is already showing it. One the app made and left running
+                // is not skipped: after a restart it is the only way back to it.
+                if open_in_a_pane.contains(&session.name) {
                     continue;
                 }
                 terminals.push(OtherTerminal {

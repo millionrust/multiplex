@@ -31,6 +31,10 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   pane's edge or onto the canvas. It collapses to a strip and is left out of windows too narrow
   for it; the workspace body lays itself out beside it (`workspace_rail_width`).
 - Each pane is its own SSH session and PTY; a native local terminal can also be opened and behaves like any other pane.
+- Local terminals run inside tmux by default too (Settings → Connections, "Resumable local terminals"),
+  under a `tr-local-` name kept in the saved workspace, so quitting the app leaves what they are
+  running alive and the next launch attaches to it. Closing a tab ends a session with that prefix;
+  one attached from Sessions is never ended. Without tmux installed the plain shell opens as before.
 - Quick connect: type `user@host` or `ssh user@host:port` in the search bar.
 - Reconnect button on disconnected/errored panes; optional automatic reconnect after non-user-initiated SSH drops, configurable in Settings.
 - Configurable SSH keep-alive ping interval to keep idle sessions alive across NAT/load-balancer timeouts.
