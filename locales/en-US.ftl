@@ -2593,3 +2593,14 @@ logs-view-switched-status = Switched to Logs view.
 product-private-session-row = Private session
 files-title = Files
 files-description = Browse this computer's files and the files on a connected host.
+other-terminals-heading = Other terminals on this computer
+other-terminals-description = Terminals opened with the Multiplex profile, and tmux sessions, whoever started them.
+other-terminals-profile-origin = Multiplex profile · { $directory }
+other-terminals-tmux-origin = { $count ->
+    [zero] tmux session
+    [one] tmux · one window
+    [many] tmux · { $count } windows
+   *[other] tmux · { $count } windows
+    }
+other-terminals-open-action = Open
+other-terminals-attaching = Attaching to the terminal…

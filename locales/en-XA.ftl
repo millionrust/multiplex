@@ -1262,6 +1262,17 @@ notification-summary-payload = { $count ->
 notification-toggle-off = ⟦Øƒƒ⟧
 notification-toggle-on = ⟦Øñ⟧
 open-connections-action = ⟦Øþéñ Çøññéçţîøñš~~~~~⟧
+other-terminals-attaching = ⟦Åţţåçĥîñĝ ţø ţĥé ţéŕɱîñåļ…~~~~~~~~~⟧
+other-terminals-description = ⟦Ţéŕɱîñåļš øþéñéð ŵîţĥ ţĥé Ṁûļţîþļéẋ þŕøƒîļé, åñð ţɱûẋ šéššîøñš, ŵĥøéṽéŕ šţåŕţéð ţĥéɱ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+other-terminals-heading = ⟦Øţĥéŕ ţéŕɱîñåļš øñ ţĥîš çøɱþûţéŕ~~~~~~~~~~~⟧
+other-terminals-open-action = ⟦Øþéñ⟧
+other-terminals-profile-origin = ⟦Ṁûļţîþļéẋ þŕøƒîļé · ~~~~~~⟧{ $directory }
+other-terminals-tmux-origin = { $count ->
+    [many] ⟦ţɱûẋ · ~⟧{ $count }⟦ ŵîñðøŵš~~⟧
+    [one] ⟦ţɱûẋ · øñé ŵîñðøŵ~~~~~⟧
+   *[other] ⟦ţɱûẋ · ~⟧{ $count }⟦ ŵîñðøŵš~~⟧
+    [zero] ⟦ţɱûẋ šéššîøñ~~~⟧
+    }
 overlay-command-preview = ⟦Çøɱɱåñð: ~~⟧{ $command }
 overlay-paste-action = ⟦Þåšţé⟧
 overlay-paste-confirmation = ⟦Þåšţé ~⟧{ $count }⟦ ļîñéš îñţø ţĥé åçţîṽé þåñé?~~~~~~~~~~⟧

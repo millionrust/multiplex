@@ -20,6 +20,7 @@ mod library;
 mod motion;
 mod new_session;
 mod notification_settings;
+mod other_terminals;
 mod overlay;
 mod palette;
 mod presets;
@@ -1214,6 +1215,7 @@ pub struct MultiplexApp {
     session_remove_confirm_input: Entity<InputState>,
     session_sidebar: session_sidebar::SessionSidebarState,
     session_library: SessionLibraryState,
+    other_terminals: other_terminals::OtherTerminalsState,
     artifact_gallery: artifact_gallery::ArtifactGalleryState,
     activity_center: ActivityCenterState,
     remote_devices: RemoteDevicesState,
@@ -1700,6 +1702,7 @@ impl MultiplexApp {
             session_remove_confirm_input,
             session_sidebar: session_sidebar::SessionSidebarState::default(),
             session_library,
+            other_terminals: other_terminals::OtherTerminalsState::default(),
             artifact_gallery,
             activity_center,
             remote_devices,
@@ -4911,6 +4914,9 @@ impl MultiplexApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if section == NavSection::Sessions {
+            self.refresh_other_terminals();
+        }
         self.active_workspace_id = None;
         if self.nav_section != section {
             self.show_editor_panel = false;
@@ -31634,6 +31640,42 @@ sleep 1
             assert!(app.workspace(workspace_id).is_some());
             assert!(app.error_message.is_empty());
         });
+    }
+
+    #[gpui::test]
+    fn sessions_lists_terminals_the_app_did_not_open(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        // A terminal started by the Multiplex profile, and a tmux session nobody here created:
+        // the two sources a paired phone has always been shown.
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Sessions, window, cx);
+                    // Set after activating: entering Sessions reads the real sources, which on a
+                    // test machine find nothing.
+                    app.other_terminals.terminals = vec![super::other_terminals::OtherTerminal {
+                        kind: super::other_terminals::OtherTerminalKind::Tmux {
+                            name: "notes".to_owned(),
+                        },
+                        title: "notes".to_owned(),
+                        detail: "tmux · one window".to_owned(),
+                    }];
+                    cx.notify();
+                })
+            })
+            .expect("window update should succeed");
+
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        assert!(
+            visual.debug_bounds("other-terminals").is_some(),
+            "the section is shown when something outside the app is running"
+        );
+        assert!(visual.debug_bounds("other-terminal-open-0").is_some());
     }
 
     #[gpui::test]

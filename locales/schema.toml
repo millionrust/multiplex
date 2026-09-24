@@ -12170,3 +12170,47 @@ description = "Files title"
 id = "files-description"
 context = "Description under the Files heading."
 description = "Files description"
+
+[[messages]]
+id = "other-terminals-heading"
+context = "Heading above terminals on this computer that the app did not open."
+description = "Other terminals heading"
+
+[[messages]]
+id = "other-terminals-description"
+context = "Explains which terminals outside the app can be listed."
+description = "Other terminals description"
+
+[[messages]]
+id = "other-terminals-profile-origin"
+context = "Says a listed terminal was started by the Multiplex terminal profile, and in which directory."
+description = "Profile terminal origin"
+
+[[messages.args]]
+name = "directory"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "other-terminals-tmux-origin"
+context = "Says a listed terminal is a tmux session, with how many windows it has."
+description = "tmux terminal origin"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "other-terminals-open-action"
+context = "Button that opens a listed terminal in a pane."
+description = "Open terminal action"
+
+[[messages]]
+id = "other-terminals-attaching"
+context = "Status while a pane attaches to a terminal the app did not open."
+description = "Attaching status"

@@ -1988,6 +1988,7 @@ impl MultiplexApp {
             .min_h_0()
             .bg(theme::library_bg())
             .child(self.render_session_library_controls(cx))
+            .children(self.render_other_terminals(cx))
             .when_some(self.session_library.recovery_state(), |this, recovery| {
                 this.child(
                     div()

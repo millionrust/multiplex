@@ -1262,6 +1262,17 @@ notification-summary-payload = { $count ->
 notification-toggle-off = ⁧ffO⁩
 notification-toggle-on = ⁧nO⁩
 open-connections-action = ⁧snoitcennoC nepO⁩
+other-terminals-attaching = ⁧…lanimret eht ot gnihcattA⁩
+other-terminals-description = ⁧.meht detrats reveohw ,snoisses xumt dna ,eliforp xelpitluM eht htiw denepo slanimreT⁩
+other-terminals-heading = ⁧retupmoc siht no slanimret rehtO⁩
+other-terminals-open-action = ⁧nepO⁩
+other-terminals-profile-origin = ⁧ · eliforp xelpitluM⁩{ $directory }
+other-terminals-tmux-origin = { $count ->
+    [many] ⁧ · xumt⁩{ $count }⁧swodniw ⁩
+    [one] ⁧wodniw eno · xumt⁩
+   *[other] ⁧ · xumt⁩{ $count }⁧swodniw ⁩
+    [zero] ⁧noisses xumt⁩
+    }
 overlay-command-preview = ⁧ :dnammoC⁩{ $command }
 overlay-paste-action = ⁧etsaP⁩
 overlay-paste-confirmation = ⁧ etsaP⁩{ $count }⁧?enap evitca eht otni senil ⁩

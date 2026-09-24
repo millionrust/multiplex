@@ -836,6 +836,18 @@ static_message!(update_automatic_on, UpdateAutomaticOnArgs);
 static_message!(update_automatic_off, UpdateAutomaticOffArgs);
 static_message!(update_open_page_action, UpdateOpenPageActionArgs);
 static_message!(files_title, FilesTitleArgs);
+static_message!(other_terminals_heading, OtherTerminalsHeadingArgs);
+static_message!(other_terminals_description, OtherTerminalsDescriptionArgs);
+static_message!(other_terminals_open_action, OtherTerminalsOpenActionArgs);
+static_message!(other_terminals_attaching, OtherTerminalsAttachingArgs);
+pub fn other_terminals_profile_origin(directory: impl Into<String>) -> String {
+    text(&OtherTerminalsProfileOriginArgs::new(UserData::new(
+        directory,
+    )))
+}
+pub fn other_terminals_tmux_origin(count: u64) -> String {
+    text(&OtherTerminalsTmuxOriginArgs::new(Count(count)))
+}
 static_message!(files_description, FilesDescriptionArgs);
 static_message!(devices_add_computer_action, DevicesAddComputerActionArgs);
 static_message!(devices_settings_action, DevicesSettingsActionArgs);
