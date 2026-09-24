@@ -238,6 +238,54 @@ impl MultiplexApp {
         .detach();
     }
 
+    /// The project a folder belongs to, creating one when it is new.
+    ///
+    /// A person should not have to declare a project before they can work in a folder: a session
+    /// started in `~/code/payments/crates/api` belongs to the repository above it, and that is
+    /// something the folder itself can answer. Only the Git root is used, because that is the
+    /// boundary people already think in; a folder outside a repository is its own project.
+    pub(super) fn project_for_folder(&mut self, folder: &std::path::Path) -> Option<ProjectId> {
+        let root = git_root(folder).unwrap_or_else(|| folder.to_path_buf());
+        let canonical = CanonicalPath::resolve(&root).ok()?;
+        if let Some(existing) = self
+            .project_library
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| {
+                snapshot
+                    .projects
+                    .iter()
+                    .find(|summary| summary.project.canonical_root == canonical)
+            })
+            .map(|summary| summary.project.id)
+        {
+            return Some(existing);
+        }
+        let repository = self.project_library.repository.clone()?;
+        let expected = self
+            .project_library
+            .snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.revision)
+            .unwrap_or_default();
+        let project = repository
+            .add_project(AddProject {
+                id: ProjectId::new(),
+                root: PathBuf::from(canonical.as_path()),
+                display_name: canonical
+                    .display_name()
+                    .ok()
+                    .map(|name| name.as_str().to_string()),
+                expected,
+            })
+            .ok()?;
+        let id = project.id;
+        if let Ok(snapshot) = repository.load() {
+            self.project_library.snapshot = Some(snapshot);
+        }
+        Some(id)
+    }
+
     fn start_project_validation(
         &mut self,
         path: PathBuf,
@@ -1128,5 +1176,53 @@ mod tests {
     #[test]
     fn undo_expiry_is_exactly_ten_seconds() {
         assert_eq!(PROJECT_UNDO_WINDOW, Duration::from_secs(10));
+    }
+}
+
+/// The Git repository a path sits in, if any. Walks up looking for `.git`, which is a directory
+/// in a normal clone and a file in a worktree or submodule, so both count.
+fn git_root(from: &std::path::Path) -> Option<PathBuf> {
+    from.ancestors()
+        .find(|ancestor| ancestor.join(".git").exists())
+        .map(std::path::Path::to_path_buf)
+}
+
+#[cfg(test)]
+mod project_folder_tests {
+    use super::git_root;
+
+    #[test]
+    fn a_folder_inside_a_repository_belongs_to_its_root() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let root = temp.path().join("payments");
+        let nested = root.join("crates").join("api");
+        std::fs::create_dir_all(&nested).expect("nested directories");
+        std::fs::create_dir(root.join(".git")).expect("git directory");
+
+        assert_eq!(git_root(&nested).as_deref(), Some(root.as_path()));
+        assert_eq!(git_root(&root).as_deref(), Some(root.as_path()));
+    }
+
+    #[test]
+    fn a_worktree_counts_because_its_git_is_a_file() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let root = temp.path().join("worktree");
+        std::fs::create_dir_all(&root).expect("worktree directory");
+        std::fs::write(
+            root.join(".git"),
+            b"gitdir: /elsewhere/.git/worktrees/one\n",
+        )
+        .expect("git file");
+
+        assert_eq!(git_root(&root).as_deref(), Some(root.as_path()));
+    }
+
+    #[test]
+    fn a_folder_outside_a_repository_is_its_own_project() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let plain = temp.path().join("notes");
+        std::fs::create_dir_all(&plain).expect("plain directory");
+
+        assert_eq!(git_root(&plain), None);
     }
 }
