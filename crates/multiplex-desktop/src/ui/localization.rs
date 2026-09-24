@@ -672,10 +672,6 @@ static_message!(
 static_message!(remote_terminals_tmux_too_old, RemoteTerminalsTmuxTooOldArgs);
 static_message!(remote_terminals_unsupported, RemoteTerminalsUnsupportedArgs);
 static_message!(
-    remote_terminals_review_enable_action,
-    RemoteTerminalsReviewEnableActionArgs
-);
-static_message!(
     remote_terminals_review_disable_action,
     RemoteTerminalsReviewDisableActionArgs
 );
@@ -839,7 +835,8 @@ static_message!(update_automatic_description, UpdateAutomaticDescriptionArgs);
 static_message!(update_automatic_on, UpdateAutomaticOnArgs);
 static_message!(update_automatic_off, UpdateAutomaticOffArgs);
 static_message!(update_open_page_action, UpdateOpenPageActionArgs);
-static_message!(sftp_nav_label, SftpNavLabelArgs);
+static_message!(files_title, FilesTitleArgs);
+static_message!(files_description, FilesDescriptionArgs);
 static_message!(devices_add_computer_action, DevicesAddComputerActionArgs);
 static_message!(devices_settings_action, DevicesSettingsActionArgs);
 static_message!(devices_remote_access_off, DevicesRemoteAccessOffArgs);
@@ -1339,21 +1336,10 @@ pub fn common_save() -> String {
 }
 
 static_message!(artifact_gallery_title, ArtifactGalleryTitleArgs);
-static_message!(files_artifacts_title, FilesArtifactsTitleArgs);
-static_message!(files_artifacts_description, FilesArtifactsDescriptionArgs);
-static_message!(files_artifacts_session_tab, FilesArtifactsSessionTabArgs);
-static_message!(files_artifacts_sftp_tab, FilesArtifactsSftpTabArgs);
-static_message!(
-    files_artifacts_authoritative_heading,
-    FilesArtifactsAuthoritativeHeadingArgs
-);
-static_message!(files_artifacts_global_empty, FilesArtifactsGlobalEmptyArgs);
-static_message!(files_artifacts_detail_empty, FilesArtifactsDetailEmptyArgs);
 static_message!(artifact_private_row, ArtifactPrivateRowArgs);
 static_message!(artifact_private_preview, ArtifactPrivatePreviewArgs);
 static_message!(preset_private_row, PresetPrivateRowArgs);
 static_message!(product_private_project_row, ProductPrivateProjectRowArgs);
-static_message!(product_private_session_row, ProductPrivateSessionRowArgs);
 static_message!(worktree_private_reference, WorktreePrivateReferenceArgs);
 static_message!(worktree_private_path, WorktreePrivatePathArgs);
 static_message!(artifact_gallery_description, ArtifactGalleryDescriptionArgs);
@@ -1446,48 +1432,6 @@ pub fn artifact_quota_summary(used: impl Into<String>, limit: impl Into<String>)
     text(&ArtifactQuotaSummaryArgs::new(
         Text::new(used),
         Text::new(limit),
-    ))
-}
-
-pub fn files_artifacts_count(count: usize) -> String {
-    text(&FilesArtifactsCountArgs::new(Count(count as u64)))
-}
-
-pub fn artifact_semantic_provenance(
-    kind: impl Into<String>,
-    size: impl Into<String>,
-    origin: impl Into<String>,
-    project: impl Into<String>,
-    session: impl Into<String>,
-) -> String {
-    text(&ArtifactSemanticProvenanceArgs::new(
-        Text::new(kind),
-        Text::new(size),
-        Text::new(origin),
-        UserData::new(project),
-        UserData::new(session),
-    ))
-}
-
-pub fn artifact_index_summary(
-    kind: impl Into<String>,
-    size: impl Into<String>,
-    origin: impl Into<String>,
-) -> String {
-    text(&ArtifactIndexSummaryArgs::new(
-        Text::new(kind),
-        Text::new(size),
-        Text::new(origin),
-    ))
-}
-
-pub fn files_artifacts_project_session(
-    project: impl Into<String>,
-    session: impl Into<String>,
-) -> String {
-    text(&FilesArtifactsProjectSessionArgs::new(
-        UserData::new(project),
-        UserData::new(session),
     ))
 }
 

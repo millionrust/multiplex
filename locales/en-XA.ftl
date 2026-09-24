@@ -418,7 +418,6 @@ artifact-import-review-file = ⟦Ƒîļé: ~⟧{ $name }⟦ · ⟧{ $size }
 artifact-import-review-quota = ⟦Šéššîøñ ûšåĝé: ~~~~⟧{ $used }⟦ øƒ ⟧{ $limit }
 artifact-import-review-title = ⟦Ŕéṽîéŵ îɱþøŕţ~~~~⟧
 artifact-import-source-preserved = ⟦Ṁûļţîþļéẋ çøþîéš ţĥîš ƒîļé. Ţĥé øŕîĝîñåļ šţåýš ûñçĥåñĝéð åñð ŕéɱåîñš ýøûŕš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
-artifact-index-summary = ⟦Åŕţîƒåçţ: ~~⟧{ $kind }⟦ · ⟧{ $size }⟦ · ⟧{ $origin }
 artifact-layout-grid = ⟦Ĝŕîð ṽîéŵ~~⟧
 artifact-layout-list = ⟦Ļîšţ ṽîéŵ~~⟧
 artifact-notice-exported = ⟦Ṽéŕîƒîéð çøþý éẋþøŕţéð ŵîţĥøûţ øṽéŕŵŕîţîñĝ éẋîšţîñĝ ðåţå.~~~~~~~~~~~~~~~~~~~~~⟧
@@ -452,7 +451,6 @@ artifact-quarantine-action = ⟦Ɋûåŕåñţîñé~~⟧
 artifact-quota-summary = { $used }⟦ øƒ ⟧{ $limit }⟦ ûšéð⟧
 artifact-quota-unavailable = ⟦Åŕţîƒåçţ šţøŕåĝé ûñåṽåîļåƀļé~~~~~~~~~~⟧
 artifact-restore-action = ⟦Ŕéšţøŕé~⟧
-artifact-semantic-provenance = { $kind }⟦, ⟧{ $size }⟦, ⟧{ $origin }⟦, Þŕøĵéçţ ~~⟧{ $project }⟦, Šéššîøñ ~~⟧{ $session }
 artifact-show-metadata-action = ⟦Šĥøŵ ɱéţåðåţå~~~~⟧
 artifact-state-corrupt = ⟦Çøŕŕûþţ~⟧
 artifact-state-quarantined = ⟦Ɋûåŕåñţîñéð~~~⟧
@@ -633,19 +631,8 @@ durable-restore-host-metadata-missing-error = ⟦Å ðûŕåƀļé ŵøŕķšþ�
 durable-restore-session-metadata-missing-error = ⟦Å ðûŕåƀļé ŵøŕķšþåçé þåñé îš ɱîššîñĝ îţš šåṽéð šéššîøñ ɱéţåðåţå; ñø þŕøçéšš ŵåš šţåŕţéð.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 durable-retrying-status = ⟦Ŕéţŕýîñĝ ðûŕåƀļé Ĥøšţ åţţåçĥɱéñţ...~~~~~~~~~~~~⟧
 field-error = ⟦Éŕŕøŕ: ~⟧{ $reason }
-files-artifacts-authoritative-heading = ⟦Åļļ åûţĥøŕîţåţîṽé Šéššîøñš~~~~~~~~~⟧
-files-artifacts-count = { $count ->
-    [many] { $count }⟦ åŕţîƒåçţš~~⟧
-    [one] ⟦1 åŕţîƒåçţ~~⟧
-   *[other] { $count }⟦ åŕţîƒåçţš~~⟧
-    }
-files-artifacts-description = ⟦Ɓŕøŵšé ļîṽé ƒîļéš šéþåŕåţéļý ƒŕøɱ ðûŕåƀļé Šéššîøñ åŕţîƒåçţš.~~~~~~~~~~~~~~~~~~~~~~⟧
-files-artifacts-detail-empty = ⟦Åŕţîƒåçţ åçţîøñš åþþéåŕ ĥéŕé åƒţéŕ åñ åŕţîƒåçţ îš åṽåîļåƀļé.~~~~~~~~~~~~~~~~~~~~~~⟧
-files-artifacts-global-empty = ⟦Ñø Šéššîøñ åŕţîƒåçţš ýéţ. Šéļéçţ å Šéššîøñ åñð îɱþøŕţ å ƒîļé ţø ķééþ îţ ĥéŕé.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
-files-artifacts-project-session = ⟦Çøñţéẋţ: ~~⟧{ $project }⟦ / ⟧{ $session }
-files-artifacts-session-tab = ⟦Šéššîøñ åŕţîƒåçţš~~~~~⟧
-files-artifacts-sftp-tab = ⟦ŠƑŢÞ ƒîļéš~~⟧
-files-artifacts-title = ⟦Ƒîļéš / Åŕţîƒåçţš~~~~~⟧
+files-description = ⟦Ɓŕøŵšé ţĥîš çøɱþûţéŕ'š ƒîļéš åñð ţĥé ƒîļéš øñ å çøññéçţéð ĥøšţ.~~~~~~~~~~~~~~~~~~~~~~~~⟧
+files-title = ⟦Ƒîļéš⟧
 global-palette-add-project-action = ⟦Åðð Þŕøĵéçţ~~~⟧
 global-palette-archived-fallback = ⟦Ñø åçţîṽé ŕéšûļţš ɱåţçĥéð. Šĥøŵîñĝ åŕçĥîṽéð šéššîøñš.~~~~~~~~~~~~~~~~~~~~⟧
 global-palette-category-actions = ⟦Åçţîøñš~⟧
@@ -2146,7 +2133,6 @@ sftp-library-title = ⟦Ļøçåļ åñð ŕéɱøţé ƒîļéš~~~~~~~⟧
 sftp-loading-directory = ⟦Ļøåðîñĝ ŕéɱøţé ðîŕéçţøŕý…~~~~~~~~⟧
 sftp-loading-endpoint-status = ⟦Ļøåðîñĝ ŕéɱøţé ƒîļéš ƒŕøɱ ~~~~~~~~~⟧{ $endpoint }⟦...⟧
 sftp-local-pane = ⟦Ļøçåļ ƒîļéš~~~⟧
-sftp-nav-label = ⟦ŠƑŢÞ⟧
 sftp-open-files-action = ⟦Øþéñ ƒîļéš~~⟧
 sftp-open-folder-action = ⟦Øþéñ ƒøļðéŕ~~~⟧
 sftp-open-local-action = ⟦Øþéñ îñ ƒîļé ɱåñåĝéŕ~~~~~~⟧

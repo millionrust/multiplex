@@ -30,7 +30,7 @@ impl MultiplexApp {
         {
             return Some(self.workspace_sftp_semantic_snapshot(workspace.id));
         }
-        (self.nav_section == super::NavSection::Sftp && self.sftp_library_tab_active())
+        (self.nav_section == super::NavSection::Sftp)
             .then(|| self.library_sftp_semantic_snapshot(cx))
     }
 
@@ -621,6 +621,42 @@ impl MultiplexApp {
             | SftpAction::Download(_)
             | SftpAction::Delete(_) => {}
         }
+    }
+
+    pub(super) fn render_files_view(&self, cx: &mut Context<Self>) -> AnyElement {
+        use gpui_component::v_flex;
+        v_flex()
+            .id("files-view")
+            .debug_selector(|| "files-view".to_string())
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .bg(theme::library_bg())
+            .child(
+                v_flex()
+                    .flex_none()
+                    .min_w_0()
+                    .gap(px(theme::SPACE_2))
+                    .px(px(theme::SPACE_5))
+                    .py(px(theme::SPACE_4))
+                    .border_b_1()
+                    .border_color(theme::border())
+                    .child(
+                        gpui::div()
+                            .text_size(px(theme::TYPE_HEADING_SIZE))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child(localization::files_title()),
+                    )
+                    .child(
+                        gpui::div()
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(localization::files_description()),
+                    ),
+            )
+            .child(self.render_sftp_view(cx))
+            .into_any_element()
     }
 
     pub(super) fn render_sftp_view(&self, cx: &mut Context<Self>) -> Div {

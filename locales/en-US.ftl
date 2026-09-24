@@ -126,7 +126,6 @@ projects-folder-safety = Nothing will be changed inside the folder.
 projects-local-only = Stored only on this device. No account or network is required.
 product-private-project-row = Private project
 product-private-group-row = Private session group
-product-private-session-row = Private session
 product-surface-state-ready = Collection ready.
 product-surface-state-loading = Loading collection…
 product-surface-state-empty = Collection is empty.
@@ -617,26 +616,11 @@ activity-age-years = { $count ->
    *[other] { $count } years ago
     }
 artifact-gallery-title = Artifacts
-files-artifacts-title = Files / Artifacts
-files-artifacts-description = Browse live files separately from durable Session artifacts.
-files-artifacts-session-tab = Session artifacts
-files-artifacts-sftp-tab = SFTP files
-files-artifacts-authoritative-heading = All authoritative Sessions
-files-artifacts-count = { $count ->
-    [one] 1 artifact
-    [many] { $count } artifacts
-   *[other] { $count } artifacts
-    }
-files-artifacts-global-empty = No Session artifacts yet. Select a Session and import a file to keep it here.
-files-artifacts-detail-empty = Artifact actions appear here after an artifact is available.
-artifact-semantic-provenance = { $kind }, { $size }, { $origin }, Project { $project }, Session { $session }
-artifact-index-summary = Artifact: { $kind } · { $size } · { $origin }
 artifact-private-row = Private artifact
 artifact-private-preview = Preview hidden while recording-friendly mode is on
 preset-private-row = Private preset
 worktree-private-reference = Private Git reference
 worktree-private-path = Private managed path
-files-artifacts-project-session = Context: { $project } / { $session }
 artifact-gallery-description = Keep inert text, images, and evidence with this session.
 artifact-gallery-empty = No artifacts in this session. Import a local file to add one.
 artifact-gallery-loading = Loading artifacts…
@@ -943,7 +927,6 @@ update-automatic-description = New versions download in the background and insta
 update-automatic-on = On
 update-automatic-off = Off
 update-open-page-action = Open release page
-sftp-nav-label = SFTP
 devices-view-description = Phones and computers paired with this computer. Remote access and its other options are in Settings.
 devices-add-computer-action = Add computer
 devices-settings-action = Remote access settings
@@ -2607,3 +2590,6 @@ hosts-onboarding-quick-connect-description = Quick connect from search: `user@ho
 hosts-onboarding-shortcuts-description = Shortcuts: { $modifier }+1..7 for sections, { $modifier }+L for host search, { $modifier }+K for command palette
 hosts-recent-title = RECENT
 logs-view-switched-status = Switched to Logs view.
+product-private-session-row = Private session
+files-title = Files
+files-description = Browse this computer's files and the files on a connected host.

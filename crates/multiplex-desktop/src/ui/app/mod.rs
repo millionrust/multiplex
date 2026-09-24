@@ -339,7 +339,7 @@ impl NavSection {
             Self::Devices => localization::remote_devices_title(),
             Self::Presets => localization::presets_nav_label(),
             Self::Hosts => "Connections".to_string(),
-            Self::Sftp => "Files / Artifacts".to_string(),
+            Self::Sftp => "Files".to_string(),
             Self::Vaults => "Vaults".to_string(),
             Self::Keychain => "Keys".to_string(),
             Self::Snippets => "Snippets".to_string(),
@@ -2101,13 +2101,6 @@ impl MultiplexApp {
                 ShellAccessibilityCommand::WorktreeArtifact(command) => {
                     if self.worktree_launch.is_some() {
                         self.handle_worktree_accessibility_command(
-                            command,
-                            event.value,
-                            window,
-                            cx,
-                        );
-                    } else if self.nav_section == NavSection::Sftp {
-                        self.handle_artifact_accessibility_command(
                             command,
                             event.value,
                             window,
@@ -13785,7 +13778,7 @@ impl MultiplexApp {
             NavSection::Devices => self.render_devices_view(cx).into_any_element(),
             NavSection::Presets => self.render_presets_view(cx).into_any_element(),
             NavSection::Hosts => self.render_hosts_view(window, cx).into_any_element(),
-            NavSection::Sftp => self.render_files_artifacts_view(cx),
+            NavSection::Sftp => self.render_files_view(cx),
             NavSection::Vaults => self.render_vaults_view(cx).into_any_element(),
             NavSection::Keychain => self.render_keychain_view(cx).into_any_element(),
             NavSection::Snippets => self.render_snippets_view(cx).into_any_element(),
@@ -13975,13 +13968,7 @@ impl Render for MultiplexApp {
                 _ => None,
             })
             .flatten();
-        let worktree_artifact = self.worktree_semantic_snapshot(cx).or_else(|| {
-            (background_surface_available
-                && self.nav_section == NavSection::Sftp
-                && !self.sftp_library_tab_active())
-            .then(|| self.artifact_semantic_snapshot())
-            .flatten()
-        });
+        let worktree_artifact = self.worktree_semantic_snapshot(cx);
         let host_connection = (!worktree_modal_open)
             .then(|| self.host_connection_semantic_snapshot(cx))
             .flatten();
@@ -14335,15 +14322,7 @@ impl MultiplexApp {
             }
             AppShortcut::NavigateSection(number) => {
                 if let Some(section) = primary_nav_shortcut(number) {
-                    if section == NavSection::Sftp {
-                        self.open_files_library(
-                            artifact_gallery::FilesLibraryTab::Artifacts,
-                            window,
-                            cx,
-                        );
-                    } else {
-                        self.activate_library_section(section, window, cx);
-                    }
+                    self.activate_library_section(section, window, cx);
                     self.project_list_focus.focus(window);
                     return true;
                 }
@@ -25734,124 +25713,6 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_artifact_contract_keeps_hostile_content_inert_and_routes_safe_actions(
-        cx: &mut TestAppContext,
-    ) {
-        let _isolation = TestIsolation::acquire();
-        let session_id = multiplex_domain::HostedSessionId::new();
-        let artifact_id = multiplex_domain::ArtifactId::new();
-        let saved = SavedState {
-            app_attached_sessions: vec![crate::models::SavedAppAttachedSession {
-                id: session_id,
-                route: multiplex_domain::SessionLaunchRoute::DurableHost,
-                origin: multiplex_domain::SessionOrigin {
-                    project_id: multiplex_domain::ProjectId::new(),
-                    preset_id: multiplex_domain::PresetId::new(),
-                },
-                state: multiplex_domain::HostedSessionState::Exited,
-                project_label: "Project <script>canary</script>".to_string(),
-                preset_label: "Safe preset".to_string(),
-                title: "Evidence session".to_string(),
-                title_source: multiplex_domain::TitleSource::Manual,
-                activity: multiplex_domain::ActivityAggregate::default(),
-                pinned: false,
-                read_through_sequence: 0,
-                unread_sequence: None,
-                archived_at: None,
-                revision: multiplex_domain::Revision::ZERO,
-                durable_host: Some(crate::models::SavedDurableHost::default()),
-                group_id: None,
-                position: multiplex_domain::PositionKey::FIRST,
-                started_at: 1,
-                updated_at: 1,
-            }],
-            ..SavedState::default()
-        };
-        let (app, window) = open_test_app_with_state(cx, saved);
-
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.artifact_gallery.install_test_snapshots(vec![
-                        multiplex_store::ArtifactSnapshot {
-                            scope: multiplex_domain::ArtifactScope { session_id },
-                            artifacts: vec![multiplex_domain::ArtifactMetadata {
-                                id: artifact_id,
-                                scope: multiplex_domain::ArtifactScope { session_id },
-                                display_name: multiplex_domain::ArtifactDisplayName::new(
-                                    "\u{202e}$(touch must-not-run).html",
-                                )
-                                .unwrap(),
-                                origin: multiplex_domain::ArtifactOrigin::ExplicitImport,
-                                media_type: multiplex_domain::ArtifactMediaType::MetadataOnly,
-                                byte_len: 37,
-                                sha256: multiplex_domain::ArtifactSha256::new([7; 32]),
-                                created_at: 1,
-                                preview_kind: multiplex_domain::ArtifactPreviewKind::MetadataOnly,
-                                state: multiplex_domain::ArtifactState::Ready,
-                            }],
-                            session_bytes: 37,
-                            session_limit: 1_024,
-                            global_bytes: 37,
-                            global_limit: 2_048,
-                            durability: multiplex_store::Durability::Full,
-                        },
-                    ]);
-                    app.activate_library_section(NavSection::Sftp, window, cx);
-                    let snapshot = app.artifact_semantic_snapshot().unwrap();
-                    let row = multiplex_ui_contract::WorktreeArtifactRowId::artifact(
-                        session_id.as_uuid().as_u128(),
-                        artifact_id.as_uuid().as_u128(),
-                    );
-                    assert!(snapshot.rows.iter().any(|candidate| {
-                        candidate.id == row
-                            && candidate.detail.as_ref().is_some_and(|detail| {
-                                detail.contains("Evidence session")
-                                    && detail.contains(
-                                        &localization::artifact_origin_import(),
-                                    )
-                            })
-                    }));
-                    assert!(snapshot.controls.iter().any(|control| {
-                        control.action
-                            == multiplex_ui_contract::WorktreeArtifactAction::PreviewArtifact(row)
-                            && control.disabled
-                    }));
-                    let semantics = format!(
-                        "{:?}",
-                        snapshot
-                            .try_nodes(multiplex_ui_contract::shell_region_semantic_node(
-                                multiplex_ui_contract::ShellRegionId::Content,
-                            ))
-                            .unwrap()
-                    );
-                    assert!(semantics.contains("touch must-not-run"));
-                    assert!(!semantics.contains("preview-byte-canary"));
-                    app.handle_artifact_accessibility_command(
-                        multiplex_ui_contract::WorktreeArtifactAccessibilityCommand::ActivateControl(
-                            multiplex_ui_contract::WorktreeArtifactAction::ToggleArtifactMetadata(
-                                row,
-                            ),
-                        ),
-                        None,
-                        window,
-                        cx,
-                    );
-                    assert!(app.artifact_semantic_snapshot().unwrap().rows.iter().any(
-                        |candidate| candidate.id == row && candidate.expanded == Some(true)
-                    ));
-                })
-            })
-            .expect("artifact contract should route safe metadata action");
-
-        let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.run_until_parked();
-        assert!(visual.debug_bounds("files-artifacts-view").is_some());
-        assert!(visual.debug_bounds("global-artifact-row").is_some());
-        assert!(visual.debug_bounds("artifact-card").is_some());
-    }
-
-    #[gpui::test]
     fn e2e_host_contract_masks_secrets_and_routes_literal_field_values(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
@@ -25928,11 +25789,7 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.sftp_local_path = temp.path().to_path_buf();
-                    app.open_files_library(
-                        crate::ui::app::artifact_gallery::FilesLibraryTab::Sftp,
-                        window,
-                        cx,
-                    );
+                    app.activate_library_section(NavSection::Sftp, window, cx);
                     let snapshot = app
                         .sftp_semantic_snapshot(cx)
                         .expect("SFTP semantics should be available");
@@ -26003,11 +25860,7 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    app.open_files_library(
-                        crate::ui::app::artifact_gallery::FilesLibraryTab::Sftp,
-                        window,
-                        cx,
-                    );
+                    app.activate_library_section(NavSection::Sftp, window, cx);
                     app.sftp_show_host_picker = true;
                     let snapshot = app.sftp_semantic_snapshot(cx).unwrap();
                     let action = snapshot
@@ -26364,7 +26217,7 @@ sleep 1
 
             if let Some(page_selector) = match expected {
                 NavSection::Sessions => Some("sessions-view"),
-                NavSection::Sftp => Some("files-artifacts-view"),
+                NavSection::Sftp => Some("files-view"),
                 NavSection::Devices => Some("devices-view"),
                 _ => None,
             } {
@@ -26802,92 +26655,6 @@ sleep 1
             assert!(app.workspaces[0].pane_ids.is_empty());
             assert!(app.saved.app_attached_sessions.is_empty());
         });
-    }
-
-    #[gpui::test]
-    fn e2e_files_artifacts_show_cross_project_origin_and_switch_to_sftp(cx: &mut TestAppContext) {
-        let _isolation = TestIsolation::acquire();
-        let make_session = |label: &str| crate::models::SavedAppAttachedSession {
-            id: multiplex_domain::HostedSessionId::new(),
-            route: multiplex_domain::SessionLaunchRoute::LegacyAppAttached,
-            origin: multiplex_domain::SessionOrigin {
-                project_id: multiplex_domain::ProjectId::new(),
-                preset_id: multiplex_domain::PresetId::new(),
-            },
-            state: multiplex_domain::HostedSessionState::Exited,
-            project_label: label.to_string(),
-            preset_label: "Codex".to_string(),
-            title: format!("{label} task"),
-            title_source: multiplex_domain::TitleSource::Manual,
-            activity: multiplex_domain::ActivityAggregate::default(),
-            pinned: false,
-            read_through_sequence: 0,
-            unread_sequence: None,
-            archived_at: None,
-            revision: multiplex_domain::Revision::ZERO,
-            durable_host: None,
-            group_id: None,
-            position: multiplex_domain::PositionKey::FIRST,
-            started_at: 1,
-            updated_at: 1,
-        };
-        let alpha = make_session("Alpha");
-        let beta = make_session("Beta");
-        let make_snapshot =
-            |session_id, name: &str, digest: u8| multiplex_store::ArtifactSnapshot {
-                scope: multiplex_domain::ArtifactScope { session_id },
-                artifacts: vec![multiplex_domain::ArtifactMetadata {
-                    id: multiplex_domain::ArtifactId::new(),
-                    scope: multiplex_domain::ArtifactScope { session_id },
-                    display_name: multiplex_domain::ArtifactDisplayName::new(name)
-                        .expect("artifact name should be valid"),
-                    origin: multiplex_domain::ArtifactOrigin::ExplicitImport,
-                    media_type: multiplex_domain::ArtifactMediaType::TextPlainUtf8,
-                    byte_len: 4,
-                    sha256: multiplex_domain::ArtifactSha256::new([digest; 32]),
-                    created_at: u64::from(digest),
-                    preview_kind: multiplex_domain::ArtifactPreviewKind::Text,
-                    state: multiplex_domain::ArtifactState::Ready,
-                }],
-                session_bytes: 4,
-                session_limit: 1024,
-                global_bytes: 8,
-                global_limit: 2048,
-                durability: multiplex_store::Durability::Full,
-            };
-        let snapshots = vec![
-            make_snapshot(alpha.id, "alpha.txt", 1),
-            make_snapshot(beta.id, "beta.txt", 2),
-        ];
-        let saved = SavedState {
-            app_attached_sessions: vec![alpha, beta],
-            ..SavedState::default()
-        };
-        let (app, window) = open_test_app_with_state(cx, saved);
-
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.artifact_gallery.install_test_snapshots(snapshots);
-                    app.activate_library_section(NavSection::Sftp, window, cx);
-                })
-            })
-            .expect("Files / Artifacts should activate");
-
-        let mut visual = VisualTestContext::from_window(window.into(), cx);
-        assert!(visual.debug_bounds("files-artifacts-view").is_some());
-        assert!(visual.debug_bounds("global-artifact-index").is_some());
-        assert!(visual.debug_bounds("global-artifact-row").is_some());
-        assert!(visual.debug_bounds("global-artifact-origin").is_some());
-        assert!(visual.debug_bounds("global-artifact-project").is_some());
-        assert!(visual.debug_bounds("global-artifact-preset").is_some());
-        assert!(visual.debug_bounds("artifact-gallery").is_some());
-
-        let sftp_tab = selector_click_center(window, cx, "files-tab-sftp");
-        VisualTestContext::from_window(window.into(), cx)
-            .simulate_click(sftp_tab, gpui::Modifiers::none());
-        let mut visual = VisualTestContext::from_window(window.into(), cx);
-        assert!(visual.debug_bounds("sftp-local-list").is_some());
     }
 
     #[gpui::test]
@@ -31832,13 +31599,12 @@ sleep 1
         let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
         let (app, window) = open_test_app(cx);
 
-        let sftp_click = selector_click_center(window, cx, "nav-card-sftp");
+        let sftp_click = selector_click_center(window, cx, "nav-card-13");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(sftp_click, gpui::Modifiers::none());
 
         app.read_with(cx, |app, _| {
             assert_eq!(app.nav_section, NavSection::Sftp);
-            assert!(app.sftp_library_tab_active());
             assert_eq!(app.active_workspace_id, None);
             assert!(app.error_message.is_empty());
         });

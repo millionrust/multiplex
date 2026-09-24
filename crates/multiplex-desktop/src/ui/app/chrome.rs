@@ -1095,44 +1095,13 @@ impl MultiplexApp {
                         NavSection::Settings,
                     ]
                     .into_iter()
-                    .flat_map(|section| {
-                        // SFTP and Files / Artifacts are two tabs of one view, each with its row.
-                        let sftp_tab = self.sftp_library_tab_active();
-                        let active = self.nav_section == section
-                            && (section != NavSection::Sftp || !sftp_tab);
-                        let card = self
-                            .nav_card(("nav-card", nav_section_key(section)), section, active, cx)
+                    .map(|section| {
+                        let active = self.nav_section == section;
+                        self.nav_card(("nav-card", nav_section_key(section)), section, active, cx)
                             .on_click(cx.listener(move |this, _, window, cx| {
-                                if section == NavSection::Sftp {
-                                    this.open_files_library(
-                                        super::artifact_gallery::FilesLibraryTab::Artifacts,
-                                        window,
-                                        cx,
-                                    );
-                                } else {
-                                    this.activate_library_section(section, window, cx);
-                                }
-                            }))
-                            .into_any_element();
-                        let sftp = (section == NavSection::Sessions).then(|| {
-                            self.nav_row(
-                                "nav-card-sftp",
-                                "nav-card-sftp".to_string(),
-                                IconName::FolderOpen.into(),
-                                localization::sftp_nav_label(),
-                                self.nav_section == NavSection::Sftp && sftp_tab,
-                                None,
-                            )
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_files_library(
-                                    super::artifact_gallery::FilesLibraryTab::Sftp,
-                                    window,
-                                    cx,
-                                );
+                                this.activate_library_section(section, window, cx);
                             }))
                             .into_any_element()
-                        });
-                        std::iter::once(card).chain(sftp)
                     }),
                 ),
             )

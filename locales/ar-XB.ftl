@@ -418,7 +418,6 @@ artifact-import-review-file = ⁧ :eliF⁩{ $name }⁧ · ⁩{ $size }
 artifact-import-review-quota = ⁧ :egasu noisseS⁩{ $used }⁧ fo ⁩{ $limit }
 artifact-import-review-title = ⁧tropmi weiveR⁩
 artifact-import-source-preserved = ⁧.sruoy sniamer dna degnahcnu syats lanigiro ehT .elif siht seipoc xelpitluM⁩
-artifact-index-summary = ⁧ :tcafitrA⁩{ $kind }⁧ · ⁩{ $size }⁧ · ⁩{ $origin }
 artifact-layout-grid = ⁧weiv dirG⁩
 artifact-layout-list = ⁧weiv tsiL⁩
 artifact-notice-exported = ⁧.atad gnitsixe gnitirwrevo tuohtiw detropxe ypoc deifireV⁩
@@ -452,7 +451,6 @@ artifact-quarantine-action = ⁧enitnarauQ⁩
 artifact-quota-summary = { $used }⁧ fo ⁩{ $limit }⁧desu ⁩
 artifact-quota-unavailable = ⁧elbaliavanu egarots tcafitrA⁩
 artifact-restore-action = ⁧erotseR⁩
-artifact-semantic-provenance = { $kind }⁧ ,⁩{ $size }⁧ ,⁩{ $origin }⁧ tcejorP ,⁩{ $project }⁧ noisseS ,⁩{ $session }
 artifact-show-metadata-action = ⁧atadatem wohS⁩
 artifact-state-corrupt = ⁧tpurroC⁩
 artifact-state-quarantined = ⁧denitnarauQ⁩
@@ -633,19 +631,8 @@ durable-restore-host-metadata-missing-error = ⁧.detrats saw ssecorp on ;atadat
 durable-restore-session-metadata-missing-error = ⁧.detrats saw ssecorp on ;atadatem noisses devas sti gnissim si enap ecapskrow elbarud A⁩
 durable-retrying-status = ⁧...tnemhcatta tsoH elbarud gniyrteR⁩
 field-error = ⁧ :rorrE⁩{ $reason }
-files-artifacts-authoritative-heading = ⁧snoisseS evitatirohtua llA⁩
-files-artifacts-count = { $count ->
-    [many] { $count }⁧stcafitra ⁩
-    [one] ⁧tcafitra 1⁩
-   *[other] { $count }⁧stcafitra ⁩
-    }
-files-artifacts-description = ⁧.stcafitra noisseS elbarud morf yletarapes selif evil esworB⁩
-files-artifacts-detail-empty = ⁧.elbaliava si tcafitra na retfa ereh raeppa snoitca tcafitrA⁩
-files-artifacts-global-empty = ⁧.ereh ti peek ot elif a tropmi dna noisseS a tceleS .tey stcafitra noisseS oN⁩
-files-artifacts-project-session = ⁧ :txetnoC⁩{ $project }⁧ / ⁩{ $session }
-files-artifacts-session-tab = ⁧stcafitra noisseS⁩
-files-artifacts-sftp-tab = ⁧selif PTFS⁩
-files-artifacts-title = ⁧stcafitrA / seliF⁩
+files-description = ⁧.tsoh detcennoc a no selif eht dna selif s'retupmoc siht esworB⁩
+files-title = ⁧seliF⁩
 global-palette-add-project-action = ⁧tcejorP ddA⁩
 global-palette-archived-fallback = ⁧.snoisses devihcra gniwohS .dehctam stluser evitca oN⁩
 global-palette-category-actions = ⁧snoitcA⁩
@@ -2146,7 +2133,6 @@ sftp-library-title = ⁧selif etomer dna lacoL⁩
 sftp-loading-directory = ⁧…yrotcerid etomer gnidaoL⁩
 sftp-loading-endpoint-status = ⁧ morf selif etomer gnidaoL⁩{ $endpoint }⁧...⁩
 sftp-local-pane = ⁧selif lacoL⁩
-sftp-nav-label = ⁧PTFS⁩
 sftp-open-files-action = ⁧selif nepO⁩
 sftp-open-folder-action = ⁧redlof nepO⁩
 sftp-open-local-action = ⁧reganam elif ni nepO⁩
