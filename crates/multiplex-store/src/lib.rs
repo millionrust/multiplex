@@ -54,6 +54,9 @@ pub use lease::{
 };
 #[cfg(feature = "os-keyring")]
 pub use multiplex_replication_security::OsReplicationSecretBackend;
+/// Only exists with a credential store to talk to; a build without one, such as the mobile
+/// bindings, has no keychain to migrate names in.
+#[cfg(feature = "os-keyring")]
 pub use multiplex_replication_security::keychain;
 pub use multiplex_replication_security::{
     ReplicationAuthorityDeviceStatus, ReplicationSecretBackend, ReplicationSecretRef,
