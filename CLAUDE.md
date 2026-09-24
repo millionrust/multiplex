@@ -105,7 +105,9 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   Rust integration tests live inside each crate.
 - `scripts/` is grouped by verb: `verify/`, `test/`, `build/`, `sync/`, `bench/`,
   `run/`, `dev/`. Every script resolves the repo root two levels up.
-- `design/` and `locales/` are consumed by `multiplex-ui-contract`. `design/` also
+- `design/` and `locales/` are consumed by `multiplex-ui-contract`. `design/brand/` holds the
+  app mark and icon sources; `scripts/build/brand-icons.sh` renders every shipped PNG from them,
+  so a PNG is never edited by hand. `design/` also
   holds the Slate design references: `slate-design-system.html` (every token,
   component spec, and the Rust handoff) and `multiplex-design-system.html` (the
   interactive Multiplex prototype). `docs/` holds

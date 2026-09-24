@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Multiplex">
+  <title>Multiplex</title>
+  <!--
+    The mark: a key you press to get somewhere else. A 64-unit grid; the cap is 46x40 on an
+    8-unit margin with an 11-unit corner radius and a 6-unit front lip. The chevron sits one
+    unit above the geometric centre, because the lip carries weight below it, and the glyph is
+    62% of the cap's width, which is what keeps it readable at 18px.
+  -->
+  <defs>
+    <linearGradient id="capTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9CC2FF"/>
+      <stop offset="0.5" stop-color="#74A7F2"/>
+      <stop offset="1" stop-color="#4A7ED6"/>
+    </linearGradient>
+    <linearGradient id="capLip" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3F6FD8"/>
+      <stop offset="1" stop-color="#2C4F9E"/>
+    </linearGradient>
+    <linearGradient id="capSheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <path d="M9 22a7 7 0 0 1 7-7h32a7 7 0 0 1 7 7v20a8 8 0 0 1-8 8H17a8 8 0 0 1-8-8z" fill="url(#capLip)"/>
+  <rect x="9" y="13" width="46" height="31" rx="9" fill="url(#capTop)"/>
+  <rect x="12.5" y="15.5" width="39" height="13" rx="6.5" fill="url(#capSheen)"/>
+  <path d="M24 23.5l6.6 6.5-6.6 6.5" fill="none" stroke="#0E1622" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="33" y="32.4" width="12" height="4" rx="2" fill="#0E1622"/>
+</svg>

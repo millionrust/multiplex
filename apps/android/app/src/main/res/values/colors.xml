@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#020D26</color>
+    <!-- The flat layer behind the adaptive icon's foreground; the mid stop of the icon field. -->
+    <color name="ic_launcher_background">#1B2230</color>
 </resources>
