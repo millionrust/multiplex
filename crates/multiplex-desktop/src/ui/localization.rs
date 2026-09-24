@@ -1694,6 +1694,10 @@ static_message!(projects_ready_status, ProjectsReadyStatusArgs);
 static_message!(projects_add_action, ProjectsAddActionArgs);
 static_message!(projects_empty_title, ProjectsEmptyTitleArgs);
 static_message!(projects_empty_description, ProjectsEmptyDescriptionArgs);
+static_message!(
+    projects_empty_start_session_action,
+    ProjectsEmptyStartSessionActionArgs
+);
 static_message!(projects_folder_safety, ProjectsFolderSafetyArgs);
 static_message!(projects_local_only, ProjectsLocalOnlyArgs);
 static_message!(session_sidebar_title, SessionSidebarTitleArgs);
@@ -1768,10 +1772,6 @@ static_message!(
     GlobalPaletteTooManyTokensArgs
 );
 static_message!(global_palette_stale, GlobalPaletteStaleArgs);
-static_message!(
-    global_palette_project_required,
-    GlobalPaletteProjectRequiredArgs
-);
 static_message!(
     global_palette_status_attention,
     GlobalPaletteStatusAttentionArgs

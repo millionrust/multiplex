@@ -11,7 +11,9 @@ use gpui_component::input::Input;
 use gpui_component::{
     Disableable as _, Icon, IconName, Sizable as _, StyledExt as _, h_flex, v_flex,
 };
-use multiplex_domain::{AddProject, CanonicalPath, ProjectError, ProjectId, ProjectStatus};
+use multiplex_domain::{
+    AddProject, CanonicalPath, PresetId, ProjectError, ProjectId, ProjectStatus,
+};
 use multiplex_store::{
     ProjectRepository, ProjectSnapshot, RemovedProject, StoreError, StoreHealth,
 };
@@ -236,6 +238,60 @@ impl MultiplexApp {
             });
         })
         .detach();
+    }
+
+    /// Starts a session in a folder the person picks, without asking them to declare a project
+    /// first. The folder answers which project it is; [`Self::project_for_folder`] makes one
+    /// silently when it is somewhere new.
+    pub(super) fn start_session_in_a_folder(
+        &mut self,
+        preset_id: Option<PresetId>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        #[cfg(test)]
+        if let Some(selection) = crate::test_support::take_dialog_selection() {
+            if let Some(path) = selection {
+                self.open_new_session_in_folder(path, preset_id, window, cx);
+            }
+            return;
+        }
+
+        cx.spawn_in(window, async move |this, cx| {
+            let Some(path) = rfd::AsyncFileDialog::new()
+                .pick_folder()
+                .await
+                .map(|folder| folder.path().to_path_buf())
+            else {
+                return;
+            };
+            let _ = cx.update(|window, cx| {
+                let _ = this.update(cx, |app, cx| {
+                    app.open_new_session_in_folder(path, preset_id, window, cx);
+                });
+            });
+        })
+        .detach();
+    }
+
+    pub(super) fn open_new_session_in_folder(
+        &mut self,
+        folder: PathBuf,
+        preset_id: Option<PresetId>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(project_id) = self.project_for_folder(&folder) else {
+            self.error_message = localization::project_store_unavailable();
+            cx.notify();
+            return;
+        };
+        self.project_library.reload();
+        self.project_library.selected_id = Some(project_id);
+        match preset_id {
+            Some(preset_id) => self.open_new_session_with_preset(project_id, preset_id, window, cx),
+            None => self.open_new_session(project_id, window, cx),
+        }
     }
 
     /// The project a folder belongs to, creating one when it is new.
@@ -760,9 +816,9 @@ impl MultiplexApp {
                         .debug_selector(|| "projects-empty-add".to_string())
                         .primary()
                         .icon(IconName::Plus)
-                        .label(localization::projects_add_action())
+                        .label(localization::projects_empty_start_session_action())
                         .on_click(cx.listener(|this, _, window, cx| {
-                            this.choose_project_folder(window, cx);
+                            this.start_session_in_a_folder(None, window, cx);
                         })),
                 )
                 .child(

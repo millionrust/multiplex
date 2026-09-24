@@ -1340,6 +1340,10 @@ context = "Empty-state explanation of why a folder can be added."
 description = "No projects empty-state explanation"
 
 [[messages]]
+id = "projects-empty-start-session-action"
+context = "Projects empty-state button."
+description = "Start a session in a folder action"
+[[messages]]
 id = "projects-folder-safety"
 context = "Safety promise shown before a project folder is added."
 description = "Project folder is not modified"
@@ -2989,11 +2993,6 @@ bidi = "none"
 id = "global-palette-stale"
 context = "Explanation after a selected result no longer resolves against current metadata."
 description = "Stale global search result"
-
-[[messages]]
-id = "global-palette-project-required"
-context = "Explanation when a preset/new-session action has no available Project target."
-description = "Project required for palette launch"
 
 [[messages]]
 id = "global-palette-status-attention"

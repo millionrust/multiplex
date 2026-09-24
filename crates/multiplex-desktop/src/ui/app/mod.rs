@@ -10803,10 +10803,10 @@ impl MultiplexApp {
                     return self.reject_stale_global_palette_result(cx);
                 }
                 let Some(project_id) = available_project() else {
-                    self.activate_library_section(NavSection::Projects, window, cx);
-                    self.error_message = localization::global_palette_project_required();
-                    self.project_list_focus.focus(window);
-                    cx.notify();
+                    // Nowhere to run it yet: ask for the folder, which is the question that was
+                    // always behind "create a project first".
+                    self.close_command_palette(window, cx);
+                    self.start_session_in_a_folder(Some(preset_id), window, cx);
                     return true;
                 };
                 self.close_command_palette(window, cx);
@@ -10820,16 +10820,12 @@ impl MultiplexApp {
                 true
             }
             SearchAction::NewSession => {
-                let Some(project_id) = available_project() else {
-                    self.close_command_palette(window, cx);
-                    self.activate_library_section(NavSection::Projects, window, cx);
-                    self.error_message = localization::global_palette_project_required();
-                    self.project_list_focus.focus(window);
-                    cx.notify();
-                    return true;
-                };
+                let project_id = available_project();
                 self.close_command_palette(window, cx);
-                self.open_new_session(project_id, window, cx);
+                match project_id {
+                    Some(project_id) => self.open_new_session(project_id, window, cx),
+                    None => self.start_session_in_a_folder(None, window, cx),
+                }
                 true
             }
             SearchAction::ShowArchive => {
@@ -14455,10 +14451,11 @@ impl MultiplexApp {
             }
             AppShortcut::NewHostOrSession => {
                 if self.active_workspace_id.is_none() {
-                    if self.nav_section == NavSection::Projects
-                        && let Some(project_id) = self.project_library.selected_id
-                    {
-                        self.open_new_session(project_id, window, cx);
+                    if self.nav_section == NavSection::Projects {
+                        match self.project_library.selected_id {
+                            Some(project_id) => self.open_new_session(project_id, window, cx),
+                            None => self.start_session_in_a_folder(None, window, cx),
+                        }
                         return true;
                     }
                     self.activate_library(window, cx);
@@ -26825,6 +26822,88 @@ sleep 1
             assert_eq!(pending.id, profile_id);
             assert!(app.workspaces[0].pane_ids.is_empty());
             assert!(app.saved.app_attached_sessions.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn starting_a_session_in_a_folder_makes_its_project_without_being_asked(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let fixture = tempfile::tempdir().expect("folder fixture should be created");
+        let repository = fixture.path().join("payments");
+        let inside = repository.join("crates").join("api");
+        fs::create_dir_all(inside.join(".keep").parent().expect("parent"))
+            .expect("nested folder should be created");
+        fs::create_dir(repository.join(".git")).expect("git directory should be created");
+
+        let (app, window) = open_test_app(cx);
+        app.read_with(cx, |app, _| {
+            assert!(
+                app.project_library
+                    .snapshot
+                    .as_ref()
+                    .is_some_and(|snapshot| snapshot.projects.is_empty()),
+                "the fixture should start with no projects"
+            );
+        });
+
+        queue_dialog_path(Some(inside.clone()));
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.start_session_in_a_folder(None, window, cx);
+                })
+            })
+            .expect("picking a folder should start a session");
+        VisualTestContext::from_window(window.into(), cx).run_until_parked();
+
+        app.read_with(cx, |app, _| {
+            let snapshot = app
+                .project_library
+                .snapshot
+                .as_ref()
+                .expect("project snapshot should load");
+            assert_eq!(
+                snapshot.projects.len(),
+                1,
+                "the folder should have made exactly one project"
+            );
+            // The repository above the folder, not the folder itself.
+            let root = snapshot.projects[0].project.canonical_root.as_path();
+            assert!(
+                root.ends_with("payments"),
+                "project root should be the git root, got {}",
+                root.display()
+            );
+            assert_eq!(
+                app.project_library.selected_id,
+                Some(snapshot.projects[0].project.id)
+            );
+            assert!(
+                app.new_session.is_some(),
+                "the new-session review should be open"
+            );
+        });
+
+        // The same folder again reuses that project rather than making a second one.
+        queue_dialog_path(Some(repository.clone()));
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.start_session_in_a_folder(None, window, cx);
+                })
+            })
+            .expect("picking the same folder should reuse the project");
+        VisualTestContext::from_window(window.into(), cx).run_until_parked();
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.project_library
+                    .snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.projects.len()),
+                Some(1)
+            );
         });
     }
 

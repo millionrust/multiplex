@@ -5,6 +5,9 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 ## Current product shape
 
 - Host library UI inspired by Terminus-style launchers, with groups, tags, vaults, batch selection, and bulk actions.
+- A Project is derived from the folder a session starts in — the Git root above it, or the folder
+  itself — and reused when that folder is already known, so nobody declares one first. New Session
+  with no project asks for the folder instead of refusing.
 - Workflow navigation surfaces Activity, Projects, Connections, Sessions, Files,
   Devices, and Settings as primary destinations; specialized presets, vaults, keys,
   snippets, known hosts, and logs remain available as advanced tools.
