@@ -12,7 +12,7 @@ use crossterm::event::{
 };
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use futures_util::StreamExt as _;
-use keyring::{Entry, Error as KeyringError};
+use keyring::Error as KeyringError;
 use multiplex_client::{
     AsyncSshControllerProcess, SshControllerErrorCode, SshControllerTarget, SshOperationClass,
     SshReconnectDecision, SshReconnectPolicy, resolve_system_ssh,
@@ -28,6 +28,7 @@ use multiplex_controller_security::{
 use multiplex_domain::{
     ControllerDeviceId, HostFingerprint, HostPublicKey, HostedSessionId, OccupantGeneration,
 };
+use multiplex_store::keychain::{self, CredentialStore as _, SystemCredentials};
 use rand::RngCore as _;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -41,7 +42,10 @@ use crate::{
 };
 
 const PROFILE_SCHEMA_VERSION: u16 = 1;
-const SECRET_SERVICE: &str = "com.termirust.controller.client";
+const SECRET_SERVICE: keychain::ServiceNames = keychain::ServiceNames::new(
+    "com.millionrust.multiplex.controller.client",
+    &["com.termirust.controller.client"],
+);
 const PROFILE_DIR: &str = "controller-ssh";
 const PROFILE_MAX_BYTES: u64 = 16 * 1024;
 const INPUT_MAX_BYTES: u64 = 16 * 1024;
@@ -87,9 +91,9 @@ impl StoredControllerProfile {
     }
 
     fn private_key(&self) -> Result<StaticPrivateKey, CliError> {
-        let entry =
-            Entry::new(SECRET_SERVICE, &self.secret_ref).map_err(|_| secret_unavailable())?;
-        let encoded = entry.get_password().map_err(map_keyring)?;
+        let encoded = keychain::password(&SystemCredentials, SECRET_SERVICE, &self.secret_ref)
+            .map_err(map_keyring)?
+            .ok_or_else(|| map_keyring(KeyringError::NoEntry))?;
         let mut decoded = base64::engine::general_purpose::STANDARD_NO_PAD
             .decode(encoded)
             .map_err(|_| secret_invalid())?;
@@ -142,17 +146,17 @@ impl StoredControllerProfile {
                 "Use the existing pairing, or revoke and remove it before pairing again.",
             ));
         }
-        let entry =
-            Entry::new(SECRET_SERVICE, &self.secret_ref).map_err(|_| secret_unavailable())?;
         let mut private_bytes = private_key.copy_for_secret_storage();
         let mut encoded = base64::engine::general_purpose::STANDARD_NO_PAD.encode(private_bytes);
         private_bytes.zeroize();
-        let secret_result = entry.set_password(&encoded).map_err(map_keyring);
+        let secret_result = SystemCredentials
+            .set_password(SECRET_SERVICE.current, &self.secret_ref, &encoded)
+            .map_err(map_keyring);
         encoded.zeroize();
         secret_result?;
 
         if let Err(error) = write_profile_atomically(&directory, &path, self) {
-            let _ = entry.delete_credential();
+            let _ = keychain::delete(&SystemCredentials, SECRET_SERVICE, &self.secret_ref);
             return Err(error);
         }
         Ok(())
@@ -164,9 +168,11 @@ impl StoredControllerProfile {
             .join(PROFILE_DIR)
             .join(format!("{route_key}.json"));
         let _ = fs::remove_file(path);
-        if let Ok(entry) = Entry::new(SECRET_SERVICE, &format!("controller.client.{route_key}")) {
-            let _ = entry.delete_credential();
-        }
+        let _ = keychain::delete(
+            &SystemCredentials,
+            SECRET_SERVICE,
+            &format!("controller.client.{route_key}"),
+        );
     }
 }
 

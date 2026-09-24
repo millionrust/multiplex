@@ -1,5 +1,4 @@
 use base64::Engine as _;
-use keyring::{Entry, Error as KeyringError};
 use multiplex_controller_listener::{
     ControllerAuthorityProvider, ControllerBackendFactory, ListenerError,
     serve_authenticated_stdio_stream, serve_repository_stdio_bridge,
@@ -9,12 +8,18 @@ use multiplex_relay_client::{
     RelayClientRole, RelayConnectionHandle, RelayCredentialRef, RelayCredentialSecret,
     RelayEndpointConfig, RelayRouteError, RelaySecretStore, RelaySecretStoreError,
 };
+use multiplex_store::keychain::{
+    self, CredentialError as KeyringError, CredentialStore as _, SystemCredentials,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroize;
 
-const RELAY_SECRET_SERVICE: &str = "com.termirust.controller.relay";
+const RELAY_SECRET_SERVICE: keychain::ServiceNames = keychain::ServiceNames::new(
+    "com.millionrust.multiplex.controller.relay",
+    &["com.termirust.controller.relay"],
+);
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct OsRelaySecretStore;
@@ -27,7 +32,11 @@ impl RelaySecretStore for OsRelaySecretStore {
     ) -> Result<(), RelaySecretStoreError> {
         let mut encoded =
             base64::engine::general_purpose::STANDARD_NO_PAD.encode(secret.expose_for_store());
-        let result = relay_entry(reference)?.set_password(&encoded);
+        let result = SystemCredentials.set_password(
+            RELAY_SECRET_SERVICE.current,
+            reference.expose_for_store(),
+            &encoded,
+        );
         encoded.zeroize();
         result.map_err(map_keyring_error)
     }
@@ -36,9 +45,13 @@ impl RelaySecretStore for OsRelaySecretStore {
         &self,
         reference: &RelayCredentialRef,
     ) -> Result<RelayCredentialSecret, RelaySecretStoreError> {
-        let mut encoded = relay_entry(reference)?
-            .get_password()
-            .map_err(map_keyring_error)?;
+        let mut encoded = keychain::password(
+            &SystemCredentials,
+            RELAY_SECRET_SERVICE,
+            reference.expose_for_store(),
+        )
+        .map_err(map_keyring_error)?
+        .ok_or(RelaySecretStoreError::Missing)?;
         let decoded = base64::engine::general_purpose::STANDARD_NO_PAD.decode(&encoded);
         encoded.zeroize();
         let mut decoded = decoded.map_err(|_| RelaySecretStoreError::Invalid)?;
@@ -53,17 +66,13 @@ impl RelaySecretStore for OsRelaySecretStore {
     }
 
     fn delete(&self, reference: &RelayCredentialRef) -> Result<bool, RelaySecretStoreError> {
-        match relay_entry(reference)?.delete_credential() {
-            Ok(()) => Ok(true),
-            Err(KeyringError::NoEntry) => Ok(false),
-            Err(error) => Err(map_keyring_error(error)),
-        }
+        keychain::delete(
+            &SystemCredentials,
+            RELAY_SECRET_SERVICE,
+            reference.expose_for_store(),
+        )
+        .map_err(map_keyring_error)
     }
-}
-
-fn relay_entry(reference: &RelayCredentialRef) -> Result<Entry, RelaySecretStoreError> {
-    Entry::new(RELAY_SECRET_SERVICE, reference.expose_for_store())
-        .map_err(|_| RelaySecretStoreError::Unavailable)
 }
 
 fn map_keyring_error(error: KeyringError) -> RelaySecretStoreError {
@@ -177,7 +186,7 @@ mod tests {
 
     #[test]
     fn debug_output_never_contains_secret_service_or_endpoint() {
-        assert!(!format!("{:?}", OsRelaySecretStore).contains(RELAY_SECRET_SERVICE));
+        assert!(!format!("{:?}", OsRelaySecretStore).contains(RELAY_SECRET_SERVICE.current));
         assert_eq!(
             map_keyring_error(KeyringError::NoEntry),
             RelaySecretStoreError::Missing

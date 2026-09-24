@@ -7,8 +7,9 @@ use keyring::{Entry, Error as KeyringError};
 /// Where this app's passwords live in the system credential store, and where an installed copy
 /// put them before the rename. Both are needed: the store is keyed by this name, so a password
 /// saved under the old one is invisible under the new.
-const SERVICE_NAME: &str = "com.multiplex.password";
-const LEGACY_SERVICE_NAME: &str = "com.termirust.password";
+const SERVICE_NAME: &str = "com.millionrust.multiplex.password";
+/// Newest first. `com.multiplex.password` was itself a step away from the TermiRust name.
+const LEGACY_SERVICE_NAMES: [&str; 2] = ["com.multiplex.password", "com.termirust.password"];
 
 /// The system credential store, as this module uses it. One implementation talks to the real
 /// store; the tests keep passwords in memory so they never read or write a developer's own, and
@@ -20,7 +21,7 @@ trait PasswordStore {
     fn delete(&self, service: &str, credential_id: &str) -> Result<bool>;
 }
 
-/// Reads a password, bringing one saved under the old service name across as it goes.
+/// Reads a password, bringing one saved under an older service name across as it goes.
 ///
 /// The copy is written before the original is removed, so a failure in between leaves the
 /// password readable under one name rather than neither. A failure to remove the old one is not
@@ -30,22 +31,27 @@ fn load_from(store: &impl PasswordStore, credential_id: &str) -> Result<String> 
     if let Some(password) = store.get(SERVICE_NAME, credential_id)? {
         return Ok(password);
     }
-    let Some(password) = store.get(LEGACY_SERVICE_NAME, credential_id)? else {
-        return Err(anyhow::anyhow!(
-            "No stored password was found in {}",
-            secure_store_label()
-        ));
-    };
-    store.set(SERVICE_NAME, credential_id, &password)?;
-    let _ = store.delete(LEGACY_SERVICE_NAME, credential_id);
-    Ok(password)
+    for legacy in LEGACY_SERVICE_NAMES {
+        let Some(password) = store.get(legacy, credential_id)? else {
+            continue;
+        };
+        store.set(SERVICE_NAME, credential_id, &password)?;
+        let _ = store.delete(legacy, credential_id);
+        return Ok(password);
+    }
+    Err(anyhow::anyhow!(
+        "No stored password was found in {}",
+        secure_store_label()
+    ))
 }
 
-/// Forgets a password under both names, so removing one does not leave the old copy behind.
+/// Forgets a password under every name, so removing one does not leave an older copy behind.
 fn delete_from(store: &impl PasswordStore, credential_id: &str) -> Result<bool> {
-    let current = store.delete(SERVICE_NAME, credential_id)?;
-    let legacy = store.delete(LEGACY_SERVICE_NAME, credential_id)?;
-    Ok(current || legacy)
+    let mut removed = store.delete(SERVICE_NAME, credential_id)?;
+    for legacy in LEGACY_SERVICE_NAMES {
+        removed |= store.delete(legacy, credential_id)?;
+    }
+    Ok(removed)
 }
 
 pub fn secure_store_label() -> &'static str {
@@ -228,7 +234,7 @@ mod tests {
 mod credential_store_tests {
     use super::in_memory::{MemoryStore, passwords};
     use super::{
-        LEGACY_SERVICE_NAME, PasswordStore as _, SERVICE_NAME, delete_from, load_from,
+        LEGACY_SERVICE_NAMES, PasswordStore as _, SERVICE_NAME, delete_from, load_from,
         load_password, store_password,
     };
 
@@ -236,55 +242,51 @@ mod credential_store_tests {
     /// is read: the store is keyed by that name, so one saved under the old one is otherwise
     /// invisible and the user is asked for a password they already gave.
     #[test]
-    fn a_password_saved_under_the_previous_name_is_found_and_brought_across() {
-        let id = "connection:migrated@example.test:22";
-        passwords().insert(
-            (LEGACY_SERVICE_NAME.to_owned(), id.to_owned()),
-            "hunter2".to_owned(),
-        );
+    fn a_password_saved_under_a_previous_name_is_found_and_brought_across() {
+        for (index, legacy) in LEGACY_SERVICE_NAMES.into_iter().enumerate() {
+            let id = &format!("connection:migrated{index}@example.test:22");
+            passwords().insert((legacy.to_owned(), id.to_owned()), "hunter2".to_owned());
 
-        assert_eq!(
-            load_from(&MemoryStore, id).expect("the password"),
-            "hunter2"
-        );
-        assert_eq!(
-            MemoryStore.get(SERVICE_NAME, id).expect("a read"),
-            Some("hunter2".to_owned()),
-            "it is stored under this app's name afterwards"
-        );
-        assert_eq!(
-            MemoryStore.get(LEGACY_SERVICE_NAME, id).expect("a read"),
-            None,
-            "and not left behind under the old one"
-        );
+            assert_eq!(
+                load_from(&MemoryStore, id).expect("the password"),
+                "hunter2"
+            );
+            assert_eq!(
+                MemoryStore.get(SERVICE_NAME, id).expect("a read"),
+                Some("hunter2".to_owned()),
+                "it is stored under this app's name afterwards"
+            );
+            assert_eq!(
+                MemoryStore.get(legacy, id).expect("a read"),
+                None,
+                "and not left behind under the old one"
+            );
+        }
     }
 
     #[test]
     fn a_password_saved_now_is_read_without_touching_the_previous_name() {
         let id = "connection:current@example.test:22";
         store_password(id, "correct-horse").expect("the password is stored");
-        assert_eq!(
-            MemoryStore.get(LEGACY_SERVICE_NAME, id).expect("a read"),
-            None
-        );
+        for legacy in LEGACY_SERVICE_NAMES {
+            assert_eq!(MemoryStore.get(legacy, id).expect("a read"), None);
+        }
         assert_eq!(load_password(id).expect("the password"), "correct-horse");
     }
 
     #[test]
     fn forgetting_a_password_forgets_the_one_saved_under_the_previous_name_too() {
         let id = "profile:both";
-        passwords().insert(
-            (LEGACY_SERVICE_NAME.to_owned(), id.to_owned()),
-            "old".to_owned(),
-        );
+        for legacy in LEGACY_SERVICE_NAMES {
+            passwords().insert((legacy.to_owned(), id.to_owned()), "old".to_owned());
+        }
         store_password(id, "new").expect("the password is stored");
 
         assert!(delete_from(&MemoryStore, id).expect("the delete runs"));
         assert_eq!(MemoryStore.get(SERVICE_NAME, id).expect("a read"), None);
-        assert_eq!(
-            MemoryStore.get(LEGACY_SERVICE_NAME, id).expect("a read"),
-            None
-        );
+        for legacy in LEGACY_SERVICE_NAMES {
+            assert_eq!(MemoryStore.get(legacy, id).expect("a read"), None);
+        }
         assert!(!delete_from(&MemoryStore, id).expect("the delete runs"));
     }
 }

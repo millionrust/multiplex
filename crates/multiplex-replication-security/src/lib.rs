@@ -13,6 +13,8 @@ use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 mod authority;
 mod custody;
+#[cfg(feature = "os-keyring")]
+pub mod keychain;
 mod wrapping;
 
 pub use authority::*;

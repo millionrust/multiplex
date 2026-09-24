@@ -54,6 +54,7 @@ pub use lease::{
 };
 #[cfg(feature = "os-keyring")]
 pub use multiplex_replication_security::OsReplicationSecretBackend;
+pub use multiplex_replication_security::keychain;
 pub use multiplex_replication_security::{
     ReplicationAuthorityDeviceStatus, ReplicationSecretBackend, ReplicationSecretRef,
     ReplicationSecretStoreError,

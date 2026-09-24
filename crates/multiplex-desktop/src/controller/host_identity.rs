@@ -1,11 +1,13 @@
 use std::fmt;
 
 use base64::Engine as _;
-use keyring::{Entry, Error as KeyringError};
 use multiplex_controller_security::{StaticPrivateKey, host_public_key_from_private};
 use multiplex_domain::{
     ControllerDeviceAuthority, HostIdentityGeneration, HostIdentityPublic, HostIdentitySecretRef,
     HostIdentityState, HostPublicKey,
+};
+use multiplex_store::keychain::{
+    self, CredentialError as KeyringError, CredentialStore as _, SystemCredentials,
 };
 use multiplex_store::{
     ControllerDeviceRepository, ControllerDeviceSnapshot, ControllerDeviceStoreError,
@@ -14,7 +16,13 @@ use rand::RngCore as _;
 use uuid::Uuid;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-const IDENTITY_SERVICE: &str = "com.termirust.controller.identity";
+/// Where this computer's remote-access identity lives, and the names earlier versions used. The
+/// name is what macOS shows when it asks to unlock the item, so it carries the app's own
+/// identifier; `keychain` brings a secret across from an older name on first read.
+const IDENTITY_SERVICE: keychain::ServiceNames = keychain::ServiceNames::new(
+    "com.millionrust.multiplex.controller.identity",
+    &["com.termirust.controller.identity"],
+);
 
 #[derive(Clone, Eq, PartialEq, Zeroize, ZeroizeOnDrop)]
 pub struct HostIdentitySecret([u8; 32]);
@@ -98,8 +106,12 @@ impl SecretStore for OsSecretStore {
         reference: &HostIdentitySecretRef,
         secret: &HostIdentitySecret,
     ) -> Result<(), SecretStoreError> {
-        entry(reference)?
-            .set_password(&secret.encode())
+        keychain::SystemCredentials
+            .set_password(
+                IDENTITY_SERVICE.current,
+                reference.expose_reference(),
+                &secret.encode(),
+            )
             .map_err(map_keyring_error)
     }
 
@@ -107,24 +119,24 @@ impl SecretStore for OsSecretStore {
         &self,
         reference: &HostIdentitySecretRef,
     ) -> Result<HostIdentitySecret, SecretStoreError> {
-        let encoded = entry(reference)?
-            .get_password()
-            .map_err(map_keyring_error)?;
+        let encoded = keychain::password(
+            &SystemCredentials,
+            IDENTITY_SERVICE,
+            reference.expose_reference(),
+        )
+        .map_err(map_keyring_error)?
+        .ok_or(SecretStoreError::Missing)?;
         HostIdentitySecret::decode(&encoded)
     }
 
     fn delete(&self, reference: &HostIdentitySecretRef) -> Result<bool, SecretStoreError> {
-        match entry(reference)?.delete_credential() {
-            Ok(()) => Ok(true),
-            Err(KeyringError::NoEntry) => Ok(false),
-            Err(error) => Err(map_keyring_error(error)),
-        }
+        keychain::delete(
+            &SystemCredentials,
+            IDENTITY_SERVICE,
+            reference.expose_reference(),
+        )
+        .map_err(map_keyring_error)
     }
-}
-
-fn entry(reference: &HostIdentitySecretRef) -> Result<Entry, SecretStoreError> {
-    Entry::new(IDENTITY_SERVICE, reference.expose_reference())
-        .map_err(|_| SecretStoreError::Unavailable)
 }
 
 fn map_keyring_error(error: KeyringError) -> SecretStoreError {

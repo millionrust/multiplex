@@ -25,7 +25,7 @@ multiplex-controller-security = { version = "0.0.4", path = "../multiplex-contro
 multiplex-domain = { version = "0.0.4", path = "../multiplex-domain" }
 multiplex-host-protocol = { version = "0.0.4", path = "../multiplex-host-protocol" }
 multiplex-session-host = { version = "0.0.4", path = "../multiplex-session-host" }
-multiplex-store = { version = "0.0.4", path = "../multiplex-store" }
+multiplex-store = { version = "0.0.4", path = "../multiplex-store", features = ["os-keyring"] }
 tokio = { version = "1", features = ["io-util", "rt", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 unicode-width = "0.2"

@@ -28,7 +28,11 @@ use serde::{Deserialize, Serialize};
 use zeroize::Zeroize as _;
 
 const SCHEMA_VERSION: u16 = 1;
-const SECRET_SERVICE: &str = "com.termirust.controller.client";
+const SECRET_SERVICE: multiplex_store::keychain::ServiceNames =
+    multiplex_store::keychain::ServiceNames::new(
+        "com.millionrust.multiplex.controller.client",
+        &["com.termirust.controller.client"],
+    );
 const DIRECTORY: &str = "watched-computers";
 const MAX_RECORD_BYTES: u64 = 16 * 1024;
 const PAIRING_TIMEOUT: Duration = Duration::from_secs(30);
@@ -155,8 +159,13 @@ impl WatchedComputers {
 
     /// Reads the private key this Mac uses with `computer`.
     pub fn private_key(&self, computer: &WatchedComputer) -> Option<StaticPrivateKey> {
-        let entry = keyring::Entry::new(SECRET_SERVICE, &computer.secret_ref).ok()?;
-        let encoded = entry.get_password().ok()?;
+        let encoded = multiplex_store::keychain::password(
+            &multiplex_store::keychain::SystemCredentials,
+            SECRET_SERVICE,
+            &computer.secret_ref,
+        )
+        .ok()
+        .flatten()?;
         let mut decoded = base64::engine::general_purpose::STANDARD_NO_PAD
             .decode(encoded)
             .ok()?;
@@ -175,10 +184,11 @@ impl WatchedComputers {
     /// Forgets a computer: the record and the key both go.
     pub fn forget(&self, address: &str) -> bool {
         let key = WatchedComputer::key(address);
-        if let Ok(entry) = keyring::Entry::new(SECRET_SERVICE, &format!("controller.client.{key}"))
-        {
-            let _ = entry.delete_credential();
-        }
+        let _ = multiplex_store::keychain::delete(
+            &multiplex_store::keychain::SystemCredentials,
+            SECRET_SERVICE,
+            &format!("controller.client.{key}"),
+        );
         fs::remove_file(self.directory.join(format!("{key}.json"))).is_ok()
     }
 
@@ -293,9 +303,14 @@ fn save(
         use std::os::unix::fs::PermissionsExt as _;
         let _ = fs::set_permissions(directory, fs::Permissions::from_mode(0o700));
     }
-    let entry = keyring::Entry::new(SECRET_SERVICE, &computer.secret_ref).map_err(|_| ())?;
     let encoded = base64::engine::general_purpose::STANDARD_NO_PAD.encode(seed);
-    entry.set_password(&encoded).map_err(|_| ())?;
+    multiplex_store::keychain::CredentialStore::set_password(
+        &multiplex_store::keychain::SystemCredentials,
+        SECRET_SERVICE.current,
+        &computer.secret_ref,
+        &encoded,
+    )
+    .map_err(|_| ())?;
 
     let bytes = serde_json::to_vec_pretty(computer).map_err(|_| ())?;
     let path = directory.join(format!("{key}.json"));

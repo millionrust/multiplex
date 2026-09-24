@@ -826,8 +826,15 @@ mod os_keyring {
     use zeroize::{Zeroize, Zeroizing};
 
     use super::{ReplicationSecretBackend, ReplicationSecretRef, ReplicationSecretStoreError};
+    use crate::keychain::{self, SystemCredentials};
 
-    const SERVICE_NAME: &str = "com.termirust.replication.secrets.v1";
+    /// Where vault secrets live, and the name an earlier version used. The operating system
+    /// shows this name when it asks to unlock one, so it carries the app's own identifier.
+    const SERVICE: keychain::ServiceNames = keychain::ServiceNames::new(
+        "com.millionrust.multiplex.replication.secrets.v1",
+        &["com.termirust.replication.secrets.v1"],
+    );
+    const SERVICE_NAME: &str = SERVICE.current;
 
     #[derive(Clone, Copy, Debug, Default)]
     pub struct OsReplicationSecretBackend;
@@ -849,13 +856,19 @@ mod os_keyring {
             reference: &ReplicationSecretRef,
             secret: &[u8],
         ) -> Result<(), ReplicationSecretStoreError> {
-            with_entry(reference, |entry| match entry.get_secret() {
-                Ok(mut existing) => {
-                    existing.zeroize();
-                    Err(ReplicationSecretStoreError::Collision)
-                }
-                Err(KeyringError::NoEntry) => entry.set_secret(secret).map_err(map_error),
-                Err(error) => Err(map_error(error)),
+            // A secret still under the old name counts as one: overwriting it here would leave
+            // two different secrets for one reference.
+            if keychain::exists(
+                &SystemCredentials,
+                SERVICE,
+                &reference.expose_opaque_account(),
+            )
+            .map_err(map_error)?
+            {
+                return Err(ReplicationSecretStoreError::Collision);
+            }
+            with_entry(reference, |entry| {
+                entry.set_secret(secret).map_err(map_error)
             })
         }
 
@@ -863,20 +876,26 @@ mod os_keyring {
             &self,
             reference: &ReplicationSecretRef,
         ) -> Result<Zeroizing<Vec<u8>>, ReplicationSecretStoreError> {
-            with_entry(reference, |entry| {
-                entry.get_secret().map(Zeroizing::new).map_err(map_error)
-            })
+            keychain::secret(
+                &SystemCredentials,
+                SERVICE,
+                &reference.expose_opaque_account(),
+            )
+            .map_err(map_error)?
+            .map(Zeroizing::new)
+            .ok_or(ReplicationSecretStoreError::Missing)
         }
 
         fn delete(
             &self,
             reference: &ReplicationSecretRef,
         ) -> Result<bool, ReplicationSecretStoreError> {
-            with_entry(reference, |entry| match entry.delete_credential() {
-                Ok(()) => Ok(true),
-                Err(KeyringError::NoEntry) => Ok(false),
-                Err(error) => Err(map_error(error)),
-            })
+            keychain::delete(
+                &SystemCredentials,
+                SERVICE,
+                &reference.expose_opaque_account(),
+            )
+            .map_err(map_error)
         }
     }
 
