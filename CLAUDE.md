@@ -37,6 +37,10 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 - Per-host SFTP remote-files view (browse, upload, download, delete) available from any workspace.
 - Per-host port-forwarding rules (local, remote reverse, dynamic SOCKS) that start automatically on connect.
 - Per-host jump-host chains.
+- Remote shells run inside tmux by default (Settings → Connections, "Resumable remote sessions"),
+  so a dropped connection is picked up where it left off; a Host can be switched off on its own,
+  a shell that is already inside tmux is left alone, and a host without tmux gets install help
+  and a normal shell. Hosts saved before this are switched over once.
 - Saved snippets plus a per-workspace command palette for snippets, recent commands, and built-in tasks.
 - Snippet commands accept {{HOST}}, {{USER}}, {{PORT}}, {{TITLE}}, {{ADDRESS}} placeholders that expand against the active pane on send.
 - Per-host color tag, environment variables, description/notes, startup directory, and startup command.

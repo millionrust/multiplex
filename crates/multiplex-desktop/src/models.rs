@@ -752,6 +752,13 @@ pub struct AppSettings {
     /// Only Wayland produces one; it is opaque and names no screen.
     #[serde(default)]
     pub remote_screen_restore_token: Option<String>,
+    /// Run remote shells inside tmux, so a dropped connection is picked up where it left off
+    /// rather than started again. A host can still be switched off on its own.
+    #[serde(default = "default_persistent_remote_sessions")]
+    pub persistent_remote_sessions: bool,
+    /// Set once the hosts saved before resumable sessions became the default were switched over.
+    #[serde(default)]
+    pub persistent_sessions_adopted: bool,
 }
 
 fn default_confirm_multiline_paste() -> bool {
@@ -780,6 +787,10 @@ fn default_diagnostics_max_file_mib() -> u8 {
 
 fn default_diagnostics_retention_days() -> u8 {
     14
+}
+
+fn default_persistent_remote_sessions() -> bool {
+    true
 }
 
 impl Default for AppSettings {
@@ -811,6 +822,8 @@ impl Default for AppSettings {
             remote_screen_sharing: false,
             manual_updates: false,
             remote_screen_restore_token: None,
+            persistent_remote_sessions: default_persistent_remote_sessions(),
+            persistent_sessions_adopted: false,
         }
     }
 }
@@ -1360,6 +1373,26 @@ impl SavedState {
             let drain_count = self.scoped_command_history.len() - MAX_SCOPED_COMMAND_HISTORY;
             self.scoped_command_history.drain(..drain_count);
         }
+    }
+
+    /// Switches the hosts saved before this over to resumable remote sessions, once.
+    ///
+    /// Running the remote shell inside tmux is now what a host does unless it is turned off, but a
+    /// host saved earlier carries `persistent_session: false` — the only value the old per-host
+    /// toggle ever wrote for a host nobody touched. Rewriting them once is the only way those
+    /// hosts get the new behaviour; a host turned off after this keeps its answer, because the
+    /// flag is never cleared. Returns whether anything changed, so the caller can save.
+    pub fn adopt_persistent_sessions(&mut self) -> bool {
+        if self.settings.persistent_sessions_adopted {
+            return false;
+        }
+        self.settings.persistent_sessions_adopted = true;
+        if self.settings.persistent_remote_sessions {
+            for profile in &mut self.profiles {
+                profile.persistent_session = true;
+            }
+        }
+        true
     }
 
     pub fn ensure_vaults(&mut self) {
@@ -3927,6 +3960,43 @@ mod tests {
         HostedSessionId, HostedSessionState, PresetId, ProjectId, Revision, SessionLaunchRoute,
         SessionOrigin, SshAgentForwardingPolicy, SshAuthenticationKind, TitleSource,
     };
+
+    #[test]
+    fn saved_hosts_are_switched_over_to_resumable_sessions_once() {
+        let mut saved = SavedState::default();
+        saved.settings.persistent_sessions_adopted = false;
+        saved.profiles = vec![HostProfile {
+            id: "one".to_string(),
+            host: "example.com".to_string(),
+            username: "ubuntu".to_string(),
+            persistent_session: false,
+            ..HostProfile::default()
+        }];
+
+        assert!(saved.adopt_persistent_sessions());
+        assert!(saved.profiles[0].persistent_session);
+
+        // A host turned off afterwards stays off: the switch-over never runs twice.
+        saved.profiles[0].persistent_session = false;
+        assert!(!saved.adopt_persistent_sessions());
+        assert!(!saved.profiles[0].persistent_session);
+    }
+
+    #[test]
+    fn the_switch_over_respects_a_person_who_turned_resumable_sessions_off() {
+        let mut saved = SavedState::default();
+        saved.settings.persistent_remote_sessions = false;
+        saved.profiles = vec![HostProfile {
+            id: "one".to_string(),
+            host: "example.com".to_string(),
+            username: "ubuntu".to_string(),
+            ..HostProfile::default()
+        }];
+
+        assert!(saved.adopt_persistent_sessions());
+        assert!(!saved.profiles[0].persistent_session);
+        assert!(saved.settings.persistent_sessions_adopted);
+    }
 
     #[test]
     fn two_records_saved_in_the_same_millisecond_get_different_identifiers() {

@@ -7461,6 +7461,22 @@ id = "settings-default-ssh-directory-description"
 context = "Settings control help."
 description = "Default SSH directory description"
 [[messages]]
+id = "settings-persistent-sessions-label"
+context = "Settings control label."
+description = "Resumable remote sessions label"
+[[messages]]
+id = "settings-persistent-sessions-description"
+context = "Settings control help."
+description = "Resumable remote sessions description"
+[[messages]]
+id = "settings-persistent-sessions-resume-value"
+context = "Settings choice value."
+description = "Resumable remote sessions on value"
+[[messages]]
+id = "settings-persistent-sessions-fresh-value"
+context = "Settings choice value."
+description = "Resumable remote sessions off value"
+[[messages]]
 id = "settings-auto-reconnect-label"
 context = "Settings control label."
 description = "Automatic reconnect label"

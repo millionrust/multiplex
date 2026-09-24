@@ -2258,6 +2258,7 @@ impl MultiplexApp {
         let session_log_limit = self.saved.settings.session_log_limit;
         let onboarding_dismissed = self.saved.settings.onboarding_dismissed;
         let auto_reconnect_attempts = self.saved.settings.auto_reconnect_attempts;
+        let persistent_remote_sessions = self.saved.settings.persistent_remote_sessions;
         let auto_reconnect_delay_secs = self.saved.settings.auto_reconnect_delay_secs;
         let ssh_keepalive_secs = self.saved.settings.ssh_keepalive_secs;
         let copy_on_select = self.saved.settings.copy_on_select;
@@ -2614,6 +2615,28 @@ impl MultiplexApp {
                                 )),
                         ),
                 )
+                .child(self.settings_divider())
+                .child(self.settings_choice_row(
+                    library_copy(MessageId::SettingsPersistentSessionsLabel),
+                    library_copy(MessageId::SettingsPersistentSessionsDescription),
+                    self.segmented_control(
+                        "settings-persistent-sessions",
+                        [
+                            (
+                                true,
+                                library_copy(MessageId::SettingsPersistentSessionsResumeValue),
+                            ),
+                            (
+                                false,
+                                library_copy(MessageId::SettingsPersistentSessionsFreshValue),
+                            ),
+                        ],
+                        persistent_remote_sessions,
+                        false,
+                        cx,
+                        |this, enabled, _, cx| this.update_persistent_remote_sessions(enabled, cx),
+                    ),
+                ))
                 .child(self.settings_divider())
                 .child(self.settings_choice_row(
                     library_copy(MessageId::SettingsAutoReconnectLabel),

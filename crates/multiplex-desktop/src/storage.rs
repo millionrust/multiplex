@@ -674,6 +674,7 @@ pub fn load_saved_state() -> Result<SavedState> {
     if !path.exists() {
         let mut state = SavedState::default();
         state.ensure_vaults();
+        state.adopt_persistent_sessions();
         return Ok(state);
     }
 
@@ -683,6 +684,11 @@ pub fn load_saved_state() -> Result<SavedState> {
         .with_context(|| format!("Unable to parse {}", path.display()))?;
     state.mark_app_attached_sessions_exited();
     state.ensure_vaults();
+    if state.adopt_persistent_sessions() {
+        // Written back now rather than at the next save, so the switch-over happens once even if
+        // this launch never saves anything.
+        let _ = save_saved_state(&state);
+    }
     Ok(state)
 }
 

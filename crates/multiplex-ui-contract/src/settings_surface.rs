@@ -89,6 +89,7 @@ pub enum SettingId {
     Onboarding,
     SessionHistoryLimit,
     DefaultSshDirectory,
+    PersistentSessions,
     AutoReconnectAttempts,
     SshKeepalive,
     ReconnectDelay,
@@ -113,7 +114,7 @@ pub enum SettingId {
 }
 
 impl SettingId {
-    pub const ALL: [Self; 31] = [
+    pub const ALL: [Self; 32] = [
         Self::Theme,
         Self::DevelopmentLocale,
         Self::TerminalFontSize,
@@ -124,6 +125,7 @@ impl SettingId {
         Self::Onboarding,
         Self::SessionHistoryLimit,
         Self::DefaultSshDirectory,
+        Self::PersistentSessions,
         Self::AutoReconnectAttempts,
         Self::SshKeepalive,
         Self::ReconnectDelay,
@@ -158,6 +160,7 @@ impl SettingId {
             | Self::Onboarding
             | Self::SessionHistoryLimit
             | Self::DefaultSshDirectory
+            | Self::PersistentSessions
             | Self::AutoReconnectAttempts
             | Self::SshKeepalive
             | Self::ReconnectDelay => SettingsSectionId::ProjectsSessions,
@@ -193,6 +196,7 @@ impl SettingId {
             Self::Onboarding => MessageId::SettingsOnboardingLabel,
             Self::SessionHistoryLimit => MessageId::SettingsSessionHistoryLimitLabel,
             Self::DefaultSshDirectory => MessageId::SettingsDefaultSshDirectoryLabel,
+            Self::PersistentSessions => MessageId::SettingsPersistentSessionsLabel,
             Self::AutoReconnectAttempts => MessageId::SettingsAutoReconnectLabel,
             Self::SshKeepalive => MessageId::SettingsSshKeepaliveLabel,
             Self::ReconnectDelay => MessageId::SettingsReconnectDelayLabel,
@@ -229,6 +233,7 @@ impl SettingId {
             Self::Onboarding => MessageId::SettingsOnboardingDescription,
             Self::SessionHistoryLimit => MessageId::SettingsSessionHistoryLimitDescription,
             Self::DefaultSshDirectory => MessageId::SettingsDefaultSshDirectoryDescription,
+            Self::PersistentSessions => MessageId::SettingsPersistentSessionsDescription,
             Self::AutoReconnectAttempts => MessageId::SettingsAutoReconnectDescription,
             Self::SshKeepalive => MessageId::SettingsSshKeepaliveDescription,
             Self::ReconnectDelay => MessageId::SettingsReconnectDelayDescription,
@@ -257,6 +262,7 @@ impl SettingId {
         match self {
             Self::CopyOnSelect
             | Self::ConfirmMultilinePaste
+            | Self::PersistentSessions
             | Self::RestoreWorkspaces
             | Self::Diagnostics
             | Self::RecordingFriendly => SettingControlKind::Toggle,
@@ -971,7 +977,7 @@ mod tests {
 
     #[test]
     fn unavailable_future_controls_are_absent_from_built_inventory() {
-        assert_eq!(SettingId::ALL.len(), 31);
+        assert_eq!(SettingId::ALL.len(), 32);
         assert!(
             SettingId::ALL
                 .iter()

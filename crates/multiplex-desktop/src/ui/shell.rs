@@ -153,8 +153,11 @@ pub fn tmux_bootstrap_script(
     let install_generic = shell_single_quote(&localization::shell_tmux_install_generic());
     let fallback = shell_single_quote(&format!("\n{}\n", localization::shell_tmux_fallback()));
 
+    // `$TMUX` set means the login shell already landed inside tmux — a host whose own profile
+    // starts one. Attaching there would nest a session inside itself, so the shell is left alone;
+    // it is already the resumable thing this asks for.
     format!(
-        "if command -v tmux >/dev/null 2>&1; then\n  if tmux has-session -t {session} 2>/dev/null; then\n    {attach}\n  else\n    {new_session}\n  fi\nelse\n  printf '\\033[2J\\033[H'\n  printf '%s\\n' {missing} >&2\n  printf '%s\\n' {install} >&2\n  if command -v brew >/dev/null 2>&1 || [ -x /opt/homebrew/bin/brew ] || [ -x /usr/local/bin/brew ]; then\n    printf '%s\\n' '  brew install tmux' >&2\n  elif command -v apt-get >/dev/null 2>&1; then\n    printf '%s\\n' '  sudo apt-get update && sudo apt-get install -y tmux' >&2\n  elif command -v dnf >/dev/null 2>&1; then\n    printf '%s\\n' '  sudo dnf install -y tmux' >&2\n  elif command -v yum >/dev/null 2>&1; then\n    printf '%s\\n' '  sudo yum install -y tmux' >&2\n  elif command -v pacman >/dev/null 2>&1; then\n    printf '%s\\n' '  sudo pacman -S tmux' >&2\n  else\n    printf '%s\\n' {install_generic} >&2\n  fi\n  printf '%s\\n' {fallback} >&2\n  exec \"${{SHELL:-/bin/sh}}\"\nfi"
+        "if [ -n \"${{TMUX:-}}\" ]; then\n  :\nelif command -v tmux >/dev/null 2>&1; then\n  if tmux has-session -t {session} 2>/dev/null; then\n    {attach}\n  else\n    {new_session}\n  fi\nelse\n  printf '\\033[2J\\033[H'\n  printf '%s\\n' {missing} >&2\n  printf '%s\\n' {install} >&2\n  if command -v brew >/dev/null 2>&1 || [ -x /opt/homebrew/bin/brew ] || [ -x /usr/local/bin/brew ]; then\n    printf '%s\\n' '  brew install tmux' >&2\n  elif command -v apt-get >/dev/null 2>&1; then\n    printf '%s\\n' '  sudo apt-get update && sudo apt-get install -y tmux' >&2\n  elif command -v dnf >/dev/null 2>&1; then\n    printf '%s\\n' '  sudo dnf install -y tmux' >&2\n  elif command -v yum >/dev/null 2>&1; then\n    printf '%s\\n' '  sudo yum install -y tmux' >&2\n  elif command -v pacman >/dev/null 2>&1; then\n    printf '%s\\n' '  sudo pacman -S tmux' >&2\n  else\n    printf '%s\\n' {install_generic} >&2\n  fi\n  printf '%s\\n' {fallback} >&2\n  exec \"${{SHELL:-/bin/sh}}\"\nfi"
     )
 }
 
@@ -277,7 +280,7 @@ mod tests {
         request.environment = vec![("TOKEN".to_string(), "a'b".to_string())];
 
         let script = startup_text(&request, None);
-        assert!(script.starts_with("export TOKEN='a'\"'\"'b'\nif command -v tmux"));
+        assert!(script.starts_with("export TOKEN='a'\"'\"'b'\nif [ -n \"${TMUX:-}\" ]"));
     }
 
     #[test]
@@ -323,6 +326,20 @@ mod tests {
         assert!(script.contains("tmux has-session -t 'team'\"'\"'s prod'"));
         assert!(script.contains("-c '/srv/app'\"'\"'s current'"));
         assert!(script.contains("'printf '\"'\"'ready now'\"'\"'; exec \"${SHELL:-/bin/sh}\" -l'"));
+    }
+
+    #[test]
+    fn persistent_session_leaves_a_shell_that_is_already_inside_tmux_alone() {
+        let mut request = request();
+        request.persistent_session = true;
+        request.persistent_session_name = Some("tr-prod".to_string());
+
+        let script = startup_text(&request, None);
+        let guard = script
+            .find("if [ -n \"${TMUX:-}\" ]")
+            .expect("the script should check for an enclosing tmux first");
+        let attach = script.find("tmux has-session").expect("attach branch");
+        assert!(guard < attach);
     }
 
     #[test]

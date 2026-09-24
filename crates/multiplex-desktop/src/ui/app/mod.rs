@@ -3007,7 +3007,7 @@ impl MultiplexApp {
         self.draft_vault_id = Some(self.effective_vault_id(self.selected_vault_id.as_deref()));
         self.draft_profile_favorite = false;
         self.draft_start_in_files = false;
-        self.draft_persistent_session = false;
+        self.draft_persistent_session = self.saved.settings.persistent_remote_sessions;
         self.draft_persistent_session_detach_others = false;
         self.draft_port_forward_rules.clear();
         self.draft_port_forward_kind = PortForwardKind::Local;
@@ -5081,6 +5081,16 @@ impl MultiplexApp {
 
     fn update_confirm_multiline_paste(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.saved.settings.confirm_multiline_paste = enabled;
+        self.save_settings();
+        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    /// Only changes what a new Host and a quick connect start with; a saved Host keeps its own
+    /// answer, which is why this does not walk the profiles.
+    fn update_persistent_remote_sessions(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.saved.settings.persistent_remote_sessions = enabled;
         self.save_settings();
         self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
@@ -8194,7 +8204,12 @@ impl MultiplexApp {
             return;
         };
 
-        let request = qc.to_connect_request(session_id, auth);
+        let mut request = qc.to_connect_request(session_id, auth);
+        // A quick-connect host is nowhere to turn this off, so it follows the app-wide answer.
+        // The session name is left for the shell bootstrap to derive from user, host and port, so
+        // the same address quick-connected again finds the session it left behind.
+        request.persistent_session = self.saved.settings.persistent_remote_sessions;
+        let request = request;
         let pane_id = self.spawn_pane(request.clone(), window, cx);
         let workspace_id = self.next_workspace_id();
 
