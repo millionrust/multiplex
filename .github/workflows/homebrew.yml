@@ -1,0 +1,89 @@
+# Updates the Homebrew cask after a release is published by hand.
+name: homebrew
+
+# Releases are published by a person, never by a workflow, so this fires on that act rather
+# than on the tag. A prerelease is skipped: casks track stable releases.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish to the tap (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homebrew-cask
+  cancel-in-progress: false
+
+jobs:
+  cask:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Choose the release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          set -euo pipefail
+          tag="${EVENT_TAG:-$INPUT_TAG}"
+          if [[ "${PRERELEASE}" == "true" ]]; then
+            printf 'Skipping %s: the cask tracks stable releases.\n' "$tag"
+            printf 'skip=true\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf 'skip=false\ntag=%s\nversion=%s\n' "$tag" "${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Read the published checksum
+        if: steps.release.outputs.skip == 'false'
+        id: checksum
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # The release's own .sha256, not a hash of a file this job downloads: the cask then
+          # carries the same number the release published, and a mismatch is visible here.
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'Multiplex-macos-universal.zip.sha256' --output checksum.txt
+          sha256="$(awk '{ print $1 }' checksum.txt)"
+          [[ "$sha256" =~ ^[0-9a-f]{64}$ ]] || { printf 'unexpected checksum: %s\n' "$sha256" >&2; exit 1; }
+          printf 'sha256=%s\n' "$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Update the tap
+        if: steps.release.outputs.skip == 'false'
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP_REPOSITORY: ${{ vars.HOMEBREW_TAP_REPOSITORY || 'millionrust/homebrew-tap' }}
+          VERSION: ${{ steps.release.outputs.version }}
+          SHA256: ${{ steps.checksum.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          [[ -n "${TAP_TOKEN}" ]] || {
+            printf 'HOMEBREW_TAP_TOKEN is not set; nothing was pushed.\n' >&2
+            exit 1
+          }
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/${TAP_REPOSITORY}.git" tap
+          mkdir -p tap/Casks
+          # The cask in this repository is the source; only its version and checksum move.
+          sed -e "s/^  version \".*\"$/  version \"${VERSION}\"/" \
+              -e "s/^  sha256 \".*\"$/  sha256 \"${SHA256}\"/" \
+              packaging/homebrew/multiplex.rb > tap/Casks/multiplex.rb
+          grep -q "version \"${VERSION}\"" tap/Casks/multiplex.rb
+          grep -q "sha256 \"${SHA256}\"" tap/Casks/multiplex.rb
+          cd tap
+          if git diff --quiet; then
+            printf 'The tap already has %s.\n' "$VERSION"
+            exit 0
+          fi
+          git -c user.name='Multiplex release' -c user.email='releases@millionrust.invalid' \
+            commit -am "multiplex ${VERSION}"
+          git push

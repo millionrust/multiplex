@@ -105,6 +105,8 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   Rust integration tests live inside each crate.
 - `scripts/` is grouped by verb: `verify/`, `test/`, `build/`, `sync/`, `bench/`,
   `run/`, `dev/`. Every script resolves the repo root two levels up.
+- `packaging/homebrew/` holds the cask that installs the macOS app, and the notes on the tap it
+  is copied into by `.github/workflows/homebrew.yml` when a release is published.
 - `design/` and `locales/` are consumed by `multiplex-ui-contract`. `design/brand/` holds the
   app mark and icon sources; `scripts/build/brand-icons.sh` renders every shipped PNG from them,
   so a PNG is never edited by hand. `design/` also
@@ -193,7 +195,7 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 ## State model notes
 
 - A `WorkspaceTab` is the top-level unit shown in the chrome bar.
-- A workspace's panes are arranged by a recursive `SplitNode` binary tree (`Leaf` / `Split { axis, ratio, a, b }`); dropping a tab on a pane splits that leaf. The cap is `MAX_SPLIT_PANES` (4).
+- A workspace's panes are arranged by a recursive `SplitNode` binary tree (`Leaf` / `Split { axis, ratio, a, b }`); dropping a tab on a pane splits that leaf. The cap is `MAX_SPLIT_PANES` (6).
 - A `SessionPane` owns one SSH (or local PTY) runtime and one `TerminalState`.
 - Split panes are separate SSH sessions to the same host, not a single PTY split.
 - Unread tab activity is tracked per workspace and is used for tab badges.
@@ -271,6 +273,11 @@ ID is `com.millionrust.multiplex` on every platform.
 
 The desktop updater finds its package by asset name, so the macOS zip and both MSIs, and their
 `.sha256` files, keep their names (`docs/decisions/desktop-updates.md`).
+
+Publishing a release that is **not** a prerelease also runs `.github/workflows/homebrew.yml`,
+which copies `packaging/homebrew/multiplex.rb` into the tap with that release's version and
+published checksum. It needs `HOMEBREW_TAP_TOKEN`; prereleases are skipped, so nothing has run
+yet.
 
 A tag is never moved once pushed. If a tag build cannot be published, fix the workflow on `dev` and
 release the next patch version (v0.0.1 is a tag without a release for that reason). A job that
