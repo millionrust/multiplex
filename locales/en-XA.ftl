@@ -1442,6 +1442,7 @@ recovery-impact = ⟦Þļåñ: ŕéšţøŕé ~~~~⟧{ $changed }⟦ ɱéţåð�
 recovery-prepare-action = ⟦Ŕéṽîéŵ ŕéçøṽéŕý þļåñ~~~~~~⟧
 recovery-safety-notice = ⟦Ţĥîš ðøéš ñøţ ðéļéţé šéššîøñš, ţéŕɱîñåļ øûţþûţ, ĵøûŕñåļš, þŕøĵéçţ ƒîļéš, øŕ çøñţŕøļ ŕûññîñĝ Ĥøšţ þŕøçéššéš. Þûƀļîšĥ çåññøţ ƀé çåñçéļļéð; ṽéŕîƒîçåţîøñ ƒåîļûŕé ţŕîĝĝéŕš ŕøļļƀåçķ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 recovery-title = ⟦Ŕéçøṽéŕý~~⟧
+remote-devices-advanced-summary = ⟦ţéŕɱîñåļ þŕøƒîļéš, ƀåçķĝŕøûñð šéŕṽîçé, çøɱþûţéŕš ţĥîš Ṁåç ŵåţçĥéš, ĥøšţ îðéñţîţý, ŕéšéţ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 remote-devices-allow-input-action = ⟦Åļļøŵ îñþûţ~~~⟧
 remote-devices-allow-screen-control-action = ⟦Åļļøŵ þøîñţéŕ åñð ķéýƀøåŕð~~~~~~~~~⟧
 remote-devices-allow-watching-action = ⟦Åļļøŵ ŵåţçĥîñĝ~~~~⟧
@@ -1767,6 +1768,13 @@ session-sidebar-select-project = ⟦Šéļéçţ å Þŕøĵéçţ ţø øŕĝå
 session-sidebar-subtitle = ⟦Øŕĝåñîžé šéššîøñ ŕéçøŕðš ŵîţĥøûţ çĥåñĝîñĝ ŕûññîñĝ þŕøçéššéš øŕ ŵøŕķîñĝ ðîŕéçţøŕîéš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 session-sidebar-title = ⟦Šéššîøñš~~⟧
 sessions-section-ready = ⟦Šéššîøñš ŕéåðý.~~~~⟧
+settings-advanced-hide = ⟦Ĥîðé åðṽåñçéð šéţţîñĝš~~~~~~~⟧
+settings-advanced-show = { $count ->
+    [many] ⟦Åðṽåñçéð — ~~~⟧{ $count }⟦ ɱøŕé: ~⟧{ $summary }
+    [one] ⟦Åðṽåñçéð — øñé ɱøŕé: ~~~~~~~⟧{ $summary }
+   *[other] ⟦Åðṽåñçéð — ~~~⟧{ $count }⟦ ɱøŕé: ~⟧{ $summary }
+    [zero] ⟦Åðṽåñçéð~~⟧
+    }
 settings-approve-mobile-action = ⟦Åþþŕøṽé ɱøƀîļé ðéṽîçé~~~~~~~⟧
 settings-attempts-option = { $count }⟦ åţţéɱþţš~~⟧
 settings-auto-copy-value = ⟦Åûţø çøþý~~⟧
@@ -2353,6 +2361,7 @@ split-zoom-restore-action = ⟦Ŕéšţøŕé~⟧
 ssh-config-host-read-only-status = ⟦Îɱþøŕţéð ŠŠĤ çøñƒîĝ ĥøšţš åŕé ŕéåð ƒŕøɱ ~~~~~~~~~~~~~~⟧{ $path }⟦. Éðîţ ţĥé çøñƒîĝ øŕ šåṽé å ļøçåļ çøþý îñšţéåð.~~~~~~~~~~~~~~~~~⟧
 status-connecting = ⟦Çøññéçţîñĝ ţø ~~~~⟧{ $host }⟦…⟧
 status-ready = ⟦Ŕéåðý⟧
+storage-advanced-summary = ⟦šţøŕé ĥéåļţĥ, éñçŕýþţéð ƀåçķûþ åñð ɱøƀîļé ṽåûļţ, éñçŕýþţéð ðéṽîçé šýñç~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 terminal-announcement-attention = ⟦Ţéŕɱîñåļ ñééðš åţţéñţîøñ~~~~~~~~⟧
 terminal-announcement-gap = ⟦Ŕéţåîñéð ţéŕɱîñåļ øûţþûţ ĥåš å ĝåþ~~~~~~~~~~~~⟧
 terminal-announcement-output = ⟦Ñéŵ ţéŕɱîñåļ øûţþûţ îš åṽåîļåƀļé~~~~~~~~~~~⟧

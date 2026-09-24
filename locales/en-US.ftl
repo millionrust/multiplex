@@ -2604,3 +2604,12 @@ other-terminals-tmux-origin = { $count ->
     }
 other-terminals-open-action = Open
 other-terminals-attaching = Attaching to the terminal…
+settings-advanced-hide = Hide advanced settings
+settings-advanced-show = { $count ->
+    [zero] Advanced
+    [one] Advanced — one more: { $summary }
+    [many] Advanced — { $count } more: { $summary }
+   *[other] Advanced — { $count } more: { $summary }
+    }
+remote-devices-advanced-summary = terminal profiles, background service, computers this Mac watches, host identity, reset
+storage-advanced-summary = store health, encrypted backup and mobile vault, encrypted device sync

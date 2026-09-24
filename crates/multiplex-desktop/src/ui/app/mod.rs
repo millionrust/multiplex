@@ -1216,6 +1216,9 @@ pub struct MultiplexApp {
     session_sidebar: session_sidebar::SessionSidebarState,
     session_library: SessionLibraryState,
     other_terminals: other_terminals::OtherTerminalsState,
+    /// Settings cards whose advanced rows are showing. Deliberately not saved: a page reopens
+    /// on the settings people actually change.
+    settings_advanced_open: std::collections::HashSet<&'static str>,
     artifact_gallery: artifact_gallery::ArtifactGalleryState,
     activity_center: ActivityCenterState,
     remote_devices: RemoteDevicesState,
@@ -1703,6 +1706,7 @@ impl MultiplexApp {
             session_sidebar: session_sidebar::SessionSidebarState::default(),
             session_library,
             other_terminals: other_terminals::OtherTerminalsState::default(),
+            settings_advanced_open: std::collections::HashSet::new(),
             artifact_gallery,
             activity_center,
             remote_devices,
@@ -28979,6 +28983,9 @@ sleep 1
                         window,
                         cx,
                     );
+                    // The background service sits with the other rare controls, behind the
+                    // card's advanced disclosure.
+                    app.settings_advanced_open.insert("remote-devices");
                 })
             })
             .expect("window update should succeed");
@@ -29322,6 +29329,9 @@ sleep 1
         let mut saved = SavedState::default();
         saved.settings.onboarding_dismissed = true;
         let (app, window) = open_test_app_with_state(cx, saved);
+        // Tall enough that the whole card paints: a scrolled-out row has no bounds to find.
+        cx.simulate_window_resize(*window, size(px(1200.), px(2600.)));
+        cx.run_until_parked();
 
         window
             .update(cx, |_, window, cx| {
@@ -31640,6 +31650,69 @@ sleep 1
             assert!(app.workspace(workspace_id).is_some());
             assert!(app.error_message.is_empty());
         });
+    }
+
+    #[gpui::test]
+    fn settings_hides_advanced_rows_until_asked_or_searched(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Settings, window, cx);
+                    app.select_settings_section(
+                        multiplex_ui_contract::SettingsSectionId::RemoteDevices,
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        let shown = |cx: &mut TestAppContext, selector: &'static str| {
+            window
+                .update(cx, |_, window, _| window.refresh())
+                .expect("window update should succeed");
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.run_until_parked();
+            visual.debug_bounds(selector).is_some()
+        };
+        assert!(
+            shown(cx, "settings-advanced-remote-devices"),
+            "the disclosure itself is always there"
+        );
+        assert!(
+            !shown(cx, "watched-computers"),
+            "computers this Mac watches are not in the way"
+        );
+
+        // Opening it reveals what it hides.
+        let click = selector_click_center(window, cx, "settings-advanced-remote-devices");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(click, gpui::Modifiers::none());
+        visual.run_until_parked();
+        app.read_with(cx, |app, _| {
+            assert!(
+                app.settings_advanced_open.contains("remote-devices"),
+                "the click should open the disclosure"
+            );
+        });
+        assert!(shown(cx, "watched-computers"));
+
+        // A search opens every disclosure, or its results would look missing.
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.settings_advanced_open.clear();
+                    MultiplexApp::set_input_value(&app.settings_inputs.search, "watch", window, cx);
+                    cx.notify();
+                })
+            })
+            .expect("window update should succeed");
+        assert!(shown(cx, "watched-computers"));
     }
 
     #[gpui::test]

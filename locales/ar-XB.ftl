@@ -1442,6 +1442,7 @@ recovery-impact = ⁧ erotser :nalP⁩{ $changed }⁧ evael ,selif atadatem ⁩{
 recovery-prepare-action = ⁧nalp yrevocer weiveR⁩
 recovery-safety-notice = ⁧.kcabllor sreggirt eruliaf noitacifirev ;dellecnac eb tonnac hsilbuP .sessecorp tsoH gninnur lortnoc ro ,selif tcejorp ,slanruoj ,tuptuo lanimret ,snoisses eteled ton seod sihT⁩
 recovery-title = ⁧yrevoceR⁩
+remote-devices-advanced-summary = ⁧teser ,ytitnedi tsoh ,sehctaw caM siht sretupmoc ,ecivres dnuorgkcab ,seliforp lanimret⁩
 remote-devices-allow-input-action = ⁧tupni wollA⁩
 remote-devices-allow-screen-control-action = ⁧draobyek dna retniop wollA⁩
 remote-devices-allow-watching-action = ⁧gnihctaw wollA⁩
@@ -1767,6 +1768,13 @@ session-sidebar-select-project = ⁧.snoisses sti ezinagro ot tcejorP a tceleS�
 session-sidebar-subtitle = ⁧.seirotcerid gnikrow ro sessecorp gninnur gnignahc tuohtiw sdrocer noisses ezinagrO⁩
 session-sidebar-title = ⁧snoisseS⁩
 sessions-section-ready = ⁧.ydaer snoisseS⁩
+settings-advanced-hide = ⁧sgnittes decnavda ediH⁩
+settings-advanced-show = { $count ->
+    [many] ⁧ — decnavdA⁩{ $count }⁧ :erom ⁩{ $summary }
+    [one] ⁧ :erom eno — decnavdA⁩{ $summary }
+   *[other] ⁧ — decnavdA⁩{ $count }⁧ :erom ⁩{ $summary }
+    [zero] ⁧decnavdA⁩
+    }
 settings-approve-mobile-action = ⁧ecived elibom evorppA⁩
 settings-attempts-option = { $count }⁧stpmetta ⁩
 settings-auto-copy-value = ⁧ypoc otuA⁩
@@ -2353,6 +2361,7 @@ split-zoom-restore-action = ⁧erotseR⁩
 ssh-config-host-read-only-status = ⁧ morf daer era stsoh gifnoc HSS detropmI⁩{ $path }⁧.daetsni ypoc lacol a evas ro gifnoc eht tidE .⁩
 status-connecting = ⁧ ot gnitcennoC⁩{ $host }⁧…⁩
 status-ready = ⁧ydaeR⁩
+storage-advanced-summary = ⁧cnys ecived detpyrcne ,tluav elibom dna pukcab detpyrcne ,htlaeh erots⁩
 terminal-announcement-attention = ⁧noitnetta sdeen lanimreT⁩
 terminal-announcement-gap = ⁧pag a sah tuptuo lanimret deniateR⁩
 terminal-announcement-output = ⁧elbaliava si tuptuo lanimret weN⁩

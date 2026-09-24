@@ -12214,3 +12214,37 @@ description = "Open terminal action"
 id = "other-terminals-attaching"
 context = "Status while a pane attaches to a terminal the app did not open."
 description = "Attaching status"
+
+[[messages]]
+id = "settings-advanced-hide"
+context = "Row that collapses the advanced settings of one Settings card."
+description = "Hide advanced settings"
+
+[[messages]]
+id = "settings-advanced-show"
+context = "Row that reveals the advanced settings of one Settings card, saying how many there are and naming them."
+description = "Show advanced settings"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages.args]]
+name = "summary"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "remote-devices-advanced-summary"
+context = "Names the advanced settings hidden in the Remote Devices card, so the disclosure says what is behind it."
+description = "Remote Devices advanced summary"
+
+[[messages]]
+id = "storage-advanced-summary"
+context = "Names the advanced cards hidden in Storage, Privacy and Diagnostics."
+description = "Storage advanced summary"

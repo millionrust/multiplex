@@ -836,6 +836,18 @@ static_message!(update_automatic_on, UpdateAutomaticOnArgs);
 static_message!(update_automatic_off, UpdateAutomaticOffArgs);
 static_message!(update_open_page_action, UpdateOpenPageActionArgs);
 static_message!(files_title, FilesTitleArgs);
+static_message!(settings_advanced_hide, SettingsAdvancedHideArgs);
+static_message!(storage_advanced_summary, StorageAdvancedSummaryArgs);
+static_message!(
+    remote_devices_advanced_summary,
+    RemoteDevicesAdvancedSummaryArgs
+);
+pub fn settings_advanced_show(count: u64, summary: impl Into<String>) -> String {
+    text(&SettingsAdvancedShowArgs::new(
+        Count(count),
+        Text::new(summary),
+    ))
+}
 static_message!(other_terminals_heading, OtherTerminalsHeadingArgs);
 static_message!(other_terminals_description, OtherTerminalsDescriptionArgs);
 static_message!(other_terminals_open_action, OtherTerminalsOpenActionArgs);

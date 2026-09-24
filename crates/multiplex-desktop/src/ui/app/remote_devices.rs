@@ -1348,22 +1348,36 @@ impl MultiplexApp {
             .into_any_element()
     }
 
+    /// Remote access, the devices that hold it, and this computer's screen are what people come
+    /// here for. The rest — terminal profiles, the background service, computers this Mac
+    /// watches, the host identity and the reset that revokes every pairing — is real but rare,
+    /// and it used to make this the heaviest page in Settings by a wide margin.
     fn render_remote_devices_content(&self, cx: &Context<Self>) -> AnyElement {
         v_flex()
             .gap_3()
             .child(self.render_remote_route_section(cx))
             .child(self.settings_divider())
-            .child(self.render_remote_terminals_section(cx))
-            .child(self.settings_divider())
             .child(self.render_remote_screens_section(cx))
-            .child(self.settings_divider())
-            .child(self.render_watched_computers_section(cx))
-            .child(self.settings_divider())
-            .child(self.render_remote_identity_section(cx))
             .child(self.settings_divider())
             .child(self.render_trusted_remote_devices(cx))
             .child(self.settings_divider())
-            .child(self.render_remote_identity_reset_section(cx))
+            .child(
+                self.settings_advanced(
+                    "remote-devices",
+                    5,
+                    localization::remote_devices_advanced_summary(),
+                    v_flex()
+                        .gap_3()
+                        .child(self.render_remote_terminals_section(cx))
+                        .child(self.settings_divider())
+                        .child(self.render_watched_computers_section(cx))
+                        .child(self.settings_divider())
+                        .child(self.render_remote_identity_section(cx))
+                        .child(self.settings_divider())
+                        .child(self.render_remote_identity_reset_section(cx)),
+                    cx,
+                ),
+            )
             .into_any_element()
     }
 

@@ -1837,6 +1837,77 @@ impl MultiplexApp {
             .child(body)
     }
 
+    /// Whether the Settings search box has a query in it.
+    fn settings_search_active(&self, cx: &Context<Self>) -> bool {
+        !self
+            .settings_inputs
+            .search
+            .read(cx)
+            .value()
+            .trim()
+            .is_empty()
+    }
+
+    /// The rows of a Settings card that most people never change, behind one row that says how
+    /// many there are. A search opens every one of them, or its results would look missing.
+    pub(super) fn settings_advanced<E: IntoElement>(
+        &self,
+        key: &'static str,
+        hidden: usize,
+        summary: impl Into<SharedString>,
+        body: E,
+        cx: &Context<Self>,
+    ) -> Div {
+        let open = self.settings_advanced_open.contains(key) || self.settings_search_active(cx);
+        let summary: SharedString = summary.into();
+        v_flex()
+            .w_full()
+            .gap(px(theme::SPACE_4))
+            .child(
+                h_flex()
+                    .id(SharedString::from(format!("settings-advanced-{key}")))
+                    .debug_selector(move || format!("settings-advanced-{key}"))
+                    .w_full()
+                    .items_center()
+                    .gap(px(theme::SPACE_3))
+                    .px(px(theme::SPACE_3))
+                    .py(px(theme::SPACE_2))
+                    .rounded(px(theme::CONTROL_RADIUS))
+                    .border_1()
+                    .border_color(theme::soft_border())
+                    .cursor_pointer()
+                    .hover(|style| style.bg(theme::hover()))
+                    .child(
+                        Icon::new(if open {
+                            IconName::ChevronDown
+                        } else {
+                            IconName::ChevronRight
+                        })
+                        .size(px(theme::ICON_SIZE_DEFAULT))
+                        .text_color(theme::text_muted()),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(if open {
+                                localization::settings_advanced_hide()
+                            } else {
+                                localization::settings_advanced_show(hidden as u64, summary.clone())
+                            }),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if !this.settings_advanced_open.remove(key) {
+                            this.settings_advanced_open.insert(key);
+                        }
+                        cx.notify();
+                    })),
+            )
+            .when(open, |this| this.child(body))
+    }
+
     pub(super) fn settings_subhead(
         &self,
         title: impl Into<SharedString>,
@@ -3709,14 +3780,29 @@ impl MultiplexApp {
                                 .child(shortcuts_card)
                             })
                             .when(storage_visible, |this| {
+                                // Exporting and importing is what people come here for; the
+                                // encrypted backup passphrases, the mobile vault, the sync
+                                // enrollment and key rotation, and the store's own health are
+                                // all real and all rare.
                                 this.child(self.settings_hierarchy_heading(
                                     SettingsSectionId::StoragePrivacyDiagnostics,
                                 ))
                                 .child(diagnostics_card)
-                                .child(health_card)
                                 .child(portable_card)
-                                .child(encrypted_card)
-                                .child(sync_card)
+                                .child(
+                                    self.settings_advanced(
+                                        "storage",
+                                        3,
+                                        localization::storage_advanced_summary(),
+                                        v_flex()
+                                            .w_full()
+                                            .gap_4()
+                                            .child(health_card)
+                                            .child(encrypted_card)
+                                            .child(sync_card),
+                                        cx,
+                                    ),
+                                )
                             })
                             .when(remote_devices_visible, |this| {
                                 this.child(
