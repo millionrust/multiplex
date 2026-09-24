@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "walked home: the local address takes the session off Tailscale",
+      "live": {
+        "address": "100.101.102.103",
+        "port": 7420,
+        "kind": "tailscale",
+        "round_trip_millis": 100,
+        "over_relay": false
+      },
+      "candidate": {
+        "address": "192.168.1.20",
+        "port": 7420,
+        "kind": "local_network",
+        "round_trip_millis": 8,
+        "over_relay": false,
+        "millis_since_failed": null
+      },
+      "millis_since_last_migration": null,
+      "writer_command_in_flight": false,
+      "probe_reason": "network_changed",
+      "quiet_probes": 0,
+      "expected": {
+        "decision": "migrate",
+        "next_probe_after_millis": 0
+      }
+    },
+    {
+      "name": "on the local network already: nothing to look for",
+      "live": {
+        "address": "192.168.1.20",
+        "port": 7420,
+        "kind": "local_network",
+        "round_trip_millis": 6,
+        "over_relay": false
+      },
+      "candidate": {
+        "address": "100.101.102.103",
+        "port": 7420,
+        "kind": "tailscale",
+        "round_trip_millis": 2,
+        "over_relay": false,
+        "millis_since_failed": null
+      },
+      "millis_since_last_migration": null,
+      "writer_command_in_flight": false,
+      "probe_reason": "quiet",
+      "quiet_probes": 0,
+      "expected": {
+        "decision": "local_route_kept",
+        "next_probe_after_millis": null
+      }
+    },
+    {
+      "name": "a direct route always beats the relay",
+      "live": {
+        "address": "relay.example",
+        "port": 7420,
+        "kind": "other_private",
+        "round_trip_millis": 120,
+        "over_relay": true
+      },
+      "candidate": {
+        "address": "100.101.102.103",
+        "port": 7420,
+        "kind": "tailscale",
+        "round_trip_millis": 119,
+        "over_relay": false,
+        "millis_since_failed": null
+      },
+      "millis_since_last_migration": null,
+      "writer_command_in_flight": false,
+      "probe_reason": "host_discovered",
+      "quiet_probes": 0,
+      "expected": {
+        "decision": "migrate",
+        "next_probe_after_millis": 0
+      }
+    },
+    {
+      "name": "barely faster is not worth the reattach",
+      "live": {
+        "address": "100.101.102.103",
+        "port": 7420,
+        "kind": "tailscale",
+        "round_trip_millis": 100,
+        "over_relay": false
+      },
+      "candidate": {
+        "address": "192.168.1.20",
+        "port": 7420,
+        "kind": "local_network",
+        "round_trip_millis": 71,
+        "over_relay": false,
+        "millis_since_failed": null
+      },
+      "millis_since_last_migration": null,
+      "writer_command_in_flight": false,
+      "probe_reason": "quiet",
+      "quiet_probes": 1,
+      "expected": {
+        "decision": "not_better",
+        "next_probe_after_millis": 30000
+      }
+    },
+    {
+      "name": "a second move inside thirty seconds waits",
+      "live": {
+        "address": "100.101.102.103",
+        "port": 7420,
+        "kind": "tailscale",
+        "round_trip_millis": 100,
+        "over_relay": false
+      },
+      "candidate": {
+        "address": "192.168.1.20",
+        "port": 7420,
+        "kind": "local_network",
+        "round_trip_millis": 10,
+        "over_relay": false,
+        "millis_since_failed": null
+      },
+      "millis_since_last_migration": 10000,
+      "writer_command_in_flight": false,
+      "probe_reason": "quiet",
+      "quiet_probes": 2,
+      "expected": {
+        "decision": "too_soon",
+        "next_probe_after_millis": 60000
+      }
+    },
+    {
+      "name": "nothing moves while a keystroke is on the wire",
+      "live": {
+        "address": "100.101.102.103",
+        "port": 7420,
+        "kind": "tailscale",
+        "round_trip_millis": 100,
+        "over_relay": false
+      },
+      "candidate": {
+        "address": "192.168.1.20",
+        "port": 7420,
+        "kind": "local_network",
+        "round_trip_millis": 10,
+        "over_relay": false,
+        "millis_since_failed": null
+      },
+      "millis_since_last_migration": null,
+      "writer_command_in_flight": true,
+      "probe_reason": "quiet",
+      "quiet_probes": 3,
+      "expected": {
+        "decision": "busy",
+        "next_probe_after_millis": 120000
+      }
+    },
+    {
+      "name": "a route that just failed is left alone",
+      "live": {
+        "address": "100.101.102.103",
+        "port": 7420,
+        "kind": "tailscale",
+        "round_trip_millis": 100,
+        "over_relay": false
+      },
+      "candidate": {
+        "address": "192.168.1.20",
+        "port": 7420,
+        "kind": "local_network",
+        "round_trip_millis": 10,
+        "over_relay": false,
+        "millis_since_failed": 20000
+      },
+      "millis_since_last_migration": null,
+      "writer_command_in_flight": false,
+      "probe_reason": "quiet",
+      "quiet_probes": 8,
+      "expected": {
+        "decision": "recently_failed",
+        "next_probe_after_millis": 120000
+      }
+    }
+  ]
+}

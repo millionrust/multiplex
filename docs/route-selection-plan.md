@@ -1,6 +1,7 @@
 # Implementation plan: reaching a paired computer by its best route
 
-Status: **phases 1–2 in progress.** Written 2026-09-21; the planner landed 2026-09-22.
+Status: **phases 1–2 shipped; phase 4's policy is in the planner, its executors are not.** Written
+2026-09-21; the planner landed 2026-09-22; the migration rules landed 2026-09-25.
 
 ## What was built, and where it differs from the design below
 
@@ -23,6 +24,23 @@ Status: **phases 1–2 in progress.** Written 2026-09-21; the planner landed 202
   but working Wi-Fi. A host with one address gets the whole 12 s, as before.
 - The shared cases are `tests/fixtures/controller-routes/route-plan-v1.json`, copied into both
   apps' test resources by `scripts/sync/mobile-controller-bindings.sh`.
+- **Migration is two more pure functions, not a state machine either:** `next_probe_after_millis`
+  and `migration_decision`, with their own shared cases in
+  `tests/fixtures/controller-routes/route-migration-v1.json`. The rules they hold: a session on
+  the computer's own network stops looking for anything better; a probe is immediate after a
+  network change or a Bonjour sighting and otherwise backs off from 15 s to 2 min; any direct
+  route replaces the relay however close the times are; a tunnel never takes a session off the
+  local network, whatever it measures; and everything else has to reach 70 % of the current
+  round trip. A move waits out 30 s since the last one, 60 s since that route last failed, and
+  any writer command on the wire. Neither app executes them yet — that is the rest of phase 4.
+- **Phase 5 needs a compatibility decision before any code.** `ControllerResponse` and
+  `ControllerCommandEnvelope` are both `deny_unknown_fields`, and the envelope's `version` must
+  equal the host's, so there is no room in the wire as it stands for either side to say what it
+  knows: a new `host_addresses` response breaks phones that predate it, a new field on a command
+  breaks hosts that predate it, and bumping the command version stops a new phone talking to any
+  older host. Whatever the decision record settles on — an ignore-unknown response decoder shipped
+  a release ahead, a capability bit, or a command whose refusal is survivable — has to ship before
+  the message does.
 
 ## Goal
 
@@ -147,7 +165,7 @@ can be tuned from evidence.
 | 1 | Route planner state machine, tiers, per-network memory, handshake-verified success; shared JSON test vectors | `multiplex-controller-bindings` | 2 days |
 | 2 | iOS and Android executors replacing `openFirstRoute` / `openFirstReachable`; replay the vectors in XCTest and JUnit with the existing injectable transport factories | `apps/ios`, `apps/android` | 2 days |
 | 3 | Cross-kind fallback (SSH, relay) behind the per-route setting | apps | 1–2 days |
-| 4 | Make-before-break migration, probing, screen refresh on migrate | apps + planner | 3–4 days |
+| 4 | Make-before-break migration, probing, screen refresh on migrate | apps + planner | 3–4 days (planner done) |
 | 5 | `HostAddresses` message, decision record, listener sender, phone receiver | listener, apps | 2 days |
 | 6 | Specific failure messages, diagnostics fields, docs | apps, `docs/remote-terminals.md` | 1 day |
 

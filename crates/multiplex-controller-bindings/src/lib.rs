@@ -27,9 +27,10 @@ const MAX_HANDSHAKE_MESSAGE_BYTES: usize = 256;
 mod route_plan;
 
 pub use route_plan::{
-    AttemptOutcome, AttemptResult, PhoneAddress, PhoneLink, PhoneNetwork, PlannedAttempt,
-    RememberedRoute, RouteAddress, RouteAdvice, RouteKind, RoutePlan, network_fingerprint,
-    plan_routes, remember_route, route_advice, route_kind,
+    AttemptOutcome, AttemptResult, LiveRoute, MigrationCandidate, MigrationDecision, PhoneAddress,
+    PhoneLink, PhoneNetwork, PlannedAttempt, ProbeReason, RememberedRoute, RouteAddress,
+    RouteAdvice, RouteKind, RoutePlan, migration_decision, network_fingerprint,
+    next_probe_after_millis, plan_routes, remember_route, route_advice, route_kind,
 };
 
 uniffi::setup_scaffolding!();

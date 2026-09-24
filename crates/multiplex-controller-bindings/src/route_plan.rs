@@ -35,6 +35,16 @@ const RACE_DEADLINE_MILLIS: u32 = 12_000;
 const MAX_ATTEMPTS: usize = 16;
 /// Networks remembered per paired computer.
 const MAX_REMEMBERED: usize = 8;
+/// A better route has to be this much better before a live session moves to it. Below that the
+/// difference is noise on a phone's radio, and moving costs a reattach.
+const IMPROVEMENT_RATIO: f32 = 0.70;
+/// One move per this long, so two routes that keep swapping places cannot flap the session.
+const MIGRATION_COOLDOWN_MILLIS: u64 = 30_000;
+/// A route that just failed is left alone for this long, however good it then looks.
+const FAILURE_QUARANTINE_MILLIS: u64 = 60_000;
+/// The first quiet probe for something better, and the longest the backoff reaches.
+const FIRST_PROBE_MILLIS: u32 = 15_000;
+const MAX_PROBE_MILLIS: u32 = 120_000;
 const FINGERPRINT_DOMAIN: &[u8] = b"multiplex-route-network-v1\0";
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, uniffi::Record)]
@@ -372,6 +382,129 @@ pub fn route_advice(
     RouteAdvice::ComputerUnreachable
 }
 
+/// The route a session is running on now.
+#[derive(Clone, Debug, Eq, PartialEq, uniffi::Record)]
+pub struct LiveRoute {
+    pub route: RouteAddress,
+    pub kind: RouteKind,
+    /// The measured round trip on this route, in milliseconds.
+    pub round_trip_millis: u32,
+    /// Whether the session is riding the relay rather than reaching the computer directly.
+    pub over_relay: bool,
+}
+
+/// Why the phone is thinking about a better route.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, uniffi::Enum)]
+pub enum ProbeReason {
+    /// The phone moved between networks, or a VPN came up or went down.
+    NetworkChanged,
+    /// Bonjour saw the computer on this network.
+    HostDiscovered,
+    /// Nothing happened; this is the background look.
+    Quiet,
+}
+
+/// A route the phone has verified and could move the session to.
+#[derive(Clone, Debug, Eq, PartialEq, uniffi::Record)]
+pub struct MigrationCandidate {
+    pub route: RouteAddress,
+    pub kind: RouteKind,
+    pub round_trip_millis: u32,
+    pub over_relay: bool,
+    /// How long ago this route last failed, if it has.
+    pub millis_since_failed: Option<u64>,
+}
+
+/// Whether to move a live session, and when not, why not.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, uniffi::Enum)]
+pub enum MigrationDecision {
+    Migrate,
+    /// Not enough better to be worth the reattach.
+    NotBetter,
+    /// A tunnel cannot take a session off the computer's own network.
+    LocalRouteKept,
+    /// Something moved less than thirty seconds ago.
+    TooSoon,
+    /// That route failed within the last minute.
+    RecentlyFailed,
+    /// A paste or a writer command is on the wire, and moving would lose it.
+    Busy,
+}
+
+/// How long to wait before looking for a better route, or `None` when there is nothing better to
+/// find.
+///
+/// A session already on the computer's own network is as close as it gets, so the phone stops
+/// looking; anything else is worth a look, at once when the network changed or Bonjour spoke, and
+/// on a backing-off timer otherwise. `quiet_probes` counts the background looks already made
+/// since the last change.
+#[uniffi::export]
+pub fn next_probe_after_millis(
+    live: LiveRoute,
+    reason: ProbeReason,
+    quiet_probes: u32,
+) -> Option<u32> {
+    if live.kind == RouteKind::LocalNetwork && !live.over_relay {
+        return None;
+    }
+    match reason {
+        ProbeReason::NetworkChanged | ProbeReason::HostDiscovered => Some(0),
+        ProbeReason::Quiet => Some(
+            FIRST_PROBE_MILLIS
+                .saturating_mul(1u32.checked_shl(quiet_probes.min(8)).unwrap_or(256))
+                .min(MAX_PROBE_MILLIS),
+        ),
+    }
+}
+
+/// Whether a verified candidate should take over a live session.
+///
+/// The order matters: the reasons not to move are all checked before the reasons to move, so a
+/// route that would otherwise win still waits out a cooldown or a recent failure.
+#[uniffi::export]
+pub fn migration_decision(
+    live: LiveRoute,
+    candidate: MigrationCandidate,
+    millis_since_last_migration: Option<u64>,
+    writer_command_in_flight: bool,
+) -> MigrationDecision {
+    if candidate.route == live.route {
+        return MigrationDecision::NotBetter;
+    }
+    if writer_command_in_flight {
+        return MigrationDecision::Busy;
+    }
+    if candidate
+        .millis_since_failed
+        .is_some_and(|since| since < FAILURE_QUARANTINE_MILLIS)
+    {
+        return MigrationDecision::RecentlyFailed;
+    }
+    if millis_since_last_migration.is_some_and(|since| since < MIGRATION_COOLDOWN_MILLIS) {
+        return MigrationDecision::TooSoon;
+    }
+    // Nothing beats being on the computer's own network, whatever the clock says: a tunnel that
+    // measures faster is measuring something else.
+    if live.kind == RouteKind::LocalNetwork
+        && !live.over_relay
+        && candidate.kind != RouteKind::LocalNetwork
+    {
+        return MigrationDecision::LocalRouteKept;
+    }
+    // Any direct route beats the relay, however close the times are.
+    if live.over_relay && !candidate.over_relay {
+        return MigrationDecision::Migrate;
+    }
+    if candidate.over_relay && !live.over_relay {
+        return MigrationDecision::NotBetter;
+    }
+    if (candidate.round_trip_millis as f32) <= live.round_trip_millis as f32 * IMPROVEMENT_RATIO {
+        MigrationDecision::Migrate
+    } else {
+        MigrationDecision::NotBetter
+    }
+}
+
 /// Classifies an address by its value alone.
 #[uniffi::export]
 pub fn route_kind(address: &str) -> RouteKind {
@@ -508,6 +641,183 @@ mod tests {
             address: address.to_owned(),
             port: 7_420,
         }
+    }
+
+    fn live(address: &str, kind: RouteKind, round_trip_millis: u32, over_relay: bool) -> LiveRoute {
+        LiveRoute {
+            route: route(address),
+            kind,
+            round_trip_millis,
+            over_relay,
+        }
+    }
+
+    fn candidate(
+        address: &str,
+        kind: RouteKind,
+        round_trip_millis: u32,
+        over_relay: bool,
+    ) -> MigrationCandidate {
+        MigrationCandidate {
+            route: route(address),
+            kind,
+            round_trip_millis,
+            over_relay,
+            millis_since_failed: None,
+        }
+    }
+
+    #[test]
+    fn a_session_on_the_computers_own_network_stops_looking_for_better() {
+        assert_eq!(
+            next_probe_after_millis(
+                live("192.168.1.20", RouteKind::LocalNetwork, 4, false),
+                ProbeReason::Quiet,
+                0
+            ),
+            None
+        );
+        // Over the relay it keeps looking, even to a local address.
+        assert_eq!(
+            next_probe_after_millis(
+                live("192.168.1.20", RouteKind::LocalNetwork, 4, true),
+                ProbeReason::Quiet,
+                0
+            ),
+            Some(FIRST_PROBE_MILLIS)
+        );
+    }
+
+    #[test]
+    fn probing_is_immediate_after_a_change_and_backs_off_while_quiet() {
+        let tailscale = live("100.101.102.103", RouteKind::Tailscale, 90, false);
+        assert_eq!(
+            next_probe_after_millis(tailscale.clone(), ProbeReason::NetworkChanged, 7),
+            Some(0)
+        );
+        assert_eq!(
+            next_probe_after_millis(tailscale.clone(), ProbeReason::HostDiscovered, 7),
+            Some(0)
+        );
+        assert_eq!(
+            next_probe_after_millis(tailscale.clone(), ProbeReason::Quiet, 0),
+            Some(15_000)
+        );
+        assert_eq!(
+            next_probe_after_millis(tailscale.clone(), ProbeReason::Quiet, 1),
+            Some(30_000)
+        );
+        // It stops growing rather than running away.
+        assert_eq!(
+            next_probe_after_millis(tailscale, ProbeReason::Quiet, 20),
+            Some(MAX_PROBE_MILLIS)
+        );
+    }
+
+    #[test]
+    fn a_route_has_to_be_clearly_better_before_a_session_moves() {
+        let tailscale = live("100.101.102.103", RouteKind::Tailscale, 100, false);
+        assert_eq!(
+            migration_decision(
+                tailscale.clone(),
+                candidate("10.0.0.5", RouteKind::LocalNetwork, 71, false),
+                None,
+                false
+            ),
+            MigrationDecision::NotBetter
+        );
+        assert_eq!(
+            migration_decision(
+                tailscale,
+                candidate("10.0.0.5", RouteKind::LocalNetwork, 70, false),
+                None,
+                false
+            ),
+            MigrationDecision::Migrate
+        );
+    }
+
+    #[test]
+    fn any_direct_route_takes_a_session_off_the_relay() {
+        assert_eq!(
+            migration_decision(
+                live("relay.example", RouteKind::OtherPrivate, 120, true),
+                candidate("100.101.102.103", RouteKind::Tailscale, 119, false),
+                None,
+                false
+            ),
+            MigrationDecision::Migrate
+        );
+        // And never the other way round, however the times measure.
+        assert_eq!(
+            migration_decision(
+                live("100.101.102.103", RouteKind::Tailscale, 120, false),
+                candidate("relay.example", RouteKind::OtherPrivate, 10, true),
+                None,
+                false
+            ),
+            MigrationDecision::NotBetter
+        );
+    }
+
+    #[test]
+    fn a_tunnel_never_takes_a_session_off_the_local_network() {
+        assert_eq!(
+            migration_decision(
+                live("192.168.1.20", RouteKind::LocalNetwork, 40, false),
+                candidate("100.101.102.103", RouteKind::Tailscale, 2, false),
+                None,
+                false
+            ),
+            MigrationDecision::LocalRouteKept
+        );
+    }
+
+    #[test]
+    fn a_session_does_not_flap_between_two_routes() {
+        let live_route = live("100.101.102.103", RouteKind::Tailscale, 100, false);
+        let better = candidate("192.168.1.20", RouteKind::LocalNetwork, 10, false);
+        assert_eq!(
+            migration_decision(live_route.clone(), better.clone(), Some(29_999), false),
+            MigrationDecision::TooSoon
+        );
+        assert_eq!(
+            migration_decision(live_route.clone(), better.clone(), Some(30_000), false),
+            MigrationDecision::Migrate
+        );
+
+        let just_failed = MigrationCandidate {
+            millis_since_failed: Some(59_999),
+            ..better.clone()
+        };
+        assert_eq!(
+            migration_decision(live_route.clone(), just_failed, None, false),
+            MigrationDecision::RecentlyFailed
+        );
+        let failed_a_while_ago = MigrationCandidate {
+            millis_since_failed: Some(60_000),
+            ..better.clone()
+        };
+        assert_eq!(
+            migration_decision(live_route.clone(), failed_a_while_ago, None, false),
+            MigrationDecision::Migrate
+        );
+
+        // Nothing moves while the person's keystrokes are on the wire.
+        assert_eq!(
+            migration_decision(live_route.clone(), better.clone(), None, true),
+            MigrationDecision::Busy
+        );
+        // And the route it is already on is not a candidate.
+        assert_eq!(
+            migration_decision(
+                live_route.clone(),
+                candidate("100.101.102.103", RouteKind::Tailscale, 1, false),
+                None,
+                false
+            ),
+            MigrationDecision::NotBetter
+        );
     }
 
     fn wifi(address: &str, prefix_length: u8, fingerprint: Option<&str>) -> PhoneNetwork {
