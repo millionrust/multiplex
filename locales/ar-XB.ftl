@@ -462,15 +462,31 @@ artifact-type-file = ⁧eliF⁩
 artifact-type-jpeg = ⁧egami GEPJ⁩
 artifact-type-png = ⁧egami GNP⁩
 artifact-type-text = ⁧txet nialP⁩
+attention-pill-count = { $count ->
+    [many] { $count }⁧uoy deen ⁩
+    [one] ⁧uoy sdeen 1⁩
+   *[other] { $count }⁧uoy deen ⁩
+    [zero] ⁧uoy sdeen gnihtoN⁩
+    }
+attention-pill-jump = ⁧pmuj⁩
+attention-pill-open-canvas = ⁧savnac no nepo⁩
 autocomplete-applied-argument-status = ⁧.tnemugra morf deilppa etelpmocotuA⁩
 autocomplete-applied-builtin-status = ⁧.nitliub morf deilppa etelpmocotuA⁩
 autocomplete-applied-context-status = ⁧.txetnoc morf deilppa etelpmocotuA⁩
 autocomplete-applied-history-status = ⁧.yrotsih morf deilppa etelpmocotuA⁩
 autocomplete-applied-path-status = ⁧.htap morf deilppa etelpmocotuA⁩
 autocomplete-applied-snippet-status = ⁧.teppins morf deilppa etelpmocotuA⁩
+canvas-link-context-label = ⁧txetnoc⁩
+canvas-link-dependency-label = ⁧retfa snur⁩
+canvas-link-remove-tooltip = ⁧knil siht evomeR⁩
 canvas-node-rename-placeholder = ⁧eltit edoN⁩
 canvas-note-editor-placeholder = ⁧feirb ksat a ro ,sdnammoc ,snoisiced ,txetnoc etirW⁩
+canvas-port-tooltip = ⁧txetnoc sa eno siht erahs ot edon rehtona otno garD⁩
 canvas-project-editor-placeholder = ⁧tide ro weiv ot elif txet 8-FTU a tceleS⁩
+canvas-snap-off-status = ⁧.yleerf evom sedoN .ffo gnippanS⁩
+canvas-snap-on-status = ⁧.no gnippanS⁩
+canvas-snap-tooltip = ⁧(yleerf ecalp ot noitpO dloh) sedon rehto ot dna dirg eht ot panS⁩
+canvas-tidy-tooltip = ⁧(T+noitpO+dmC) puorg yb sedon egnarra :ydiT⁩
 certificate-file-choose-status = ⁧.elif etacifitrec resu HSSnepO na esoohC⁩
 certificate-file-selected-status = ⁧.detceles etacifitrec resu HSSnepO⁩
 chrome-home-tooltip = ⁧emoH⁩
@@ -1255,22 +1271,35 @@ overlay-paste-preview = ⁧ :enil tsriF⁩{ $preview }⁧…⁩
 overlay-snippet-prompts-title = ⁧stpmorp teppinS⁩
 palette-current-directory = ⁧yrotcerid tnerruC⁩
 palette-docker-target = ⁧tegrat rekcoD⁩
+palette-equalize = ⁧senaP ezilauqE⁩
 palette-files-scope = ⁧ · seliF⁩{ $path }
+palette-fit-canvas = ⁧savnaC tiF⁩
 palette-git-branch = ⁧hcnarb tiG⁩
 palette-group-snippet-detail = ⁧ · teppinS⁩{ $group }⁧ · ⁩{ $command }
 palette-history-detail = ⁧ · yrotsiH⁩{ $scope }
 palette-kubernetes-pod = ⁧dop setenrebuK⁩
+palette-layout-prefix = ⁧:tuoyaL⁩
 palette-parent-directory = ⁧yrotcerid tneraP⁩
 palette-pinned-group-snippet-detail = ⁧ · teppins denniP⁩{ $group }⁧ · ⁩{ $command }
 palette-pinned-snippet-detail = ⁧ · teppins denniP⁩{ $command }
 palette-recent-command = ⁧dnammoc tneceR⁩
 palette-recent-path = ⁧htap tneceR⁩
+palette-show-canvas = ⁧savnaC ot hctiwS⁩
+palette-show-split = ⁧tilpS ot hctiwS⁩
 palette-snippet-detail = ⁧ · teppinS⁩{ $command }
+palette-split-down = ⁧nwoD tilpS⁩
+palette-split-right = ⁧thgiR tilpS⁩
 palette-startup-path = ⁧htap putratS⁩
 palette-systemd-unit = ⁧tinu dmetsyS⁩
 palette-this-target = ⁧tegrat sihT⁩
+palette-tidy-canvas = ⁧savnaC ydiT⁩
+palette-toggle-broadcast = ⁧tupnI tsacdaorB elggoT⁩
+palette-toggle-snap = ⁧gnippanS savnaC elggoT⁩
+palette-zoom-pane = ⁧enaP erotseR ro mooZ⁩
 pane-already-own-workspace-error = ⁧.ecapskrow nwo sti ni ydaerla si enap sihT⁩
 pane-closed-status = ⁧.desolc enaP⁩
+pane-context-restore-action = ⁧tilpS erotseR⁩
+pane-context-zoom-action = ⁧enaP mooZ⁩
 pane-detached-new-workspace-status = ⁧.bat ecapskrow wen a otni dehcated enaP⁩
 pane-rename-placeholder = ⁧eman enaP⁩
 pane-renamed-status = ⁧ ot demaner enaP⁩{ $title }⁧.⁩
@@ -1965,15 +1994,23 @@ settings-shared-folder-sync-title = ⁧cnys redlof-derahS⁩
 settings-shell-program-required = ⁧.gnivas erofeb margorp llehs lacol a retnE⁩
 settings-shortcut-autocomplete-accept = ⁧noitseggus dethgilhgih eht tpeccA⁩
 settings-shortcut-autocomplete-move = ⁧noitceles etelpmocotua eht evoM⁩
+settings-shortcut-box-select = ⁧sedon lareves tceles ot savnac ytpme revo garD⁩
 settings-shortcut-broadcast = ⁧senap ssorca tupni tsacdaorb elggoT⁩
+settings-shortcut-canvas-actual-size = ⁧%001 ot savnac eht mooZ⁩
 settings-shortcut-clear-terminal = ⁧kcabllorcs dna neercs enap evitca eht raelC⁩
 settings-shortcut-close-dialog = ⁧seliF morf nruter ro sgolaid esolC⁩
 settings-shortcut-close-workspace = ⁧bat ecapskrow evitca eht esolC⁩
 settings-shortcut-command-palette = ⁧ettelap dnammoc eht nepO⁩
 settings-shortcut-copy = ⁧noitceles tnerruc eht ypoC⁩
+settings-shortcut-create-here = ⁧ereht edon a etaerc ot savnac ytpme kcilc-elbuoD⁩
+settings-shortcut-drag-freely = ⁧yleerf ti ecalp ot edon savnac ro redivid a gniggard elihw dloH⁩
 settings-shortcut-duplicate-pane = ⁧enap evitca eht etacilpuD⁩
+settings-shortcut-equalize = ⁧erahs lauqe na enap tilps yreve eviG⁩
 settings-shortcut-files-browser = ⁧resworb seliF ecapskrow eht nepO⁩
+settings-shortcut-fit-canvas = ⁧weiv ni edon savnac yreve tiF⁩
+settings-shortcut-fly-to-node = ⁧edon savnac detceles eht ot ylF⁩
 settings-shortcut-focus-hosts = ⁧sgoL elggot ro hcraes tsoH sucoF⁩
+settings-shortcut-focus-pane = ⁧noitcerid taht ni ,edon savnac ro ,enap tseraen eht sucoF⁩
 settings-shortcut-jump-settings = ⁧sgnitteS ot pmuJ⁩
 settings-shortcut-navigation = ⁧noitagivaN⁩
 settings-shortcut-new-host = ⁧yrarbiL eht ni tsoH wen a etaerC⁩
@@ -1987,12 +2024,17 @@ settings-shortcut-open-sessions = ⁧snoisseS nepO⁩
 settings-shortcut-open-settings = ⁧sgnitteS nepO⁩
 settings-shortcut-paste = ⁧draobpilc eht morf etsaP⁩
 settings-shortcut-previous-workspace = ⁧bat ecapskrow suoiverp eht ot elcyC⁩
+settings-shortcut-resize-pane = ⁧edon savnac detceles eht egdun ro ,redivid tseraen eht evoM⁩
 settings-shortcut-scroll-back = ⁧neercs eno kcab llorcS⁩
 settings-shortcut-scroll-forward = ⁧neercs eno drawrof llorcS⁩
+settings-shortcut-split-canvas = ⁧savnaC dna tilpS⁩
+settings-shortcut-split-down = ⁧ti woleb eno wen a htiw enap evitca eht tilpS⁩
 settings-shortcut-terminal = ⁧lanimreT⁩
 settings-shortcut-terminal-search = ⁧lanimret evitca eht hcraeS⁩
+settings-shortcut-tidy-canvas = ⁧puorg yb sedon savnac egnarrA⁩
 settings-shortcut-toggle-files = ⁧weiv lanimreT dna seliF elggoT⁩
 settings-shortcut-workspace = ⁧ecapskroW⁩
+settings-shortcut-zoom-pane = ⁧kcab tilps eht gnirb ro ,tilps eht llif enap evitca eht teL⁩
 settings-show-welcome-action = ⁧niaga lenap emoclew wohS⁩
 settings-ssh-keepalive-description = ⁧.stuoemit krowten evivrus nac snoisses eldi os segassem evilapeek HSS dneS⁩
 settings-ssh-keepalive-label = ⁧evilapeek HSS⁩
@@ -2265,6 +2307,41 @@ snippet-select-action = ⁧teppinS tceleS⁩
 snippet-unpin-action-label = ⁧nipnU⁩
 snippet-unpinned-status = ⁧.snoitca kciuq ecapskrow morf devomer teppinS⁩
 snippets-title = ⁧steppinS⁩
+split-drop-down = ⁧nwoD tilpS⁩
+split-drop-full = ⁧) lluf si tilpS⁩{ $limit }⁧(⁩
+split-drop-left = ⁧tfeL tilpS⁩
+split-drop-right = ⁧thgiR tilpS⁩
+split-drop-swap = ⁧pawS⁩
+split-drop-up = ⁧pU tilpS⁩
+split-equalize-action = ⁧ezilauqE⁩
+split-pane-broadcast-badge = ⁧TSACDAORB⁩
+split-preset-columns = ⁧snmuloC owT⁩
+split-preset-grid = ⁧dirG⁩
+split-preset-grid-of-six = ⁧xiS fo dirG⁩
+split-preset-kept-status = { $count ->
+    [many] ⁧ .tilps eht degnarrA⁩{ $count }⁧.savnac eht no gninnur llits era senap ⁩
+    [one] ⁧.savnac eht no gninnur llits si enap 1 .tilps eht degnarrA⁩
+   *[other] ⁧ .tilps eht degnarrA⁩{ $count }⁧.savnac eht no gninnur llits era senap ⁩
+    [zero] ⁧.tilps eht degnarrA⁩
+    }
+split-preset-main-and-stack = ⁧kcatS dna niaM⁩
+split-preset-opened-status = { $count ->
+    [many] ⁧ denepo dna tilps eht degnarrA⁩{ $count }⁧.senap wen ⁩
+    [one] ⁧.enap wen 1 denepo dna tilps eht degnarrA⁩
+   *[other] ⁧ denepo dna tilps eht degnarrA⁩{ $count }⁧.senap wen ⁩
+    [zero] ⁧.tilps eht degnarrA⁩
+    }
+split-preset-rows = ⁧swoR owT⁩
+split-preset-single = ⁧enaP enO⁩
+split-preset-three-columns = ⁧snmuloC eerhT⁩
+split-zoom-action = ⁧mooZ⁩
+split-zoom-hidden-panes = { $count ->
+    [many] ⁧ · demooz⁩{ $count }⁧neddih senap ⁩
+    [one] ⁧neddih enap 1 · demooz⁩
+   *[other] ⁧ · demooz⁩{ $count }⁧neddih senap ⁩
+    [zero] ⁧demooz⁩
+    }
+split-zoom-restore-action = ⁧erotseR⁩
 ssh-config-host-read-only-status = ⁧ morf daer era stsoh gifnoc HSS detropmI⁩{ $path }⁧.daetsni ypoc lacol a evas ro gifnoc eht tidE .⁩
 status-connecting = ⁧ ot gnitcennoC⁩{ $host }⁧…⁩
 status-ready = ⁧ydaeR⁩

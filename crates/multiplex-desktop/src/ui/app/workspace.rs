@@ -2,12 +2,13 @@
 //! view, terminal pane (cells/rows), workspace body and shell wrapper.
 //! All methods are part of `MultiplexApp`.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use gpui::AppContext as _;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    Animation, AnimationExt as _, Context, CursorStyle, Div, DragMoveEvent, ExternalPaths,
-    InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
+    Animation, AnimationExt as _, AnyElement, Context, CursorStyle, Div, DragMoveEvent,
+    ExternalPaths, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, ParentElement, ScrollWheelEvent, SharedString, Stateful,
     StatefulInteractiveElement as _, Styled, Window, div, px, relative,
 };
@@ -17,9 +18,11 @@ use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Disableable as _, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::models::{ConnectionKind, WorkspaceLayoutMode};
+use crate::ui::app::motion::{self, MotionRect};
+use crate::ui::app::split_tree::{SplitEdge, SplitPreset, compute_split_layout};
 use crate::ui::app::{
-    ConnectDialogMode, DividerRect, DropZone, MultiplexApp, SessionPane, SplitAxis,
-    TERMINAL_INNER_PADDING_X, TERMINAL_INNER_PADDING_Y, WORKSPACE_PADDING,
+    ConnectDialogMode, DividerRect, DropZone, MAX_SPLIT_PANES, MultiplexApp, PaneDrag, SessionPane,
+    SplitAxis, TERMINAL_INNER_PADDING_X, TERMINAL_INNER_PADDING_Y, WORKSPACE_PADDING,
     WORKSPACE_SEARCH_ROW_HEIGHT, WorkspaceTabDrag, WorkspaceViewMode,
 };
 use crate::ui::localization;
@@ -28,6 +31,153 @@ use crate::ui::theme;
 use gpui_component::ActiveTheme as _;
 use multiplex_domain::{HostedSessionState, SessionLaunchRoute};
 use multiplex_ui_contract::{MessageId, TerminalSemanticSnapshot};
+
+/// The chip that follows the pointer while a pane is dragged by its header.
+pub(super) struct PaneDragPreview {
+    title: String,
+}
+
+impl gpui::Render for PaneDragPreview {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .id("pane-drag-preview")
+            .gap(px(theme::SPACE_2))
+            .items_center()
+            .px(px(theme::SPACE_3))
+            .py(px(theme::SPACE_2))
+            .rounded(px(theme::SPACE_2))
+            .bg(theme::terminal_panel())
+            .border_1()
+            .border_color(theme::accent())
+            .shadow_lg()
+            .child(
+                div()
+                    .size(px(PANE_STATUS_DOT))
+                    .rounded_full()
+                    .bg(theme::success()),
+            )
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                    .font_semibold()
+                    .text_color(theme::text_on_dark())
+                    .child(self.title.clone()),
+            )
+    }
+}
+
+/// Which part of a pane `position` is over. The middle 40% swaps, when offered;
+/// otherwise the nearest edge wins.
+fn drop_zone_at(
+    bounds: gpui::Bounds<gpui::Pixels>,
+    position: gpui::Point<gpui::Pixels>,
+    center: bool,
+) -> DropZone {
+    let width = f32::from(bounds.size.width).max(1.0);
+    let height = f32::from(bounds.size.height).max(1.0);
+    let rx = (f32::from(position.x) - f32::from(bounds.origin.x)) / width;
+    let ry = (f32::from(position.y) - f32::from(bounds.origin.y)) / height;
+    if center && (0.3..0.7).contains(&rx) && (0.3..0.7).contains(&ry) {
+        return DropZone::Center;
+    }
+    [
+        (rx, DropZone::Left),
+        (1.0 - rx, DropZone::Right),
+        (ry, DropZone::Top),
+        (1.0 - ry, DropZone::Bottom),
+    ]
+    .into_iter()
+    .min_by(|a, b| a.0.total_cmp(&b.0))
+    .map_or(DropZone::Right, |(_, zone)| zone)
+}
+
+/// The part of a pane a drop in `zone` would take, as fractions of the pane.
+fn drop_zone_fraction(zone: DropZone) -> MotionRect {
+    match zone {
+        DropZone::Left => MotionRect::new(0.0, 0.0, 0.5, 1.0),
+        DropZone::Right => MotionRect::new(0.5, 0.0, 0.5, 1.0),
+        DropZone::Top => MotionRect::new(0.0, 0.0, 1.0, 0.5),
+        DropZone::Bottom => MotionRect::new(0.0, 0.5, 1.0, 0.5),
+        DropZone::Center => MotionRect::new(0.0, 0.0, 1.0, 1.0),
+    }
+}
+
+fn center_zone_guide() -> MotionRect {
+    MotionRect::new(0.3, 0.3, 0.4, 0.4)
+}
+
+const PANE_HEADER_HEIGHT: f32 = 30.0;
+/// How far the content of panes without focus fades back in a split.
+const INACTIVE_PANE_OPACITY: f32 = 0.66;
+const PANE_HEADER_BUTTON: f32 = 24.0;
+const PANE_STATUS_DOT: f32 = 8.0;
+const PANE_RENAME_WIDTH: f32 = 180.0;
+const PANE_BROADCAST_BADGE_SIZE: f32 = 10.0;
+const DROP_PREVIEW_INSET: f32 = 3.0;
+
+/// The divider line stops short of the panes' rounded corners.
+const DIVIDER_LINE_INSET: f32 = 6.0;
+const DIVIDER_LINE_WIDTH: f32 = 2.0;
+const DIVIDER_READOUT_WIDTH: f32 = 76.0;
+const DIVIDER_READOUT_HEIGHT: f32 = 22.0;
+const ZOOM_PILL_HEIGHT: f32 = 30.0;
+/// How close to the bottom of the window the pointer brings up the layout bar.
+const SPLIT_LAYOUT_BAR_REVEAL: f32 = 72.0;
+const SPLIT_LAYOUT_BUTTON_SIZE: f32 = 28.0;
+/// Preset glyphs are the preset's own layout, drawn at a tenth of this size.
+const PRESET_GLYPH_WIDTH: f32 = 22.0;
+const PRESET_GLYPH_HEIGHT: f32 = 16.0;
+
+pub(super) fn preset_message(preset: SplitPreset) -> MessageId {
+    match preset {
+        SplitPreset::Single => MessageId::SplitPresetSingle,
+        SplitPreset::Columns => MessageId::SplitPresetColumns,
+        SplitPreset::Rows => MessageId::SplitPresetRows,
+        SplitPreset::MainAndStack => MessageId::SplitPresetMainAndStack,
+        SplitPreset::ThreeColumns => MessageId::SplitPresetThreeColumns,
+        SplitPreset::Grid => MessageId::SplitPresetGrid,
+        SplitPreset::GridOfSix => MessageId::SplitPresetGridOfSix,
+    }
+}
+
+/// A small picture of `preset`: its real layout, scaled down.
+fn preset_glyph(preset: SplitPreset, group: SharedString) -> Div {
+    const SCALE: f32 = 10.0;
+    let ids: Vec<u64> = (0..preset.pane_count() as u64).collect();
+    let mut rects = Vec::new();
+    if let Some(tree) = preset.build(&ids) {
+        compute_split_layout(
+            &tree,
+            0.0,
+            0.0,
+            PRESET_GLYPH_WIDTH * SCALE,
+            PRESET_GLYPH_HEIGHT * SCALE,
+            &mut rects,
+            &mut Vec::new(),
+        );
+    }
+    let mut glyph = div()
+        .relative()
+        .w(px(PRESET_GLYPH_WIDTH))
+        .h(px(PRESET_GLYPH_HEIGHT));
+    for rect in rects {
+        glyph = glyph.child(
+            div()
+                .absolute()
+                .left(px(rect.x / SCALE))
+                .top(px(rect.y / SCALE))
+                .w(px(rect.width / SCALE))
+                .h(px(rect.height / SCALE))
+                .rounded(px(2.0))
+                .border_1()
+                .border_color(theme::text_muted_dark())
+                .group_hover(group.clone(), |style| {
+                    style.border_color(theme::text_on_dark())
+                }),
+        );
+    }
+    glyph
+}
 
 impl MultiplexApp {
     pub(super) fn terminal_semantic_snapshot(&self) -> Option<TerminalSemanticSnapshot> {
@@ -1090,11 +1240,27 @@ impl MultiplexApp {
             .active_workspace()
             .map(|workspace| workspace.active_pane_id)
             == Some(pane.id);
-        // Only a split needs to show which pane has focus, and it does so without the accent.
+        // Only a split with more than one pane on screen needs to show which has focus:
+        // the focused pane gets the accent and the others' content dims.
         let marks_active_pane = is_active_pane
             && self
                 .active_workspace()
-                .is_some_and(|workspace| workspace.pane_ids.len() > 1);
+                .is_some_and(|workspace| workspace.pane_ids.len() > 1)
+            && self.zoomed_pane().is_none();
+        let dims_content = !is_active_pane
+            && self.active_workspace().is_some_and(|workspace| {
+                workspace.layout_mode == WorkspaceLayoutMode::Split
+                    && workspace
+                        .layout
+                        .as_ref()
+                        .is_some_and(|layout| layout.leaf_count() > 1)
+            });
+        let broadcast_target = !pane.closed
+            && self.active_workspace().is_some_and(|workspace| {
+                workspace.broadcast_input
+                    && workspace.pane_ids.len() > 1
+                    && workspace.pane_ids.contains(&pane.id)
+            });
         let is_app_attached = pane.app_attached.is_some();
         let durable = pane
             .app_attached
@@ -1132,8 +1298,21 @@ impl MultiplexApp {
                     )
                 }));
         let input_authorized = pane.input_authorized();
-        // Only durable sessions have a header: it carries their writer state, retry, and stop.
+        // Durable sessions have their own header: it carries their writer state, retry, and stop.
         let show_terminal_chrome = is_app_attached;
+        let workspace_id = self.workspace_id_for_pane(pane_id).unwrap_or_default();
+        let in_split = self.active_workspace().is_some_and(|workspace| {
+            workspace.layout_mode == WorkspaceLayoutMode::Split
+                && workspace
+                    .layout
+                    .as_ref()
+                    .is_some_and(|layout| layout.contains(pane_id))
+        });
+        let pane_drag = PaneDrag {
+            workspace_id,
+            pane_id,
+            title: pane.title.clone(),
+        };
 
         v_flex()
             .id(("terminal-pane", pane.id))
@@ -1142,7 +1321,9 @@ impl MultiplexApp {
             .rounded(px(theme::TYPE_NANO_SIZE))
             .border_1()
             .border_color(if marks_active_pane {
-                theme::border_strong()
+                theme::accent()
+            } else if broadcast_target {
+                theme::with_alpha(theme::warning(), 0.7)
             } else {
                 theme::with_alpha(theme::border_dark(), 0.6)
             })
@@ -1158,6 +1339,17 @@ impl MultiplexApp {
                     this.drop_tab_on_pane(drag.workspace_id, pane_id, window, cx);
                 }),
             )
+            .on_drag_move(
+                cx.listener(move |this, event: &DragMoveEvent<PaneDrag>, _, cx| {
+                    this.update_pane_drop_target(pane_id, event, cx);
+                }),
+            )
+            .on_drop(cx.listener(move |this, drag: &PaneDrag, window, cx| {
+                this.drop_pane_on_pane(drag.pane_id, pane_id, window, cx);
+            }))
+            .when(in_split && !show_terminal_chrome, |this| {
+                this.child(self.render_split_pane_header(pane, pane_drag.clone(), cx))
+            })
             .on_drop(cx.listener(move |this, paths: &ExternalPaths, window, cx| {
                 this.drop_paths_on_pane(pane_id, paths.paths(), window, cx);
             }))
@@ -1165,6 +1357,17 @@ impl MultiplexApp {
                 this.child(
                     h_flex()
                         .id(("terminal-chrome", pane.id))
+                        .when(in_split, |row| {
+                            row.cursor_grab().on_drag(
+                                pane_drag.clone(),
+                                |drag: &PaneDrag, _, _, cx| {
+                                    cx.stop_propagation();
+                                    cx.new(|_| PaneDragPreview {
+                                        title: drag.title.clone(),
+                                    })
+                                },
+                            )
+                        })
                         .w_full()
                         .min_h(px(theme::WORKSPACE_HEADER_HEIGHT))
                         .track_focus(&pane.terminal_chrome_focus)
@@ -1256,6 +1459,9 @@ impl MultiplexApp {
                     .track_focus(&pane.terminal_focus)
                     .focusable()
                     .bg(theme::terminal_bg())
+                    .when(dims_content, |surface| {
+                        surface.opacity(INACTIVE_PANE_OPACITY)
+                    })
                     .on_mouse_down(
                         MouseButton::Right,
                         cx.listener(move |this, event: &MouseDownEvent, window, cx| {
@@ -1290,6 +1496,10 @@ impl MultiplexApp {
                     )
                     .on_scroll_wheel(cx.listener(
                         move |this, event: &ScrollWheelEvent, window, cx| {
+                            // On the canvas, a terminal without focus lets the canvas pan.
+                            if !this.pane_takes_scroll(pane_id, event) {
+                                return;
+                            }
                             this.handle_pane_scroll(pane_id, event, window, cx);
                             cx.stop_propagation();
                         },
@@ -1323,43 +1533,26 @@ impl MultiplexApp {
                 )
             })
             .when_some(drop_zone, |this, zone| {
-                this.child(
-                    div()
-                        .absolute()
-                        .bg(theme::with_alpha(theme::accent(), 0.3))
-                        .border_2()
-                        .border_color(theme::accent())
-                        .map(|d| match zone {
-                            DropZone::Left => d
-                                .left(px(theme::SPACE_0))
-                                .top(px(theme::SPACE_0))
-                                .h_full()
-                                .w(relative(0.5)),
-                            DropZone::Right => d
-                                .right(px(theme::SPACE_0))
-                                .top(px(theme::SPACE_0))
-                                .h_full()
-                                .w(relative(0.5)),
-                            DropZone::Top => d
-                                .top(px(theme::SPACE_0))
-                                .left(px(theme::SPACE_0))
-                                .w_full()
-                                .h(relative(0.5)),
-                            DropZone::Bottom => d
-                                .bottom(px(theme::SPACE_0))
-                                .left(px(theme::SPACE_0))
-                                .w_full()
-                                .h(relative(0.5)),
-                        })
-                        .with_animation(
-                            ("split-drop-zone", pane.id),
-                            Animation::new(Duration::from_millis(
-                                theme::CANVAS_DROP_ANIMATION_MILLIS,
-                            )),
-                            |element, delta| element.opacity(delta),
-                        ),
-                )
+                this.child(self.render_split_drop_preview(pane_id, zone))
             })
+    }
+
+    fn pane_takes_scroll(&self, pane_id: u64, event: &ScrollWheelEvent) -> bool {
+        let Some(workspace) = self.active_workspace() else {
+            return true;
+        };
+        if workspace.layout_mode != WorkspaceLayoutMode::Canvas {
+            return true;
+        }
+        if event.modifiers.secondary() || event.modifiers.control {
+            return false;
+        }
+        workspace
+            .canvas
+            .nodes
+            .iter()
+            .find(|node| node.kind.pane_id() == Some(pane_id))
+            .is_some_and(|node| self.canvas_node_takes_scroll(workspace, node))
     }
 
     fn render_workspace_body(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
@@ -1440,25 +1633,104 @@ impl MultiplexApp {
 
         let workspace_id = workspace.id;
         let (panes, dividers) = self.workspace_split_rects(window);
+        // Motion is tracked in window coordinates so Split and Canvas, whose bodies
+        // start at different heights, can pick up from each other.
+        let body_top = theme::CHROME_HEIGHT
+            + if workspace.search_visible {
+                WORKSPACE_SEARCH_ROW_HEIGHT
+            } else {
+                0.0
+            };
+        let targets: Vec<(u64, MotionRect)> = panes
+            .iter()
+            .map(|rect| {
+                (
+                    rect.pane_id,
+                    MotionRect::new(rect.x, rect.y + body_top, rect.width, rect.height),
+                )
+            })
+            .collect();
+        let now = Instant::now();
+        let transition = self
+            .layout_transition
+            .as_ref()
+            .filter(|transition| transition.workspace_id == workspace_id);
+        let moving = transition.is_some_and(|transition| !transition.is_finished(now));
+        let frames = match transition {
+            Some(transition) if moving => transition.frames(now, &targets, |pane_id| {
+                workspace.pane_ids.contains(&pane_id) && self.pane(pane_id).is_some()
+            }),
+            _ => motion::settled_frames(&targets),
+        };
+        *self.drawn_layout.borrow_mut() = Some((
+            workspace_id,
+            frames
+                .iter()
+                .filter(|frame| !frame.leaving)
+                .map(|frame| (frame.pane_id, frame.rect))
+                .collect(),
+        ));
+        if moving {
+            window.request_animation_frame();
+        } else if self.layout_motion_pending() {
+            cx.defer_in(window, |this, window, cx| {
+                this.settle_layout_transition(window, cx);
+            });
+        }
 
+        let broadcasting = workspace.broadcast_input && workspace.pane_ids.len() > 1;
         let mut container = div().relative().size_full().bg(theme::terminal_bg());
-        for rect in panes {
-            let Some(pane) = self.pane(rect.pane_id) else {
+        for frame in frames {
+            let Some(pane) = self.pane(frame.pane_id) else {
                 continue;
             };
+            pane.grid_bounds.set_scale(1.0);
             container = container.child(
                 div()
                     .absolute()
-                    .left(px(rect.x))
-                    .top(px(rect.y))
-                    .w(px(rect.width))
-                    .h(px(rect.height))
+                    .left(px(frame.rect.x))
+                    .top(px(frame.rect.y - body_top))
+                    .w(px(frame.rect.width))
+                    .h(px(frame.rect.height))
+                    .opacity(frame.opacity)
                     .child(self.render_terminal_pane(pane, window, cx)),
             );
         }
-        for divider in dividers {
-            container = container.child(self.render_pane_divider(workspace_id, divider, cx));
+        // Dividers appear once the panes have settled around them.
+        if !moving {
+            for divider in dividers {
+                container = container.child(self.render_pane_divider(workspace_id, divider, cx));
+            }
         }
+        if broadcasting {
+            // An amber rim around the whole split while typing goes to every pane.
+            container = container.child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .border_2()
+                    .border_color(theme::with_alpha(theme::warning(), 0.55)),
+            );
+        }
+        if let Some(pill) = self.render_zoom_pill(workspace_id, cx) {
+            container = container.child(pill);
+        } else if let Some(pill) = self.render_attention_pill(cx) {
+            container = container.child(pill);
+        }
+        if self.split_layout_bar_revealed {
+            container = container.child(self.render_split_layout_bar(cx));
+        }
+        // The layout bar shows while the pointer is near the bottom edge, so it never
+        // sits over a prompt that is being typed at.
+        container =
+            container.on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, window, cx| {
+                let bottom = f32::from(window.viewport_size().height);
+                let revealed = f32::from(event.position.y) > bottom - SPLIT_LAYOUT_BAR_REVEAL;
+                if this.split_layout_bar_revealed != revealed {
+                    this.split_layout_bar_revealed = revealed;
+                    cx.notify();
+                }
+            }));
 
         v_flex().flex_1().bg(theme::terminal_bg()).child(container)
     }
@@ -1505,6 +1777,188 @@ impl MultiplexApp {
             .child(content)
     }
 
+    fn render_split_layout_bar(&self, cx: &mut Context<Self>) -> AnyElement {
+        let mut bar = h_flex()
+            .id("split-layout-bar")
+            .debug_selector(|| "split-layout-bar".to_string())
+            .items_center()
+            .gap(px(theme::BORDER_HAIRLINE * 2.0))
+            .p(px(theme::SPACE_1))
+            .rounded(px(theme::SPACE_3))
+            .bg(theme::with_alpha(theme::terminal_panel(), 0.94))
+            .border_1()
+            .border_color(theme::border_strong())
+            .shadow_lg()
+            // Clicks on the bar must not reach the pane underneath.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
+        for preset in SplitPreset::ALL {
+            let label = localization::static_message(preset_message(preset));
+            let group = SharedString::from(format!("split-preset-{}", preset as usize));
+            bar = bar.child(
+                div()
+                    .id(("split-preset", preset as usize))
+                    .group(group.clone())
+                    .debug_selector(move || format!("split-preset-{preset:?}"))
+                    .h(px(SPLIT_LAYOUT_BUTTON_SIZE))
+                    .min_w(px(SPLIT_LAYOUT_BUTTON_SIZE))
+                    .px(px(theme::SPACE_2))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(theme::SPACE_2))
+                    .text_color(theme::text_muted_dark())
+                    .cursor_pointer()
+                    .hover(|style| {
+                        style
+                            .bg(theme::with_alpha(theme::hover(), 0.5))
+                            .text_color(theme::text_on_dark())
+                    })
+                    .tooltip(move |window, cx| {
+                        gpui_component::tooltip::Tooltip::new(label.clone()).build(window, cx)
+                    })
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.apply_split_preset(preset, window, cx);
+                    }))
+                    .child(preset_glyph(preset, group)),
+            );
+        }
+        bar = bar
+            .child(
+                div()
+                    .w(px(theme::BORDER_HAIRLINE))
+                    .h(px(SPLIT_LAYOUT_BUTTON_SIZE * 0.6))
+                    .mx(px(theme::SPACE_1))
+                    .bg(theme::border_strong()),
+            )
+            .child(self.split_layout_bar_text_button(
+                "split-layout-equalize",
+                None,
+                localization::static_message(MessageId::SplitEqualizeAction),
+                |this, window, cx| {
+                    this.equalize_active_split(window, cx);
+                },
+                cx,
+            ))
+            .child(self.split_layout_bar_text_button(
+                "split-layout-zoom",
+                Some(IconName::Maximize),
+                localization::static_message(MessageId::SplitZoomAction),
+                |this, window, cx| {
+                    this.toggle_pane_zoom(window, cx);
+                },
+                cx,
+            ));
+        h_flex()
+            .absolute()
+            .bottom(px(theme::SPACE_4))
+            .left_0()
+            .right_0()
+            .justify_center()
+            .child(bar)
+            .with_animation(
+                "split-layout-bar",
+                Animation::new(motion::MotionSpeed::DropPreview.animation_duration()),
+                |element, delta| element.opacity(delta),
+            )
+            .into_any_element()
+    }
+
+    fn split_layout_bar_text_button(
+        &self,
+        id: &'static str,
+        icon: Option<IconName>,
+        label: String,
+        action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        h_flex()
+            .id(id)
+            .debug_selector(move || id.to_string())
+            .h(px(SPLIT_LAYOUT_BUTTON_SIZE))
+            .px(px(theme::SPACE_3))
+            .gap(px(theme::SPACE_2))
+            .items_center()
+            .rounded(px(theme::SPACE_2))
+            .text_size(px(theme::TYPE_CAPTION_SIZE))
+            .text_color(theme::text_muted_dark())
+            .cursor_pointer()
+            .hover(|style| {
+                style
+                    .bg(theme::with_alpha(theme::hover(), 0.5))
+                    .text_color(theme::text_on_dark())
+            })
+            .when_some(icon, |button, icon| {
+                button.child(Icon::new(icon).size(px(theme::ICON_SIZE_DEFAULT)))
+            })
+            .child(label)
+            .on_click(cx.listener(move |this, _, window, cx| action(this, window, cx)))
+    }
+
+    /// While one pane fills the split: which one, how many are hidden, and the
+    /// way back.
+    fn render_zoom_pill(&self, workspace_id: u64, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let pane_id = self.zoomed_pane_in(workspace_id)?;
+        let title = self.pane(pane_id)?.title.clone();
+        let hidden = self
+            .workspace(workspace_id)?
+            .layout
+            .as_ref()?
+            .leaf_count()
+            .saturating_sub(1);
+        Some(
+            h_flex()
+                .id("split-zoom-pill")
+                .debug_selector(|| "split-zoom-pill".to_string())
+                .absolute()
+                .top(px(theme::SPACE_3))
+                .left_0()
+                .right_0()
+                .justify_center()
+                .child(
+                    h_flex()
+                        .items_center()
+                        .gap(px(theme::SPACE_3))
+                        .h(px(ZOOM_PILL_HEIGHT))
+                        .pl(px(theme::SPACE_4))
+                        .pr(px(theme::SPACE_1))
+                        .rounded(px(ZOOM_PILL_HEIGHT / 2.0))
+                        .bg(theme::terminal_panel())
+                        .border_1()
+                        .border_color(theme::border_strong())
+                        .shadow_lg()
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                        .text_color(theme::text_muted_dark())
+                        .child(
+                            h_flex()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .font_semibold()
+                                        .text_color(theme::text_on_dark())
+                                        .child(title),
+                                )
+                                .child(localization::split_zoom_hidden_panes(hidden)),
+                        )
+                        .child(
+                            Button::new("split-zoom-restore")
+                                .small()
+                                .label(localization::static_message(
+                                    multiplex_ui_contract::MessageId::SplitZoomRestoreAction,
+                                ))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.restore_zoomed_pane(window, cx);
+                                })),
+                        ),
+                )
+                .with_animation(
+                    ("split-zoom-pill", pane_id),
+                    Animation::new(motion::MotionSpeed::Quick.animation_duration()),
+                    |element, delta| element.opacity(delta),
+                )
+                .into_any_element(),
+        )
+    }
+
     fn render_pane_divider(
         &self,
         workspace_id: u64,
@@ -1521,29 +1975,91 @@ impl MultiplexApp {
             span,
             ratio,
         } = divider;
-        let active = self
+        let drag = self
             .divider_drag
-            .is_some_and(|drag| drag.divider_id == divider_id);
-        let grip = if active {
-            theme::accent()
-        } else {
-            theme::with_alpha(theme::text_muted_dark(), 0.45)
+            .filter(|drag| drag.divider_id == divider_id && drag.workspace_id == workspace_id);
+        let group = SharedString::from(format!("pane-divider-{divider_id}"));
+        // An invisible strip the width of the gap; its line shows on hover and while
+        // dragging, and turns green when the ratio clicks into a third or a half.
+        let line_color = match drag {
+            Some(drag) if drag.snapped.is_some() => theme::success(),
+            Some(_) => theme::accent(),
+            None => gpui::transparent_black(),
         };
-        let base = div()
+        let inset = px(DIVIDER_LINE_INSET);
+        let line = div()
+            .absolute()
+            .rounded(px(theme::BORDER_HAIRLINE))
+            .bg(line_color)
+            .when(drag.is_none(), |line| {
+                line.group_hover(group.clone(), |style| style.bg(theme::accent()))
+            })
+            .map(|line| match axis {
+                SplitAxis::Horizontal => line
+                    .top(inset)
+                    .bottom(inset)
+                    .left(px((width - DIVIDER_LINE_WIDTH) / 2.0))
+                    .w(px(DIVIDER_LINE_WIDTH)),
+                SplitAxis::Vertical => line
+                    .left(inset)
+                    .right(inset)
+                    .top(px((height - DIVIDER_LINE_WIDTH) / 2.0))
+                    .h(px(DIVIDER_LINE_WIDTH)),
+            });
+        let readout = drag.map(|drag| {
+            let text = match drag.snapped {
+                Some(mark) => mark.label().to_string(),
+                None => {
+                    let first = (drag.ratio * 100.0).round() as i32;
+                    format!("{first} : {}", 100 - first)
+                }
+            };
+            div()
+                .absolute()
+                .left(px(width / 2.0 - DIVIDER_READOUT_WIDTH / 2.0))
+                .top(px(height / 2.0 - DIVIDER_READOUT_HEIGHT / 2.0))
+                .w(px(DIVIDER_READOUT_WIDTH))
+                .h(px(DIVIDER_READOUT_HEIGHT))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(theme::SPACE_2))
+                .bg(theme::terminal_panel())
+                .border_1()
+                .border_color(if drag.snapped.is_some() {
+                    theme::success()
+                } else {
+                    theme::border_strong()
+                })
+                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                .font_family(self.terminal_font_family(cx))
+                .text_color(if drag.snapped.is_some() {
+                    theme::success()
+                } else {
+                    theme::text_on_dark()
+                })
+                .child(text)
+        });
+        div()
             .id(("pane-divider", divider_id))
             .debug_selector(move || format!("pane-divider-{}", divider_id))
+            .group(group)
             .absolute()
             .left(px(x))
             .top(px(y))
             .w(px(width))
             .h(px(height))
-            .flex()
-            .items_center()
-            .justify_center()
-            .hover(|style| style.bg(theme::with_alpha(theme::accent(), 0.12)))
+            .cursor(match axis {
+                SplitAxis::Horizontal => CursorStyle::ResizeLeftRight,
+                SplitAxis::Vertical => CursorStyle::ResizeUpDown,
+            })
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    if event.click_count == 2 {
+                        this.equalize_divider(workspace_id, divider_id, window, cx);
+                        return;
+                    }
                     this.start_divider_drag(
                         workspace_id,
                         divider_id,
@@ -1554,23 +2070,9 @@ impl MultiplexApp {
                         cx,
                     );
                 }),
-            );
-        match axis {
-            SplitAxis::Horizontal => base.cursor(CursorStyle::ResizeLeftRight).child(
-                div()
-                    .w(px(theme::SPACE_1))
-                    .h(px(theme::CANVAS_CONTROL_HEIGHT))
-                    .rounded(px(theme::BORDER_HAIRLINE))
-                    .bg(grip),
-            ),
-            SplitAxis::Vertical => base.cursor(CursorStyle::ResizeUpDown).child(
-                div()
-                    .h(px(theme::SPACE_1))
-                    .w(px(theme::CANVAS_CONTROL_HEIGHT))
-                    .rounded(px(theme::BORDER_HAIRLINE))
-                    .bg(grip),
-            ),
-        }
+            )
+            .child(line)
+            .when_some(readout, |divider, readout| divider.child(readout))
     }
 
     fn update_split_drop_target(
@@ -1580,41 +2082,414 @@ impl MultiplexApp {
         cx: &mut Context<Self>,
     ) {
         let source_workspace_id = event.drag(cx).workspace_id;
-        let bounds = event.bounds;
-        let position = event.event.position;
-        let owns_target = matches!(self.split_drop_target, Some((pid, _)) if pid == pane_id);
         let same_workspace = self.workspace_id_for_pane(pane_id) == Some(source_workspace_id);
-
         // `on_drag_move` fires for every pane on every move — only react for the
         // pane the cursor is actually over, and never for the drag's own workspace.
-        if same_workspace || !bounds.contains(&position) {
+        let zone = (!same_workspace && event.bounds.contains(&event.event.position))
+            .then(|| drop_zone_at(event.bounds, event.event.position, false));
+        // A merge that would go past the cap says so before the drop, not after.
+        let full = zone.is_some() && {
+            let target = self
+                .workspace_id_for_pane(pane_id)
+                .and_then(|workspace_id| self.workspace(workspace_id))
+                .map_or(0, |workspace| workspace.pane_ids.len());
+            let source = self
+                .workspace(source_workspace_id)
+                .map_or(0, |workspace| workspace.pane_ids.len());
+            target + source > MAX_SPLIT_PANES
+        };
+        self.set_split_drop_target(pane_id, zone, full, cx);
+    }
+
+    fn update_pane_drop_target(
+        &mut self,
+        pane_id: u64,
+        event: &DragMoveEvent<PaneDrag>,
+        cx: &mut Context<Self>,
+    ) {
+        let drag = event.drag(cx);
+        let same_split = drag.pane_id != pane_id
+            && self.workspace_id_for_pane(pane_id) == Some(drag.workspace_id);
+        let zone = (same_split && event.bounds.contains(&event.event.position))
+            .then(|| drop_zone_at(event.bounds, event.event.position, true));
+        self.set_split_drop_target(pane_id, zone, false, cx);
+    }
+
+    /// Point the drop preview at `zone` of `pane_id`, or take it away from that pane.
+    /// A change of zone on the same pane slides the preview from where it was.
+    fn set_split_drop_target(
+        &mut self,
+        pane_id: u64,
+        zone: Option<DropZone>,
+        full: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let owns_target = matches!(self.split_drop_target, Some((target, _)) if target == pane_id);
+        let Some(zone) = zone else {
             if owns_target {
                 self.split_drop_target = None;
+                self.split_drop_full = false;
+                self.split_drop_preview_from = None;
                 cx.notify();
             }
             return;
-        }
-
-        let width = f32::from(bounds.size.width).max(1.0);
-        let height = f32::from(bounds.size.height).max(1.0);
-        let rx = (f32::from(position.x) - f32::from(bounds.origin.x)) / width - 0.5;
-        let ry = (f32::from(position.y) - f32::from(bounds.origin.y)) / height - 0.5;
-        let zone = if rx.abs() > ry.abs() {
-            if rx < 0.0 {
-                DropZone::Left
-            } else {
-                DropZone::Right
-            }
-        } else if ry < 0.0 {
-            DropZone::Top
-        } else {
-            DropZone::Bottom
         };
         let next = Some((pane_id, zone));
-        if self.split_drop_target != next {
-            self.split_drop_target = next;
-            cx.notify();
+        if self.split_drop_target == next && self.split_drop_full == full {
+            return;
         }
+        self.split_drop_preview_from = match self.split_drop_target {
+            Some((target, previous)) if target == pane_id && previous != zone => Some((
+                pane_id,
+                self.drawn_drop_preview(pane_id, previous),
+                Instant::now(),
+            )),
+            _ => None,
+        };
+        self.split_drop_target = next;
+        self.split_drop_full = full;
+        cx.notify();
+    }
+
+    /// Where the preview for `zone` is drawn on this frame, as fractions of the pane,
+    /// partway along a slide that is still under way.
+    fn drawn_drop_preview(&self, pane_id: u64, zone: DropZone) -> MotionRect {
+        let to = drop_zone_fraction(zone);
+        match self.split_drop_preview_from {
+            Some((target, from, started)) if target == pane_id => {
+                let tween = motion::Tween::new(from, to, motion::MotionSpeed::DropPreview, started);
+                from.lerp(to, tween.progress(Instant::now()))
+            }
+            _ => to,
+        }
+    }
+
+    fn render_split_drop_preview(&self, pane_id: u64, zone: DropZone) -> AnyElement {
+        let rect = self.drawn_drop_preview(pane_id, zone);
+        let full = self.split_drop_full;
+        let color = if full {
+            theme::danger()
+        } else {
+            theme::accent()
+        };
+        let label = if full {
+            localization::split_drop_full(MAX_SPLIT_PANES)
+        } else {
+            localization::static_message(match zone {
+                DropZone::Left => MessageId::SplitDropLeft,
+                DropZone::Right => MessageId::SplitDropRight,
+                DropZone::Top => MessageId::SplitDropUp,
+                DropZone::Bottom => MessageId::SplitDropDown,
+                DropZone::Center => MessageId::SplitDropSwap,
+            })
+        };
+        let sliding = self
+            .split_drop_preview_from
+            .is_some_and(|(target, _, started)| {
+                target == pane_id && started.elapsed() < motion::MotionSpeed::DropPreview.duration()
+            });
+        // Faint outlines of every zone the pane offers, under the one that will be used.
+        let mut zones = div().absolute().inset_0();
+        // Only a pane moving within its split can swap; a dragged tab cannot.
+        let offers_center = self.dragging_pane;
+        for guide in [
+            DropZone::Left,
+            DropZone::Right,
+            DropZone::Top,
+            DropZone::Bottom,
+        ]
+        .into_iter()
+        .map(drop_zone_fraction)
+        .chain(offers_center.then(center_zone_guide))
+        {
+            zones = zones.child(
+                div()
+                    .absolute()
+                    .left(relative(guide.x))
+                    .top(relative(guide.y))
+                    .w(relative(guide.width))
+                    .h(relative(guide.height))
+                    .rounded(px(theme::SPACE_2))
+                    .border_1()
+                    .border_color(theme::with_alpha(theme::accent(), 0.35)),
+            );
+        }
+        let preview = div()
+            .absolute()
+            .left(relative(rect.x))
+            .top(relative(rect.y))
+            .w(relative(rect.width))
+            .h(relative(rect.height))
+            .p(px(DROP_PREVIEW_INSET))
+            .child(
+                div()
+                    .size_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(theme::SPACE_3))
+                    .border_2()
+                    .border_color(color)
+                    .bg(theme::with_alpha(color, 0.16))
+                    .child(
+                        div()
+                            .px(px(theme::SPACE_3))
+                            .py(px(theme::SPACE_1))
+                            .rounded(px(theme::SPACE_2))
+                            .bg(color)
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                            .font_semibold()
+                            .text_color(theme::terminal_bg())
+                            .child(label),
+                    ),
+            );
+        div()
+            .id(("split-drop-zone", pane_id))
+            .debug_selector(move || format!("split-drop-zone-{pane_id}"))
+            .absolute()
+            .inset_0()
+            .child(zones)
+            .child(preview)
+            .map(|overlay| {
+                if sliding {
+                    overlay.into_any_element()
+                } else {
+                    overlay
+                        .with_animation(
+                            ("split-drop-zone-fade", pane_id),
+                            Animation::new(motion::MotionSpeed::DropPreview.animation_duration()),
+                            |element, delta| element.opacity(delta),
+                        )
+                        .into_any_element()
+                }
+            })
+    }
+
+    /// Move a pane dragged by its header to an edge of another pane in its split,
+    /// or trade places with it when dropped in the middle.
+    pub(super) fn drop_pane_on_pane(
+        &mut self,
+        dragged: u64,
+        target: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let zone = self
+            .split_drop_target
+            .and_then(|(pane_id, zone)| (pane_id == target).then_some(zone));
+        self.split_drop_target = None;
+        self.split_drop_full = false;
+        self.split_drop_preview_from = None;
+        self.dragging_pane = false;
+        let Some(zone) = zone else {
+            cx.notify();
+            return;
+        };
+        let Some(workspace_id) = self
+            .workspace_id_for_pane(dragged)
+            .filter(|workspace_id| self.workspace_id_for_pane(target) == Some(*workspace_id))
+        else {
+            cx.notify();
+            return;
+        };
+        if self.active_workspace_id == Some(workspace_id) {
+            self.begin_layout_transition(motion::MotionSpeed::Quick);
+        }
+        self.zoomed_panes.remove(&workspace_id);
+        let moved = self
+            .workspace_mut(workspace_id)
+            .and_then(|workspace| workspace.layout.as_mut())
+            .is_some_and(|layout| match zone {
+                DropZone::Center => layout.swap_leaves(dragged, target),
+                DropZone::Left => layout.move_leaf(dragged, target, SplitEdge::Left),
+                DropZone::Right => layout.move_leaf(dragged, target, SplitEdge::Right),
+                DropZone::Top => layout.move_leaf(dragged, target, SplitEdge::Top),
+                DropZone::Bottom => layout.move_leaf(dragged, target, SplitEdge::Bottom),
+            });
+        if !moved {
+            self.layout_transition = None;
+            cx.notify();
+            return;
+        }
+        self.activate_pane(dragged, window, cx);
+        self.sync_terminal_layout(window, cx);
+        self.persist_runtime_state();
+        cx.notify();
+    }
+
+    /// The bar across the top of a split pane: its state, name and address, the
+    /// broadcast mark, and zoom and close. Dragging it moves the pane.
+    fn render_split_pane_header(
+        &self,
+        pane: &SessionPane,
+        drag: PaneDrag,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let pane_id = pane.id;
+        let active = self
+            .active_workspace()
+            .is_some_and(|workspace| workspace.active_pane_id == pane_id);
+        let broadcast = self.active_workspace().is_some_and(|workspace| {
+            workspace.broadcast_input && workspace.pane_ids.len() > 1 && !pane.closed
+        });
+        let zoomed = self.zoomed_pane() == Some(pane_id);
+        let renaming = self.pane_rename_id == Some(pane_id);
+        let status_color = if pane.connected {
+            theme::success()
+        } else if pane.closed {
+            theme::text_muted_dark()
+        } else {
+            theme::accent()
+        };
+        let connecting = !pane.connected && !pane.closed;
+        let dot = div()
+            .flex_none()
+            .size(px(PANE_STATUS_DOT))
+            .rounded_full()
+            .bg(status_color);
+        let dot = if connecting {
+            dot.with_animation(
+                ("pane-status-pulse", pane_id),
+                Animation::new(Duration::from_millis(1200))
+                    .repeat()
+                    .with_easing(gpui::pulsating_between(0.35, 1.0)),
+                |dot, delta| dot.opacity(delta),
+            )
+            .into_any_element()
+        } else {
+            dot.into_any_element()
+        };
+        let icon_button = |id: (&'static str, u64), icon: IconName| {
+            div()
+                .id(id)
+                .flex_none()
+                .size(px(PANE_HEADER_BUTTON))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(theme::SPACE_1))
+                .text_color(theme::text_muted_dark())
+                .cursor_pointer()
+                .hover(|style| {
+                    style
+                        .bg(theme::with_alpha(theme::hover(), 0.5))
+                        .text_color(theme::text_on_dark())
+                })
+                // A click on a button must not start dragging the pane.
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .child(Icon::new(icon).size(px(theme::ICON_SIZE_DEFAULT)))
+        };
+        h_flex()
+            .id(("split-pane-header", pane_id))
+            .debug_selector(move || format!("split-pane-header-{pane_id}"))
+            .flex_none()
+            .w_full()
+            .h(px(PANE_HEADER_HEIGHT))
+            .items_center()
+            .gap(px(theme::SPACE_2))
+            .pl(px(theme::SPACE_3))
+            .pr(px(theme::SPACE_1))
+            .bg(if active {
+                theme::chrome_tab_active()
+            } else {
+                theme::terminal_panel()
+            })
+            .border_b_1()
+            .border_color(theme::border_dark())
+            .cursor_grab()
+            .on_drag(drag, |drag: &PaneDrag, _, _, cx| {
+                cx.stop_propagation();
+                cx.new(|_| PaneDragPreview {
+                    title: drag.title.clone(),
+                })
+            })
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    this.dragging_pane = true;
+                    if event.click_count == 2 {
+                        this.start_pane_rename(pane_id, window, cx);
+                    } else {
+                        this.activate_pane(pane_id, window, cx);
+                    }
+                }),
+            )
+            .child(dot)
+            .child(if renaming {
+                div()
+                    .w(px(PANE_RENAME_WIDTH))
+                    .child(Input::new(&self.pane_rename_input).small())
+                    .into_any_element()
+            } else {
+                div()
+                    .flex_none()
+                    .max_w(relative(0.5))
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .whitespace_nowrap()
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                    .font_semibold()
+                    .text_color(if active {
+                        theme::text_on_dark()
+                    } else {
+                        theme::text_secondary()
+                    })
+                    .child(pane.title.clone())
+                    .into_any_element()
+            })
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .whitespace_nowrap()
+                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                    .font_family(self.terminal_font_family(cx))
+                    .text_color(theme::text_muted_dark())
+                    .child(pane.request.address()),
+            )
+            .when(broadcast, |header| {
+                header.child(
+                    div()
+                        .flex_none()
+                        .text_size(px(PANE_BROADCAST_BADGE_SIZE))
+                        .font_bold()
+                        .text_color(theme::warning())
+                        .child(localization::static_message(
+                            MessageId::SplitPaneBroadcastBadge,
+                        )),
+                )
+            })
+            .child(
+                icon_button(
+                    ("split-pane-zoom", pane_id),
+                    if zoomed {
+                        IconName::Minimize
+                    } else {
+                        IconName::Maximize
+                    },
+                )
+                .tooltip(move |window, cx| {
+                    gpui_component::tooltip::Tooltip::new(localization::static_message(if zoomed {
+                        MessageId::PaneContextRestoreAction
+                    } else {
+                        MessageId::PaneContextZoomAction
+                    }))
+                    .build(window, cx)
+                })
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.activate_pane(pane_id, window, cx);
+                    this.toggle_pane_zoom(window, cx);
+                })),
+            )
+            .child(
+                icon_button(("split-pane-close", pane_id), IconName::Close).on_click(cx.listener(
+                    move |this, _, _, cx| {
+                        this.close_pane(pane_id, cx);
+                    },
+                )),
+            )
     }
 
     fn drop_tab_on_pane(
@@ -1634,4 +2509,47 @@ impl MultiplexApp {
 
 fn workspace_sftp_text(message: MessageId) -> String {
     localization::message_id(message).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{Bounds, point, size};
+
+    fn at(x: f32, y: f32, center: bool) -> DropZone {
+        let bounds = Bounds::new(point(px(100.0), px(50.0)), size(px(400.0), px(200.0)));
+        drop_zone_at(
+            bounds,
+            point(px(100.0 + x * 400.0), px(50.0 + y * 200.0)),
+            center,
+        )
+    }
+
+    #[test]
+    fn the_nearest_edge_wins_and_the_middle_swaps_only_when_offered() {
+        assert_eq!(at(0.1, 0.5, true), DropZone::Left);
+        assert_eq!(at(0.9, 0.5, true), DropZone::Right);
+        assert_eq!(at(0.5, 0.05, true), DropZone::Top);
+        assert_eq!(at(0.4, 0.95, true), DropZone::Bottom);
+        assert_eq!(at(0.5, 0.5, true), DropZone::Center);
+        assert_eq!(at(0.35, 0.65, true), DropZone::Center);
+        assert_ne!(at(0.5, 0.5, false), DropZone::Center);
+        assert_eq!(at(0.45, 0.62, false), DropZone::Bottom);
+    }
+
+    #[test]
+    fn a_drop_takes_the_half_of_the_pane_on_its_edge() {
+        assert_eq!(
+            drop_zone_fraction(DropZone::Left),
+            MotionRect::new(0.0, 0.0, 0.5, 1.0)
+        );
+        assert_eq!(
+            drop_zone_fraction(DropZone::Bottom),
+            MotionRect::new(0.0, 0.5, 1.0, 0.5)
+        );
+        assert_eq!(
+            drop_zone_fraction(DropZone::Center),
+            MotionRect::new(0.0, 0.0, 1.0, 1.0)
+        );
+    }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "6441caca51d8b377a20b603a7abf4c8f7c27d18ecfdbd7152159ffe0e6ac13ed",
+  "sourceSha256": "2ce889de152255eb732cb62210296a0200e2975cf8806bba6d16978de7c81b17",
   "statuses": [
     {
       "color": "color.status.attention",
@@ -2210,6 +2210,34 @@
       }
     },
     {
+      "allowedUse": "Canvas fit, tidy, and jump-to-node camera moves.",
+      "category": "duration",
+      "description": "The canvas view flying to fit content or to a node.",
+      "key": "motion.camera",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "460ms",
+        "high_contrast": "460ms",
+        "light": "460ms",
+        "recording_friendly": "460ms",
+        "system": "460ms"
+      }
+    },
+    {
+      "allowedUse": "Canvas zoom buttons and zoom shortcuts.",
+      "category": "duration",
+      "description": "The canvas view zooming one step from a button or shortcut.",
+      "key": "motion.camera_step",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "300ms",
+        "high_contrast": "300ms",
+        "light": "300ms",
+        "recording_friendly": "300ms",
+        "system": "300ms"
+      }
+    },
+    {
       "allowedUse": "Controller coordination worker only.",
       "category": "duration",
       "description": "Controller coordination retry polling interval.",
@@ -2221,6 +2249,20 @@
         "light": "10ms",
         "recording_friendly": "10ms",
         "system": "10ms"
+      }
+    },
+    {
+      "allowedUse": "Split drop previews only.",
+      "category": "duration",
+      "description": "A drop preview sliding between the zones of a pane.",
+      "key": "motion.drop_preview",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "100ms",
+        "high_contrast": "100ms",
+        "light": "100ms",
+        "recording_friendly": "100ms",
+        "system": "100ms"
       }
     },
     {
@@ -2305,6 +2347,48 @@
         "light": "0ms",
         "recording_friendly": "0ms",
         "system": "0ms"
+      }
+    },
+    {
+      "allowedUse": "Workspace pane and canvas node layout changes only.",
+      "category": "duration",
+      "description": "Panes gliding to a new arrangement: switching Split and Canvas, a layout preset, or zooming a pane.",
+      "key": "motion.layout_morph",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "440ms",
+        "high_contrast": "440ms",
+        "light": "440ms",
+        "recording_friendly": "440ms",
+        "system": "440ms"
+      }
+    },
+    {
+      "allowedUse": "Keyboard split resizing only.",
+      "category": "duration",
+      "description": "A divider moved from the keyboard.",
+      "key": "motion.layout_nudge",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "140ms",
+        "high_contrast": "140ms",
+        "light": "140ms",
+        "recording_friendly": "140ms",
+        "system": "140ms"
+      }
+    },
+    {
+      "allowedUse": "Workspace split changes that add, remove, or move one pane.",
+      "category": "duration",
+      "description": "Panes making room for a pane that was added, closed, moved, or swapped.",
+      "key": "motion.layout_quick",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "260ms",
+        "high_contrast": "260ms",
+        "light": "260ms",
+        "recording_friendly": "260ms",
+        "system": "260ms"
       }
     },
     {

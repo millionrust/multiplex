@@ -18,6 +18,12 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 - Single-row top chrome with custom in-app traffic lights (close / minimize / zoom); the macOS OS title-bar drag is taken over so the chrome stays draggable from its empty area.
 - Draggable workspace tabs that scroll horizontally when they overflow; double-click a tab to rename it; right-click a tab for Duplicate / Duplicate in a new window / Rename / Split / Close.
 - Each workspace tab can contain split panes arranged as a recursive binary tree: dropping a tab onto a pane splits that pane, with arbitrary nesting and resizable dividers.
+  Each split pane has a header (status, title, address, zoom, close); dragging it onto another
+  pane moves it to that edge or, in the middle, swaps the two, with a sliding drop preview that
+  also warns before a tab merge would pass the cap. Dividers snap to thirds and halves (Option
+  drags freely), show the ratio while dragged, and even out on double-click. A pane can be zoomed
+  to fill the split (Cmd+Shift+Enter) with a pill to restore it; a layout bar that appears near
+  the bottom edge applies one-click presets and Equalize. Inactive panes dim.
 - Each pane is its own SSH session and PTY; a native local terminal can also be opened and behaves like any other pane.
 - Quick connect: type `user@host` or `ssh user@host:port` in the search bar.
 - Reconnect button on disconnected/errored panes; optional automatic reconnect after non-user-initiated SSH drops, configurable in Settings.
@@ -35,6 +41,10 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 - Bounded local diagnostics store only allowlisted operational metadata; raw terminal content, stderr, panic text, and backtraces are excluded. Users can preview an exact privacy-scanned bundle before saving it locally.
 - Encrypted-vault shared-folder sync through Dropbox / iCloud Drive / Google Drive / Syncthing, plus portable and passphrase-encrypted JSON export/import.
 - Keyboard shortcuts: Cmd+D / Cmd+Shift+B / Cmd+Shift+L / Cmd+Alt+arrow, library/section switching, search focus, and new-host flow.
+  Split and Canvas add Cmd+Shift+D (split down), Cmd+Shift+arrow (focus the nearest pane or node
+  on screen), Cmd+Shift+Option+arrow (move the nearest divider, or nudge a node), Cmd+Shift+E
+  (equalize), and Cmd+Option+T/1/0/2 (tidy, fit, 100%, fly to the selected node). Settings lists
+  them, and the command palette offers each layout action with its shortcut.
 - Terminal surface supports:
   - raw VT rendering, PTY resize, local scrollback, terminal search
   - text selection and clipboard copy, optional copy-on-select for mouse selections
@@ -46,6 +56,16 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   and SSH terminals, interactive or structured coding agents, sticky notes, and
   group frames in persisted, draggable, resizable nodes with reviewed context
   links and bounded dependency orchestration.
+  Nodes snap to an 8-unit grid and to each other's edges, centres, and a standard gap, with
+  guide lines (Option or the toolbar Snap toggle turn it off). Shift-click and Shift-drag
+  select several nodes, which move together; a click on empty canvas clears the selection.
+  Zooming scales a terminal's text rather than its columns and rows, so it never resizes the
+  program; below 55% nodes become readable cards. Scrolling pans except over the focused node.
+  Double-click empty canvas to create a node there; Tidy arranges by group; links can be
+  dragged out of a node's port, carry labels that remove them, and flow while an agent works.
+  A pill in Split and Canvas names sessions waiting for the user and jumps to them.
+  Switching Split and Canvas, split changes, presets, zoom, Tidy, and camera moves animate
+  (`ui/app/motion.rs`), and a terminal is resized once its pane has settled.
 - Remote access (Devices, or Settings → Remote Devices) is On/Off: the Controller listener
   binds every private address (RFC 1918, Tailscale's 100.64/10, fc00::/7) on one port, follows
   network changes, and announces `_multiplex._tcp` with Bonjour on LAN interfaces only.
@@ -87,7 +107,6 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 
 ## Explicitly out of scope right now
 
-- drag-reordering split panes
 - remote team / multiplayer features (shared-folder vault sync is the only sync that exists)
 
 ## Repository layout
@@ -133,6 +152,12 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   - [connect.rs](crates/multiplex-desktop/src/ui/app/connect.rs) / [sftp.rs](crates/multiplex-desktop/src/ui/app/sftp.rs) / [palette.rs](crates/multiplex-desktop/src/ui/app/palette.rs) / [overlay.rs](crates/multiplex-desktop/src/ui/app/overlay.rs) / [types.rs](crates/multiplex-desktop/src/ui/app/types.rs).
   - [canvas.rs](crates/multiplex-desktop/src/ui/app/canvas.rs) — canvas geometry, interaction, terminal and
     agent nodes, links, worktree controls, and orchestration UI.
+  - [split_tree.rs](crates/multiplex-desktop/src/ui/app/split_tree.rs) — the `SplitNode` tree, its pure
+    operations (move, swap, equalize, nudge, presets, directional neighbours, ratio snapping), and the
+    pixel layout, with unit tests.
+  - [motion.rs](crates/multiplex-desktop/src/ui/app/motion.rs) — layout transitions and tweens on the
+    `cubic-bezier(.2,.8,.2,1)` curve, timed by the `motion.layout_*`, `motion.camera*`, and
+    `motion.drop_preview` tokens; zero-length under `cfg(test)`.
 - `crates/multiplex-desktop/src/agents/` — safe process launch, normalized protocols, provider adapters,
   context redaction, worktree ownership, and dependency scheduling.
 - [crates/multiplex-desktop/src/ui/theme.rs](crates/multiplex-desktop/src/ui/theme.rs)
@@ -324,6 +349,8 @@ bounded rotation and retention. See [docs/diagnostics.md](docs/diagnostics.md).
 ## Known implementation limits
 
 - Mouse reporting is practical, not exhaustive protocol coverage.
+- GPUI 0.2 reports no trackpad pinch, so the canvas zooms with Cmd- or Control-scroll at the
+  pointer rather than a pinch gesture.
 - Search is plain substring search over terminal text, not regex.
 - The `Keychain` imports keys from `~/.ssh` and allows picking files from disk, but does not generate keys.
 - SSH config hosts are imported at startup (shown with an `SSH Config` badge) and runtime-synced, not written back into the app state file.

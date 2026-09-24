@@ -16,6 +16,7 @@ mod hosted_session;
 mod hosts;
 mod key_lifecycle;
 mod library;
+mod motion;
 mod new_session;
 mod notification_settings;
 mod overlay;
@@ -35,6 +36,7 @@ mod session_resume;
 mod session_sidebar;
 mod settings_surface;
 mod sftp;
+mod split_tree;
 mod terminal_grid;
 mod transcript_export;
 mod types;
@@ -65,6 +67,7 @@ use dev_urls::DevUrlUiState;
 use global_search::GlobalSearchState;
 use hosted_session::DurableSessionPaths;
 use key_lifecycle::{KeyLifecycleDialog, KeyLifecycleInputs};
+use motion::{LayoutTransition, MotionRect, MotionSpeed};
 use new_session::NewSessionState;
 use palette::{
     CommandPaletteCandidate, OutputSuggestionContext, PaletteAction, PathSuggestionContext,
@@ -83,6 +86,10 @@ use session_coordinator::{
 };
 use session_library::{SessionLibraryFilter, SessionLibraryState, SessionLibraryView};
 use session_resume::SessionResumeState;
+use split_tree::{
+    DividerRect, PaneRect, SplitNode, compute_split_layout, flat_split, saved_to_split_node,
+    split_node_to_saved,
+};
 use terminal_grid::{GridBounds, TerminalGridView};
 use worktree_launch::WorktreeLaunchUiState;
 
@@ -133,9 +140,9 @@ use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
     HostColorTag, HostProfile, JumpHostConnection, OutboundProxyKind, PortForwardKind,
     PortForwardRule, ProfileSource, QuickConnect, SavedAppAttachedSession, SavedHostGroup,
-    SavedIdentity, SavedSnippet, SavedSplitNode, SavedState, SavedVault, SavedVaultMember,
-    SavedWindowBounds, SavedWorkspace, SessionLogEntry, SplitAxis, ThemePreset, VaultKind,
-    VaultMemberRole, WorkspaceLayoutMode, default_persistent_session_name_from_id,
+    SavedIdentity, SavedSnippet, SavedState, SavedVault, SavedVaultMember, SavedWindowBounds,
+    SavedWorkspace, SessionLogEntry, SplitAxis, ThemePreset, VaultKind, VaultMemberRole,
+    WorkspaceLayoutMode, default_persistent_session_name_from_id,
 };
 use crate::replication::{
     DesktopConflictSelection, DesktopReplication, DesktopReplicationConflict,
@@ -179,10 +186,10 @@ use crate::ui::util::{
 const TERMINAL_LINE_HEIGHT: f32 = 1.3; // termirust-ui-exception:terminal-grid-metrics
 // termirust-ui-surface:terminal-chrome:end
 const WORKSPACE_SEARCH_ROW_HEIGHT: f32 = theme::WORKSPACE_SEARCH_ROW_HEIGHT;
-use crate::ui::theme::{PANE_GAP, WORKSPACE_PADDING};
+use crate::ui::theme::WORKSPACE_PADDING;
 const TERMINAL_INNER_PADDING_X: f32 = theme::TERMINAL_PADDING_X;
 const TERMINAL_INNER_PADDING_Y: f32 = theme::TERMINAL_PADDING_Y;
-const MAX_SPLIT_PANES: usize = 4;
+const MAX_SPLIT_PANES: usize = 6;
 const MAX_COALESCED_TERMINAL_OUTPUT_BYTES: usize = 256 * 1024;
 const HOST_CARD_WIDTH: f32 = theme::HOST_CARD_WIDTH;
 const ICON_KEY: &str = "icons/key.svg";
@@ -197,6 +204,7 @@ const ICON_PANEL_COLLAPSE_RIGHT: &str = "icons/panel-collapse-right.svg";
 const ICON_PALETTE: &str = "icons/palette.svg";
 const ICON_HOUSE: &str = "icons/house.svg";
 const ICON_KEYBOARD: &str = "icons/keyboard.svg";
+const ICON_MAGNET: &str = "icons/magnet.svg";
 
 fn app_icon(path: &'static str) -> Icon {
     Icon::new(Icon::empty().path(path))
@@ -987,237 +995,6 @@ impl WorkspaceTab {
     }
 }
 
-/// Recursive split layout for a workspace — a binary tree of panes.
-#[derive(Clone, Debug)]
-enum SplitNode {
-    /// A single terminal pane (by id).
-    Leaf(u64),
-    /// Two children laid out along `axis`; `ratio` is the fraction given to `a`.
-    Split {
-        axis: SplitAxis,
-        ratio: f32,
-        a: Box<SplitNode>,
-        b: Box<SplitNode>,
-    },
-}
-
-impl SplitNode {
-    fn collect_leaves(&self, out: &mut Vec<u64>) {
-        match self {
-            SplitNode::Leaf(id) => out.push(*id),
-            SplitNode::Split { a, b, .. } => {
-                a.collect_leaves(out);
-                b.collect_leaves(out);
-            }
-        }
-    }
-
-    fn leaf_ids(&self) -> Vec<u64> {
-        let mut out = Vec::new();
-        self.collect_leaves(&mut out);
-        out
-    }
-
-    fn first_leaf(&self) -> u64 {
-        match self {
-            SplitNode::Leaf(id) => *id,
-            SplitNode::Split { a, .. } => a.first_leaf(),
-        }
-    }
-
-    /// Replace the leaf for `target` with a split of `target` and `new_node`.
-    fn split_leaf(
-        &mut self,
-        target: u64,
-        new_node: &SplitNode,
-        axis: SplitAxis,
-        new_first: bool,
-    ) -> bool {
-        match self {
-            SplitNode::Leaf(id) if *id == target => {
-                let existing = SplitNode::Leaf(*id);
-                let (a, b) = if new_first {
-                    (new_node.clone(), existing)
-                } else {
-                    (existing, new_node.clone())
-                };
-                *self = SplitNode::Split {
-                    axis,
-                    ratio: 0.5,
-                    a: Box::new(a),
-                    b: Box::new(b),
-                };
-                true
-            }
-            SplitNode::Leaf(_) => false,
-            SplitNode::Split { a, b, .. } => {
-                a.split_leaf(target, new_node, axis, new_first)
-                    || b.split_leaf(target, new_node, axis, new_first)
-            }
-        }
-    }
-
-    /// Remove `pane`'s leaf, collapsing the parent split into its sibling.
-    fn without_pane(self, pane: u64) -> Option<SplitNode> {
-        match self {
-            SplitNode::Leaf(id) => (id != pane).then_some(SplitNode::Leaf(id)),
-            SplitNode::Split { axis, ratio, a, b } => {
-                match (a.without_pane(pane), b.without_pane(pane)) {
-                    (None, None) => None,
-                    (Some(only), None) | (None, Some(only)) => Some(only),
-                    (Some(a), Some(b)) => Some(SplitNode::Split {
-                        axis,
-                        ratio,
-                        a: Box::new(a),
-                        b: Box::new(b),
-                    }),
-                }
-            }
-        }
-    }
-
-    /// Set the ratio of the split whose `b` subtree starts at `divider_id`.
-    fn set_ratio(&mut self, divider_id: u64, ratio: f32) -> bool {
-        if let SplitNode::Split { ratio: r, a, b, .. } = self {
-            if b.first_leaf() == divider_id {
-                *r = ratio.clamp(0.08, 0.92);
-                return true;
-            }
-            return a.set_ratio(divider_id, ratio) || b.set_ratio(divider_id, ratio);
-        }
-        false
-    }
-}
-
-/// Build a right-leaning flat split tree along one axis (used to reconstruct a
-/// layout from saved state that predates nested splits).
-fn flat_split(pane_ids: &[u64], axis: SplitAxis) -> Option<SplitNode> {
-    let (first, rest) = pane_ids.split_first()?;
-    let mut node = SplitNode::Leaf(*first);
-    for id in rest {
-        node = SplitNode::Split {
-            axis,
-            ratio: 0.5,
-            a: Box::new(node),
-            b: Box::new(SplitNode::Leaf(*id)),
-        };
-    }
-    Some(node)
-}
-
-/// Convert a runtime `SplitNode` (pane ids) to its persistable form, mapping
-/// each pane id to its index. Returns `None` if any pane id is missing.
-fn split_node_to_saved(
-    node: &SplitNode,
-    indices: &std::collections::HashMap<u64, usize>,
-) -> Option<SavedSplitNode> {
-    match node {
-        SplitNode::Leaf(id) => indices.get(id).copied().map(SavedSplitNode::Leaf),
-        SplitNode::Split { axis, ratio, a, b } => Some(SavedSplitNode::Split {
-            axis: *axis,
-            ratio: *ratio,
-            a: Box::new(split_node_to_saved(a, indices)?),
-            b: Box::new(split_node_to_saved(b, indices)?),
-        }),
-    }
-}
-
-/// Rebuild a runtime `SplitNode` from its persisted form, mapping pane indices
-/// back to live pane ids.
-fn saved_to_split_node(node: &SavedSplitNode, pane_ids: &[u64]) -> Option<SplitNode> {
-    match node {
-        SavedSplitNode::Leaf(index) => pane_ids.get(*index).copied().map(SplitNode::Leaf),
-        SavedSplitNode::Split { axis, ratio, a, b } => Some(SplitNode::Split {
-            axis: *axis,
-            ratio: *ratio,
-            a: Box::new(saved_to_split_node(a, pane_ids)?),
-            b: Box::new(saved_to_split_node(b, pane_ids)?),
-        }),
-    }
-}
-
-#[derive(Clone, Copy)]
-struct PaneRect {
-    pane_id: u64,
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-}
-
-#[derive(Clone, Copy)]
-struct DividerRect {
-    divider_id: u64,
-    axis: SplitAxis,
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-    span: f32,
-    ratio: f32,
-}
-
-/// Walk a `SplitNode` tree, emitting a flat pixel rect for every pane leaf and
-/// every divider, within the box `(x, y, width, height)`.
-fn compute_split_layout(
-    node: &SplitNode,
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-    panes: &mut Vec<PaneRect>,
-    dividers: &mut Vec<DividerRect>,
-) {
-    match node {
-        SplitNode::Leaf(id) => panes.push(PaneRect {
-            pane_id: *id,
-            x,
-            y,
-            width: width.max(1.0),
-            height: height.max(1.0),
-        }),
-        SplitNode::Split { axis, ratio, a, b } => {
-            let ratio = ratio.clamp(0.08, 0.92);
-            match axis {
-                SplitAxis::Horizontal => {
-                    let span = (width - PANE_GAP).max(2.0);
-                    let aw = (span * ratio).max(1.0);
-                    let bw = (span - aw).max(1.0);
-                    compute_split_layout(a, x, y, aw, height, panes, dividers);
-                    dividers.push(DividerRect {
-                        divider_id: b.first_leaf(),
-                        axis: *axis,
-                        x: x + aw,
-                        y,
-                        width: PANE_GAP,
-                        height,
-                        span,
-                        ratio,
-                    });
-                    compute_split_layout(b, x + aw + PANE_GAP, y, bw, height, panes, dividers);
-                }
-                SplitAxis::Vertical => {
-                    let span = (height - PANE_GAP).max(2.0);
-                    let ah = (span * ratio).max(1.0);
-                    let bh = (span - ah).max(1.0);
-                    compute_split_layout(a, x, y, width, ah, panes, dividers);
-                    dividers.push(DividerRect {
-                        divider_id: b.first_leaf(),
-                        axis: *axis,
-                        x,
-                        y: y + ah,
-                        width,
-                        height: PANE_GAP,
-                        span,
-                        ratio,
-                    });
-                    compute_split_layout(b, x, y + ah + PANE_GAP, width, bh, panes, dividers);
-                }
-            }
-        }
-    }
-}
-
 #[derive(Clone)]
 struct ConnectFailure {
     profile: HostProfile,
@@ -1236,6 +1013,14 @@ struct WorkspaceTabDragPreview {
     title: String,
 }
 
+/// A split pane being dragged by its header to another place in the same split.
+#[derive(Clone)]
+struct PaneDrag {
+    workspace_id: u64,
+    pane_id: u64,
+    title: String,
+}
+
 /// In-progress drag of a split divider handle.
 #[derive(Clone, Copy)]
 struct DividerDrag {
@@ -1246,8 +1031,12 @@ struct DividerDrag {
     /// Mouse position along the split axis when the drag started.
     origin: f32,
     start_ratio: f32,
-    /// Pixels spanned by the split's two children (excludes the gap).
+    /// Pixels the ratio is measured against: both children plus one gap.
     span: f32,
+    /// The ratio the drag has reached, for the readout.
+    ratio: f32,
+    /// The third or half the ratio clicked into, if any.
+    snapped: Option<split_tree::RatioMark>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -1517,7 +1306,37 @@ pub struct MultiplexApp {
     sftp_show_host_picker: bool,
     sftp_local_filter_visible: bool,
     split_drop_target: Option<(u64, DropZone)>,
+    /// The hovered drop would take the split past its pane cap.
+    split_drop_full: bool,
+    /// Where the drop preview was when its zone last changed, so it can slide.
+    split_drop_preview_from: Option<(u64, MotionRect, Instant)>,
+    /// A pane header was pressed, so a drag now in progress is moving a pane.
+    dragging_pane: bool,
     divider_drag: Option<DividerDrag>,
+    /// Panes gliding from their previous places to a new layout.
+    layout_transition: Option<LayoutTransition>,
+    /// Where each pane of the active workspace was drawn on the last frame, in
+    /// workspace body coordinates; a new transition starts from here.
+    drawn_layout: std::cell::RefCell<Option<(u64, HashMap<u64, MotionRect>)>>,
+    /// The canvas view flying from one place to another.
+    canvas_camera: Option<(u64, motion::Tween<canvas::CanvasTransform>)>,
+    /// Lines showing what a dragged canvas node has lined up with.
+    canvas_guides: Vec<canvas::CanvasGuide>,
+    /// Canvas nodes snap to the grid and to each other while dragged.
+    canvas_snap_enabled: bool,
+    /// The minimap is being dragged to move the canvas view.
+    canvas_minimap_dragging: bool,
+    /// Where the canvas was double-clicked to add a node: the menu's place on
+    /// screen, and where the new node goes in the world.
+    canvas_add_anchor: Option<(canvas::CanvasPoint, canvas::CanvasPoint)>,
+    /// Canvas nodes gliding to places a rearrangement such as Tidy gave them.
+    canvas_node_motion: Option<canvas::CanvasNodeMotion>,
+    /// The canvas node under the pointer, which shows its link port.
+    canvas_hovered_node: Option<crate::models::CanvasNodeId>,
+    /// The pane each workspace has zoomed to fill its split, if any.
+    zoomed_panes: HashMap<u64, u64>,
+    /// The layout bar shows while the pointer is near the bottom of a split.
+    split_layout_bar_revealed: bool,
     canvas_interaction: Option<CanvasInteraction>,
     canvas_add_menu_open: bool,
     canvas_links_open: bool,
@@ -1966,7 +1785,21 @@ impl MultiplexApp {
             sftp_show_host_picker: false,
             sftp_local_filter_visible: false,
             split_drop_target: None,
+            split_drop_full: false,
+            split_drop_preview_from: None,
+            dragging_pane: false,
             divider_drag: None,
+            layout_transition: None,
+            drawn_layout: std::cell::RefCell::new(None),
+            canvas_camera: None,
+            zoomed_panes: HashMap::new(),
+            canvas_guides: Vec::new(),
+            canvas_snap_enabled: true,
+            canvas_minimap_dragging: false,
+            canvas_add_anchor: None,
+            canvas_node_motion: None,
+            canvas_hovered_node: None,
+            split_layout_bar_revealed: false,
             canvas_interaction: None,
             canvas_add_menu_open: false,
             canvas_links_open: false,
@@ -8425,6 +8258,10 @@ impl MultiplexApp {
         let mut request = base_request;
         request.session_id = self.next_session_id();
         let new_pane_id = self.spawn_pane(request.clone(), window, cx);
+        if self.active_workspace_id == Some(workspace_id) {
+            self.begin_layout_transition(MotionSpeed::Quick);
+        }
+        self.zoomed_panes.remove(&workspace_id);
 
         if let Some(workspace) = self.workspace_mut(workspace_id) {
             let inserted = workspace
@@ -8523,6 +8360,9 @@ impl MultiplexApp {
         }
 
         let mut remove_workspace = false;
+        if self.active_workspace_id == Some(workspace_id) {
+            self.begin_layout_transition(MotionSpeed::Quick);
+        }
         if let Some(workspace) = self.workspace_mut(workspace_id) {
             workspace.layout = workspace
                 .layout
@@ -9534,6 +9374,16 @@ impl MultiplexApp {
         };
         let body_width = viewport_width.max(320.0);
         let body_height = (viewport_height - theme::CHROME_HEIGHT - search_height).max(180.0);
+        if let Some(pane_id) = self.zoomed_pane_in(workspace.id) {
+            panes.push(PaneRect {
+                pane_id,
+                x: 0.0,
+                y: 0.0,
+                width: body_width,
+                height: body_height,
+            });
+            return (panes, dividers);
+        }
         compute_split_layout(
             layout,
             0.0,
@@ -9558,20 +9408,19 @@ impl MultiplexApp {
         let body_origin_y = theme::CHROME_HEIGHT + search_height;
         let (char_width, line_height) = self.terminal_metrics(window, cx);
         if workspace.layout_mode == WorkspaceLayoutMode::Canvas {
+            let transform = workspace.canvas.transform;
             return workspace
                 .canvas
                 .nodes
                 .iter()
                 .filter_map(|node| {
                     let pane_id = node.kind.pane_id()?;
-                    let rect = workspace.canvas.transform.screen_rect(node.rect);
-                    let cell_width = (rect.width - TERMINAL_INNER_PADDING_X * 2.0).max(32.0);
-                    let cell_height =
-                        (rect.height - CANVAS_NODE_HEADER_HEIGHT - TERMINAL_INNER_PADDING_Y * 2.0)
-                            .max(24.0);
-                    let cols = (cell_width / char_width).floor().max(1.0) as u16;
-                    let rows = (cell_height / line_height).floor().max(1.0) as u16;
-                    Some(PaneLayout {
+                    let rect = transform.screen_rect(node.rect);
+                    // Columns and rows follow the node's canvas size; the zoom only
+                    // changes how large the cells are drawn.
+                    let grid =
+                        canvas::canvas_terminal_grid_size(node.rect, char_width, line_height);
+                    let mut layout = self.with_rendered_grid(PaneLayout {
                         pane_id,
                         cell_x: rect.x + TERMINAL_INNER_PADDING_X,
                         cell_y: rect.y
@@ -9579,15 +9428,35 @@ impl MultiplexApp {
                             + CANVAS_TOOLBAR_HEIGHT
                             + CANVAS_NODE_HEADER_HEIGHT
                             + TERMINAL_INNER_PADDING_Y,
-                        cell_width,
-                        cell_height,
-                        cols,
-                        rows,
+                        cell_width: (rect.width - TERMINAL_INNER_PADDING_X * 2.0).max(1.0),
+                        cell_height: (rect.height
+                            - CANVAS_NODE_HEADER_HEIGHT
+                            - TERMINAL_INNER_PADDING_Y * 2.0)
+                            .max(1.0),
+                        cols: grid.0,
+                        rows: grid.1,
                         char_width,
                         line_height,
-                    })
+                    });
+                    let (available_width, available_height) = canvas::canvas_terminal_available(
+                        rect,
+                        self.pane(pane_id)
+                            .is_some_and(|pane| pane.app_attached.is_some()),
+                    );
+                    let scale = canvas::canvas_terminal_scale(
+                        transform.zoom,
+                        available_width,
+                        available_height,
+                        grid,
+                        char_width,
+                        line_height,
+                    );
+                    layout.cols = grid.0;
+                    layout.rows = grid.1;
+                    layout.char_width = char_width * scale;
+                    layout.line_height = line_height * scale;
+                    Some(layout)
                 })
-                .map(|layout| self.with_rendered_grid(layout))
                 .collect();
         }
         let (panes, _) = self.workspace_split_rects(window);
@@ -9645,8 +9514,71 @@ impl MultiplexApp {
             .find(|layout| layout.pane_id == pane_id)
     }
 
+    /// Start moving the active workspace's panes from where they were last drawn
+    /// to wherever the layout puts them next.
+    fn begin_layout_transition(&mut self, speed: MotionSpeed) {
+        let Some(workspace_id) = self.active_workspace_id else {
+            return;
+        };
+        let from = match self.drawn_layout.borrow().as_ref() {
+            Some((drawn_workspace_id, rects))
+                if *drawn_workspace_id == workspace_id && !rects.is_empty() =>
+            {
+                rects.clone()
+            }
+            _ => return,
+        };
+        self.layout_transition = Some(LayoutTransition::new(
+            workspace_id,
+            from,
+            speed,
+            Instant::now(),
+        ));
+    }
+
+    /// Panes are still gliding, or the canvas view is still flying.
+    fn layout_motion_running(&self) -> bool {
+        let now = Instant::now();
+        self.layout_transition
+            .as_ref()
+            .is_some_and(|transition| !transition.is_finished(now))
+            || self
+                .canvas_camera
+                .as_ref()
+                .is_some_and(|(_, camera)| !camera.is_finished(now))
+            || self
+                .canvas_node_motion
+                .as_ref()
+                .is_some_and(|motion| motion.is_running(now))
+    }
+
+    fn layout_motion_pending(&self) -> bool {
+        self.layout_transition.is_some()
+            || self.canvas_camera.is_some()
+            || self.canvas_node_motion.is_some()
+    }
+
+    /// Once the motion has ended, give each terminal the size it settled at.
+    fn settle_layout_transition(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.layout_motion_pending() || self.layout_motion_running() {
+            return;
+        }
+        self.layout_transition = None;
+        self.canvas_camera = None;
+        self.canvas_node_motion = None;
+        self.sync_terminal_layout(window, cx);
+        cx.notify();
+    }
+
     /// Resizes panes whose grid moved or changed size since the last frame.
     fn follow_grid_bounds(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // A pane is resized once it has finished moving, not on every frame of the motion.
+        if self.layout_motion_running() {
+            return;
+        }
+        self.layout_transition = None;
+        self.canvas_camera = None;
+        self.canvas_node_motion = None;
         let mut moved = false;
         for pane in &self.panes {
             moved |= pane.grid_bounds.take_changed();
@@ -9752,11 +9684,246 @@ impl MultiplexApp {
             origin,
             start_ratio: ratio,
             span,
+            ratio,
+            snapped: None,
         });
         cx.notify();
     }
 
-    fn handle_divider_drag_move(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+    /// Give both sides of one split an even share of the space.
+    fn equalize_divider(
+        &mut self,
+        workspace_id: u64,
+        divider_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.active_workspace_id == Some(workspace_id) {
+            self.begin_layout_transition(MotionSpeed::Quick);
+        }
+        let changed = self
+            .workspace_mut(workspace_id)
+            .and_then(|workspace| workspace.layout.as_mut())
+            .is_some_and(|layout| layout.equalize_divider(divider_id));
+        if !changed {
+            self.layout_transition = None;
+            return;
+        }
+        self.sync_terminal_layout(window, cx);
+        self.persist_runtime_state();
+        cx.notify();
+    }
+
+    /// Focus the pane nearest the active one on screen in `direction`.
+    fn focus_pane_in_direction(
+        &mut self,
+        direction: split_tree::PaneDirection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(workspace) = self.active_workspace() else {
+            return false;
+        };
+        if workspace.layout_mode != WorkspaceLayoutMode::Split {
+            return false;
+        }
+        let active = workspace.active_pane_id;
+        let (rects, _) = self.workspace_split_rects(window);
+        let Some(next) = split_tree::neighbor_in_direction(&rects, active, direction) else {
+            return true;
+        };
+        self.activate_pane(next, window, cx);
+        if let Some(pane) = self.pane(next) {
+            pane.terminal_focus.focus(window);
+        }
+        cx.notify();
+        true
+    }
+
+    /// Move the divider nearest the active pane along `direction`'s axis.
+    fn resize_active_pane(
+        &mut self,
+        direction: split_tree::PaneDirection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(workspace) = self.active_workspace() else {
+            return false;
+        };
+        if workspace.layout_mode != WorkspaceLayoutMode::Split || self.zoomed_pane().is_some() {
+            return false;
+        }
+        let active = workspace.active_pane_id;
+        self.begin_layout_transition(MotionSpeed::Nudge);
+        let moved = self
+            .active_workspace_mut()
+            .and_then(|workspace| workspace.layout.as_mut())
+            .is_some_and(|layout| {
+                layout.nudge_ratio(
+                    active,
+                    direction.axis(),
+                    direction.sign() * split_tree::KEYBOARD_RESIZE_STEP,
+                )
+            });
+        if !moved {
+            self.layout_transition = None;
+            return true;
+        }
+        self.sync_terminal_layout(window, cx);
+        self.persist_runtime_state();
+        cx.notify();
+        true
+    }
+
+    /// The pane zoomed to fill `workspace_id`'s split, while it still has one.
+    fn zoomed_pane_in(&self, workspace_id: u64) -> Option<u64> {
+        let pane_id = *self.zoomed_panes.get(&workspace_id)?;
+        let workspace = self.workspace(workspace_id)?;
+        let layout = workspace.layout.as_ref()?;
+        (workspace.layout_mode == WorkspaceLayoutMode::Split
+            && layout.contains(pane_id)
+            && layout.leaf_count() > 1)
+            .then_some(pane_id)
+    }
+
+    fn zoomed_pane(&self) -> Option<u64> {
+        self.zoomed_pane_in(self.active_workspace_id?)
+    }
+
+    /// Let the active pane fill the split for a while; the others keep running
+    /// and come back where they were.
+    fn toggle_pane_zoom(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(workspace) = self.active_workspace() else {
+            return false;
+        };
+        if workspace.layout_mode != WorkspaceLayoutMode::Split {
+            return false;
+        }
+        let workspace_id = workspace.id;
+        let active = workspace.active_pane_id;
+        let splits = workspace
+            .layout
+            .as_ref()
+            .is_some_and(|layout| layout.leaf_count() > 1 && layout.contains(active));
+        let zoomed = self.zoomed_pane();
+        if zoomed.is_none() && !splits {
+            return true;
+        }
+        self.begin_layout_transition(MotionSpeed::Quick);
+        match zoomed {
+            Some(_) => {
+                self.zoomed_panes.remove(&workspace_id);
+            }
+            None => {
+                self.zoomed_panes.insert(workspace_id, active);
+            }
+        }
+        self.sync_terminal_layout(window, cx);
+        if let Some(pane) = self.pane(active) {
+            pane.terminal_focus.focus(window);
+        }
+        cx.notify();
+        true
+    }
+
+    fn restore_zoomed_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.zoomed_pane().is_some() {
+            self.toggle_pane_zoom(window, cx);
+        }
+    }
+
+    /// Arrange the active split as `preset`. The active pane takes the main place;
+    /// missing places open copies of it, and panes without a place keep running
+    /// and show on the canvas.
+    fn apply_split_preset(
+        &mut self,
+        preset: split_tree::SplitPreset,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(workspace) = self.active_workspace() else {
+            return;
+        };
+        if workspace.layout_mode != WorkspaceLayoutMode::Split {
+            return;
+        }
+        let workspace_id = workspace.id;
+        let active = workspace.active_pane_id;
+        let mut pane_ids = workspace
+            .layout
+            .as_ref()
+            .map(SplitNode::leaf_ids)
+            .unwrap_or_else(|| workspace.pane_ids.clone());
+        if let Some(position) = pane_ids.iter().position(|pane_id| *pane_id == active) {
+            let active = pane_ids.remove(position);
+            pane_ids.insert(0, active);
+        }
+        let Some(base_request) = self.pane(active).map(|pane| pane.request.clone()) else {
+            return;
+        };
+        self.begin_layout_transition(MotionSpeed::Morph);
+        let needed = preset.pane_count();
+        let mut opened = 0;
+        while pane_ids.len() < needed {
+            let mut request = base_request.clone();
+            request.session_id = self.next_session_id();
+            pane_ids.push(self.spawn_pane(request, window, cx));
+            opened += 1;
+        }
+        let kept = pane_ids.len() - needed;
+        pane_ids.truncate(needed);
+        self.zoomed_panes.remove(&workspace_id);
+        if let Some(workspace) = self.workspace_mut(workspace_id) {
+            workspace.layout = preset.build(&pane_ids);
+            workspace.sync_pane_ids();
+            workspace.active_pane_id = pane_ids[0];
+        }
+        self.status_message = if kept > 0 {
+            localization::split_preset_kept_status(kept)
+        } else {
+            localization::split_preset_opened_status(opened)
+        };
+        self.error_message.clear();
+        self.sync_terminal_layout(window, cx);
+        if let Some(pane) = self.pane(pane_ids[0]) {
+            pane.terminal_focus.focus(window);
+        }
+        self.persist_runtime_state();
+        cx.notify();
+    }
+
+    /// Give every pane of the active split an equal share.
+    fn equalize_active_split(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(workspace) = self.active_workspace() else {
+            return false;
+        };
+        if workspace.layout_mode != WorkspaceLayoutMode::Split || workspace.layout.is_none() {
+            return false;
+        }
+        if let Some(workspace_id) = self.active_workspace_id {
+            self.zoomed_panes.remove(&workspace_id);
+        }
+        self.begin_layout_transition(MotionSpeed::Morph);
+        if let Some(layout) = self
+            .active_workspace_mut()
+            .and_then(|workspace| workspace.layout.as_mut())
+        {
+            layout.equalize();
+        }
+        self.sync_terminal_layout(window, cx);
+        self.persist_runtime_state();
+        cx.notify();
+        true
+    }
+
+    /// Follow the pointer, clicking into a third or a half when it comes close,
+    /// unless Option (Alt) is held.
+    fn handle_divider_drag_move(
+        &mut self,
+        position: Point<Pixels>,
+        snapping: bool,
+        cx: &mut Context<Self>,
+    ) {
         let Some(drag) = self.divider_drag else {
             return;
         };
@@ -9764,11 +9931,18 @@ impl MultiplexApp {
             SplitAxis::Horizontal => f32::from(position.x),
             SplitAxis::Vertical => f32::from(position.y),
         };
-        let new_ratio = drag.start_ratio + (pos - drag.origin) / drag.span.max(1.0);
+        let (new_ratio, snapped) = split_tree::snap_ratio(
+            drag.start_ratio + (pos - drag.origin) / drag.span.max(1.0),
+            snapping,
+        );
         if let Some(workspace) = self.workspace_mut(drag.workspace_id)
             && let Some(layout) = workspace.layout.as_mut()
         {
             layout.set_ratio(drag.divider_id, new_ratio);
+        }
+        if let Some(drag) = self.divider_drag.as_mut() {
+            drag.ratio = new_ratio;
+            drag.snapped = snapped;
         }
         cx.notify();
     }
@@ -9891,11 +10065,15 @@ impl MultiplexApp {
             return;
         }
         let axis = match zone {
-            DropZone::Left | DropZone::Right => SplitAxis::Horizontal,
+            DropZone::Left | DropZone::Right | DropZone::Center => SplitAxis::Horizontal,
             DropZone::Top | DropZone::Bottom => SplitAxis::Vertical,
         };
         let new_first = matches!(zone, DropZone::Left | DropZone::Top);
         let first_source_pane = source_layout.first_leaf();
+        if self.active_workspace_id == Some(target_workspace_id) {
+            self.begin_layout_transition(MotionSpeed::Quick);
+        }
+        self.zoomed_panes.remove(&target_workspace_id);
         // Drop the source workspace tab, but keep its panes alive — they are
         // re-parented into the target workspace, not closed.
         self.workspaces
@@ -10262,6 +10440,13 @@ impl MultiplexApp {
                 )
             })
             .unwrap_or_default();
+        let mut commands = commands;
+        if let Some(workspace) = self.active_workspace() {
+            commands.extend(palette::layout_command_candidates(
+                &self.command_palette_query(cx),
+                workspace.layout_mode == WorkspaceLayoutMode::Canvas,
+            ));
+        }
         self.global_palette_candidates(commands)
     }
 
@@ -10345,6 +10530,72 @@ impl MultiplexApp {
             PaletteAction::Search(action) => {
                 self.activate_global_palette_action(action, window, cx)
             }
+            PaletteAction::Layout(command) => {
+                self.close_command_palette(window, cx);
+                self.run_layout_command(command, window, cx);
+                true
+            }
+        }
+    }
+
+    fn run_layout_command(
+        &mut self,
+        command: palette::LayoutCommand,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use palette::LayoutCommand;
+        let canvas = self
+            .active_workspace()
+            .is_some_and(|workspace| workspace.layout_mode == WorkspaceLayoutMode::Canvas);
+        match command {
+            LayoutCommand::SplitRight | LayoutCommand::SplitDown => {
+                if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
+                    let axis = if command == LayoutCommand::SplitRight {
+                        SplitAxis::Horizontal
+                    } else {
+                        SplitAxis::Vertical
+                    };
+                    self.duplicate_pane_into_split(pane_id, axis, window, cx);
+                }
+            }
+            LayoutCommand::ZoomPane | LayoutCommand::Equalize | LayoutCommand::Preset(_) => {
+                if canvas {
+                    self.set_workspace_layout_mode(WorkspaceLayoutMode::Split, window, cx);
+                }
+                match command {
+                    LayoutCommand::ZoomPane => {
+                        self.toggle_pane_zoom(window, cx);
+                    }
+                    LayoutCommand::Equalize => {
+                        self.equalize_active_split(window, cx);
+                    }
+                    LayoutCommand::Preset(preset) => self.apply_split_preset(preset, window, cx),
+                    _ => {}
+                }
+            }
+            LayoutCommand::ShowCanvas => {
+                self.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx)
+            }
+            LayoutCommand::ShowSplit => {
+                self.set_workspace_layout_mode(WorkspaceLayoutMode::Split, window, cx)
+            }
+            LayoutCommand::FitCanvas | LayoutCommand::TidyCanvas => {
+                if !canvas {
+                    self.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                }
+                if command == LayoutCommand::FitCanvas {
+                    self.fit_canvas(window, cx);
+                } else {
+                    self.tidy_canvas(window, cx);
+                }
+            }
+            LayoutCommand::ToggleBroadcast => {
+                if let Some(workspace_id) = self.active_workspace_id {
+                    self.toggle_workspace_broadcast(workspace_id, cx);
+                }
+            }
+            LayoutCommand::ToggleSnap => self.toggle_canvas_snap(cx),
         }
     }
 
@@ -13799,11 +14050,20 @@ impl Render for MultiplexApp {
                 }
             }))
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, window, cx| {
-                if this.handle_canvas_interaction_move(event.position, window, cx) {
+                if this.canvas_minimap_dragging {
+                    this.jump_canvas_from_minimap(event.position, window, cx);
+                    return;
+                }
+                if this.handle_canvas_interaction_move(
+                    event.position,
+                    !event.modifiers.alt,
+                    window,
+                    cx,
+                ) {
                     return;
                 }
                 if this.divider_drag.is_some() {
-                    this.handle_divider_drag_move(event.position, cx);
+                    this.handle_divider_drag_move(event.position, !event.modifiers.alt, cx);
                 }
             }))
             .on_mouse_up(
@@ -13815,6 +14075,10 @@ impl Render for MultiplexApp {
                     if this.divider_drag.is_some() {
                         this.handle_divider_drag_end(window, cx);
                     }
+                    this.split_drop_full = false;
+                    this.split_drop_preview_from = None;
+                    this.dragging_pane = false;
+                    this.canvas_minimap_dragging = false;
                     if this.split_drop_target.take().is_some() {
                         cx.notify();
                     }
@@ -14115,6 +14379,24 @@ impl MultiplexApp {
                     self.duplicate_pane_into_split(pane_id, SplitAxis::Horizontal, window, cx);
                     return true;
                 }
+            }
+            AppShortcut::SplitDown => {
+                if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
+                    self.duplicate_pane_into_split(pane_id, SplitAxis::Vertical, window, cx);
+                    return true;
+                }
+            }
+            AppShortcut::FocusPane(direction) => {
+                return self.focus_pane_in_direction(direction.into(), window, cx);
+            }
+            AppShortcut::ResizePane(direction) => {
+                return self.resize_active_pane(direction.into(), window, cx);
+            }
+            AppShortcut::ZoomPane => {
+                return self.toggle_pane_zoom(window, cx);
+            }
+            AppShortcut::EqualizePanes => {
+                return self.equalize_active_split(window, cx);
             }
         }
 
@@ -16491,7 +16773,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn e2e_canvas_zoom_resizes_live_pty(cx: &mut TestAppContext) {
+    fn e2e_canvas_zoom_scales_text_and_keeps_the_live_pty_size(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let request = ConnectRequest::local_shell_with_config(
@@ -16525,19 +16807,20 @@ mod tests {
                         .unwrap()
                         .canvas
                         .transform
-                        .zoom = 0.5;
+                        .zoom = 0.6;
                     app.sync_terminal_layout(window, cx);
                     cx.notify();
                 })
             })
             .expect("low zoom update should succeed");
-        // The PTY follows the grid once it is painted at the new zoom.
+        // Zooming draws the grid smaller or larger; the program keeps its size.
         VisualTestContext::from_window(window.into(), cx).run_until_parked();
-        let low_size = window
+        let (low_size, low_scale) = window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.follow_grid_bounds(window, cx);
-                    app.pane(pane_id).unwrap().last_size.unwrap()
+                    let pane = app.pane(pane_id).unwrap();
+                    (pane.last_size.unwrap(), pane.grid_bounds.scale())
                 })
             })
             .expect("low zoom update should succeed");
@@ -16564,18 +16847,21 @@ mod tests {
                 })
             })
             .expect("high zoom update should succeed");
-        // The PTY follows the grid once it is painted at the new zoom.
         VisualTestContext::from_window(window.into(), cx).run_until_parked();
-        let high_size = window
+        let (high_size, high_scale) = window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.follow_grid_bounds(window, cx);
-                    app.pane(pane_id).unwrap().last_size.unwrap()
+                    let pane = app.pane(pane_id).unwrap();
+                    (pane.last_size.unwrap(), pane.grid_bounds.scale())
                 })
             })
             .expect("high zoom update should succeed");
-        assert!(high_size.cols > low_size.cols);
-        assert!(high_size.rows > low_size.rows);
+        assert_eq!(
+            (high_size.cols, high_size.rows),
+            (low_size.cols, low_size.rows)
+        );
+        assert!(high_scale > low_scale, "{low_scale} -> {high_scale}");
         let high_marker = format!("zoom-high-size={} {}", high_size.rows, high_size.cols);
         run_probe_until(
             cx,
@@ -16690,7 +16976,7 @@ mod tests {
                         .open_request_workspace(local_request(), window, cx)
                         .expect("local workspace should open");
                     app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
-                    for _ in 0..4 {
+                    for _ in 0..MAX_SPLIT_PANES {
                         app.add_request_to_canvas(local_request(), None, window, cx)
                             .expect("canvas terminal should open");
                     }
@@ -16701,7 +16987,7 @@ mod tests {
 
         let pane_ids = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
             let workspace = app.workspace(workspace_id)?;
-            (workspace.pane_ids.len() == 5
+            (workspace.pane_ids.len() == MAX_SPLIT_PANES + 1
                 && workspace
                     .pane_ids
                     .iter()
@@ -16716,7 +17002,7 @@ mod tests {
                     let chooser = app
                         .split_pane_chooser
                         .as_ref()
-                        .expect("five sessions should open the split chooser");
+                        .expect("more sessions than the cap should open the split chooser");
                     assert_eq!(chooser.workspace_id, workspace_id);
                     assert_eq!(chooser.selected_pane_ids.len(), MAX_SPLIT_PANES);
                     assert_eq!(
@@ -16736,7 +17022,10 @@ mod tests {
                     let workspace = app.workspace(workspace_id).unwrap();
                     assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Split);
                     assert_eq!(workspace.pane_ids, pane_ids);
-                    assert_eq!(workspace.layout.as_ref().unwrap().leaf_ids().len(), 4);
+                    assert_eq!(
+                        workspace.layout.as_ref().unwrap().leaf_ids().len(),
+                        MAX_SPLIT_PANES
+                    );
                     assert!(
                         !workspace
                             .layout
@@ -16745,14 +17034,14 @@ mod tests {
                             .leaf_ids()
                             .contains(&previously_selected)
                     );
-                    assert_eq!(workspace.canvas.nodes.len(), 5);
+                    assert_eq!(workspace.canvas.nodes.len(), MAX_SPLIT_PANES + 1);
                     assert!(
                         app.pane(previously_selected)
                             .is_some_and(|pane| pane.connected)
                     );
 
                     let saved = app.saved.restored_workspaces.first().unwrap();
-                    assert_eq!(saved.panes.len(), 5);
+                    assert_eq!(saved.panes.len(), MAX_SPLIT_PANES + 1);
                     fn saved_leaf_count(node: &SavedSplitNode) -> usize {
                         match node {
                             SavedSplitNode::Leaf(_) => 1,
@@ -16761,13 +17050,16 @@ mod tests {
                             }
                         }
                     }
-                    assert_eq!(saved_leaf_count(saved.layout.as_ref().unwrap()), 4);
+                    assert_eq!(
+                        saved_leaf_count(saved.layout.as_ref().unwrap()),
+                        MAX_SPLIT_PANES
+                    );
 
                     app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
                     let workspace = app.workspace(workspace_id).unwrap();
                     assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Canvas);
-                    assert_eq!(workspace.pane_ids.len(), 5);
-                    assert_eq!(workspace.canvas.nodes.len(), 5);
+                    assert_eq!(workspace.pane_ids.len(), MAX_SPLIT_PANES + 1);
+                    assert_eq!(workspace.canvas.nodes.len(), MAX_SPLIT_PANES + 1);
                 })
             })
             .expect("split chooser flow should succeed");
@@ -16797,7 +17089,7 @@ mod tests {
                         .open_request_workspace(local_request(), window, cx)
                         .expect("source workspace should open");
                     app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
-                    for _ in 0..4 {
+                    for _ in 0..MAX_SPLIT_PANES {
                         app.add_request_to_canvas(local_request(), None, window, cx)
                             .expect("source canvas terminal should open");
                     }
@@ -16810,7 +17102,7 @@ mod tests {
 
         let source_pane_ids = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
             let source = app.workspace(source_workspace_id)?;
-            (source.pane_ids.len() == 5
+            (source.pane_ids.len() == MAX_SPLIT_PANES + 1
                 && source.layout.as_ref()?.leaf_ids().len() == MAX_SPLIT_PANES
                 && source
                     .pane_ids
@@ -17214,7 +17506,11 @@ mod tests {
                 workspace.canvas.node(&group_id).unwrap().rect,
             )
         });
-        app.update(cx, |_, cx| cx.notify());
+        // This drag measures how far the group carries its members, so it moves freely.
+        app.update(cx, |app, cx| {
+            app.canvas_snap_enabled = false;
+            cx.notify();
+        });
         visual.run_until_parked();
         let group_header = dynamic_selector_click_center(
             window,
@@ -17235,6 +17531,7 @@ mod tests {
             assert!((note_after.y - note_before.y - 32.0).abs() < 1.0);
             assert!((group_after.x - group_before.x - 48.0).abs() < 1.0);
             assert!((group_after.y - group_before.y - 32.0).abs() < 1.0);
+            assert_eq!(note_after.x - note_before.x, group_after.x - group_before.x);
         });
 
         let note_link = dynamic_selector_click_center(
@@ -23388,7 +23685,7 @@ sleep 1
                 .then_some(())
         });
 
-        for _ in 0..2 {
+        for _ in 0..MAX_SPLIT_PANES - 2 {
             window
                 .update(cx, |_, window, cx| {
                     app.update(cx, |app, cx| {
@@ -23405,7 +23702,7 @@ sleep 1
 
         wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
             let workspace = app.workspace(target_workspace_id)?;
-            (workspace.pane_ids.len() == 3).then_some(())
+            (workspace.pane_ids.len() == MAX_SPLIT_PANES - 1).then_some(())
         });
 
         let (source_workspace_id, source_pane_id) = window
@@ -23470,7 +23767,7 @@ sleep 1
             let source = app
                 .workspace(source_workspace_id)
                 .expect("source workspace should remain");
-            assert_eq!(target.pane_ids.len(), 3);
+            assert_eq!(target.pane_ids.len(), MAX_SPLIT_PANES - 1);
             assert_eq!(source.pane_ids.len(), 2);
         });
     }
@@ -23748,7 +24045,7 @@ sleep 1
                         start,
                         cx,
                     );
-                    app.handle_divider_drag_move(moved, cx);
+                    app.handle_divider_drag_move(moved, true, cx);
                     app.handle_divider_drag_end(window, cx);
                 })
             })
@@ -23776,6 +24073,117 @@ sleep 1
                 _ => panic!("saved workspace should keep a split layout"),
             };
             assert!((saved_ratio - runtime_ratio).abs() < 0.001);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_split_divider_snaps_to_thirds_unless_alt_and_double_click_evens_it(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: crate::test_support::test_shell_program(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let (workspace_id, first_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(first_pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.split_active_workspace(SplitAxis::Horizontal, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            (workspace.pane_ids.len() == 2).then_some(())
+        });
+
+        let root_ratio = |app: &MultiplexApp| match app
+            .workspace(workspace_id)
+            .and_then(|workspace| workspace.layout.as_ref())
+        {
+            Some(SplitNode::Split { ratio, .. }) => *ratio,
+            _ => panic!("workspace should keep a split layout"),
+        };
+        // Drag to just past two thirds, once with snapping and once holding Option.
+        for snapping in [true, false] {
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        let (_, dividers) = app.workspace_split_rects(window);
+                        let divider = dividers[0];
+                        let origin_x = divider.x + divider.width / 2.0;
+                        let origin_y = divider.y + divider.height / 2.0;
+                        let target_x = origin_x + divider.span * (2.0 / 3.0 + 0.01 - divider.ratio);
+                        app.start_divider_drag(
+                            workspace_id,
+                            divider.divider_id,
+                            divider.axis,
+                            divider.span,
+                            divider.ratio,
+                            point(px(origin_x), px(origin_y)),
+                            cx,
+                        );
+                        app.handle_divider_drag_move(
+                            point(px(target_x), px(origin_y)),
+                            snapping,
+                            cx,
+                        );
+                        let drag = app.divider_drag.expect("drag should be in progress");
+                        assert_eq!(
+                            drag.snapped.is_some(),
+                            snapping,
+                            "snapping {snapping}: readout mark"
+                        );
+                        app.handle_divider_drag_end(window, cx);
+                    })
+                })
+                .expect("window update should succeed");
+            app.read_with(cx, |app, _| {
+                let ratio = root_ratio(app);
+                if snapping {
+                    assert!((ratio - 2.0 / 3.0).abs() < 1e-6, "{ratio}");
+                } else {
+                    assert!((ratio - (2.0 / 3.0 + 0.01)).abs() < 1e-3, "{ratio}");
+                }
+            });
+        }
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let (_, dividers) = app.workspace_split_rects(window);
+                    app.equalize_divider(workspace_id, dividers[0].divider_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            assert_eq!(root_ratio(app), 0.5);
+            let saved_ratio = match app.saved.restored_workspaces.first() {
+                Some(SavedWorkspace {
+                    layout: Some(SavedSplitNode::Split { ratio, .. }),
+                    ..
+                }) => *ratio,
+                _ => panic!("saved workspace should keep a split layout"),
+            };
+            assert_eq!(saved_ratio, 0.5);
         });
     }
 
@@ -24447,6 +24855,418 @@ sleep 1
             assert!(app.error_message.is_empty());
             assert_eq!(app.active_workspace_id, Some(workspace_id));
         });
+    }
+
+    #[gpui::test]
+    fn e2e_split_keyboard_splits_focuses_resizes_zooms_and_equalizes(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: crate::test_support::test_shell_program(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let (workspace_id, first) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(first)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+        let press = |keys: &str, cx: &mut TestAppContext| {
+            let event = KeyDownEvent {
+                keystroke: Keystroke::parse(keys).expect("shortcut should parse"),
+                is_held: false,
+            };
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        assert!(app.handle_global_key(&event, window, cx), "{keys}");
+                    })
+                })
+                .expect("window update should succeed");
+        };
+        let active = |cx: &mut TestAppContext| {
+            app.read_with(cx, |app, _| {
+                app.workspace(workspace_id).unwrap().active_pane_id
+            })
+        };
+        let root_ratio = |cx: &mut TestAppContext| {
+            app.read_with(cx, |app, _| {
+                match app.workspace(workspace_id)?.layout.as_ref()? {
+                    SplitNode::Split { ratio, .. } => Some(*ratio),
+                    SplitNode::Leaf(_) => None,
+                }
+            })
+            .expect("workspace should keep a split")
+        };
+
+        press("secondary-d", cx);
+        let right = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            (workspace.pane_ids.len() == 2).then_some(workspace.active_pane_id)
+        });
+        press("secondary-shift-d", cx);
+        let below = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            (workspace.pane_ids.len() == 3).then_some(workspace.active_pane_id)
+        });
+        // The first pane on the left; the other two stacked on the right.
+        window
+            .update(cx, |_, window, cx| {
+                app.read_with(cx, |app, _| {
+                    let (rects, _) = app.workspace_split_rects(window);
+                    let rect = |id| *rects.iter().find(|rect| rect.pane_id == id).unwrap();
+                    assert!(rect(first).x < rect(right).x);
+                    assert_eq!(rect(right).x, rect(below).x);
+                    assert!(rect(right).y < rect(below).y);
+                })
+            })
+            .expect("window update should succeed");
+
+        press("secondary-shift-left", cx);
+        assert_eq!(active(cx), first);
+        press("secondary-shift-right", cx);
+        assert!([right, below].contains(&active(cx)));
+        press("secondary-shift-left", cx);
+        assert_eq!(active(cx), first);
+
+        let before = root_ratio(cx);
+        press("secondary-shift-alt-right", cx);
+        assert!((root_ratio(cx) - (before + super::split_tree::KEYBOARD_RESIZE_STEP)).abs() < 1e-5);
+
+        press("secondary-shift-enter", cx);
+        window
+            .update(cx, |_, window, cx| {
+                app.read_with(cx, |app, _| {
+                    assert_eq!(app.zoomed_pane(), Some(first));
+                    let (rects, dividers) = app.workspace_split_rects(window);
+                    assert_eq!(rects.len(), 1);
+                    assert_eq!(rects[0].pane_id, first);
+                    assert_eq!(rects[0].x, 0.0);
+                    assert!(dividers.is_empty());
+                    assert_eq!(
+                        app.workspace(workspace_id).unwrap().pane_ids.len(),
+                        3,
+                        "zoom hides panes without closing them"
+                    );
+                })
+            })
+            .expect("window update should succeed");
+        press("secondary-shift-enter", cx);
+        window
+            .update(cx, |_, window, cx| {
+                app.read_with(cx, |app, _| {
+                    assert_eq!(app.zoomed_pane(), None);
+                    assert_eq!(app.workspace_split_rects(window).0.len(), 3);
+                })
+            })
+            .expect("window update should succeed");
+
+        press("secondary-shift-e", cx);
+        assert_eq!(root_ratio(cx), 0.5);
+        app.read_with(cx, |app, _| {
+            let Some(SplitNode::Split { b, .. }) =
+                app.workspace(workspace_id).unwrap().layout.as_ref()
+            else {
+                panic!("workspace should keep a split");
+            };
+            assert!(matches!(**b, SplitNode::Split { ratio, .. } if ratio == 0.5));
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_split_presets_open_missing_panes_and_keep_extra_ones_running(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: crate::test_support::test_shell_program(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let (workspace_id, first) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(first)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.apply_split_preset(super::split_tree::SplitPreset::Grid, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+        let panes = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            (workspace.pane_ids.len() == 4
+                && workspace
+                    .pane_ids
+                    .iter()
+                    .all(|pane_id| app.pane(*pane_id).is_some_and(|pane| pane.connected)))
+            .then(|| workspace.pane_ids.clone())
+        });
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).unwrap();
+            assert_eq!(workspace.layout.as_ref().unwrap().leaf_ids()[0], first);
+            assert_eq!(workspace.layout.as_ref().unwrap().leaf_count(), 4);
+        });
+
+        let main = panes[2];
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_pane(main, window, cx);
+                    app.apply_split_preset(super::split_tree::SplitPreset::Columns, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).unwrap();
+            let leaves = workspace.layout.as_ref().unwrap().leaf_ids();
+            assert_eq!(leaves.len(), 2);
+            assert_eq!(leaves[0], main, "the active pane takes the main place");
+            assert_eq!(workspace.pane_ids.len(), 4, "extra panes keep running");
+            assert!(panes.iter().all(|pane_id| app.pane(*pane_id).is_some()));
+            assert_eq!(
+                app.status_message,
+                localization::split_preset_kept_status(2)
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_dropping_a_pane_header_swaps_or_moves_it_within_the_split(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: crate::test_support::test_shell_program(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let (workspace_id, first) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(first)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.apply_split_preset(
+                        super::split_tree::SplitPreset::ThreeColumns,
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+        let leaves = |cx: &mut TestAppContext| {
+            app.read_with(cx, |app, _| {
+                app.workspace(workspace_id)
+                    .and_then(|workspace| workspace.layout.as_ref())
+                    .map(SplitNode::leaf_ids)
+                    .unwrap_or_default()
+            })
+        };
+        let start = leaves(cx);
+        assert_eq!(start.len(), 3);
+        let drop = |dragged: u64, target: u64, zone: DropZone, cx: &mut TestAppContext| {
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        app.split_drop_target = Some((target, zone));
+                        app.drop_pane_on_pane(dragged, target, window, cx);
+                        assert_eq!(app.split_drop_target, None);
+                    })
+                })
+                .expect("window update should succeed");
+        };
+
+        drop(start[0], start[2], DropZone::Center, cx);
+        assert_eq!(leaves(cx), vec![start[2], start[1], start[0]]);
+
+        drop(start[1], start[2], DropZone::Top, cx);
+        assert_eq!(leaves(cx), vec![start[1], start[2], start[0]]);
+        window
+            .update(cx, |_, window, cx| {
+                app.read_with(cx, |app, _| {
+                    let (rects, _) = app.workspace_split_rects(window);
+                    let rect = |id| *rects.iter().find(|rect| rect.pane_id == id).unwrap();
+                    assert_eq!(rect(start[1]).x, rect(start[2]).x);
+                    assert!(rect(start[1]).y < rect(start[2]).y);
+                    assert_eq!(
+                        app.workspace(workspace_id).unwrap().active_pane_id,
+                        start[1]
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        // A pane dropped on itself stays put.
+        drop(start[0], start[0], DropZone::Left, cx);
+        assert_eq!(leaves(cx), vec![start[1], start[2], start[0]]);
+    }
+
+    #[gpui::test]
+    fn e2e_dragging_a_canvas_port_onto_a_node_links_them(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let local_request = || {
+            ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: crate::test_support::test_shell_program(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+        let workspace_id = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let (workspace_id, _) = app
+                        .open_request_workspace(local_request(), window, cx)
+                        .expect("local workspace should open");
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    app.add_request_to_canvas(local_request(), None, window, cx)
+                        .expect("canvas terminal should open");
+                    workspace_id
+                })
+            })
+            .expect("window update should succeed");
+        let (source, target, target_center) = app.read_with(cx, |app, _| {
+            let canvas = &app.workspace(workspace_id).unwrap().canvas;
+            let source = canvas.nodes[0].id.clone();
+            let target = &canvas.nodes[1];
+            let screen = canvas.transform.screen_rect(target.rect);
+            (
+                source,
+                target.id.clone(),
+                super::canvas::CanvasPoint::new(
+                    screen.x + screen.width / 2.0,
+                    screen.y + screen.height / 2.0,
+                ),
+            )
+        });
+        let drop_at = |point: super::canvas::CanvasPoint, cx: &mut TestAppContext| {
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        app.canvas_interaction = Some(super::canvas::CanvasInteraction::Link {
+                            workspace_id,
+                            source: source.clone(),
+                            current: point,
+                        });
+                        assert!(app.finish_canvas_interaction(window, cx));
+                    })
+                })
+                .expect("window update should succeed");
+        };
+
+        // Let go over empty canvas: nothing is linked.
+        drop_at(super::canvas::CanvasPoint::new(-5000.0, -5000.0), cx);
+        app.read_with(cx, |app, _| {
+            assert!(app.workspace(workspace_id).unwrap().canvas.edges.is_empty());
+        });
+
+        drop_at(target_center, cx);
+        app.read_with(cx, |app, _| {
+            let edges = &app.workspace(workspace_id).unwrap().canvas.edges;
+            assert_eq!(edges.len(), 1);
+            assert_eq!(edges[0].source, source);
+            assert_eq!(edges[0].target, target);
+            assert!(app.canvas_interaction.is_none());
+            assert!(app.pending_context_source.is_none());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_attention_pill_names_a_failed_pane_and_jumps_to_it(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: crate::test_support::test_shell_program(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let (workspace_id, first) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(first)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.split_active_workspace(SplitAxis::Horizontal, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+        let second = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            (workspace.pane_ids.len() == 2).then_some(workspace.active_pane_id)
+        });
+        assert_ne!(first, second);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let workspace = app.workspace(workspace_id).unwrap();
+                    assert!(app.workspace_attention(workspace).is_empty());
+                    app.pane_mut(first).unwrap().status = "Error".to_string();
+                    let workspace = app.workspace(workspace_id).unwrap();
+                    let items = app.workspace_attention(workspace);
+                    assert_eq!(items.len(), 1);
+                    app.jump_to_attention(items[0].clone(), window, cx);
+                    assert_eq!(app.workspace(workspace_id).unwrap().active_pane_id, first);
+                    assert_eq!(
+                        app.workspace(workspace_id).unwrap().layout_mode,
+                        WorkspaceLayoutMode::Split
+                    );
+                })
+            })
+            .expect("window update should succeed");
     }
 
     #[gpui::test]

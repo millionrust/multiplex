@@ -29,9 +29,24 @@ use crate::ui::theme;
 pub(super) struct GridBounds {
     bounds: Cell<Option<Bounds<Pixels>>>,
     changed: Cell<bool>,
+    /// How much larger or smaller than the terminal font the grid is drawn: a canvas
+    /// scales its terminals with its zoom instead of changing their columns and rows.
+    /// Zero, the default, means drawn at the font's own size.
+    scale: Cell<f32>,
 }
 
 impl GridBounds {
+    pub(super) fn scale(&self) -> f32 {
+        match self.scale.get() {
+            scale if scale > 0.0 => scale,
+            _ => 1.0,
+        }
+    }
+
+    pub(super) fn set_scale(&self, scale: f32) {
+        self.scale.set(scale);
+    }
+
     pub(super) fn get(&self) -> Option<Bounds<Pixels>> {
         self.bounds.get()
     }
@@ -437,7 +452,8 @@ impl Element for TerminalGridElement {
         _cx: &mut App,
     ) -> Self::PrepaintState {
         self.bounds.record(bounds);
-        let font_size = px(self.font_size);
+        let scaled_font_size = self.font_size * self.bounds.scale();
+        let font_size = px(scaled_font_size);
         let text_system = window.text_system().clone();
         let font_id = text_system.resolve_font(&font(self.font_family.clone()));
         // The same metrics the app uses to size the PTY and map mouse positions to cells.
@@ -448,7 +464,7 @@ impl Element for TerminalGridElement {
                 width.max(1.0)
             })
             .unwrap_or(8.0));
-        let line_height = px((self.font_size * TERMINAL_LINE_HEIGHT).max(1.));
+        let line_height = px((scaled_font_size * TERMINAL_LINE_HEIGHT).max(1.));
         let origin = bounds.origin;
         let cell_origin = |row: usize, column: usize| {
             point(

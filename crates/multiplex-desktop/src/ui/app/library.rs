@@ -3452,6 +3452,60 @@ impl MultiplexApp {
                 ))
                 .child(self.settings_divider())
                 .child(self.settings_shortcut_group(
+                    library_copy(MessageId::SettingsShortcutSplitCanvas),
+                    [
+                        (
+                            "Cmd+Shift+D",
+                            library_copy(MessageId::SettingsShortcutSplitDown),
+                        ),
+                        (
+                            "Cmd+Shift+Arrows",
+                            library_copy(MessageId::SettingsShortcutFocusPane),
+                        ),
+                        (
+                            "Cmd+Shift+Option+Arrows",
+                            library_copy(MessageId::SettingsShortcutResizePane),
+                        ),
+                        (
+                            "Cmd+Shift+Enter",
+                            library_copy(MessageId::SettingsShortcutZoomPane),
+                        ),
+                        (
+                            "Cmd+Shift+E",
+                            library_copy(MessageId::SettingsShortcutEqualize),
+                        ),
+                        (
+                            "Option",
+                            library_copy(MessageId::SettingsShortcutDragFreely),
+                        ),
+                        (
+                            "Cmd+Option+T",
+                            library_copy(MessageId::SettingsShortcutTidyCanvas),
+                        ),
+                        (
+                            "Cmd+Option+1",
+                            library_copy(MessageId::SettingsShortcutFitCanvas),
+                        ),
+                        (
+                            "Cmd+Option+0",
+                            library_copy(MessageId::SettingsShortcutCanvasActualSize),
+                        ),
+                        (
+                            "Cmd+Option+2",
+                            library_copy(MessageId::SettingsShortcutFlyToNode),
+                        ),
+                        (
+                            "Shift+Drag",
+                            library_copy(MessageId::SettingsShortcutBoxSelect),
+                        ),
+                        (
+                            "Double-click",
+                            library_copy(MessageId::SettingsShortcutCreateHere),
+                        ),
+                    ],
+                ))
+                .child(self.settings_divider())
+                .child(self.settings_shortcut_group(
                     library_copy(MessageId::SettingsShortcutTerminal),
                     [
                         ("Cmd+C", library_copy(MessageId::SettingsShortcutCopy)),

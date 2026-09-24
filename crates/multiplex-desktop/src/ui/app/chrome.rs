@@ -151,7 +151,7 @@ impl MultiplexApp {
         &self,
         id: impl Into<ElementId>,
         icon: IconName,
-        label: &'static str,
+        label: impl Into<SharedString>,
         action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
@@ -175,7 +175,7 @@ impl MultiplexApp {
                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .font_medium()
                     .text_color(theme::text_main())
-                    .child(label),
+                    .child(label.into()),
             )
             .on_click(cx.listener(move |this, _, window, cx| {
                 action(this, window, cx);
@@ -334,6 +334,15 @@ impl MultiplexApp {
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let closed = self.pane(pane_id).map(|pane| pane.closed).unwrap_or(false);
+        let zoomed = self.zoomed_pane() == Some(pane_id);
+        let can_zoom = zoomed
+            || self.active_workspace().is_some_and(|workspace| {
+                workspace.layout_mode == crate::models::WorkspaceLayoutMode::Split
+                    && workspace
+                        .layout
+                        .as_ref()
+                        .is_some_and(|layout| layout.leaf_count() > 1 && layout.contains(pane_id))
+            });
         v_flex()
             .id(("pane-context-menu", pane_id))
             .absolute()
@@ -405,6 +414,30 @@ impl MultiplexApp {
                 )
                 .debug_selector(move || format!("pane-menu-duplicate-{}", pane_id)),
             )
+            .when(can_zoom, |this| {
+                this.child(
+                    self.workspace_tab_menu_item(
+                        ("pane-menu-zoom", pane_id),
+                        if zoomed {
+                            IconName::Minimize
+                        } else {
+                            IconName::Maximize
+                        },
+                        localization::static_message(if zoomed {
+                            multiplex_ui_contract::MessageId::PaneContextRestoreAction
+                        } else {
+                            multiplex_ui_contract::MessageId::PaneContextZoomAction
+                        }),
+                        move |this, window, cx| {
+                            this.pane_context_menu = None;
+                            this.activate_pane(pane_id, window, cx);
+                            this.toggle_pane_zoom(window, cx);
+                        },
+                        cx,
+                    )
+                    .debug_selector(move || format!("pane-menu-zoom-{}", pane_id)),
+                )
+            })
             .child(
                 div()
                     .h(px(theme::BORDER_HAIRLINE))

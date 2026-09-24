@@ -1169,6 +1169,54 @@ reduced_motion = "motion.instant"
 values = { system = "240ms", light = "240ms", dark = "240ms", high_contrast = "240ms", recording_friendly = "240ms" }
 
 [[tokens]]
+key = "motion.layout_morph"
+category = "duration"
+description = "Panes gliding to a new arrangement: switching Split and Canvas, a layout preset, or zooming a pane."
+allowed_use = "Workspace pane and canvas node layout changes only."
+reduced_motion = "motion.instant"
+values = { system = "440ms", light = "440ms", dark = "440ms", high_contrast = "440ms", recording_friendly = "440ms" }
+
+[[tokens]]
+key = "motion.layout_quick"
+category = "duration"
+description = "Panes making room for a pane that was added, closed, moved, or swapped."
+allowed_use = "Workspace split changes that add, remove, or move one pane."
+reduced_motion = "motion.instant"
+values = { system = "260ms", light = "260ms", dark = "260ms", high_contrast = "260ms", recording_friendly = "260ms" }
+
+[[tokens]]
+key = "motion.layout_nudge"
+category = "duration"
+description = "A divider moved from the keyboard."
+allowed_use = "Keyboard split resizing only."
+reduced_motion = "motion.instant"
+values = { system = "140ms", light = "140ms", dark = "140ms", high_contrast = "140ms", recording_friendly = "140ms" }
+
+[[tokens]]
+key = "motion.camera"
+category = "duration"
+description = "The canvas view flying to fit content or to a node."
+allowed_use = "Canvas fit, tidy, and jump-to-node camera moves."
+reduced_motion = "motion.instant"
+values = { system = "460ms", light = "460ms", dark = "460ms", high_contrast = "460ms", recording_friendly = "460ms" }
+
+[[tokens]]
+key = "motion.camera_step"
+category = "duration"
+description = "The canvas view zooming one step from a button or shortcut."
+allowed_use = "Canvas zoom buttons and zoom shortcuts."
+reduced_motion = "motion.instant"
+values = { system = "300ms", light = "300ms", dark = "300ms", high_contrast = "300ms", recording_friendly = "300ms" }
+
+[[tokens]]
+key = "motion.drop_preview"
+category = "duration"
+description = "A drop preview sliding between the zones of a pane."
+allowed_use = "Split drop previews only."
+reduced_motion = "motion.instant"
+values = { system = "100ms", light = "100ms", dark = "100ms", high_contrast = "100ms", recording_friendly = "100ms" }
+
+[[tokens]]
 key = "motion.progress"
 category = "duration"
 description = "Unknown-duration progress cycle."

@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
+use gpui::AnimationExt as _;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, App, ClipboardItem, Context, CursorStyle, Div, Focusable as _,
@@ -12,7 +14,9 @@ use gpui::{
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::{Disableable as _, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
+use gpui_component::{
+    Disableable as _, Icon, IconName, Selectable as _, Sizable, StyledExt as _, h_flex, v_flex,
+};
 use multiplex_ui_contract::{
     AgentCanvasAccessibilityCommand, AgentCanvasPresentationMode, AgentCanvasSemanticSnapshot,
     AgentCanvasSurfaceState, CanvasAlternativeEdge, CanvasAlternativeEdgeKind,
@@ -41,6 +45,7 @@ use crate::models::{
     WorkspaceLayoutMode, default_persistent_session_name_from_id,
 };
 use crate::ssh::SessionCommand;
+use crate::ui::app::motion::{self, MotionRect, MotionSpeed};
 use crate::ui::app::{MultiplexApp, WorkspaceViewMode};
 use crate::ui::keys::TerminalCellPos;
 use crate::ui::localization;
@@ -293,6 +298,274 @@ fn canvas_reveal_delta(
         padding,
     });
     CanvasPoint::new(point.x, point.y)
+}
+
+/// Nodes line up to an 8-unit grid when nothing nearby lines up with them.
+pub(super) const CANVAS_SNAP_GRID: f32 = 8.0;
+/// How close, on screen, an edge or centre must come to another's to snap.
+pub(super) const CANVAS_SNAP_SCREEN_DISTANCE: f32 = 7.0;
+/// Nodes placed side by side snap to this gap between them.
+pub(super) const CANVAS_SNAP_GAP: f32 = 32.0;
+/// Space a new group frame leaves around what it wraps, and above it for its label.
+const CANVAS_GROUP_PADDING: f32 = 28.0;
+const CANVAS_GROUP_LABEL_ROOM: f32 = 56.0;
+
+/// A line drawn while a node snaps into line with another, in world units.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct CanvasGuide {
+    /// A vertical line at `at` on the x axis; otherwise horizontal on the y axis.
+    pub(super) vertical: bool,
+    pub(super) at: f32,
+    pub(super) from: f32,
+    pub(super) to: f32,
+}
+
+#[derive(Clone, Copy)]
+struct SnapLine {
+    offset: f32,
+    at: f32,
+    other: CanvasRect,
+}
+
+/// How far to shift `rect` so it lines up with one of `others`: left, centre, and
+/// right edges to their matching lines, top, middle, and bottom likewise, or a
+/// standard gap beside a neighbour. An axis with nothing close enough falls back
+/// to the grid. `threshold` is in world units.
+pub(super) fn canvas_snap_move(
+    rect: CanvasRect,
+    others: &[CanvasRect],
+    threshold: f32,
+) -> (f32, f32, Vec<CanvasGuide>) {
+    let xs = [rect.x, rect.x + rect.width / 2.0, rect.x + rect.width];
+    let ys = [rect.y, rect.y + rect.height / 2.0, rect.y + rect.height];
+    let mut best_x: Option<SnapLine> = None;
+    let mut best_y: Option<SnapLine> = None;
+    let consider = |best: &mut Option<SnapLine>, offset: f32, at: f32, other: CanvasRect| {
+        if offset.abs() < threshold && best.is_none_or(|best| offset.abs() < best.offset.abs()) {
+            *best = Some(SnapLine { offset, at, other });
+        }
+    };
+    for other in others {
+        let oxs = [other.x, other.x + other.width / 2.0, other.x + other.width];
+        let oys = [
+            other.y,
+            other.y + other.height / 2.0,
+            other.y + other.height,
+        ];
+        for i in 0..3 {
+            for j in 0..3 {
+                // Centres line up with centres, and edges with edges.
+                if (i == 1) != (j == 1) {
+                    continue;
+                }
+                consider(&mut best_x, oxs[j] - xs[i], oxs[j], *other);
+                consider(&mut best_y, oys[j] - ys[i], oys[j], *other);
+            }
+        }
+        let before = other.x - CANVAS_SNAP_GAP;
+        let after = other.x + other.width + CANVAS_SNAP_GAP;
+        consider(&mut best_x, before - xs[2], before, *other);
+        consider(&mut best_x, after - xs[0], after, *other);
+    }
+    let grid = |value: f32| (value / CANVAS_SNAP_GRID).round() * CANVAS_SNAP_GRID - value;
+    let dx = best_x.map_or_else(|| grid(rect.x), |line| line.offset);
+    let dy = best_y.map_or_else(|| grid(rect.y), |line| line.offset);
+    let snapped = CanvasRect {
+        x: rect.x + dx,
+        y: rect.y + dy,
+        ..rect
+    };
+    const OVERHANG: f32 = 24.0;
+    let mut guides = Vec::new();
+    if let Some(line) = best_x {
+        guides.push(CanvasGuide {
+            vertical: true,
+            at: line.at,
+            from: snapped.y.min(line.other.y) - OVERHANG,
+            to: (snapped.y + snapped.height).max(line.other.y + line.other.height) + OVERHANG,
+        });
+    }
+    if let Some(line) = best_y {
+        guides.push(CanvasGuide {
+            vertical: false,
+            at: line.at,
+            from: snapped.x.min(line.other.x) - OVERHANG,
+            to: (snapped.x + snapped.width).max(line.other.x + line.other.width) + OVERHANG,
+        });
+    }
+    (dx, dy, guides)
+}
+
+/// The pink of alignment guides: distinct from the accent, links, and warnings.
+fn canvas_guide_color() -> gpui::Hsla {
+    gpui::rgb(0xE86FB0).into()
+}
+
+/// The columns and rows a terminal node holds: set by its size on the canvas at
+/// the terminal font's own size, so zooming the canvas never resizes the program.
+pub(super) fn canvas_terminal_grid_size(
+    world: CanvasRect,
+    char_width: f32,
+    line_height: f32,
+) -> (u16, u16) {
+    let width = (world.width - super::TERMINAL_INNER_PADDING_X * 2.0).max(32.0);
+    let height = (world.height - CANVAS_NODE_HEADER_HEIGHT - super::TERMINAL_INNER_PADDING_Y * 2.0)
+        .max(24.0);
+    (
+        (width / char_width.max(1.0)).floor().max(1.0) as u16,
+        (height / line_height.max(1.0)).floor().max(1.0) as u16,
+    )
+}
+
+/// The room a terminal node's grid has on screen, below the node header and any
+/// durable-session header, inside the terminal padding.
+pub(super) fn canvas_terminal_available(screen: CanvasRect, durable_header: bool) -> (f32, f32) {
+    let header = CANVAS_NODE_HEADER_HEIGHT
+        + if durable_header {
+            theme::WORKSPACE_HEADER_HEIGHT
+        } else {
+            0.0
+        };
+    (
+        (screen.width - super::TERMINAL_INNER_PADDING_X * 2.0).max(1.0),
+        (screen.height - header - super::TERMINAL_INNER_PADDING_Y * 2.0).max(1.0),
+    )
+}
+
+/// How large to draw a terminal node's text: with the canvas zoom, but never so
+/// large that its columns and rows spill out of the space it is drawn in.
+pub(super) fn canvas_terminal_scale(
+    zoom: f32,
+    available_width: f32,
+    available_height: f32,
+    (cols, rows): (u16, u16),
+    char_width: f32,
+    line_height: f32,
+) -> f32 {
+    let fits_width = available_width / (f32::from(cols.max(1)) * char_width.max(1.0));
+    let fits_height = available_height / (f32::from(rows.max(1)) * line_height.max(1.0));
+    zoom.min(fits_width).min(fits_height).max(0.05)
+}
+
+/// Canvas nodes gliding from where they were to where a rearrangement put them.
+pub(super) struct CanvasNodeMotion {
+    workspace_id: u64,
+    from: HashMap<CanvasNodeId, CanvasRect>,
+    started: Instant,
+    speed: MotionSpeed,
+}
+
+impl CanvasNodeMotion {
+    fn progress(&self, now: Instant) -> Option<f32> {
+        let duration = self.speed.duration();
+        let elapsed = now.saturating_duration_since(self.started);
+        (elapsed < duration)
+            .then(|| motion::ease_standard(elapsed.as_secs_f32() / duration.as_secs_f32()))
+    }
+
+    pub(super) fn is_running(&self, now: Instant) -> bool {
+        self.progress(now).is_some()
+    }
+
+    /// Where `node` is drawn on this frame, in world units.
+    fn rect(&self, node: &CanvasNode, t: f32) -> CanvasRect {
+        let Some(from) = self.from.get(&node.id) else {
+            return node.rect;
+        };
+        let to = node.rect;
+        CanvasRect {
+            x: motion::lerp(from.x, to.x, t),
+            y: motion::lerp(from.y, to.y, t),
+            width: motion::lerp(from.width, to.width, t),
+            height: motion::lerp(from.height, to.height, t),
+        }
+    }
+}
+
+/// A session that is waiting for the user.
+#[derive(Clone, Debug)]
+pub(super) struct AttentionItem {
+    node_id: Option<CanvasNodeId>,
+    pane_id: Option<u64>,
+    title: String,
+}
+
+const ATTENTION_PILL_HEIGHT: f32 = 30.0;
+const PANE_ATTENTION_DOT: f32 = 8.0;
+
+/// What a zoomed-out node's card says.
+struct CanvasNodeCard {
+    title: String,
+    status: String,
+    needs_attention: bool,
+    selected: bool,
+}
+
+const CANVAS_CARD_PADDING: f32 = 18.0;
+const CANVAS_CARD_GAP: f32 = 8.0;
+const CANVAS_CARD_DOT: f32 = 10.0;
+const CANVAS_CARD_TITLE_SIZE: f32 = 19.0;
+const CANVAS_CARD_STATUS_SIZE: f32 = 13.0;
+const CANVAS_CARD_OUTPUT_SIZE: f32 = 12.5;
+/// Draw a link as dashes along its curve, shifted along by `phase` of a dash.
+fn paint_dashed_link(
+    window: &mut Window,
+    source: CanvasPoint,
+    target: CanvasPoint,
+    color: gpui::Hsla,
+    phase: f32,
+) {
+    const DASHES: usize = 24;
+    let offset = ((target.x - source.x).abs() * 0.45).max(48.0);
+    let (c1, c2) = ((source.x + offset, source.y), (target.x - offset, target.y));
+    let at = |t: f32| {
+        let t = t.clamp(0.0, 1.0);
+        let inv = 1.0 - t;
+        (
+            inv * inv * inv * source.x
+                + 3.0 * inv * inv * t * c1.0
+                + 3.0 * inv * t * t * c2.0
+                + t * t * t * target.x,
+            inv * inv * inv * source.y
+                + 3.0 * inv * inv * t * c1.1
+                + 3.0 * inv * t * t * c2.1
+                + t * t * t * target.y,
+        )
+    };
+    for dash in 0..=DASHES {
+        let start = (dash as f32 + phase - 1.0) / DASHES as f32;
+        let end = start + 0.5 / DASHES as f32;
+        if end <= 0.0 || start >= 1.0 {
+            continue;
+        }
+        let (x0, y0) = at(start);
+        let (x1, y1) = at(end);
+        let mut builder = PathBuilder::stroke(px(theme::SPACE_1));
+        builder.move_to(point(px(x0), px(y0)));
+        builder.line_to(point(px(x1), px(y1)));
+        if let Ok(path) = builder.build() {
+            window.paint_path(path, color);
+        }
+    }
+}
+
+/// The dot on a node's edge that a context link is dragged out of or into.
+const CANVAS_PORT_SIZE: f32 = 14.0;
+const CANVAS_LINK_LABEL_WIDTH: f32 = 96.0;
+const CANVAS_LINK_LABEL_HEIGHT: f32 = 20.0;
+/// Room left around a node the camera flies to.
+const CANVAS_FLY_PADDING: f32 = 90.0;
+
+/// Below this zoom, terminal and agent nodes are drawn as readable cards.
+pub(super) const CANVAS_CARD_ZOOM: f32 = 0.55;
+
+pub(super) fn canvas_shows_cards(zoom: f32) -> bool {
+    zoom < CANVAS_CARD_ZOOM
+}
+
+/// Round a dragged size to the grid.
+pub(super) fn canvas_snap_size(value: f32) -> f32 {
+    (value / CANVAS_SNAP_GRID).round() * CANVAS_SNAP_GRID
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -559,6 +832,9 @@ pub(super) struct CanvasWorkspaceState {
     pub nodes: Vec<CanvasNode>,
     pub edges: Vec<CanvasEdge>,
     pub selected_node_id: Option<CanvasNodeId>,
+    /// Nodes selected along with `selected_node_id`, by shift-clicking or by
+    /// dragging a box around them. Dragging any of them moves them all.
+    pub extra_selected: Vec<CanvasNodeId>,
     next_z_index: i32,
     undo_layout: Vec<CanvasLayoutSnapshot>,
     redo_layout: Vec<CanvasLayoutSnapshot>,
@@ -588,6 +864,7 @@ impl Default for CanvasWorkspaceState {
             nodes: Vec::new(),
             edges: Vec::new(),
             selected_node_id: None,
+            extra_selected: Vec::new(),
             next_z_index: 1,
             undo_layout: Vec::new(),
             redo_layout: Vec::new(),
@@ -796,6 +1073,7 @@ impl CanvasWorkspaceState {
             nodes,
             edges,
             selected_node_id: None,
+            extra_selected: Vec::new(),
             next_z_index,
             undo_layout: Vec::new(),
             redo_layout: Vec::new(),
@@ -974,7 +1252,7 @@ impl CanvasWorkspaceState {
             id: id.clone(),
             kind: CanvasNodeKind::Note {
                 text: String::new(),
-                color: CanvasNoteColor::default(),
+                color: crate::models::CanvasNoteColor::default(),
             },
             rect: CanvasRect {
                 x: position.x,
@@ -1299,6 +1577,7 @@ impl CanvasWorkspaceState {
         {
             self.selected_node_id = None;
         }
+        self.extra_selected.retain(|id| !removed_ids.contains(id));
     }
 
     pub(super) fn node(&self, node_id: &CanvasNodeId) -> Option<&CanvasNode> {
@@ -1309,7 +1588,161 @@ impl CanvasWorkspaceState {
         self.nodes.iter_mut().find(|node| &node.id == node_id)
     }
 
+    /// Arrange every node: each group's members in a row inside their frame, the
+    /// groups stacked, then the loose nodes in rows of three with notes last.
+    /// Sizes are kept; only places change.
+    pub(super) fn tidy(&mut self) {
+        const ROW_GAP: f32 = 56.0;
+        const LOOSE_GAP: f32 = 48.0;
+        const PER_ROW: usize = 3;
+        let mut groups: Vec<(CanvasNodeId, Vec<CanvasNodeId>, CanvasRect)> = self
+            .nodes
+            .iter()
+            .filter_map(|node| match &node.kind {
+                CanvasNodeKind::Group { member_ids } => {
+                    Some((node.id.clone(), member_ids.clone(), node.rect))
+                }
+                _ => None,
+            })
+            .collect();
+        groups.sort_by(|a, b| a.2.y.total_cmp(&b.2.y).then(a.2.x.total_cmp(&b.2.x)));
+        let mut placed: HashSet<CanvasNodeId> = HashSet::new();
+        let mut y = 0.0;
+        for (group_id, member_ids, _) in &groups {
+            let mut members: Vec<(CanvasNodeId, CanvasRect)> = member_ids
+                .iter()
+                .filter_map(|id| {
+                    self.node(id)
+                        .filter(|node| !node.kind.is_group())
+                        .map(|node| (id.clone(), node.rect))
+                })
+                .collect();
+            if members.is_empty() {
+                continue;
+            }
+            members.sort_by(|a, b| a.1.x.total_cmp(&b.1.x));
+            let mut x = CANVAS_GROUP_PADDING;
+            let mut tallest: f32 = 0.0;
+            for (id, rect) in &members {
+                if let Some(node) = self.node_mut(id) {
+                    node.rect.x = x;
+                    node.rect.y = y + CANVAS_GROUP_LABEL_ROOM;
+                }
+                x += rect.width + CANVAS_SNAP_GAP;
+                tallest = tallest.max(rect.height);
+                placed.insert(id.clone());
+            }
+            let height = CANVAS_GROUP_LABEL_ROOM + tallest + CANVAS_GROUP_PADDING;
+            if let Some(group) = self.node_mut(group_id) {
+                group.rect = CanvasRect {
+                    x: 0.0,
+                    y,
+                    width: x - CANVAS_SNAP_GAP + CANVAS_GROUP_PADDING,
+                    height,
+                };
+            }
+            placed.insert(group_id.clone());
+            y += height + ROW_GAP;
+        }
+        let mut loose: Vec<(CanvasNodeId, CanvasRect, bool)> = self
+            .nodes
+            .iter()
+            .filter(|node| !placed.contains(&node.id) && !node.kind.is_group())
+            .map(|node| {
+                (
+                    node.id.clone(),
+                    node.rect,
+                    matches!(node.kind, CanvasNodeKind::Note { .. }),
+                )
+            })
+            .collect();
+        loose.sort_by(|a, b| {
+            a.2.cmp(&b.2)
+                .then(a.1.y.total_cmp(&b.1.y))
+                .then(a.1.x.total_cmp(&b.1.x))
+        });
+        for row in loose.chunks(PER_ROW) {
+            let mut x = 0.0;
+            let mut tallest: f32 = 0.0;
+            for (id, rect, _) in row {
+                if let Some(node) = self.node_mut(id) {
+                    node.rect.x = x;
+                    node.rect.y = y;
+                }
+                x += rect.width + LOOSE_GAP;
+                tallest = tallest.max(rect.height);
+            }
+            y += tallest + LOOSE_GAP;
+        }
+    }
+
+    pub(super) fn is_selected(&self, node_id: &CanvasNodeId) -> bool {
+        self.selected_node_id.as_ref() == Some(node_id) || self.extra_selected.contains(node_id)
+    }
+
+    /// Every selected node, the primary one first.
+    pub(super) fn selection(&self) -> Vec<CanvasNodeId> {
+        self.selected_node_id
+            .iter()
+            .chain(self.extra_selected.iter())
+            .cloned()
+            .collect()
+    }
+
+    pub(super) fn clear_selection(&mut self) {
+        self.selected_node_id = None;
+        self.extra_selected.clear();
+    }
+
+    /// Add a node to the selection, or take it out if it is already there.
+    pub(super) fn toggle_selected(&mut self, node_id: &CanvasNodeId) {
+        if self.selected_node_id.as_ref() == Some(node_id) {
+            self.selected_node_id = if self.extra_selected.is_empty() {
+                None
+            } else {
+                Some(self.extra_selected.remove(0))
+            };
+        } else if let Some(position) = self.extra_selected.iter().position(|id| id == node_id) {
+            self.extra_selected.remove(position);
+        } else if self.selected_node_id.is_none() {
+            self.selected_node_id = Some(node_id.clone());
+        } else {
+            self.extra_selected.push(node_id.clone());
+        }
+    }
+
+    /// Select exactly `node_ids`, the first as the primary selection.
+    pub(super) fn set_selection(&mut self, node_ids: Vec<CanvasNodeId>) {
+        let mut node_ids = node_ids.into_iter();
+        self.selected_node_id = node_ids.next();
+        self.extra_selected = node_ids.collect();
+    }
+
+    /// The nodes whose world rects meet `area`, groups left out.
+    pub(super) fn nodes_meeting(&self, area: CanvasRect) -> Vec<CanvasNodeId> {
+        self.nodes
+            .iter()
+            .filter(|node| !node.kind.is_group())
+            .filter(|node| {
+                node.rect.x < area.x + area.width
+                    && node.rect.x + node.rect.width > area.x
+                    && node.rect.y < area.y + area.height
+                    && node.rect.y + node.rect.height > area.y
+            })
+            .map(|node| node.id.clone())
+            .collect()
+    }
+
+    /// Make `node_id` the primary selection and bring it to the front. A node that
+    /// was already part of a larger selection keeps the rest selected with it.
     pub(super) fn select_and_raise(&mut self, node_id: &CanvasNodeId) {
+        if self.is_selected(node_id) {
+            let mut selection = self.selection();
+            selection.retain(|id| id != node_id);
+            self.extra_selected = selection;
+        } else {
+            self.extra_selected.clear();
+        }
         self.selected_node_id = Some(node_id.clone());
         let next_z = self.next_z_index;
         if let Some(node) = self.node_mut(node_id) {
@@ -1334,7 +1767,7 @@ impl CanvasWorkspaceState {
             delta,
         }) {
             CanvasSelectionDecision::Clear => {
-                self.selected_node_id = None;
+                self.clear_selection();
                 None
             }
             CanvasSelectionDecision::Select(node_id) => {
@@ -1342,6 +1775,44 @@ impl CanvasWorkspaceState {
                 Some(node_id)
             }
         }
+    }
+
+    /// Select the node nearest the selected one on the canvas in `direction`,
+    /// or the first node when nothing is selected yet.
+    pub(super) fn select_node_in_direction(
+        &mut self,
+        direction: super::split_tree::PaneDirection,
+        canvas_coordinator: &CanvasCoordinator,
+    ) -> Option<CanvasNodeId> {
+        let candidates: Vec<(usize, &CanvasNode)> = self
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, node)| !node.kind.is_group())
+            .collect();
+        let from = self.selected_node_id.as_ref().and_then(|selected| {
+            candidates
+                .iter()
+                .find(|(_, node)| &node.id == selected)
+                .map(|(index, _)| *index as u64)
+        });
+        let Some(from) = from else {
+            return self.select_adjacent_node(1, canvas_coordinator);
+        };
+        let rects: Vec<super::PaneRect> = candidates
+            .iter()
+            .map(|(index, node)| super::PaneRect {
+                pane_id: *index as u64,
+                x: node.rect.x,
+                y: node.rect.y,
+                width: node.rect.width,
+                height: node.rect.height,
+            })
+            .collect();
+        let next = super::split_tree::neighbor_in_direction(&rects, from, direction)?;
+        let node_id = self.nodes.get(next as usize)?.id.clone();
+        self.select_and_raise(&node_id);
+        Some(node_id)
     }
 
     pub(super) fn node_at_screen(&self, point: CanvasPoint) -> Option<&CanvasNode> {
@@ -1485,6 +1956,22 @@ pub(super) enum CanvasInteraction {
         start: CanvasPoint,
         start_rect: CanvasRect,
     },
+    /// A context link being dragged out of a node's port. `current` is in
+    /// canvas-body coordinates.
+    Link {
+        workspace_id: u64,
+        source: CanvasNodeId,
+        current: CanvasPoint,
+    },
+    /// A box dragged over empty canvas with Shift held, selecting what it meets.
+    /// Points are in canvas-body coordinates.
+    Marquee {
+        workspace_id: u64,
+        start: CanvasPoint,
+        current: CanvasPoint,
+        /// What was selected before the box, which stays selected.
+        base: Vec<CanvasNodeId>,
+    },
 }
 
 impl CanvasInteraction {
@@ -1492,7 +1979,9 @@ impl CanvasInteraction {
         match self {
             Self::Pan { workspace_id, .. }
             | Self::MoveNode { workspace_id, .. }
-            | Self::ResizeNode { workspace_id, .. } => *workspace_id,
+            | Self::ResizeNode { workspace_id, .. }
+            | Self::Marquee { workspace_id, .. }
+            | Self::Link { workspace_id, .. } => *workspace_id,
         }
     }
 }
@@ -1751,6 +2240,33 @@ impl MultiplexApp {
         }
     }
 
+    fn nudge_selected_canvas_node(
+        &mut self,
+        direction: super::split_tree::PaneDirection,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(workspace) = self.active_workspace_mut() else {
+            return false;
+        };
+        let Some(node_id) = workspace.canvas.selected_node_id.clone() else {
+            return true;
+        };
+        workspace.canvas.record_layout_history();
+        if let Some(node) = workspace.canvas.node_mut(&node_id) {
+            let step = theme::CANVAS_KEYBOARD_MOVE_STEP;
+            match direction {
+                super::split_tree::PaneDirection::Up => node.rect.y -= step,
+                super::split_tree::PaneDirection::Down => node.rect.y += step,
+                super::split_tree::PaneDirection::Left => node.rect.x -= step,
+                super::split_tree::PaneDirection::Right => node.rect.x += step,
+            }
+        }
+        workspace.canvas.refresh_group_membership_for_node(&node_id);
+        self.persist_runtime_state();
+        cx.notify();
+        true
+    }
+
     fn move_canvas_node_with_keyboard(
         &mut self,
         semantic: CanvasNodeSemanticId,
@@ -1990,6 +2506,32 @@ impl MultiplexApp {
         if !is_canvas || !event.keystroke.modifiers.secondary() {
             return false;
         }
+        if event.keystroke.modifiers.alt && !event.keystroke.modifiers.shift {
+            match event.keystroke.key.as_str() {
+                "t" => {
+                    self.tidy_canvas(window, cx);
+                    return true;
+                }
+                "1" => {
+                    self.fit_canvas(window, cx);
+                    return true;
+                }
+                "0" => {
+                    self.reset_canvas_zoom(window, cx);
+                    return true;
+                }
+                "2" => {
+                    if let Some(node_id) = self
+                        .active_workspace()
+                        .and_then(|workspace| workspace.canvas.selected_node_id.clone())
+                    {
+                        self.fly_to_canvas_node(&node_id, window, cx);
+                    }
+                    return true;
+                }
+                _ => {}
+            }
+        }
         if !event.keystroke.modifiers.shift && event.keystroke.key.as_str() == "c" {
             let selected_node_id = self
                 .active_workspace()
@@ -2001,16 +2543,25 @@ impl MultiplexApp {
         if !event.keystroke.modifiers.shift {
             return false;
         }
-        let delta = match event.keystroke.key.as_str() {
-            "left" | "up" => -1,
-            "right" | "down" => 1,
-            _ => return false,
+        let Some(direction) = (match event.keystroke.key.as_str() {
+            "left" => Some(super::split_tree::PaneDirection::Left),
+            "right" => Some(super::split_tree::PaneDirection::Right),
+            "up" => Some(super::split_tree::PaneDirection::Up),
+            "down" => Some(super::split_tree::PaneDirection::Down),
+            _ => None,
+        }) else {
+            return false;
         };
+        // With Option as well, the arrows nudge the selected node instead.
+        if event.keystroke.modifiers.alt {
+            return self.nudge_selected_canvas_node(direction, cx);
+        }
         let canvas_coordinator = self.canvas_coordinator.clone();
+        let origin = self.canvas_camera_origin();
         let selected = self.active_workspace_mut().and_then(|workspace| {
             workspace
                 .canvas
-                .select_adjacent_node(delta, &canvas_coordinator)
+                .select_node_in_direction(direction, &canvas_coordinator)
         });
         if let Some(selected) = selected.as_ref() {
             let viewport = window.viewport_size();
@@ -2033,6 +2584,7 @@ impl MultiplexApp {
                 workspace.canvas.transform.pan_y += reveal.y;
             }
         }
+        self.fly_canvas_camera(origin, MotionSpeed::Camera);
         let pane_id = selected.as_ref().and_then(|node_id| {
             self.active_workspace()
                 .and_then(|workspace| workspace.canvas.node(node_id))
@@ -2139,6 +2691,9 @@ impl MultiplexApp {
             cx.notify();
             return;
         }
+        if self.active_workspace_id == Some(chooser.workspace_id) {
+            self.begin_layout_transition(MotionSpeed::Morph);
+        }
         let Some((selected_count, total_count)) = self
             .workspace_mut(chooser.workspace_id)
             .and_then(|workspace| {
@@ -2203,6 +2758,8 @@ impl MultiplexApp {
             (viewport_height - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0) / 2.0,
         );
         let canvas_coordinator = self.canvas_coordinator.clone();
+        // Each pane glides from where this layout drew it to its place in the other.
+        self.begin_layout_transition(MotionSpeed::Morph);
 
         let Some(workspace) = self.workspace_mut(workspace_id) else {
             return;
@@ -2256,6 +2813,9 @@ impl MultiplexApp {
     }
 
     fn start_canvas_pan(&mut self, event: &MouseDownEvent, cx: &mut Context<Self>) {
+        self.interrupt_canvas_camera();
+        self.canvas_add_anchor = None;
+        self.canvas_add_menu_open = false;
         let Some(workspace) = self.active_workspace() else {
             return;
         };
@@ -2264,6 +2824,18 @@ impl MultiplexApp {
             return;
         }
         let workspace_id = workspace.id;
+        if event.modifiers.shift {
+            let base = workspace.canvas.selection();
+            self.canvas_node_menu_id = None;
+            self.canvas_interaction = Some(CanvasInteraction::Marquee {
+                workspace_id,
+                start: local,
+                current: local,
+                base,
+            });
+            cx.notify();
+            return;
+        }
         let start_pan = CanvasPoint::new(
             workspace.canvas.transform.pan_x,
             workspace.canvas.transform.pan_y,
@@ -2296,9 +2868,39 @@ impl MultiplexApp {
             .workspace(workspace_id)
             .and_then(|workspace| workspace.canvas.node(&node_id))
             .and_then(|node| node.kind.pane_id());
+        if event.modifiers.shift {
+            let still_selected = self.workspace_mut(workspace_id).is_some_and(|workspace| {
+                workspace.canvas.toggle_selected(&node_id);
+                workspace.canvas.is_selected(&node_id)
+            });
+            if !still_selected {
+                cx.notify();
+                return;
+            }
+        }
+        // Everything selected moves together, with the members of any selected group.
         let member_start_rects = self
             .workspace(workspace_id)
-            .map(|workspace| workspace.canvas.group_member_rects(&node_id))
+            .map(|workspace| {
+                let canvas = &workspace.canvas;
+                let moving: Vec<CanvasNodeId> = if canvas.is_selected(&node_id) {
+                    canvas.selection()
+                } else {
+                    vec![node_id.clone()]
+                };
+                let mut rects: Vec<(CanvasNodeId, CanvasRect)> = Vec::new();
+                for id in &moving {
+                    if id != &node_id
+                        && let Some(node) = canvas.node(id)
+                    {
+                        rects.push((id.clone(), node.rect));
+                    }
+                    rects.extend(canvas.group_member_rects(id));
+                }
+                let mut seen = HashSet::new();
+                rects.retain(|(id, _)| id != &node_id && seen.insert(id.clone()));
+                rects
+            })
             .unwrap_or_default();
         if let Some(workspace) = self.workspace_mut(workspace_id) {
             workspace.canvas.select_and_raise(&node_id);
@@ -2375,6 +2977,7 @@ impl MultiplexApp {
             .and_then(|workspace| workspace.canvas.node(&node_id))
             .and_then(|node| node.kind.pane_id());
         let canvas_coordinator = self.canvas_coordinator.clone();
+        let origin = self.canvas_camera_origin();
         let mut found = false;
         if let Some(workspace) = self.workspace_mut(workspace_id)
             && workspace.canvas.node(&node_id).is_some()
@@ -2414,6 +3017,7 @@ impl MultiplexApp {
         } else if let Some(focus) = transcript_focus {
             focus.focus(window);
         }
+        self.fly_canvas_camera(origin, MotionSpeed::Camera);
         self.canvas_activity_open = false;
         self.status_message = localization::dynamic_user_data_message(
             multiplex_ui_contract::MessageId::AgentCanvasDynamicFocused,
@@ -2452,16 +3056,21 @@ impl MultiplexApp {
         cx.notify();
     }
 
+    /// `snapping` is off while Option (Alt) is held or Snap is switched off.
     pub(super) fn handle_canvas_interaction_move(
         &mut self,
         position: Point<gpui::Pixels>,
+        snapping: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
         let Some(interaction) = self.canvas_interaction.clone() else {
             return false;
         };
+        let snapping = snapping && self.canvas_snap_enabled;
+        let mut guides = Vec::new();
         let current = point_from_pixels(position);
+        let local = self.canvas_local_point(position);
         let Some(workspace) = self.workspace_mut(interaction.workspace_id()) else {
             self.canvas_interaction = None;
             return false;
@@ -2481,8 +3090,30 @@ impl MultiplexApp {
                 member_start_rects,
                 ..
             } => {
-                let delta_x = (current.x - start.x) / zoom;
-                let delta_y = (current.y - start.y) / zoom;
+                let mut delta_x = (current.x - start.x) / zoom;
+                let mut delta_y = (current.y - start.y) / zoom;
+                if snapping {
+                    let moving: HashSet<&CanvasNodeId> = std::iter::once(&node_id)
+                        .chain(member_start_rects.iter().map(|(id, _)| id))
+                        .collect();
+                    let others: Vec<CanvasRect> = workspace
+                        .canvas
+                        .nodes
+                        .iter()
+                        .filter(|node| !node.kind.is_group() && !moving.contains(&node.id))
+                        .map(|node| node.rect)
+                        .collect();
+                    let candidate = CanvasRect {
+                        x: start_rect.x + delta_x,
+                        y: start_rect.y + delta_y,
+                        ..start_rect
+                    };
+                    let (dx, dy, snapped_guides) =
+                        canvas_snap_move(candidate, &others, CANVAS_SNAP_SCREEN_DISTANCE / zoom);
+                    delta_x += dx;
+                    delta_y += dy;
+                    guides = snapped_guides;
+                }
                 if let Some(node) = workspace.canvas.node_mut(&node_id) {
                     node.rect.x = start_rect.x + delta_x;
                     node.rect.y = start_rect.y + delta_y;
@@ -2500,6 +3131,51 @@ impl MultiplexApp {
                     }
                 }
             }
+            CanvasInteraction::Link {
+                workspace_id,
+                source,
+                ..
+            } => {
+                self.canvas_interaction = Some(CanvasInteraction::Link {
+                    workspace_id,
+                    source,
+                    current: local,
+                });
+                cx.notify();
+                return true;
+            }
+            CanvasInteraction::Marquee {
+                workspace_id,
+                start,
+                base,
+                ..
+            } => {
+                let transform = workspace.canvas.transform;
+                let top_left = transform
+                    .screen_to_world(CanvasPoint::new(start.x.min(local.x), start.y.min(local.y)));
+                let bottom_right = transform
+                    .screen_to_world(CanvasPoint::new(start.x.max(local.x), start.y.max(local.y)));
+                let mut selection = base.clone();
+                for node_id in workspace.canvas.nodes_meeting(CanvasRect {
+                    x: top_left.x,
+                    y: top_left.y,
+                    width: bottom_right.x - top_left.x,
+                    height: bottom_right.y - top_left.y,
+                }) {
+                    if !selection.contains(&node_id) {
+                        selection.push(node_id);
+                    }
+                }
+                workspace.canvas.set_selection(selection);
+                self.canvas_interaction = Some(CanvasInteraction::Marquee {
+                    workspace_id,
+                    start,
+                    current: local,
+                    base,
+                });
+                cx.notify();
+                return true;
+            }
             CanvasInteraction::ResizeNode {
                 node_id,
                 start,
@@ -2509,6 +3185,10 @@ impl MultiplexApp {
                 if let Some(node) = workspace.canvas.node_mut(&node_id) {
                     node.rect.width = start_rect.width + (current.x - start.x) / zoom;
                     node.rect.height = start_rect.height + (current.y - start.y) / zoom;
+                    if snapping {
+                        node.rect.width = canvas_snap_size(node.rect.width);
+                        node.rect.height = canvas_snap_size(node.rect.height);
+                    }
                     let min_width = if node.kind.pane_id().is_some() {
                         CANVAS_MIN_TERMINAL_NODE_WIDTH
                     } else {
@@ -2518,6 +3198,7 @@ impl MultiplexApp {
                 }
             }
         }
+        self.canvas_guides = guides;
         self.sync_terminal_layout(window, cx);
         cx.notify();
         true
@@ -2567,7 +3248,35 @@ impl MultiplexApp {
         let Some(interaction) = self.canvas_interaction.take() else {
             return false;
         };
+        self.canvas_guides.clear();
+        if let CanvasInteraction::Link {
+            source, current, ..
+        } = interaction
+        {
+            let target = self.active_workspace().and_then(|workspace| {
+                workspace
+                    .canvas
+                    .node_at_screen(current)
+                    .filter(|node| node.id != source && !node.kind.is_group())
+                    .map(|node| node.id.clone())
+            });
+            if let Some(target) = target {
+                // The same path the link button takes, with its checks and messages.
+                self.pending_dependency_source = None;
+                self.pending_context_source = Some(source);
+                self.link_canvas_node(target, cx);
+            }
+            cx.notify();
+            return true;
+        }
         if let Some(workspace) = self.workspace_mut(interaction.workspace_id()) {
+            // A click on empty canvas, not a pan, lets go of the selection.
+            if let CanvasInteraction::Pan { start_pan, .. } = &interaction
+                && workspace.canvas.transform.pan_x == start_pan.x
+                && workspace.canvas.transform.pan_y == start_pan.y
+            {
+                workspace.canvas.clear_selection();
+            }
             if let CanvasInteraction::MoveNode { node_id, .. } = &interaction {
                 workspace.canvas.refresh_group_membership_for_node(node_id);
             }
@@ -2594,17 +3303,27 @@ impl MultiplexApp {
         let Some(workspace_id) = self.active_workspace_id else {
             return;
         };
-        if self
-            .workspace(workspace_id)
-            .is_some_and(|workspace| workspace.canvas.node_at_screen(local).is_some())
+        // Over the node that has focus, a scroll belongs to what the node shows.
+        // Anywhere else, frames and notes included, it moves the canvas.
+        let zooming = event.modifiers.secondary() || event.modifiers.control;
+        if !zooming
+            && self.workspace(workspace_id).is_some_and(|workspace| {
+                workspace
+                    .canvas
+                    .node_at_screen(local)
+                    .is_some_and(|node| self.canvas_node_takes_scroll(workspace, node))
+            })
         {
             return;
         }
+        self.interrupt_canvas_camera();
         let delta = event.delta.pixel_delta(px(theme::SPACE_5));
         let dx: f32 = delta.x.into();
         let dy: f32 = delta.y.into();
         if let Some(workspace) = self.workspace_mut(workspace_id) {
-            if event.modifiers.secondary() {
+            // Cmd-scroll zooms at the pointer, as does Control-scroll, which is how a
+            // trackpad pinch arrives in apps that read it as a wheel.
+            if zooming {
                 let factor = (-dy * 0.0025).exp();
                 workspace.canvas.transform = workspace
                     .canvas
@@ -2620,20 +3339,159 @@ impl MultiplexApp {
         cx.notify();
     }
 
+    /// Whether a scroll over `node` should scroll the node rather than the canvas:
+    /// only for the focused terminal or agent, and only while it is drawn in full.
+    pub(super) fn canvas_node_takes_scroll(
+        &self,
+        workspace: &super::WorkspaceTab,
+        node: &CanvasNode,
+    ) -> bool {
+        if canvas_shows_cards(self.displayed_canvas_transform(workspace).zoom) {
+            return false;
+        }
+        match &node.kind {
+            CanvasNodeKind::Terminal { pane_id } => workspace.active_pane_id == *pane_id,
+            CanvasNodeKind::Agent { .. } => {
+                workspace.canvas.selected_node_id.as_ref() == Some(&node.id)
+            }
+            CanvasNodeKind::Note { .. } | CanvasNodeKind::Group { .. } => false,
+        }
+    }
+
     fn zoom_canvas(&mut self, factor: f32, window: &mut Window, cx: &mut Context<Self>) {
         let viewport = window.viewport_size();
         let center = CanvasPoint::new(
             f32::from(viewport.width) / 2.0,
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
         );
+        let origin = self.canvas_camera_origin();
         if let Some(workspace) = self.active_workspace_mut() {
             workspace.canvas.transform = workspace
                 .canvas
                 .transform
                 .zoom_around(center, workspace.canvas.transform.zoom * factor);
         }
+        self.fly_canvas_camera(origin, MotionSpeed::CameraStep);
         self.sync_terminal_layout(window, cx);
         self.persist_runtime_state();
+        cx.notify();
+    }
+
+    /// The view the canvas is drawn with on this frame: partway along a camera
+    /// move that is still under way, otherwise where the view is.
+    pub(super) fn displayed_canvas_transform(
+        &self,
+        workspace: &super::WorkspaceTab,
+    ) -> CanvasTransform {
+        let now = Instant::now();
+        match &self.canvas_camera {
+            Some((workspace_id, camera))
+                if *workspace_id == workspace.id && !camera.is_finished(now) =>
+            {
+                let t = camera.progress(now);
+                CanvasTransform {
+                    pan_x: motion::lerp(camera.from.pan_x, camera.to.pan_x, t),
+                    pan_y: motion::lerp(camera.from.pan_y, camera.to.pan_y, t),
+                    zoom: motion::lerp(camera.from.zoom, camera.to.zoom, t),
+                }
+            }
+            _ => workspace.canvas.transform,
+        }
+    }
+
+    /// Stop a camera move where it is drawn now, so a scroll or drag carries on
+    /// from what the user sees rather than from where the move was heading.
+    fn interrupt_canvas_camera(&mut self) {
+        let Some((workspace_id, displayed)) = self.canvas_camera_origin() else {
+            return;
+        };
+        if self
+            .canvas_camera
+            .as_ref()
+            .is_none_or(|(camera_workspace_id, _)| *camera_workspace_id != workspace_id)
+        {
+            return;
+        }
+        self.canvas_camera = None;
+        if let Some(workspace) = self.workspace_mut(workspace_id) {
+            workspace.canvas.transform = displayed;
+        }
+    }
+
+    /// Where the active canvas is drawn right now, to fly from.
+    fn canvas_camera_origin(&self) -> Option<(u64, CanvasTransform)> {
+        let workspace = self.active_workspace()?;
+        Some((workspace.id, self.displayed_canvas_transform(workspace)))
+    }
+
+    /// Fly the camera from `origin` to wherever the canvas view now points.
+    fn fly_canvas_camera(&mut self, origin: Option<(u64, CanvasTransform)>, speed: MotionSpeed) {
+        let Some((workspace_id, from)) = origin else {
+            return;
+        };
+        let Some(to) = self
+            .workspace(workspace_id)
+            .map(|workspace| workspace.canvas.transform)
+        else {
+            return;
+        };
+        if from == to {
+            return;
+        }
+        self.canvas_camera = Some((
+            workspace_id,
+            motion::Tween::new(from, to, speed, Instant::now()),
+        ));
+    }
+
+    /// Tidy the active canvas: every node glides to its new place, then the view
+    /// flies out to take them all in.
+    pub(super) fn tidy_canvas(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(workspace) = self.active_workspace_mut() else {
+            return;
+        };
+        if workspace.layout_mode != WorkspaceLayoutMode::Canvas || workspace.canvas.nodes.is_empty()
+        {
+            return;
+        }
+        let workspace_id = workspace.id;
+        let from: HashMap<CanvasNodeId, CanvasRect> = workspace
+            .canvas
+            .nodes
+            .iter()
+            .map(|node| (node.id.clone(), node.rect))
+            .collect();
+        workspace.canvas.record_layout_history();
+        workspace.canvas.tidy();
+        workspace.canvas.discard_unchanged_layout_history();
+        self.canvas_node_motion = Some(CanvasNodeMotion {
+            workspace_id,
+            from,
+            started: Instant::now(),
+            speed: MotionSpeed::Morph,
+        });
+        self.persist_runtime_state();
+        self.sync_terminal_layout(window, cx);
+        cx.notify();
+        let settle = MotionSpeed::Morph.duration();
+        cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(settle).await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                if this.active_workspace_id == Some(workspace_id) {
+                    this.fit_canvas(window, cx);
+                }
+            });
+        })
+        .detach();
+    }
+
+    pub(super) fn toggle_canvas_snap(&mut self, cx: &mut Context<Self>) {
+        self.canvas_snap_enabled = !self.canvas_snap_enabled;
+        self.status_message = localization::static_message(if self.canvas_snap_enabled {
+            multiplex_ui_contract::MessageId::CanvasSnapOnStatus
+        } else {
+            multiplex_ui_contract::MessageId::CanvasSnapOffStatus
+        });
         cx.notify();
     }
 
@@ -2643,9 +3501,11 @@ impl MultiplexApp {
             f32::from(viewport.width) / 2.0,
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
         );
+        let origin = self.canvas_camera_origin();
         if let Some(workspace) = self.active_workspace_mut() {
             workspace.canvas.transform = workspace.canvas.transform.zoom_around(center, 1.0);
         }
+        self.fly_canvas_camera(origin, MotionSpeed::CameraStep);
         self.sync_terminal_layout(window, cx);
         self.persist_runtime_state();
         cx.notify();
@@ -2654,6 +3514,7 @@ impl MultiplexApp {
     pub(super) fn fit_canvas(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let viewport = window.viewport_size();
         let canvas_coordinator = self.canvas_coordinator.clone();
+        let origin = self.canvas_camera_origin();
         if let Some(workspace) = self.active_workspace_mut() {
             workspace.canvas.fit_to_content(
                 f32::from(viewport.width),
@@ -2662,6 +3523,7 @@ impl MultiplexApp {
                 &canvas_coordinator,
             );
         }
+        self.fly_canvas_camera(origin, MotionSpeed::Camera);
         self.sync_terminal_layout(window, cx);
         self.persist_runtime_state();
         cx.notify();
@@ -2689,9 +3551,11 @@ impl MultiplexApp {
             f32::from(viewport.width) / 2.0,
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
         );
+        let placement = self.canvas_add_anchor.map(|(_, world)| world);
         let canvas_coordinator = self.canvas_coordinator.clone();
         if let Some(workspace) = self.workspace_mut(workspace_id) {
-            let world_center = workspace.canvas.transform.screen_to_world(screen_center);
+            let world_center = placement
+                .unwrap_or_else(|| workspace.canvas.transform.screen_to_world(screen_center));
             workspace.pane_ids.push(pane_id);
             workspace.active_pane_id = pane_id;
             let node_id = if let Some(definition) = agent_definition {
@@ -2746,7 +3610,42 @@ impl MultiplexApp {
         cx.notify();
     }
 
+    fn set_canvas_add_anchor(&mut self, position: Point<gpui::Pixels>) {
+        let screen = self.canvas_local_point(position);
+        self.canvas_add_anchor = self
+            .active_workspace()
+            .map(|workspace| (screen, workspace.canvas.transform.screen_to_world(screen)));
+    }
+
+    /// Double-clicking empty canvas offers what can be created, right there.
+    fn open_canvas_add_menu_at(
+        &mut self,
+        position: Point<gpui::Pixels>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let local = self.canvas_local_point(position);
+        if self
+            .active_workspace()
+            .is_some_and(|workspace| workspace.canvas.node_at_screen(local).is_some())
+        {
+            return;
+        }
+        self.canvas_interaction = None;
+        self.set_canvas_add_anchor(position);
+        self.canvas_add_menu_open = true;
+        self.canvas_links_open = false;
+        self.canvas_activity_open = false;
+        self.canvas_node_menu_id = None;
+        cx.notify();
+    }
+
+    /// Where a new node goes: where the canvas was double-clicked to add it, or
+    /// else the middle of the view.
     fn active_canvas_world_center(&self, window: &Window) -> Option<CanvasPoint> {
+        if let Some((_, world)) = self.canvas_add_anchor {
+            return Some(world);
+        }
         let viewport = window.viewport_size();
         let screen_center = CanvasPoint::new(
             f32::from(viewport.width) / 2.0,
@@ -2834,31 +3733,49 @@ impl MultiplexApp {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        let selected = workspace
+        // The frame wraps everything selected, leaving room above for its label.
+        let selected: Vec<(CanvasNodeId, CanvasRect)> = workspace
             .canvas
-            .selected_node_id
-            .clone()
-            .and_then(|selected_id| {
+            .selection()
+            .into_iter()
+            .filter_map(|selected_id| {
                 workspace
                     .canvas
                     .node(&selected_id)
                     .and_then(|node| (!node.kind.is_group()).then_some((selected_id, node.rect)))
-            });
+            })
+            .collect();
         workspace.canvas.record_layout_history();
         let node_id = workspace
             .canvas
             .add_group_node(world_center, &canvas_coordinator);
-        if let Some((selected_id, selected_rect)) = selected
+        if !selected.is_empty()
             && let Some(group) = workspace.canvas.node_mut(&node_id)
         {
+            let left = selected
+                .iter()
+                .map(|(_, rect)| rect.x)
+                .fold(f32::MAX, f32::min);
+            let top = selected
+                .iter()
+                .map(|(_, rect)| rect.y)
+                .fold(f32::MAX, f32::min);
+            let right = selected
+                .iter()
+                .map(|(_, rect)| rect.x + rect.width)
+                .fold(f32::MIN, f32::max);
+            let bottom = selected
+                .iter()
+                .map(|(_, rect)| rect.y + rect.height)
+                .fold(f32::MIN, f32::max);
             group.rect = CanvasRect {
-                x: selected_rect.x - 48.0,
-                y: selected_rect.y - 48.0,
-                width: selected_rect.width + 96.0,
-                height: selected_rect.height + 96.0,
+                x: left - CANVAS_GROUP_PADDING,
+                y: top - CANVAS_GROUP_LABEL_ROOM,
+                width: right - left + CANVAS_GROUP_PADDING * 2.0,
+                height: bottom - top + CANVAS_GROUP_LABEL_ROOM + CANVAS_GROUP_PADDING,
             };
             group.kind = CanvasNodeKind::Group {
-                member_ids: vec![selected_id],
+                member_ids: selected.into_iter().map(|(id, _)| id).collect(),
             };
         }
         workspace.canvas.select_and_raise(&node_id);
@@ -4017,11 +4934,13 @@ impl MultiplexApp {
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
         );
         let canvas_coordinator = self.canvas_coordinator.clone();
+        let placement = self.canvas_add_anchor.map(|(_, world)| world);
         let Some(workspace) = self.workspace_mut(workspace_id) else {
             self.agent_creation = Some(creation);
             return;
         };
-        let world_center = workspace.canvas.transform.screen_to_world(screen_center);
+        let world_center =
+            placement.unwrap_or_else(|| workspace.canvas.transform.screen_to_world(screen_center));
         let provider_label = definition.provider.label();
         let node_id =
             workspace
@@ -4698,6 +5617,26 @@ impl MultiplexApp {
         Ok(())
     }
 
+    /// Start dragging a context link out of `source`'s port.
+    fn start_canvas_link_drag(
+        &mut self,
+        workspace_id: u64,
+        source: CanvasNodeId,
+        position: Point<gpui::Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        let current = self.canvas_local_point(position);
+        self.pending_context_source = None;
+        self.pending_dependency_source = None;
+        self.canvas_node_menu_id = None;
+        self.canvas_interaction = Some(CanvasInteraction::Link {
+            workspace_id,
+            source,
+            current,
+        });
+        cx.notify();
+    }
+
     fn link_canvas_node(&mut self, node_id: CanvasNodeId, cx: &mut Context<Self>) {
         let Some(source) = self.pending_context_source.take() else {
             self.pending_dependency_source = None;
@@ -5179,6 +6118,7 @@ impl MultiplexApp {
 
     fn toggle_canvas_add_menu(&mut self, cx: &mut Context<Self>) {
         self.canvas_add_menu_open = !self.canvas_add_menu_open;
+        self.canvas_add_anchor = None;
         if self.canvas_add_menu_open {
             self.canvas_links_open = false;
             self.canvas_activity_open = false;
@@ -5219,8 +6159,13 @@ impl MultiplexApp {
             .id("canvas-add-menu")
             .debug_selector(|| "canvas-add-menu".to_string())
             .absolute()
-            .top(px(theme::TYPE_NANO_SIZE))
-            .left(px(theme::TYPE_CAPTION_SIZE))
+            .map(|menu| match self.canvas_add_anchor {
+                // Opened by double-clicking the canvas: the menu appears at the pointer.
+                Some((screen, _)) => menu.top(px(screen.y)).left(px(screen.x)),
+                None => menu
+                    .top(px(theme::TYPE_NANO_SIZE))
+                    .left(px(theme::TYPE_CAPTION_SIZE)),
+            })
             .w(px(theme::CANVAS_COMPACT_PANEL_WIDTH))
             .max_w(relative(0.9))
             .max_h(relative(0.92))
@@ -7971,6 +8916,31 @@ impl MultiplexApp {
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.fit_canvas(window, cx);
                             })),
+                    )
+                    .child(
+                        Button::new("canvas-tidy")
+                            .xsmall()
+                            .ghost()
+                            .icon(super::app_icon(super::ICON_GRID))
+                            .tooltip(localization::static_message(
+                                multiplex_ui_contract::MessageId::CanvasTidyTooltip,
+                            ))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.tidy_canvas(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("canvas-snap")
+                            .xsmall()
+                            .ghost()
+                            .selected(self.canvas_snap_enabled)
+                            .icon(super::app_icon(super::ICON_MAGNET))
+                            .tooltip(localization::static_message(
+                                multiplex_ui_contract::MessageId::CanvasSnapTooltip,
+                            ))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.toggle_canvas_snap(cx);
+                            })),
                     ),
             )
             .map(|toolbar| {
@@ -8346,17 +9316,19 @@ impl MultiplexApp {
             .into_any_element()
     }
 
-    fn jump_canvas_from_minimap(
+    /// Centre the view on the point of the minimap under the pointer.
+    pub(super) fn jump_canvas_from_minimap(
         &mut self,
-        event: &MouseDownEvent,
+        position: Point<gpui::Pixels>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.interrupt_canvas_camera();
         let viewport = window.viewport_size();
         let viewport_width = f32::from(viewport.width);
         let viewport_height =
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
-        let local = self.canvas_local_point(event.position);
+        let local = self.canvas_local_point(position);
         let map_point = CanvasPoint::new(
             local.x - (viewport_width - CANVAS_MINIMAP_WIDTH - CANVAS_MINIMAP_MARGIN),
             local.y - (viewport_height - CANVAS_MINIMAP_HEIGHT - CANVAS_MINIMAP_MARGIN),
@@ -8399,24 +9371,22 @@ impl MultiplexApp {
         let viewport_width = f32::from(viewport.width);
         let viewport_height =
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
+        let transform = self.displayed_canvas_transform(workspace);
         let Some(geometry) = canvas_minimap_geometry(
             &workspace.canvas.nodes,
-            workspace.canvas.transform,
+            transform,
             viewport_width,
             viewport_height,
         ) else {
             return div().into_any_element();
         };
 
-        let world_viewport_origin = workspace
-            .canvas
-            .transform
-            .screen_to_world(CanvasPoint::default());
+        let world_viewport_origin = transform.screen_to_world(CanvasPoint::default());
         let viewport_rect = geometry.world_rect_to_map(CanvasRect {
             x: world_viewport_origin.x,
             y: world_viewport_origin.y,
-            width: viewport_width / workspace.canvas.transform.zoom,
-            height: viewport_height / workspace.canvas.transform.zoom,
+            width: viewport_width / transform.zoom,
+            height: viewport_height / transform.zoom,
         });
         let selected_node_id = workspace.canvas.selected_node_id.clone();
         let mut minimap = div()
@@ -8438,7 +9408,9 @@ impl MultiplexApp {
                 MouseButton::Left,
                 cx.listener(|this, event: &MouseDownEvent, window, cx| {
                     cx.stop_propagation();
-                    this.jump_canvas_from_minimap(event, window, cx);
+                    // Keep following the pointer until it is released.
+                    this.canvas_minimap_dragging = true;
+                    this.jump_canvas_from_minimap(event.position, window, cx);
                 }),
             );
         for node in &workspace.canvas.nodes {
@@ -8495,11 +9467,11 @@ impl MultiplexApp {
             .into_any_element()
     }
 
-    fn render_canvas_edges(&self) -> AnyElement {
+    /// `opacity` fades the links in while the nodes glide into place.
+    fn render_canvas_edges(&self, transform: CanvasTransform, opacity: f32) -> AnyElement {
         let Some(workspace) = self.active_workspace() else {
             return div().into_any_element();
         };
-        let transform = workspace.canvas.transform;
         let node_rects: HashMap<_, _> = workspace
             .canvas
             .nodes
@@ -8518,31 +9490,58 @@ impl MultiplexApp {
                     CanvasPoint::new(source.x + source.width, source.y + source.height / 2.0),
                     CanvasPoint::new(target.x, target.y + target.height / 2.0),
                     edge.kind,
+                    self.canvas_link_flowing(edge),
                 ))
             })
             .collect();
-        let context_color = theme::with_alpha(theme::accent(), 0.72);
-        let dependency_color = theme::with_alpha(theme::warning(), 0.78);
+        let context_color = theme::with_alpha(theme::accent(), 0.72 * opacity);
+        let dependency_color = theme::with_alpha(theme::warning(), 0.78 * opacity);
+        // The link being dragged: from its node's port to the pointer.
+        let pending_link = match &self.canvas_interaction {
+            Some(CanvasInteraction::Link {
+                source, current, ..
+            }) => node_rects.get(source).map(|rect| {
+                (
+                    CanvasPoint::new(rect.x + rect.width, rect.y + rect.height / 2.0),
+                    *current,
+                )
+            }),
+            _ => None,
+        };
+        let pending_color = theme::accent();
+        // Dashes on a link whose agent is working move along it, one dash a second.
+        let flow_phase = (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_millis())
+            % 1000) as f32
+            / 1000.0;
 
         paint_canvas(
             |_, _, _| (),
             move |_, _, window, _| {
-                for (source, target, kind) in paths {
+                if let Some((source, target)) = pending_link {
+                    paint_dashed_link(window, source, target, pending_color, 0.0);
+                }
+                for (source, target, kind, flowing) in paths {
                     let color = if kind == CanvasEdgeKind::Context {
                         context_color
                     } else {
                         dependency_color
                     };
                     let offset = ((target.x - source.x).abs() * 0.45).max(48.0);
-                    let mut builder = PathBuilder::stroke(px(theme::SPACE_1));
-                    builder.move_to(point(px(source.x), px(source.y)));
-                    builder.cubic_bezier_to(
-                        point(px(target.x), px(target.y)),
-                        point(px(source.x + offset), px(source.y)),
-                        point(px(target.x - offset), px(target.y)),
-                    );
-                    if let Ok(path) = builder.build() {
-                        window.paint_path(path, color);
+                    if flowing {
+                        paint_dashed_link(window, source, target, color, flow_phase);
+                    } else {
+                        let mut builder = PathBuilder::stroke(px(theme::SPACE_1));
+                        builder.move_to(point(px(source.x), px(source.y)));
+                        builder.cubic_bezier_to(
+                            point(px(target.x), px(target.y)),
+                            point(px(source.x + offset), px(source.y)),
+                            point(px(target.x - offset), px(target.y)),
+                        );
+                        if let Ok(path) = builder.build() {
+                            window.paint_path(path, color);
+                        }
                     }
 
                     let mut arrow = PathBuilder::stroke(px(theme::SPACE_1));
@@ -8601,18 +9600,539 @@ impl MultiplexApp {
         }
     }
 
+    /// The sessions in `workspace` that are waiting for the user: agents asking for
+    /// approval or stuck, and terminals that failed or dropped on their own.
+    pub(super) fn workspace_attention(
+        &self,
+        workspace: &super::WorkspaceTab,
+    ) -> Vec<AttentionItem> {
+        let mut items: Vec<AttentionItem> = Vec::new();
+        for node in &workspace.canvas.nodes {
+            let waiting = self
+                .structured_agents
+                .get(&node.id)
+                .is_some_and(|runtime| agent_state_needs_attention(runtime.state));
+            if waiting {
+                items.push(AttentionItem {
+                    node_id: Some(node.id.clone()),
+                    pane_id: node.kind.pane_id(),
+                    title: self.canvas_node_label(&node.id),
+                });
+            }
+        }
+        for pane_id in &workspace.pane_ids {
+            let Some(pane) = self.pane(*pane_id) else {
+                continue;
+            };
+            let failed =
+                pane.status == "Error" || (!pane.connected && pane.closed && !pane.user_closed);
+            if failed && !items.iter().any(|item| item.pane_id == Some(*pane_id)) {
+                items.push(AttentionItem {
+                    node_id: workspace
+                        .canvas
+                        .nodes
+                        .iter()
+                        .find(|node| node.kind.pane_id() == Some(*pane_id))
+                        .map(|node| node.id.clone()),
+                    pane_id: Some(*pane_id),
+                    title: pane.title.clone(),
+                });
+            }
+        }
+        items
+    }
+
+    /// Go to what the attention pill names: its split pane when it has one, and
+    /// otherwise its node on the canvas, switching to the canvas if need be.
+    pub(super) fn jump_to_attention(
+        &mut self,
+        item: AttentionItem,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(workspace) = self.active_workspace() else {
+            return;
+        };
+        let workspace_id = workspace.id;
+        let in_split = workspace.layout_mode == WorkspaceLayoutMode::Split
+            && item.pane_id.is_some_and(|pane_id| {
+                workspace
+                    .layout
+                    .as_ref()
+                    .is_some_and(|layout| layout.contains(pane_id))
+            });
+        if in_split && let Some(pane_id) = item.pane_id {
+            if self.zoomed_pane().is_some_and(|zoomed| zoomed != pane_id) {
+                self.begin_layout_transition(MotionSpeed::Quick);
+                self.zoomed_panes.insert(workspace_id, pane_id);
+                self.sync_terminal_layout(window, cx);
+            }
+            self.activate_pane(pane_id, window, cx);
+            if let Some(pane) = self.pane(pane_id) {
+                pane.terminal_focus.focus(window);
+            }
+            cx.notify();
+            return;
+        }
+        let Some(node_id) = item.node_id else {
+            return;
+        };
+        if workspace.layout_mode == WorkspaceLayoutMode::Split {
+            self.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+        }
+        self.focus_canvas_activity_node(node_id.clone(), window, cx);
+        self.fly_to_canvas_node(&node_id, window, cx);
+    }
+
+    /// "N need you", naming the first, in Split or on the canvas.
+    pub(super) fn render_attention_pill(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let workspace = self.active_workspace()?;
+        let items = self.workspace_attention(workspace);
+        let first = items.first()?.clone();
+        let on_canvas = workspace.layout_mode == WorkspaceLayoutMode::Canvas;
+        let only_on_canvas = !on_canvas
+            && !first.pane_id.is_some_and(|pane_id| {
+                workspace
+                    .layout
+                    .as_ref()
+                    .is_some_and(|layout| layout.contains(pane_id))
+            });
+        let action = localization::static_message(if only_on_canvas {
+            multiplex_ui_contract::MessageId::AttentionPillOpenCanvas
+        } else {
+            multiplex_ui_contract::MessageId::AttentionPillJump
+        });
+        Some(
+            h_flex()
+                .id("attention-pill")
+                .debug_selector(|| "attention-pill".to_string())
+                .absolute()
+                .left(px(theme::SPACE_4))
+                .map(|pill| {
+                    // On the canvas the toolbar and minimap own the corners below.
+                    if on_canvas {
+                        pill.top(px(theme::SPACE_4))
+                    } else {
+                        pill.bottom(px(theme::SPACE_4))
+                    }
+                })
+                .h(px(ATTENTION_PILL_HEIGHT))
+                .pl(px(theme::SPACE_3))
+                .pr(px(theme::SPACE_4))
+                .gap(px(theme::SPACE_2))
+                .items_center()
+                .rounded(px(ATTENTION_PILL_HEIGHT / 2.0))
+                .bg(theme::with_alpha(theme::warning(), 0.14))
+                .border_1()
+                .border_color(theme::with_alpha(theme::warning(), 0.5))
+                .shadow_lg()
+                .cursor_pointer()
+                .hover(|style| style.bg(theme::with_alpha(theme::warning(), 0.22)))
+                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.jump_to_attention(first.clone(), window, cx);
+                }))
+                .child(
+                    div()
+                        .size(px(PANE_ATTENTION_DOT))
+                        .rounded_full()
+                        .bg(theme::warning())
+                        .with_animation(
+                            "attention-pill-pulse",
+                            gpui::Animation::new(std::time::Duration::from_millis(1000))
+                                .repeat()
+                                .with_easing(gpui::pulsating_between(0.35, 1.0)),
+                            |dot, delta| dot.opacity(delta),
+                        ),
+                )
+                .child(
+                    div()
+                        .font_semibold()
+                        .text_color(theme::warning())
+                        .child(localization::attention_pill_count(items.len())),
+                )
+                .child(
+                    div()
+                        .text_color(theme::text_secondary())
+                        .child(format!("{} \u{00b7} {action} \u{2192}", items[0].title)),
+                )
+                .into_any_element(),
+        )
+    }
+
+    /// A link flows while a structured agent at either end is working.
+    fn canvas_link_flowing(&self, edge: &CanvasEdge) -> bool {
+        [&edge.source, &edge.target].into_iter().any(|node_id| {
+            self.structured_agents.get(node_id).is_some_and(|runtime| {
+                matches!(
+                    runtime.state,
+                    AgentRunState::Running | AgentRunState::Starting
+                )
+            })
+        })
+    }
+
+    /// A label at the middle of each link; clicking it removes the link.
+    fn render_canvas_link_labels(
+        &self,
+        mut body: gpui::Stateful<Div>,
+        workspace: &super::WorkspaceTab,
+        transform: CanvasTransform,
+        cx: &mut Context<Self>,
+    ) -> gpui::Stateful<Div> {
+        if canvas_shows_cards(transform.zoom) {
+            return body;
+        }
+        for edge in workspace.canvas.edges.iter().filter(|edge| edge.enabled) {
+            let (Some(source), Some(target)) = (
+                workspace.canvas.node(&edge.source),
+                workspace.canvas.node(&edge.target),
+            ) else {
+                continue;
+            };
+            let source = transform.screen_rect(source.rect);
+            let target = transform.screen_rect(target.rect);
+            let middle = CanvasPoint::new(
+                (source.x + source.width + target.x) / 2.0,
+                (source.y + source.height / 2.0 + target.y + target.height / 2.0) / 2.0,
+            );
+            let edge_id = edge.id.clone();
+            let group = SharedString::from(format!("canvas-link-label-{}", edge.id.as_str()));
+            body = body.child(
+                h_flex()
+                    .id(SharedString::from(format!(
+                        "canvas-link-label-{}",
+                        edge.id.as_str()
+                    )))
+                    .group(group.clone())
+                    .absolute()
+                    .left(px(middle.x - CANVAS_LINK_LABEL_WIDTH / 2.0))
+                    .top(px(middle.y - CANVAS_LINK_LABEL_HEIGHT / 2.0))
+                    .w(px(CANVAS_LINK_LABEL_WIDTH))
+                    .h(px(CANVAS_LINK_LABEL_HEIGHT))
+                    .justify_center()
+                    .items_center()
+                    .gap_1()
+                    .rounded(px(CANVAS_LINK_LABEL_HEIGHT / 2.0))
+                    .bg(theme::terminal_panel())
+                    .border_1()
+                    .border_color(theme::border_strong())
+                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                    .text_color(theme::text_secondary())
+                    .cursor_pointer()
+                    .hover(|style| {
+                        style
+                            .border_color(theme::danger())
+                            .text_color(theme::danger())
+                    })
+                    .tooltip(|window, cx| {
+                        gpui_component::tooltip::Tooltip::new(localization::static_message(
+                            multiplex_ui_contract::MessageId::CanvasLinkRemoveTooltip,
+                        ))
+                        .build(window, cx)
+                    })
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.remove_canvas_edge(edge_id.clone(), cx);
+                    }))
+                    .child(localization::static_message(match edge.kind {
+                        CanvasEdgeKind::Context => {
+                            multiplex_ui_contract::MessageId::CanvasLinkContextLabel
+                        }
+                        CanvasEdgeKind::Dependency => {
+                            multiplex_ui_contract::MessageId::CanvasLinkDependencyLabel
+                        }
+                    }))
+                    .child(
+                        div()
+                            .invisible()
+                            .group_hover(group, |style| style.visible())
+                            .child(Icon::new(IconName::Close).size(px(theme::ICON_SIZE_SMALL))),
+                    ),
+            );
+        }
+        body
+    }
+
+    /// Link ports: the out port of the node under the pointer, or of the selected
+    /// node, and while a link is being dragged, the in ports of every node it
+    /// could reach.
+    fn render_canvas_ports(
+        &self,
+        mut body: gpui::Stateful<Div>,
+        workspace: &super::WorkspaceTab,
+        transform: CanvasTransform,
+        cx: &mut Context<Self>,
+    ) -> gpui::Stateful<Div> {
+        let workspace_id = workspace.id;
+        let linking_from = match &self.canvas_interaction {
+            Some(CanvasInteraction::Link { source, .. }) => Some(source.clone()),
+            _ => None,
+        };
+        if canvas_shows_cards(transform.zoom) {
+            return body;
+        }
+        for node in &workspace.canvas.nodes {
+            if node.kind.is_group() {
+                continue;
+            }
+            let screen = canvas_node_render_rect(transform, node);
+            let middle = screen.y + screen.height / 2.0;
+            let shows_out = linking_from.is_none()
+                && node.kind.can_source_context()
+                && (self.canvas_hovered_node.as_ref() == Some(&node.id)
+                    || workspace.canvas.selected_node_id.as_ref() == Some(&node.id));
+            if shows_out {
+                let source = node.id.clone();
+                body = body.child(
+                    div()
+                        .id(SharedString::from(format!(
+                            "canvas-port-out-{}",
+                            node.id.as_str()
+                        )))
+                        .debug_selector({
+                            let node_id = node.id.clone();
+                            move || format!("canvas-port-out-{}", node_id.as_str())
+                        })
+                        .absolute()
+                        .left(px(screen.x + screen.width - CANVAS_PORT_SIZE / 2.0))
+                        .top(px(middle - CANVAS_PORT_SIZE / 2.0))
+                        .size(px(CANVAS_PORT_SIZE))
+                        .rounded_full()
+                        .bg(theme::terminal_bg())
+                        .border_2()
+                        .border_color(theme::accent())
+                        .cursor(CursorStyle::Crosshair)
+                        .tooltip(|window, cx| {
+                            gpui_component::tooltip::Tooltip::new(localization::static_message(
+                                multiplex_ui_contract::MessageId::CanvasPortTooltip,
+                            ))
+                            .build(window, cx)
+                        })
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                                cx.stop_propagation();
+                                this.start_canvas_link_drag(
+                                    workspace_id,
+                                    source.clone(),
+                                    event.position,
+                                    cx,
+                                );
+                            }),
+                        ),
+                );
+            }
+            if linking_from
+                .as_ref()
+                .is_some_and(|source| source != &node.id)
+            {
+                body = body.child(
+                    div()
+                        .absolute()
+                        .left(px(screen.x - CANVAS_PORT_SIZE / 2.0))
+                        .top(px(middle - CANVAS_PORT_SIZE / 2.0))
+                        .size(px(CANVAS_PORT_SIZE))
+                        .rounded_full()
+                        .bg(theme::terminal_bg())
+                        .border_2()
+                        .border_color(theme::accent()),
+                );
+            }
+        }
+        body
+    }
+
+    /// A terminal or agent node drawn small enough that its text could not be
+    /// read: its name, state, and latest output, at a size that stays readable.
+    fn render_canvas_node_card(
+        &self,
+        workspace_id: u64,
+        node: &CanvasNode,
+        screen: CanvasRect,
+        opacity: f32,
+        card: CanvasNodeCard,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let node_id = node.id.clone();
+        let latest = self.canvas_node_latest_line(node);
+        let dot_color = if card.needs_attention {
+            theme::warning()
+        } else if node
+            .kind
+            .pane_id()
+            .and_then(|pane_id| self.pane(pane_id))
+            .is_some_and(|pane| pane.closed)
+        {
+            theme::text_muted_dark()
+        } else {
+            theme::success()
+        };
+        let move_node_id = node_id.clone();
+        v_flex()
+            .id(SharedString::from(format!(
+                "canvas-node-card-{}",
+                node_id.as_str()
+            )))
+            .debug_selector({
+                let node_id = node_id.clone();
+                move || format!("canvas-node-card-{}", node_id.as_str())
+            })
+            .absolute()
+            .left(px(screen.x))
+            .top(px(screen.y))
+            .w(px(screen.width))
+            .h(px(screen.height))
+            .opacity(opacity)
+            .overflow_hidden()
+            .justify_center()
+            .gap(px(CANVAS_CARD_GAP))
+            .p(px(CANVAS_CARD_PADDING))
+            .rounded(px(theme::CANVAS_POPOVER_RADIUS))
+            .bg(theme::terminal_panel())
+            .border_1()
+            .when(card.selected || card.needs_attention, |frame| {
+                frame.border_2()
+            })
+            .border_color(if card.needs_attention {
+                theme::warning()
+            } else if card.selected {
+                theme::focus_ring()
+            } else {
+                theme::border()
+            })
+            .cursor(CursorStyle::OpenHand)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    cx.stop_propagation();
+                    // Double-clicking a card flies in to the node it stands for.
+                    if event.click_count >= 2 {
+                        this.fly_to_canvas_node(&move_node_id, window, cx);
+                        return;
+                    }
+                    this.start_canvas_node_move(
+                        workspace_id,
+                        move_node_id.clone(),
+                        event,
+                        window,
+                        cx,
+                    );
+                }),
+            )
+            .child(
+                h_flex()
+                    .gap(px(CANVAS_CARD_GAP))
+                    .items_center()
+                    .child(
+                        div()
+                            .flex_none()
+                            .size(px(CANVAS_CARD_DOT))
+                            .rounded_full()
+                            .bg(dot_color),
+                    )
+                    .child(
+                        div()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .whitespace_nowrap()
+                            .text_size(px(CANVAS_CARD_TITLE_SIZE))
+                            .font_semibold()
+                            .text_color(theme::text_on_dark())
+                            .child(card.title),
+                    ),
+            )
+            .child(
+                div()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .whitespace_nowrap()
+                    .text_size(px(CANVAS_CARD_STATUS_SIZE))
+                    .text_color(theme::text_muted_dark())
+                    .child(card.status),
+            )
+            .when_some(latest, |card, line| {
+                card.child(
+                    div()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .whitespace_nowrap()
+                        .text_size(px(CANVAS_CARD_OUTPUT_SIZE))
+                        .font_family(self.terminal_font_family(cx))
+                        .text_color(theme::text_secondary())
+                        .child(line),
+                )
+            })
+            .into_any_element()
+    }
+
+    /// The last line of output a node has shown, for its card.
+    fn canvas_node_latest_line(&self, node: &CanvasNode) -> Option<String> {
+        if let Some(runtime) = self.structured_agents.get(&node.id) {
+            return runtime
+                .transcript
+                .lines()
+                .rev()
+                .find(|line| !line.trim().is_empty())
+                .map(|line| line.trim_end().to_string());
+        }
+        let pane = self.pane(node.kind.pane_id()?)?;
+        let rows = pane.terminal.size().rows;
+        (0..rows)
+            .rev()
+            .filter_map(|row| pane.terminal.visible_row_text(row))
+            .find(|line| !line.trim().is_empty())
+            .map(|line| line.trim_end().to_string())
+    }
+
+    /// Fly the camera so one node fills the view, as close as 100%.
+    pub(super) fn fly_to_canvas_node(
+        &mut self,
+        node_id: &CanvasNodeId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let viewport = window.viewport_size();
+        let width = f32::from(viewport.width);
+        let height =
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
+        let origin = self.canvas_camera_origin();
+        let Some(workspace) = self.active_workspace_mut() else {
+            return;
+        };
+        let Some(rect) = workspace.canvas.node(node_id).map(|node| node.rect) else {
+            return;
+        };
+        workspace.canvas.select_and_raise(node_id);
+        let zoom = ((width - CANVAS_FLY_PADDING * 2.0) / rect.width)
+            .min((height - CANVAS_FLY_PADDING * 2.0) / rect.height)
+            .clamp(CANVAS_MIN_ZOOM, 1.0);
+        workspace.canvas.transform = CanvasTransform {
+            pan_x: width / 2.0 - (rect.x + rect.width / 2.0) * zoom,
+            pan_y: height / 2.0 - (rect.y + rect.height / 2.0) * zoom,
+            zoom,
+        };
+        self.fly_canvas_camera(origin, MotionSpeed::Camera);
+        self.sync_terminal_layout(window, cx);
+        self.persist_runtime_state();
+        cx.notify();
+    }
+
     fn render_canvas_node(
         &self,
         workspace_id: u64,
         node: &CanvasNode,
+        screen: CanvasRect,
+        opacity: f32,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let Some(workspace) = self.workspace(workspace_id) else {
             return div().into_any_element();
         };
-        let screen = canvas_node_render_rect(workspace.canvas.transform, node);
-        let selected = workspace.canvas.selected_node_id.as_ref() == Some(&node.id);
+        let selected = workspace.canvas.is_selected(&node.id);
         let dependency_source = self.pending_dependency_source.as_ref() == Some(&node.id);
         let context_source = self.pending_context_source.as_ref() == Some(&node.id);
         let node_id = node.id.clone();
@@ -8724,6 +10244,43 @@ impl MultiplexApp {
                 theme::terminal_panel()
             }
         });
+        let zoom = self.displayed_canvas_transform(workspace).zoom;
+        if canvas_shows_cards(zoom)
+            && matches!(
+                node.kind,
+                CanvasNodeKind::Terminal { .. } | CanvasNodeKind::Agent { .. }
+            )
+        {
+            return self.render_canvas_node_card(
+                workspace_id,
+                node,
+                screen,
+                opacity,
+                CanvasNodeCard {
+                    title,
+                    status: format!("{status} \u{00b7} {location}"),
+                    needs_attention,
+                    selected,
+                },
+                cx,
+            );
+        }
+        if let Some(pane) = pane_id.and_then(|id| self.pane(id)) {
+            // The terminal's text grows and shrinks with the canvas; its columns and
+            // rows stay those the node's canvas size gives it.
+            let (char_width, line_height) = self.terminal_metrics(window, cx);
+            let grid = canvas_terminal_grid_size(node.rect, char_width, line_height);
+            let (available_width, available_height) =
+                canvas_terminal_available(screen, pane.app_attached.is_some());
+            pane.grid_bounds.set_scale(canvas_terminal_scale(
+                zoom,
+                available_width,
+                available_height,
+                grid,
+                char_width,
+                line_height,
+            ));
+        }
 
         let mut body = v_flex()
             .id(SharedString::from(format!(
@@ -8735,6 +10292,7 @@ impl MultiplexApp {
             .top(px(screen.y))
             .w(px(screen.width))
             .h(px(screen.height))
+            .opacity(opacity)
             .overflow_hidden()
             .rounded(px(theme::CANVAS_POPOVER_RADIUS))
             .border_1()
@@ -8764,6 +10322,17 @@ impl MultiplexApp {
                     cx.stop_propagation();
                 }),
             )
+            .on_hover(cx.listener({
+                let node_id = node_id.clone();
+                move |this, hovered: &bool, _, cx| {
+                    if *hovered {
+                        this.canvas_hovered_node = Some(node_id.clone());
+                    } else if this.canvas_hovered_node.as_ref() == Some(&node_id) {
+                        this.canvas_hovered_node = None;
+                    }
+                    cx.notify();
+                }
+            }))
             .child(
                 h_flex()
                     .id(SharedString::from(format!(
@@ -10544,6 +12113,14 @@ impl MultiplexApp {
         let viewport_width = f32::from(viewport.width);
         let viewport_height =
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
+        let transform = self.displayed_canvas_transform(workspace);
+        let now = Instant::now();
+        let transition = self.layout_transition.as_ref().filter(|transition| {
+            transition.workspace_id == workspace_id && !transition.is_finished(now)
+        });
+        // Motion is tracked in window coordinates; the canvas body starts below
+        // the chrome and the canvas toolbar.
+        let body_top = theme::CHROME_HEIGHT + CANVAS_TOOLBAR_HEIGHT;
         let mut node_indices: Vec<_> = (0..workspace.canvas.nodes.len()).collect();
         node_indices.sort_by_key(|index| {
             let node = &workspace.canvas.nodes[*index];
@@ -10551,10 +12128,7 @@ impl MultiplexApp {
         });
         node_indices.retain(|index| {
             canvas_rect_is_visible(
-                canvas_node_render_rect(
-                    workspace.canvas.transform,
-                    &workspace.canvas.nodes[*index],
-                ),
+                canvas_node_render_rect(transform, &workspace.canvas.nodes[*index]),
                 viewport_width,
                 viewport_height,
                 CANVAS_RENDER_OVERSCAN,
@@ -10572,13 +12146,18 @@ impl MultiplexApp {
             .cursor(CursorStyle::Arrow)
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    if event.click_count == 2 {
+                        this.open_canvas_add_menu_at(event.position, window, cx);
+                        return;
+                    }
                     this.start_canvas_pan(event, cx);
                 }),
             )
             .on_mouse_down(
                 MouseButton::Right,
-                cx.listener(|this, _, _, cx| {
+                cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                    this.set_canvas_add_anchor(event.position);
                     this.canvas_add_menu_open = true;
                     this.canvas_links_open = false;
                     this.canvas_activity_open = false;
@@ -10596,18 +12175,117 @@ impl MultiplexApp {
             .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| {
                 this.handle_canvas_scroll(event, window, cx);
             }))
-            .child(self.render_canvas_edges());
+            .child(self.render_canvas_edges(
+                transform,
+                transition.map_or(1.0, |transition| transition.progress(now)),
+            ));
 
+        let mut drawn = HashMap::new();
+        let node_motion = self
+            .canvas_node_motion
+            .as_ref()
+            .filter(|motion| motion.workspace_id == workspace_id)
+            .and_then(|motion| motion.progress(now).map(|t| (motion, t)));
         for index in node_indices {
+            let node = &workspace.canvas.nodes[index];
+            let settled = match node_motion {
+                Some((motion, t)) => {
+                    let mut gliding = node.clone();
+                    gliding.rect = motion.rect(node, t);
+                    canvas_node_render_rect(transform, &gliding)
+                }
+                None => canvas_node_render_rect(transform, node),
+            };
+            let target = MotionRect::new(
+                settled.x,
+                settled.y + body_top,
+                settled.width,
+                settled.height,
+            );
+            let (rect, opacity) = match transition {
+                Some(transition) => transition.frame_for(node.kind.pane_id(), target, now),
+                None => (target, 1.0),
+            };
+            if let Some(pane_id) = node.kind.pane_id() {
+                drawn.insert(pane_id, rect);
+            }
+            let screen = CanvasRect {
+                x: rect.x,
+                y: rect.y - body_top,
+                width: rect.width,
+                height: rect.height,
+            };
             body = body.child(self.render_canvas_node(
                 workspace_id,
-                &workspace.canvas.nodes[index],
+                node,
+                screen,
+                opacity,
                 window,
                 cx,
             ));
         }
+        *self.drawn_layout.borrow_mut() = Some((workspace_id, drawn));
+        body = self.render_canvas_link_labels(body, workspace, transform, cx);
+        body = self.render_canvas_ports(body, workspace, transform, cx);
+        if let Some(CanvasInteraction::Marquee { start, current, .. }) = &self.canvas_interaction {
+            body = body.child(
+                div()
+                    .absolute()
+                    .left(px(start.x.min(current.x)))
+                    .top(px(start.y.min(current.y)))
+                    .w(px((start.x - current.x).abs()))
+                    .h(px((start.y - current.y).abs()))
+                    .border_1()
+                    .border_color(theme::accent())
+                    .bg(theme::with_alpha(theme::accent(), 0.1)),
+            );
+        }
+        for guide in &self.canvas_guides {
+            let (start, end) = if guide.vertical {
+                (
+                    transform.world_to_screen(CanvasPoint::new(guide.at, guide.from)),
+                    transform.world_to_screen(CanvasPoint::new(guide.at, guide.to)),
+                )
+            } else {
+                (
+                    transform.world_to_screen(CanvasPoint::new(guide.from, guide.at)),
+                    transform.world_to_screen(CanvasPoint::new(guide.to, guide.at)),
+                )
+            };
+            body = body.child(
+                div()
+                    .absolute()
+                    .left(px(start.x))
+                    .top(px(start.y))
+                    .w(px((end.x - start.x).max(1.0)))
+                    .h(px((end.y - start.y).max(1.0)))
+                    .bg(canvas_guide_color()),
+            );
+        }
+        let links_flowing = workspace
+            .canvas
+            .edges
+            .iter()
+            .any(|edge| edge.enabled && self.canvas_link_flowing(edge));
+        if transition.is_some()
+            || node_motion.is_some()
+            || links_flowing
+            || self
+                .canvas_camera
+                .as_ref()
+                .is_some_and(|(id, camera)| *id == workspace_id && !camera.is_finished(now))
+        {
+            window.request_animation_frame();
+        } else if self.layout_motion_pending() {
+            cx.defer_in(window, |this, window, cx| {
+                this.settle_layout_transition(window, cx);
+            });
+        }
 
         body = body.child(self.render_canvas_minimap(window, cx));
+        if let Some(pill) = self.render_attention_pill(cx) {
+            body = body.child(pill);
+        }
 
         if workspace.canvas.nodes.is_empty() {
             body = body.child(
@@ -10888,12 +12566,13 @@ fn agent_state_after_queue(state: AgentRunState) -> Option<AgentRunState> {
 mod tests {
     use super::{
         AgentExecutableStatus, AgentRunState, CANVAS_DEFAULT_NODE_HEIGHT,
-        CANVAS_DEFAULT_NODE_WIDTH, CanvasCoordinator, CanvasLinkMutation,
+        CANVAS_DEFAULT_NODE_WIDTH, CANVAS_SNAP_GAP, CanvasCoordinator, CanvasLinkMutation,
         CanvasLinkMutationDecision, CanvasNode, CanvasNodeKind, CanvasPoint, CanvasRect,
         CanvasTransform, CanvasWorkspaceState, MultiplexApp, agent_creation_can_launch,
         agent_state_after_queue, agent_state_needs_attention, canvas_minimap_geometry,
         canvas_node_render_rect, canvas_orchestration_scope, canvas_rect_is_visible,
-        canvas_reveal_delta, compact_activity_detail, default_agent_backend,
+        canvas_reveal_delta, canvas_shows_cards, canvas_snap_move, canvas_terminal_grid_size,
+        canvas_terminal_scale, compact_activity_detail, default_agent_backend,
         find_non_overlapping_position, fit_transform, structured_transcript_lines,
         structured_transcript_selected_text, summarize_agent_activity,
     };
@@ -10988,6 +12667,183 @@ mod tests {
             title: None,
             collapsed: false,
         }
+    }
+
+    fn rect(x: f32, y: f32, width: f32, height: f32) -> CanvasRect {
+        CanvasRect {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    #[test]
+    fn shift_selection_toggles_and_grabbing_a_selected_node_keeps_the_rest() {
+        let mut canvas = CanvasWorkspaceState {
+            nodes: vec![
+                terminal_node("a", 1, 0.0, 0.0),
+                terminal_node("b", 2, 600.0, 0.0),
+                terminal_node("c", 3, 0.0, 500.0),
+            ],
+            ..CanvasWorkspaceState::default()
+        };
+        let id = CanvasNodeId::new;
+        canvas.toggle_selected(&id("a"));
+        canvas.toggle_selected(&id("b"));
+        assert_eq!(canvas.selection(), vec![id("a"), id("b")]);
+
+        canvas.select_and_raise(&id("b"));
+        assert_eq!(canvas.selection(), vec![id("b"), id("a")]);
+
+        canvas.select_and_raise(&id("c"));
+        assert_eq!(canvas.selection(), vec![id("c")]);
+
+        canvas.toggle_selected(&id("c"));
+        assert!(canvas.selection().is_empty());
+    }
+
+    #[test]
+    fn a_box_selects_the_nodes_it_meets_but_not_groups() {
+        let mut canvas = CanvasWorkspaceState {
+            nodes: vec![
+                terminal_node("a", 1, 0.0, 0.0),
+                terminal_node("b", 2, 2000.0, 0.0),
+            ],
+            ..CanvasWorkspaceState::default()
+        };
+        canvas.nodes.push(CanvasNode {
+            id: CanvasNodeId::new("g"),
+            kind: CanvasNodeKind::Group {
+                member_ids: Vec::new(),
+            },
+            rect: CanvasRect {
+                x: -50.0,
+                y: -50.0,
+                width: 3000.0,
+                height: 800.0,
+            },
+            z_index: 0,
+            title: None,
+            collapsed: false,
+        });
+        let met = canvas.nodes_meeting(CanvasRect {
+            x: 100.0,
+            y: 100.0,
+            width: 10.0,
+            height: 10.0,
+        });
+        assert_eq!(met, vec![CanvasNodeId::new("a")]);
+    }
+
+    #[test]
+    fn zooming_scales_a_terminal_without_changing_its_columns_and_rows() {
+        let world = rect(0.0, 0.0, 520.0, 320.0);
+        let grid = canvas_terminal_grid_size(world, 7.0, 16.0);
+        for zoom in [0.35_f32, 0.6, 1.0, 1.6] {
+            let screen = CanvasTransform {
+                zoom,
+                ..CanvasTransform::default()
+            }
+            .screen_rect(world);
+            let available_width = screen.width - 2.0 * super::super::TERMINAL_INNER_PADDING_X;
+            let available_height = screen.height
+                - super::CANVAS_NODE_HEADER_HEIGHT
+                - 2.0 * super::super::TERMINAL_INNER_PADDING_Y;
+            let scale =
+                canvas_terminal_scale(zoom, available_width, available_height, grid, 7.0, 16.0);
+            assert!(scale <= zoom + 1e-6, "{zoom}: {scale}");
+            assert!(f32::from(grid.0) * 7.0 * scale <= available_width + 0.01);
+            assert!(f32::from(grid.1) * 16.0 * scale <= available_height + 0.01);
+        }
+        assert_eq!(grid, canvas_terminal_grid_size(world, 7.0, 16.0));
+    }
+
+    #[test]
+    fn nodes_become_cards_below_the_threshold() {
+        assert!(canvas_shows_cards(0.4));
+        assert!(!canvas_shows_cards(0.55));
+        assert!(!canvas_shows_cards(1.0));
+    }
+
+    #[test]
+    fn tidy_rows_up_each_group_inside_its_frame_and_puts_loose_nodes_below() {
+        let id = CanvasNodeId::new;
+        let mut note = terminal_node("note", 9, 50.0, 50.0);
+        note.kind = CanvasNodeKind::Note {
+            text: String::new(),
+            color: crate::models::CanvasNoteColor::default(),
+        };
+        let mut canvas = CanvasWorkspaceState {
+            nodes: vec![
+                note,
+                terminal_node("b", 2, 900.0, 40.0),
+                terminal_node("a", 1, 100.0, 60.0),
+                terminal_node("loose", 3, 3000.0, 3000.0),
+                CanvasNode {
+                    id: id("g"),
+                    kind: CanvasNodeKind::Group {
+                        member_ids: vec![id("a"), id("b")],
+                    },
+                    rect: rect(0.0, 0.0, 2000.0, 600.0),
+                    z_index: 0,
+                    title: None,
+                    collapsed: false,
+                },
+            ],
+            ..CanvasWorkspaceState::default()
+        };
+        canvas.tidy();
+        let at = |name: &str| canvas.node(&CanvasNodeId::new(name)).unwrap().rect;
+        let (a, b, group) = (at("a"), at("b"), at("g"));
+        assert_eq!(a.y, b.y);
+        assert_eq!(b.x, a.x + a.width + CANVAS_SNAP_GAP);
+        assert!(group.x <= a.x && group.x + group.width >= b.x + b.width);
+        assert!(group.y < a.y && group.y + group.height >= a.y + a.height);
+        let (loose, note) = (at("loose"), at("note"));
+        assert!(loose.y > group.y + group.height);
+        assert_eq!(
+            loose.y, note.y,
+            "loose nodes share a row, notes after the rest"
+        );
+        assert!(note.x > loose.x);
+    }
+
+    #[test]
+    fn a_node_snaps_to_the_grid_when_nothing_lines_up() {
+        let (dx, dy, guides) = canvas_snap_move(rect(13.0, 29.0, 100.0, 80.0), &[], 7.0);
+        assert_eq!((13.0 + dx, 29.0 + dy), (16.0, 32.0));
+        assert!(guides.is_empty());
+    }
+
+    #[test]
+    fn a_node_lines_up_with_a_neighbours_edges_and_centre_and_draws_guides() {
+        let other = rect(0.0, 0.0, 200.0, 100.0);
+        // Left edges within the threshold: snaps exactly and draws a vertical guide.
+        let (dx, _, guides) = canvas_snap_move(rect(4.0, 300.0, 120.0, 60.0), &[other], 7.0);
+        assert_eq!(4.0 + dx, 0.0);
+        assert!(guides.iter().any(|guide| guide.vertical && guide.at == 0.0));
+        let vertical = guides.iter().find(|guide| guide.vertical).unwrap();
+        assert!(vertical.from < 0.0 && vertical.to > 360.0);
+        // Centres line up with centres.
+        let (_, dy, _) = canvas_snap_move(rect(400.0, 23.0, 80.0, 60.0), &[other], 7.0);
+        assert_eq!(23.0 + dy + 30.0, 50.0);
+    }
+
+    #[test]
+    fn nodes_placed_side_by_side_snap_to_the_standard_gap() {
+        let other = rect(0.0, 0.0, 200.0, 100.0);
+        let (dx, _, _) = canvas_snap_move(rect(235.0, 400.0, 100.0, 100.0), &[other], 7.0);
+        assert_eq!(235.0 + dx, 200.0 + CANVAS_SNAP_GAP);
+    }
+
+    #[test]
+    fn an_edge_does_not_snap_to_a_centre() {
+        let other = rect(0.0, 0.0, 200.0, 100.0);
+        // The left edge sits near the other's centre line (100) but must not snap to it.
+        let (dx, _, guides) = canvas_snap_move(rect(103.0, 500.0, 50.0, 50.0), &[other], 7.0);
+        assert_ne!(103.0 + dx, 100.0);
+        assert!(guides.iter().all(|guide| !guide.vertical));
     }
 
     #[test]

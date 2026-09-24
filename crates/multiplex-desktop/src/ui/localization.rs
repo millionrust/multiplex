@@ -2802,6 +2802,26 @@ pub fn workspace_split_cap_error(limit: usize) -> String {
     text(&WorkspaceSplitCapErrorArgs::new(Count(limit as u64)))
 }
 
+pub fn split_zoom_hidden_panes(count: usize) -> String {
+    text(&SplitZoomHiddenPanesArgs::new(Count(count as u64)))
+}
+
+pub fn attention_pill_count(count: usize) -> String {
+    text(&AttentionPillCountArgs::new(Count(count as u64)))
+}
+
+pub fn split_drop_full(limit: usize) -> String {
+    text(&SplitDropFullArgs::new(Count(limit as u64)))
+}
+
+pub fn split_preset_opened_status(count: usize) -> String {
+    text(&SplitPresetOpenedStatusArgs::new(Count(count as u64)))
+}
+
+pub fn split_preset_kept_status(count: usize) -> String {
+    text(&SplitPresetKeptStatusArgs::new(Count(count as u64)))
+}
+
 pub fn tmux_session_deleted_status(session: impl Into<String>) -> String {
     text(&TmuxSessionDeletedStatusArgs::new(UserData::new(session)))
 }

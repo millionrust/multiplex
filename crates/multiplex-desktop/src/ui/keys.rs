@@ -245,6 +245,37 @@ pub enum AppShortcut {
     LogsOrHostSearch,
     NewHostOrSession,
     DuplicatePane,
+    /// Split the active pane with a new one below it.
+    SplitDown,
+    /// Move focus to the nearest pane on screen in a direction.
+    FocusPane(ShortcutDirection),
+    /// Move the divider nearest the active pane in a direction.
+    ResizePane(ShortcutDirection),
+    /// Let the active pane fill the workspace, or restore the split.
+    ZoomPane,
+    /// Give every pane an equal share of the workspace.
+    EqualizePanes,
+}
+
+/// An arrow key's direction.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ShortcutDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+impl ShortcutDirection {
+    fn from_key(key: &str) -> Option<Self> {
+        match key {
+            "left" => Some(Self::Left),
+            "right" => Some(Self::Right),
+            "up" => Some(Self::Up),
+            "down" => Some(Self::Down),
+            _ => None,
+        }
+    }
 }
 
 /// What a shortcut does while a terminal pane has the keyboard, before the keystroke would be
@@ -268,6 +299,9 @@ pub fn app_shortcut(keystroke: &Keystroke) -> Option<AppShortcut> {
     let shift = keystroke.modifiers.shift;
     let alt = keystroke.modifiers.alt;
     let key = keystroke.key.as_str();
+    if alt && shift {
+        return ShortcutDirection::from_key(key).map(AppShortcut::ResizePane);
+    }
     if alt {
         return match key {
             "right" | "tab" => Some(AppShortcut::CycleWorkspace { forward: true }),
@@ -276,11 +310,17 @@ pub fn app_shortcut(keystroke: &Keystroke) -> Option<AppShortcut> {
         };
     }
     if shift {
+        if let Some(direction) = ShortcutDirection::from_key(key) {
+            return Some(AppShortcut::FocusPane(direction));
+        }
         return match key {
             "f" => Some(AppShortcut::OpenFiles),
             "t" => Some(AppShortcut::ToggleFilesAndTerminal),
             "b" => Some(AppShortcut::BroadcastInput),
             "l" => Some(AppShortcut::ClearScreen),
+            "d" => Some(AppShortcut::SplitDown),
+            "enter" => Some(AppShortcut::ZoomPane),
+            "e" => Some(AppShortcut::EqualizePanes),
             _ => None,
         };
     }
@@ -640,6 +680,24 @@ mod tests {
             AppShortcut::LogsOrHostSearch => "logs_or_host_search".to_owned(),
             AppShortcut::NewHostOrSession => "new_host_or_session".to_owned(),
             AppShortcut::DuplicatePane => "duplicate_pane".to_owned(),
+            AppShortcut::SplitDown => "split_down".to_owned(),
+            AppShortcut::FocusPane(direction) => {
+                format!("focus_pane_{}", direction_name(direction))
+            }
+            AppShortcut::ResizePane(direction) => {
+                format!("resize_pane_{}", direction_name(direction))
+            }
+            AppShortcut::ZoomPane => "zoom_pane".to_owned(),
+            AppShortcut::EqualizePanes => "equalize_panes".to_owned(),
+        }
+    }
+
+    fn direction_name(direction: ShortcutDirection) -> &'static str {
+        match direction {
+            ShortcutDirection::Left => "left",
+            ShortcutDirection::Right => "right",
+            ShortcutDirection::Up => "up",
+            ShortcutDirection::Down => "down",
         }
     }
 

@@ -50,6 +50,116 @@ impl PaletteCategory {
 pub(super) enum PaletteAction {
     Search(multiplex_domain::SearchAction),
     RunCommand,
+    Layout(LayoutCommand),
+}
+
+/// A split or canvas action offered in the palette, next to its shortcut.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum LayoutCommand {
+    SplitRight,
+    SplitDown,
+    ZoomPane,
+    Equalize,
+    Preset(super::split_tree::SplitPreset),
+    ShowCanvas,
+    ShowSplit,
+    FitCanvas,
+    TidyCanvas,
+    ToggleBroadcast,
+    ToggleSnap,
+}
+
+impl LayoutCommand {
+    /// The commands that make sense for a workspace in `canvas` or split view.
+    pub(super) fn available(canvas: bool) -> Vec<LayoutCommand> {
+        let mut commands = vec![
+            LayoutCommand::SplitRight,
+            LayoutCommand::SplitDown,
+            LayoutCommand::ZoomPane,
+            LayoutCommand::Equalize,
+        ];
+        commands.extend(
+            super::split_tree::SplitPreset::ALL
+                .into_iter()
+                .map(LayoutCommand::Preset),
+        );
+        commands.push(if canvas {
+            LayoutCommand::ShowSplit
+        } else {
+            LayoutCommand::ShowCanvas
+        });
+        commands.extend([
+            LayoutCommand::FitCanvas,
+            LayoutCommand::TidyCanvas,
+            LayoutCommand::ToggleBroadcast,
+            LayoutCommand::ToggleSnap,
+        ]);
+        commands
+    }
+
+    pub(super) fn title(self) -> String {
+        use multiplex_ui_contract::MessageId;
+        let message = |id| localization::static_message(id).to_string();
+        match self {
+            LayoutCommand::SplitRight => message(MessageId::PaletteSplitRight),
+            LayoutCommand::SplitDown => message(MessageId::PaletteSplitDown),
+            LayoutCommand::ZoomPane => message(MessageId::PaletteZoomPane),
+            LayoutCommand::Equalize => message(MessageId::PaletteEqualize),
+            LayoutCommand::Preset(preset) => format!(
+                "{} {}",
+                message(MessageId::PaletteLayoutPrefix),
+                message(super::workspace::preset_message(preset))
+            ),
+            LayoutCommand::ShowCanvas => message(MessageId::PaletteShowCanvas),
+            LayoutCommand::ShowSplit => message(MessageId::PaletteShowSplit),
+            LayoutCommand::FitCanvas => message(MessageId::PaletteFitCanvas),
+            LayoutCommand::TidyCanvas => message(MessageId::PaletteTidyCanvas),
+            LayoutCommand::ToggleBroadcast => message(MessageId::PaletteToggleBroadcast),
+            LayoutCommand::ToggleSnap => message(MessageId::PaletteToggleSnap),
+        }
+    }
+
+    /// The shortcut, shown so the palette teaches it.
+    pub(super) fn shortcut(self) -> &'static str {
+        match self {
+            LayoutCommand::SplitRight => "Cmd+D",
+            LayoutCommand::SplitDown => "Cmd+Shift+D",
+            LayoutCommand::ZoomPane => "Cmd+Shift+Enter",
+            LayoutCommand::Equalize => "Cmd+Shift+E",
+            LayoutCommand::ShowCanvas | LayoutCommand::ShowSplit => "",
+            LayoutCommand::FitCanvas => "Cmd+Option+1",
+            LayoutCommand::TidyCanvas => "Cmd+Option+T",
+            LayoutCommand::ToggleBroadcast => "Cmd+Shift+B",
+            LayoutCommand::Preset(_) | LayoutCommand::ToggleSnap => "",
+        }
+    }
+}
+
+/// Layout commands whose titles hold every word of `query`, as palette entries.
+pub(super) fn layout_command_candidates(query: &str, canvas: bool) -> Vec<CommandPaletteCandidate> {
+    let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+    LayoutCommand::available(canvas)
+        .into_iter()
+        .filter_map(|command| {
+            let title = command.title();
+            let lower = title.to_lowercase();
+            if !words.iter().all(|word| lower.contains(word.as_str())) {
+                return None;
+            }
+            Some(CommandPaletteCandidate {
+                id: command_palette_result_id(3, &format!("{command:?}")),
+                command: String::new(),
+                title,
+                detail: command.shortcut().to_string(),
+                source: AutocompleteSource::Builtin,
+                pinned: false,
+                category: PaletteCategory::Actions,
+                action: PaletteAction::Layout(command),
+                status: None,
+                highlights: Vec::new(),
+            })
+        })
+        .collect()
 }
 
 #[derive(Clone)]

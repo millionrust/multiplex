@@ -1,0 +1,1574 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Split &amp; Canvas Concept</title>
+<style>
+:root{
+  --chrome:#111316; --surface:#14161A; --canvas:#17191D; --elev:#1B1E23; --hover:#1C1F24; --selected:#23272E;
+  --control:#23262B; --control-h:#2A2E34; --term:#15171B;
+  --b1:#22262C; --b2:#2A2E35; --b3:#363A41; --bf:#4A5260;
+  --t1:#E6E8EB; --t2:#B4B9C2; --t3:#8C929C; --t4:#6C727B;
+  --acc:#74A7F2; --on-acc:#0E1622; --sel:#2B3B52; --acc-soft:rgba(116,167,242,.14);
+  --live:#6CCB8F; --warn:#E9B061; --err:#E5787A; --lab:#B69CF0; --cyan:#62C4D1;
+  --tfg:#C9CDD4;
+  --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,monospace;
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--chrome);color:var(--t1);font:13px/1.4 var(--ui);overflow:hidden;user-select:none;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+svg.i{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none}
+kbd{font:11px/1 var(--mono);padding:2px 5px;border-radius:4px;background:var(--control);border:1px solid var(--b2);color:var(--t2);white-space:nowrap}
+code{font:12px var(--mono);color:var(--t1);background:var(--control);padding:1px 4px;border-radius:4px}
+
+#app{display:grid;grid-template-rows:40px 1fr 26px;height:100vh}
+
+/* ---------- chrome ---------- */
+.chrome{display:flex;align-items:center;gap:8px;padding:0 10px 0 14px;background:var(--chrome);border-bottom:1px solid var(--b1)}
+.lights{display:flex;gap:8px;margin-right:10px}
+.lights i{width:12px;height:12px;border-radius:50%;display:block}
+.lights i:nth-child(1){background:#ED6A5E}.lights i:nth-child(2){background:#F5BF4F}.lights i:nth-child(3){background:#61C554}
+.tab{height:28px;padding:0 12px;border-radius:7px;display:flex;align-items:center;gap:8px;color:var(--t3)}
+.tab.active{background:var(--elev);color:var(--t1);box-shadow:inset 0 0 0 1px var(--b2)}
+.tab .n{font-size:11px;color:var(--t3)}
+.grow{flex:1}
+.seg{display:flex;background:var(--control);border-radius:8px;padding:2px;gap:2px}
+.seg button{height:24px;padding:0 10px;border-radius:6px;color:var(--t3);display:flex;align-items:center;gap:6px}
+.seg button:hover{color:var(--t1)}
+.seg button.on{background:var(--elev);color:var(--t1);box-shadow:0 0 0 1px var(--b3)}
+.cbtn{height:28px;padding:0 10px;border-radius:7px;color:var(--t2);display:flex;align-items:center;gap:6px}
+.cbtn:hover{background:var(--hover);color:var(--t1)}
+.cbtn.on{background:rgba(233,176,97,.14);color:var(--warn)}
+.cbtn.pon{background:var(--acc-soft);color:var(--acc)}
+
+.main{display:grid;grid-template-columns:196px 1fr auto;min-height:0}
+
+/* ---------- rail ---------- */
+.rail{background:var(--surface);border-right:1px solid var(--b1);overflow:auto;padding:12px 8px}
+.rail h4{margin:4px 8px 6px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--t3)}
+.host{display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;border-radius:6px;color:var(--t2);cursor:grab}
+.host:hover{background:var(--hover);color:var(--t1)}
+.host .g{width:6px;height:6px;border-radius:50%}
+.host small{margin-left:auto;color:var(--t4);font:11px var(--mono)}
+.rail .tip{margin:14px 8px 0;font-size:12px;color:var(--t3);line-height:1.5}
+
+/* ---------- stage ---------- */
+.stage{position:relative;overflow:hidden;container-type:size;background:var(--canvas);min-width:0}
+body[data-view=canvas] .stage{background-color:#141619;background-image:radial-gradient(circle,#2C3037 1.1px,transparent 1.3px)}
+.stage.bc-on{box-shadow:inset 0 0 0 2px rgba(233,176,97,.55)}
+.world{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0}
+.world.morph{transition:transform .44s var(--ease)}
+.world.morph .pane,.world.morph .note,.world.morph .group{transition:left .44s var(--ease),top .44s var(--ease),width .44s var(--ease),height .44s var(--ease),opacity .3s}
+.world.quick .pane{transition:left .16s var(--ease),top .16s var(--ease),width .16s var(--ease),height .16s var(--ease)}
+
+.pane{position:absolute;display:flex;flex-direction:column;background:var(--term);border:1px solid var(--b2);border-radius:9px;box-shadow:0 1px 0 rgba(0,0,0,.25);transition:opacity .25s,border-color .15s}
+body[data-view=canvas] .pane{box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.pane.off{opacity:0;pointer-events:none}
+.pane.focused{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+body[data-view=canvas] .pane.focused{box-shadow:0 0 0 1px var(--acc),0 14px 36px rgba(0,0,0,.45)}
+.pane.sel:not(.focused){border-color:var(--bf);box-shadow:0 0 0 1px var(--bf)}
+.pane.bc{border-color:rgba(233,176,97,.7)}
+.pane.dragging{opacity:.35}
+body[data-view=split] .pane:not(.focused) .term{opacity:.66}
+body[data-view=split] .pane:not(.focused) .ph{background:var(--surface)}
+
+.ph{height:30px;flex:none;display:flex;align-items:center;gap:8px;padding:0 4px 0 10px;background:var(--elev);border-bottom:1px solid var(--b1);border-radius:8px 8px 0 0;cursor:grab;min-width:0}
+.ph:active{cursor:grabbing}
+.st{width:8px;height:8px;border-radius:50%;background:var(--live);flex:none}
+.st.busy{background:var(--acc);animation:pulse 1.2s infinite}
+.st.attn{background:var(--warn);animation:pulse 1s infinite}
+.st.off{background:var(--t4)}
+@keyframes pulse{50%{opacity:.35}}
+.ttl{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;outline:none}
+.who{color:var(--t3);font:11.5px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tag{font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:4px;flex:none}
+.tag.prod{background:rgba(116,167,242,.15);color:var(--acc)}
+.tag.agent{background:rgba(182,156,240,.15);color:var(--lab)}
+.tag.local{background:rgba(108,203,143,.13);color:var(--live)}
+.badge-bc{display:none;font-size:10px;font-weight:700;letter-spacing:.05em;color:var(--warn)}
+.pane.bc .badge-bc{display:inline}
+.ib{width:24px;height:24px;border-radius:5px;display:grid;place-items:center;color:var(--t3);flex:none}
+.ib:hover{background:var(--control-h);color:var(--t1)}
+.ib[data-act=tosplit]{display:none}
+body[data-view=canvas] .pane.notree .ib[data-act=tosplit]{display:grid}
+body[data-view=canvas] .ib[data-act=zoom]{display:none}
+
+.term{flex:1;min-height:0;overflow:auto;padding:8px 10px 10px;font:12px/1.5 var(--mono);color:var(--tfg);user-select:text;cursor:text;border-radius:0 0 8px 8px;transition:opacity .2s}
+.term::-webkit-scrollbar{width:8px}.term::-webkit-scrollbar-thumb{background:var(--b2);border-radius:4px}
+.out div,.cmd{white-space:pre-wrap;word-break:break-all;min-height:18px}
+.out .dim{color:var(--t4)} .out .ok{color:var(--live)} .out .err{color:var(--err)} .out .warn{color:var(--warn)} .out .acc{color:var(--acc)} .out .lab{color:var(--lab)} .out .b{color:var(--t1);font-weight:600}
+.pr{color:var(--live)} .k-ssh .pr{color:var(--acc)} .k-agent .pr{color:var(--lab)}
+.cur{display:inline-block;width:7px;height:15px;vertical-align:-3px;border:1px solid var(--t3)}
+.pane.focused .cur{background:var(--t1);border-color:var(--t1);animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.cmd.hide{display:none}
+.approve{display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(233,176,97,.1);border-top:1px solid rgba(233,176,97,.35);font-size:12px;flex:none}
+.approve[hidden]{display:none}
+.approve span{flex:1;min-width:0}
+.btn{height:26px;padding:0 10px;border-radius:6px;background:var(--control);color:var(--t1);box-shadow:inset 0 0 0 1px var(--b3);display:inline-flex;align-items:center;gap:6px}
+.btn:hover{background:var(--control-h)}
+.btn.pri{background:var(--acc);color:var(--on-acc);box-shadow:none;font-weight:600}
+.btn.pri:hover{filter:brightness(1.08)}
+.offbar{display:flex;align-items:center;gap:10px;padding:8px 10px;border-top:1px solid var(--b1);background:var(--surface);font-size:12px;color:var(--t3);flex:none}
+.offbar[hidden]{display:none}
+
+/* level of detail when zoomed out */
+.lod{position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;gap:calc(8px * var(--inv,1));padding:calc(18px * var(--inv,1));background:var(--elev);border-radius:8px;pointer-events:none}
+.stage.far .pane .lod{display:flex}
+.lod-t{font-size:calc(19px * var(--inv,1));font-weight:650;display:flex;align-items:center;gap:calc(10px * var(--inv,1))}
+.lod-t .st{width:calc(10px * var(--inv,1));height:calc(10px * var(--inv,1))}
+.lod-s{font-size:calc(13px * var(--inv,1));color:var(--t3)}
+.lod-l{font:calc(12.5px * var(--inv,1))/1.4 var(--mono);color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pane.attn .lod{box-shadow:inset 0 0 0 calc(2px * var(--inv,1)) var(--warn)}
+
+/* ports / resize */
+.port{position:absolute;top:50%;width:14px;height:14px;border-radius:50%;background:var(--canvas);border:2px solid var(--acc);transform:translate(-50%,-50%);opacity:0;transition:opacity .15s;z-index:3}
+.pin{left:0}.pout{left:100%;cursor:crosshair}
+body[data-view=canvas] .pane:hover .port,body.linking .pin{opacity:1}
+.rz{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;z-index:3;display:none}
+.rz::after{content:"";position:absolute;right:4px;bottom:4px;width:7px;height:7px;border-right:2px solid var(--t4);border-bottom:2px solid var(--t4);border-radius:0 0 3px 0}
+body[data-view=canvas] .rz{display:block}
+
+/* notes & groups */
+.note{position:absolute;background:#2B271C;border:1px solid #4A4128;border-radius:8px;display:flex;flex-direction:column;box-shadow:0 10px 26px rgba(0,0,0,.35)}
+.note.sel{border-color:var(--warn)}
+.nh{height:22px;flex:none;cursor:grab;display:flex;align-items:center;justify-content:center}
+.nh::before{content:"";width:28px;height:3px;border-radius:2px;background:#5A5034}
+.nb{flex:1;padding:4px 14px 14px;color:#EADFBF;font-size:14px;line-height:1.5;outline:none;user-select:text;overflow:auto;white-space:pre-wrap}
+.group{position:absolute;border:1px solid rgba(116,167,242,.35);background:rgba(116,167,242,.04);border-radius:14px}
+.group.sel{border-color:var(--acc)}
+.gh{position:absolute;left:14px;top:12px;height:24px;padding:0 10px;border-radius:6px;background:rgba(116,167,242,.14);color:var(--acc);font-weight:600;display:flex;align-items:center;gap:6px;cursor:grab;font-size:calc(12px * max(1, var(--inv,1) * .8))}
+body[data-view=split] .note,body[data-view=split] .group,body[data-view=split] #edges,body[data-view=split] .elabel{opacity:0;pointer-events:none}
+.note,.group,#edges,.elabel{transition:opacity .3s}
+
+#edges{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none}
+#edges path{fill:none;stroke:#4E5561;stroke-width:1.6;vector-effect:non-scaling-stroke}
+#edges path.flow{stroke:var(--acc);stroke-dasharray:6 6;animation:flow 1s linear infinite}
+#edges path.tmp{stroke:var(--acc);stroke-dasharray:4 4}
+@keyframes flow{to{stroke-dashoffset:-12}}
+.elabel{position:absolute;transform:translate(-50%,-50%) scale(var(--inv,1));padding:2px 8px;border-radius:10px;background:var(--elev);border:1px solid var(--b3);font-size:11px;color:var(--t2);white-space:nowrap;cursor:pointer}
+.elabel:hover{border-color:var(--err);color:var(--err)}
+.elabel:hover::after{content:" ✕"}
+
+/* guides */
+.guide{position:absolute;background:#E86FB0;pointer-events:none;z-index:900}
+
+/* dividers */
+.divider{position:absolute;z-index:40}
+.divider.row{cursor:col-resize}.divider.col{cursor:row-resize}
+.divider::after{content:"";position:absolute;background:transparent;border-radius:2px;transition:background .12s}
+.divider.row::after{left:50%;top:6px;bottom:6px;width:2px;transform:translateX(-50%)}
+.divider.col::after{top:50%;left:6px;right:6px;height:2px;transform:translateY(-50%)}
+.divider:hover::after,.divider.active::after{background:var(--acc)}
+.divider.snapped::after{background:var(--live)}
+body[data-view=canvas] .divider{display:none}
+.rtip{position:absolute;z-index:60;transform:translate(-50%,-50%);padding:3px 8px;border-radius:6px;background:var(--elev);border:1px solid var(--b3);font:12px var(--mono);color:var(--t1);pointer-events:none;box-shadow:var(--shadow)}
+.rtip.snapped{border-color:var(--live);color:var(--live)}
+
+/* drop preview */
+#drop{position:absolute;z-index:70;border:2px solid var(--acc);background:rgba(116,167,242,.16);border-radius:9px;pointer-events:none;display:none;place-items:center;transition:left .1s var(--ease),top .1s var(--ease),width .1s var(--ease),height .1s var(--ease)}
+#drop span{padding:4px 10px;border-radius:6px;background:var(--acc);color:var(--on-acc);font-weight:600;font-size:12px}
+#drop.full{border-color:var(--err);background:rgba(229,120,122,.12)} #drop.full span{background:var(--err)}
+.zones{position:absolute;z-index:65;pointer-events:none;display:none}
+.zones i{position:absolute;border:1px dashed rgba(116,167,242,.35);border-radius:6px}
+.ghost{position:fixed;z-index:9999;pointer-events:none;padding:6px 10px;border-radius:7px;background:var(--elev);border:1px solid var(--acc);box-shadow:0 10px 30px rgba(0,0,0,.5);font-weight:600;display:flex;gap:8px;align-items:center;transform:translate(12px,10px)}
+
+#marquee{position:absolute;z-index:80;border:1px solid var(--acc);background:rgba(116,167,242,.1);display:none;pointer-events:none}
+
+/* HUD */
+.hud{position:absolute;z-index:100}
+.bar{display:flex;align-items:center;gap:2px;padding:4px;background:rgba(27,30,35,.94);backdrop-filter:blur(8px);border:1px solid var(--b2);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.bar button{height:28px;min-width:28px;padding:0 8px;border-radius:7px;color:var(--t2);display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}
+.bar button:hover{background:var(--hover);color:var(--t1)}
+.bar button.on{color:var(--acc);background:var(--acc-soft)}
+.bar .sep{width:1px;height:18px;background:var(--b2);margin:0 4px}
+.bar .zl{font:12px var(--mono);min-width:52px}
+.tools{left:50%;bottom:14px;transform:translateX(-50%)}
+.minimap{right:14px;top:14px;width:208px;height:138px;border-radius:10px;overflow:hidden;background:rgba(20,22,26,.94);border:1px solid var(--b2);box-shadow:0 10px 30px rgba(0,0,0,.4);cursor:pointer}
+.minimap canvas{width:100%;height:100%;display:block}
+.attnpill{left:14px;bottom:14px;display:none;white-space:nowrap;box-shadow:0 10px 30px rgba(0,0,0,.4);align-items:center;gap:8px;height:30px;padding:0 12px 0 10px;border-radius:15px;background:rgba(233,176,97,.14);border:1px solid rgba(233,176,97,.5);color:var(--warn);font-weight:600;cursor:pointer;backdrop-filter:blur(8px)}
+.attnpill.show{display:flex}
+.attnpill:hover{background:rgba(233,176,97,.22)}
+.attnpill small{color:var(--t2);font-weight:400}
+.zoompill{left:50%;top:12px;transform:translateX(-50%);display:none;align-items:center;gap:10px;height:30px;padding:0 6px 0 12px;border-radius:15px;background:rgba(27,30,35,.94);border:1px solid var(--b3);color:var(--t2)}
+.zoompill.show{display:flex}
+.presets{left:50%;bottom:14px;transform:translateX(-50%)}
+.presets svg.lay{width:22px;height:16px}
+.presets svg.lay rect{fill:none;stroke:currentColor;stroke-width:1.2}
+body[data-view=canvas] .split-only,body[data-view=split] .canvas-only{display:none!important}
+.empty{position:absolute;inset:0;display:none;place-items:center;text-align:center;color:var(--t3)}
+.empty.show{display:grid}
+.empty b{display:block;color:var(--t1);font-size:15px;margin-bottom:6px}
+
+@container (max-width:980px){ .tools .lbl{display:none} .minimap{width:160px;height:106px} }
+body[data-view=canvas] .attnpill{bottom:auto;top:14px}
+/* menu, palette, toast */
+.menu{position:fixed;z-index:500;min-width:220px;padding:5px;background:var(--elev);border:1px solid var(--b3);border-radius:9px;box-shadow:0 16px 40px rgba(0,0,0,.45);display:none}
+.menu.show{display:block}
+.menu h5{margin:4px 8px 4px;font-size:11px;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.mi{display:flex;align-items:center;gap:10px;height:30px;padding:0 8px;border-radius:6px;color:var(--t2);cursor:pointer;width:100%;text-align:left}
+.mi:hover,.mi.act{background:var(--selected);color:var(--t1)}
+.mi kbd{margin-left:auto}
+.scrim{position:fixed;inset:0;z-index:600;background:rgba(8,9,11,.5);display:none;align-items:flex-start;justify-content:center;padding-top:12vh}
+.scrim.show{display:flex}
+.pal{width:min(560px,92vw);background:var(--elev);border:1px solid var(--b3);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.55);overflow:hidden}
+.pal input{width:100%;height:46px;background:transparent;border:0;border-bottom:1px solid var(--b2);color:var(--t1);font:15px var(--ui);padding:0 16px;outline:none}
+.pal .list{max-height:50vh;overflow:auto;padding:6px}
+.toasts{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:700;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.toast{pointer-events:auto;display:flex;align-items:center;gap:12px;padding:8px 12px;border-radius:9px;background:var(--elev);border:1px solid var(--b3);box-shadow:0 8px 24px rgba(0,0,0,.4);animation:tin .2s var(--ease);max-width:560px}
+.toast button{color:var(--acc);font-weight:600}
+@keyframes tin{from{opacity:0;transform:translateY(8px)}}
+.pulse{animation:hint 1.2s ease 2}
+@keyframes hint{0%,100%{box-shadow:0 0 0 0 rgba(116,167,242,0)}50%{box-shadow:0 0 0 4px rgba(116,167,242,.55)}}
+.divider.pulse::after{background:var(--acc)}
+
+/* status */
+.status{display:flex;align-items:center;gap:14px;padding:0 12px;background:var(--chrome);border-top:1px solid var(--b1);color:var(--t3);font-size:12px;white-space:nowrap;overflow:hidden}
+.status .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--live)}
+.status b{color:var(--t2);font-weight:500}
+
+/* proposal panel */
+.panel{width:344px;background:var(--surface);border-left:1px solid var(--b1);overflow:auto;transition:width .25s var(--ease)}
+.panel.closed{width:0;border:0}
+.panel .in{width:344px;padding:18px 16px 40px}
+.panel h2{margin:0 0 6px;font-size:16px}
+.panel p.lead{margin:0 0 14px;color:var(--t3);line-height:1.5}
+.panel h3{margin:22px 0 8px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--t3)}
+.idea{padding:10px 12px;border-radius:9px;border:1px solid var(--b1);background:var(--canvas);margin-bottom:8px}
+.idea:hover{border-color:var(--b3)}
+.idea .top{display:flex;align-items:center;gap:8px}
+.idea b{font-size:13px;flex:1}
+.idea p{margin:5px 0 0;color:var(--t3);font-size:12.5px;line-height:1.5}
+.idea .try{height:22px;padding:0 8px;border-radius:5px;background:var(--acc-soft);color:var(--acc);font-size:12px;font-weight:600;flex:none}
+.idea .try:hover{background:rgba(116,167,242,.25)}
+.idea .keys{margin-top:6px;display:flex;gap:4px;flex-wrap:wrap}
+.today{display:inline-block;font-size:11px;color:var(--warn);margin-top:5px}
+
+@media (max-width:1100px){ .main{grid-template-columns:0 1fr auto} .rail{display:none} }
+</style>
+</head>
+<body data-view="split">
+<div id="app">
+  <header class="chrome">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <div class="tab active">api-prod <span class="n">⌘1</span></div>
+    <div class="tab" id="tab2">agents <span class="n">⌘2</span></div>
+    <div class="grow"></div>
+    <div class="seg" id="viewSeg" title="Switch layout (⌘\)">
+      <button data-view="split"><svg class="i" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M8 3v10M8 8h6"/></svg>Split</button>
+      <button data-view="canvas"><svg class="i" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="6" height="5" rx="1"/><rect x="9" y="8.5" width="5.5" height="5" rx="1"/><path d="M7.5 5h2.5a1.5 1.5 0 0 1 1.5 1.5v2"/></svg>Canvas</button>
+    </div>
+    <button class="cbtn" id="bcBtn" title="Broadcast input (⌘⇧B)"><svg class="i" viewBox="0 0 16 16"><path d="M8 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM5 11a4.2 4.2 0 0 1 0-6M11 5a4.2 4.2 0 0 1 0 6M3 13a7 7 0 0 1 0-10M13 3a7 7 0 0 1 0 10"/></svg>Broadcast</button>
+    <button class="cbtn" id="palBtn"><svg class="i" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><kbd>⌘K</kbd></button>
+    <button class="cbtn pon" id="panelBtn"><svg class="i" viewBox="0 0 16 16"><path d="M8 2.5a4 4 0 0 0-2.4 7.2c.5.4.9 1 .9 1.6v.2h3v-.2c0-.6.4-1.2.9-1.6A4 4 0 0 0 8 2.5ZM6.5 13.5h3"/></svg>Proposal</button>
+  </header>
+
+  <div class="main">
+    <aside class="rail" id="rail">
+      <h4>Hosts</h4>
+      <div class="host" data-host="api-3" data-ip="10.0.1.14"><span class="g" style="background:var(--acc)"></span>api-3<small>prod</small></div>
+      <div class="host" data-host="db-replica" data-ip="10.0.2.6"><span class="g" style="background:var(--acc)"></span>db-replica<small>prod</small></div>
+      <div class="host" data-host="bastion" data-ip="10.0.0.2"><span class="g" style="background:var(--t2)"></span>bastion<small>jump</small></div>
+      <div class="host" data-host="stage-web" data-ip="10.1.0.20"><span class="g" style="background:var(--live)"></span>stage-web<small>stage</small></div>
+      <div class="host" data-host="gpu-lab" data-ip="10.9.3.7"><span class="g" style="background:var(--lab)"></span>gpu-lab<small>lab</small></div>
+      <h4 style="margin-top:16px">New</h4>
+      <div class="host" data-kind="local"><svg class="i" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="m4.5 6 2 2-2 2M8.5 10h3"/></svg>Local terminal</div>
+      <div class="host" data-kind="agent"><svg class="i" viewBox="0 0 16 16"><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"/></svg>Claude Code agent</div>
+      <div class="tip">Drag any of these onto a pane to split it there, or onto the canvas to place it. Click to open next to the focused pane.</div>
+    </aside>
+
+    <main class="stage" id="stage">
+      <div class="world" id="world">
+        <svg id="edges"></svg>
+        <div id="guides"></div>
+      </div>
+      <div id="drop"><span></span></div>
+      <div class="zones" id="zones"><i></i><i></i><i></i><i></i><i></i></div>
+      <div id="marquee"></div>
+      <div class="empty" id="empty"><div><b>No panes in this split</b>Press <kbd>⌘D</kbd>, drag a host here, or send a node from the canvas.</div></div>
+
+      <div class="hud attnpill" id="attn"></div>
+      <div class="hud zoompill split-only" id="zoompill"></div>
+
+      <div class="hud bar presets split-only" id="presets"></div>
+
+      <div class="hud bar tools canvas-only" id="tools">
+        <button data-t="term" title="New local terminal"><svg class="i" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="m4.5 6 2 2-2 2M8.5 10h3"/></svg><span class="lbl">Terminal</span></button>
+        <button data-t="agent" title="New agent"><svg class="i" viewBox="0 0 16 16"><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"/></svg><span class="lbl">Agent</span></button>
+        <button data-t="note" title="Sticky note"><svg class="i" viewBox="0 0 16 16"><path d="M2.5 2.5h11v7l-4 4h-7z M9.5 13.5v-4h4"/></svg><span class="lbl">Note</span></button>
+        <button data-t="group" title="Group selection"><svg class="i" viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="3" stroke-dasharray="2.5 2"/></svg><span class="lbl">Group</span></button>
+        <span class="sep"></span>
+        <button data-t="out" title="Zoom out">−</button>
+        <button data-t="100" class="zl" id="zl" title="Zoom to 100% (⌥0)">100%</button>
+        <button data-t="in" title="Zoom in">+</button>
+        <button data-t="fit" title="Fit everything (⌥1)"><svg class="i" viewBox="0 0 16 16"><path d="M2 5.5V3a1 1 0 0 1 1-1h2.5M10.5 2H13a1 1 0 0 1 1 1v2.5M14 10.5V13a1 1 0 0 1-1 1h-2.5M5.5 14H3a1 1 0 0 1-1-1v-2.5"/></svg><span class="lbl">Fit</span></button>
+        <button data-t="tidy" title="Tidy layout (⌥T)"><svg class="i" viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg><span class="lbl">Tidy</span></button>
+        <button data-t="snap" id="snapBtn" class="on" title="Snap to grid and to other nodes (hold ⌥ while dragging to bypass)"><svg class="i" viewBox="0 0 16 16"><path d="M4 2.5v6a4 4 0 0 0 8 0v-6M4 5.5h2.5M9.5 5.5H12M6.5 2.5v6a1.5 1.5 0 0 0 3 0v-6"/></svg><span class="lbl">Snap</span></button>
+      </div>
+      <div class="hud minimap canvas-only" id="minimap"><canvas id="mm"></canvas></div>
+    </main>
+
+    <aside class="panel" id="panel"><div class="in">
+      <h2>Split &amp; Canvas, reworked</h2>
+      <p class="lead">A working mock of how the two workspace layouts could feel. Everything is interactive. The terminals are simulated: click one and type <code>help</code>.</p>
+
+      <h3>Both views</h3>
+      <div class="idea"><div class="top"><b>One set of sessions, two views</b><button class="try" data-try="morph">Try</button></div>
+        <p>Split and Canvas are two layouts of the <em>same</em> live panes. Switching animates each pane to its place instead of rebuilding the workspace. Nothing reconnects, and scrollback and focus carry over. The canvas can hold more than the split shows.</p>
+        <div class="keys"><kbd>⌘\</kbd></div></div>
+      <div class="idea"><div class="top"><b>Needs-you queue</b><button class="try" data-try="attn">Try</button></div>
+        <p>An agent waiting for approval raises a pill at the top of either view. Clicking it jumps straight to that agent, even from Split, where the agent has no pane.</p></div>
+      <div class="idea"><div class="top"><b>Every action in ⌘K</b><button class="try" data-try="palette">Try</button></div>
+        <p>Every split, layout, canvas action and "jump to session" in one palette, with shortcuts shown next to each so people learn them.</p></div>
+
+      <h3>Split</h3>
+      <div class="idea"><div class="top"><b>See where it lands</b><button class="try" data-try="drop">Try</button></div>
+        <p>While you drag, every pane shows five drop zones and the half it will take lights up. The center swaps two panes. A full split says so before you let go.</p>
+        <span class="today">Today: dropping splits the pane, with no preview of the result</span></div>
+      <div class="idea"><div class="top"><b>Rearrange by dragging headers</b><button class="try" data-try="drop">Try</button></div>
+        <p>Drag a pane by its header onto another pane to move or swap it. This is the most common way people fix a layout they got wrong.</p>
+        <span class="today">Today: listed as out of scope in CLAUDE.md</span></div>
+      <div class="idea"><div class="top"><b>Magnetic dividers</b><button class="try" data-try="dividers">Try</button></div>
+        <p>Dividers snap to ½, ⅓ and ⅔ and show the ratio while you drag. Double-click a divider to even out that split.</p></div>
+      <div class="idea"><div class="top"><b>Zoom a pane</b><button class="try" data-try="zoom">Try</button></div>
+        <p>Temporarily fill the workspace with one pane. The others keep running. A pill shows what's hidden and how to get it back.</p>
+        <div class="keys"><kbd>⌘⇧↵</kbd></div></div>
+      <div class="idea"><div class="top"><b>Layouts and Equalize</b><button class="try" data-try="presets">Try</button></div>
+        <p>One-click layouts (columns, rows, main + stack, grid). They reuse the panes you have and open new ones only when needed. Panes that don't fit stay alive on the canvas. Cap raised from 4 to 6.</p>
+        <div class="keys"><kbd>⌘⇧E</kbd> equalize</div></div>
+      <div class="idea"><div class="top"><b>Keyboard all the way</b><button class="try" data-try="nav">Try</button></div>
+        <p>Directional focus picks the nearest pane on screen, not the next leaf in the tree. Resizing moves the closest divider on that axis.</p>
+        <div class="keys"><kbd>⌘D</kbd><kbd>⌘⇧D</kbd><kbd>⌥ arrows</kbd> focus <kbd>⌥⇧ arrows</kbd> resize</div>
+        <p style="font-size:11.5px">In the app these would be ⌘⌥ arrows. Chrome keeps those shortcuts, so this mock uses ⌥.</p></div>
+      <div class="idea"><div class="top"><b>Obvious focus</b></div>
+        <p>Inactive panes dim, and the focused one gets an accent ring and a live cursor. Broadcast marks every pane it will type into and puts an amber rim around the workspace.</p>
+        <div class="keys"><kbd>⌘⇧B</kbd></div></div>
+
+      <h3>Canvas</h3>
+      <div class="idea"><div class="top"><b>Snap and alignment guides</b><button class="try" data-try="snap">Try</button></div>
+        <p>Nodes snap to an 8 px grid and to other nodes' edges and centers, with pink guides showing what they aligned to. Hold ⌥ to place freely.</p>
+        <span class="today">Today: nodes move freely, with no grid or guides</span></div>
+      <div class="idea"><div class="top"><b>Readable when zoomed out</b><button class="try" data-try="lod">Try</button></div>
+        <p>Below 55% zoom, each terminal becomes a card showing its name, status and latest output line, sized to stay readable. You can watch a whole fleet at once.</p></div>
+      <div class="idea"><div class="top"><b>Scroll does the right thing</b></div>
+        <p>A two-finger scroll pans and a pinch zooms at the cursor. Over the focused terminal, scroll moves its scrollback. Drag empty space to pan.</p></div>
+      <div class="idea"><div class="top"><b>Create where you are</b><button class="try" data-try="create">Try</button></div>
+        <p>Double-click empty canvas to open a terminal, host, agent or note right there. Hosts can also be dragged in from the left.</p></div>
+      <div class="idea"><div class="top"><b>Select many, move together</b><button class="try" data-try="marquee">Try</button></div>
+        <p>Shift-drag on empty space to box-select, and shift-click to add. Dragging a group's label moves everything inside it.</p></div>
+      <div class="idea"><div class="top"><b>Tidy, Fit, minimap</b><button class="try" data-try="tidy">Try</button></div>
+        <p>Tidy arranges nodes by group in one animated step. Fit frames everything. Click or drag the minimap to move around.</p>
+        <div class="keys"><kbd>⌥T</kbd><kbd>⌥1</kbd> fit <kbd>⌥2</kbd> focused <kbd>⌥0</kbd> 100%</div></div>
+      <div class="idea"><div class="top"><b>Wire context by dragging</b><button class="try" data-try="links">Try</button></div>
+        <p>Drag from the dot on a node's right edge to another node to link context. Links carry an animated flow while the agent works. Click a link's label to remove it.</p></div>
+    </div></aside>
+  </div>
+
+  <footer class="status" id="status"></footer>
+</div>
+
+<div class="menu" id="menu"></div>
+<div class="scrim" id="scrim"><div class="pal"><input id="palIn" placeholder="Type a command or session name…" autocomplete="off" spellcheck="false"><div class="list" id="palList"></div></div></div>
+<div class="toasts" id="toasts"></div>
+
+<script>
+(() => {
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const stage = $('#stage'), world = $('#world');
+const GAP = 6, PAD = 6, MAX_PANES = 6, GRID = 8, MIN_K = 0.2, MAX_K = 1.6;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const pick = a => a[Math.floor(Math.random() * a.length)];
+let uid = 100, zTop = 10;
+
+const I = {
+  zoom: '<svg class="i" viewBox="0 0 16 16"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9"/></svg>',
+  unzoom: '<svg class="i" viewBox="0 0 16 16"><path d="M13.5 6.5h-4v-4M2.5 9.5h4v4M9.5 6.5 14 2M6.5 9.5 2 14"/></svg>',
+  close: '<svg class="i" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+  tosplit: '<svg class="i" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M8 3v10"/></svg>',
+};
+
+// ---------------------------------------------------------------- state
+const S = {
+  view: 'split', focus: 'local', zoomed: null, broadcast: false, snap: true, fitted: false,
+  t: { x: 40, y: 40, k: 0.6 }, sel: new Set(),
+  sessions: {}, tree: null, geo: {}, notes: {}, groups: {}, edges: [],
+  rects: {}, divs: [], activeDiv: null,
+};
+const L = (t, c = '', p) => ({ t, c, p });
+
+function mkSession(o) {
+  const s = Object.assign({ lines: [], input: '', status: 'live', kind: 'ssh', user: 'deploy', hist: [], hi: 0, tag: '' }, o);
+  S.sessions[s.id] = s;
+  return s;
+}
+function promptOf(s) {
+  if (s.kind === 'local') return '~/projects/multiplex ❯ ';
+  if (s.kind === 'agent') return '› ';
+  return `${s.user}@${s.title}:~$ `;
+}
+
+mkSession({ id: 'api1', title: 'api-1', host: '10.0.1.12', tag: 'prod', tail: true, lines: [
+  L('Last login: Thu Sep 24 09:12:04 2026 from 100.72.4.18', 'dim'),
+  L('journalctl -fu api', 'cmd', 'deploy@api-1:~$ '),
+  L('Sep 24 09:14:02 api-1 api[2211]: listening on :8080'),
+  L('Sep 24 09:14:03 api-1 api[2211]: GET /healthz 200 3ms'),
+] });
+mkSession({ id: 'api2', title: 'api-2', host: '10.0.1.13', tag: 'prod', lines: [
+  L('Last login: Thu Sep 24 09:12:09 2026 from 100.72.4.18', 'dim'),
+  L('uptime', 'cmd', 'deploy@api-2:~$ '),
+  L(' 09:14:11 up 41 days,  3:02,  1 user,  load average: 0.21, 0.18, 0.12'),
+] });
+mkSession({ id: 'local', title: 'zsh', host: 'this Mac', user: 'you', kind: 'local', tag: 'local', lines: [
+  L('git status', 'cmd', '~/projects/multiplex ❯ '),
+  L('On branch dev'),
+  L('Changes not staged for commit:'),
+  L('        modified:   crates/multiplex-desktop/src/ui/app/canvas.rs', 'err'),
+  L('        modified:   crates/multiplex-desktop/src/ui/app/workspace.rs', 'err'),
+] });
+mkSession({ id: 'db', title: 'db-primary', host: '10.0.2.5', tag: 'prod', lines: [
+  L('Last login: Thu Sep 24 08:55:40 2026', 'dim'),
+  L("psql -c 'select state, count(*) from pg_stat_activity group by 1'", 'cmd', 'deploy@db-primary:~$ '),
+  L('  state  | count'), L('---------+-------'), L(' active  |    14'), L(' idle    |    92'), L('(2 rows)', 'dim'),
+] });
+mkSession({ id: 'agent', title: 'Claude · fix flaky test', host: 'agent/fix-flaky-test', kind: 'agent', tag: 'agent', status: 'attn', pending: 'cargo test -p multiplex reconnect', lines: [
+  L('● Claude Code · worktree agent/fix-flaky-test', 'lab'),
+  L('Investigate why reconnect_after_drop is flaky', 'cmd', '› '),
+  L('  Read crates/multiplex-desktop/src/ssh.rs', 'dim'),
+  L('  Read tests/support/mod.rs', 'dim'),
+  L('  The keep-alive timer can fire during the reconnect backoff and'),
+  L('  close the new channel. Moving the reset after the handshake.'),
+  L('  Edit ssh.rs  +12 −4', 'ok'),
+  L('  Waiting for approval to run tests…', 'warn'),
+] });
+
+const leaf = id => ({ type: 'leaf', id });
+const split = (axis, a, b, ratio = 0.5) => ({ type: 'split', axis, ratio, a, b });
+S.tree = split('row', leaf('api1'), split('col', leaf('api2'), leaf('local'), 0.5), 0.56);
+
+S.groups.g1 = { title: 'prod fleet' };
+S.notes.n1 = { text: 'Rollout 0.0.5\n\n1. drain api-1\n2. deploy + smoke\n3. watch error rate 10 min\n4. api-2' };
+Object.assign(S.geo, {
+  g1: { x: 0, y: 0, w: 1580, h: 384 },
+  api1: { x: 28, y: 56, w: 488, h: 300 },
+  api2: { x: 548, y: 56, w: 488, h: 300 },
+  db: { x: 1064, y: 56, w: 488, h: 300 },
+  local: { x: 28, y: 448, w: 520, h: 320 },
+  agent: { x: 640, y: 440, w: 580, h: 360 },
+  n1: { x: 1312, y: 456, w: 264, h: 216 },
+});
+S.edges = [
+  { id: 'e1', from: 'local', to: 'agent', label: 'repo context' },
+  { id: 'e2', from: 'api1', to: 'agent', label: 'logs' },
+];
+
+// ---------------------------------------------------------------- tree helpers
+function leaves(n, out = []) { if (!n) return out; if (n.type === 'leaf') out.push(n.id); else { leaves(n.a, out); leaves(n.b, out); } return out; }
+const inTree = id => leaves(S.tree).includes(id);
+function replaceLeaf(n, id, fn) { if (!n) return n; if (n.type === 'leaf') return n.id === id ? fn(n) : n; n.a = replaceLeaf(n.a, id, fn); n.b = replaceLeaf(n.b, id, fn); return n; }
+function removeLeaf(n, id) { if (!n) return null; if (n.type === 'leaf') return n.id === id ? null : n; const a = removeLeaf(n.a, id), b = removeLeaf(n.b, id); if (!a) return b; if (!b) return a; n.a = a; n.b = b; return n; }
+function splitAt(target, id, side) {
+  const axis = side === 'left' || side === 'right' ? 'row' : 'col';
+  const first = side === 'left' || side === 'top';
+  S.tree = replaceLeaf(S.tree, target, l => split(axis, first ? leaf(id) : l, first ? l : leaf(id)));
+}
+function swapLeaves(x, y) { (function w(n) { if (!n) return; if (n.type === 'leaf') { if (n.id === x) n.id = y; else if (n.id === y) n.id = x; } else { w(n.a); w(n.b); } })(S.tree); }
+function weight(n, axis) { return n.type === 'split' && n.axis === axis ? weight(n.a, axis) + weight(n.b, axis) : 1; }
+function equalizeNode(n) { if (!n || n.type === 'leaf') return; const wa = weight(n.a, n.axis), wb = weight(n.b, n.axis); n.ratio = wa / (wa + wb); equalizeNode(n.a); equalizeNode(n.b); }
+function pathTo(n, id, path = []) { if (!n) return null; if (n.type === 'leaf') return n.id === id ? path : null; return pathTo(n.a, id, [...path, { n, side: 'a' }]) || pathTo(n.b, id, [...path, { n, side: 'b' }]); }
+
+function layoutTree(n, r, rects, divs) {
+  if (n.type === 'leaf') { rects[n.id] = r; return; }
+  if (n.axis === 'row') {
+    const aw = Math.round((r.w - GAP) * n.ratio);
+    layoutTree(n.a, { x: r.x, y: r.y, w: aw, h: r.h }, rects, divs);
+    layoutTree(n.b, { x: r.x + aw + GAP, y: r.y, w: r.w - aw - GAP, h: r.h }, rects, divs);
+    divs.push({ n, r, x: r.x + aw, y: r.y, w: GAP, h: r.h });
+  } else {
+    const ah = Math.round((r.h - GAP) * n.ratio);
+    layoutTree(n.a, { x: r.x, y: r.y, w: r.w, h: ah }, rects, divs);
+    layoutTree(n.b, { x: r.x, y: r.y + ah + GAP, w: r.w, h: r.h - ah - GAP }, rects, divs);
+    divs.push({ n, r, x: r.x, y: r.y + ah, w: r.w, h: GAP });
+  }
+}
+
+// ---------------------------------------------------------------- elements
+const els = {};
+function paneEl(id) {
+  if (els[id]) return els[id];
+  const s = S.sessions[id];
+  const el = document.createElement('div');
+  el.className = 'pane k-' + s.kind;
+  el.dataset.id = id;
+  el.innerHTML = `
+    <div class="ph"><span class="st"></span><span class="ttl"></span><span class="tag"></span><span class="who"></span><span class="grow"></span>
+      <span class="badge-bc">BROADCAST</span>
+      <button class="ib" data-act="tosplit" title="Add to split">${I.tosplit}</button>
+      <button class="ib" data-act="zoom" title="Zoom pane (⌘⇧↵)">${I.zoom}</button>
+      <button class="ib" data-act="close" title="Close session">${I.close}</button></div>
+    <div class="term"><div class="out"></div><div class="cmd"><span class="pr"></span><span class="inp"></span><span class="cur"></span></div></div>
+    <div class="approve" hidden><span></span><button class="btn" data-act="deny">Deny</button><button class="btn pri" data-act="approve">Approve</button></div>
+    <div class="offbar" hidden><span>Connection closed.</span><button class="btn pri" data-act="reconnect">Reconnect</button><span style="margin-left:auto">or press ↵</span></div>
+    <div class="lod"><div class="lod-t"><span class="st"></span><span class="lt"></span></div><div class="lod-s"></div><div class="lod-l"></div></div>
+    <div class="port pin"></div><div class="port pout" title="Drag to link context"></div><div class="rz"></div>`;
+  world.appendChild(el);
+  els[id] = el;
+  renderPane(id);
+  return el;
+}
+function noteEl(id) {
+  if (els[id]) return els[id];
+  const el = document.createElement('div');
+  el.className = 'note'; el.dataset.id = id;
+  el.innerHTML = `<div class="nh"></div><div class="nb" contenteditable="true" spellcheck="false"></div><div class="rz"></div>`;
+  el.querySelector('.nb').textContent = S.notes[id].text;
+  el.querySelector('.nb').addEventListener('input', e => { S.notes[id].text = e.target.innerText; });
+  world.appendChild(el); els[id] = el; return el;
+}
+function groupEl(id) {
+  if (els[id]) return els[id];
+  const el = document.createElement('div');
+  el.className = 'group'; el.dataset.id = id; el.style.zIndex = 1;
+  el.innerHTML = `<div class="gh"></div><div class="rz"></div>`;
+  el.querySelector('.gh').textContent = S.groups[id].title;
+  world.insertBefore(el, world.firstChild); els[id] = el; return el;
+}
+
+function renderPane(id) {
+  const s = S.sessions[id], el = els[id];
+  if (!s || !el) return;
+  el.querySelector('.ttl').textContent = s.title;
+  const tag = el.querySelector('.tag'); tag.textContent = s.tag; tag.className = 'tag ' + s.tag; tag.style.display = s.tag ? '' : 'none';
+  el.querySelector('.who').textContent = s.kind === 'agent' ? s.host : `${s.user}@${s.host}`;
+  el.querySelectorAll('.st').forEach(d => d.className = 'st ' + s.status);
+  el.classList.toggle('attn', s.status === 'attn');
+  renderOut(id);
+  renderInput(id);
+  const ap = el.querySelector('.approve');
+  ap.hidden = !(s.status === 'attn' && s.pending);
+  if (!ap.hidden) ap.querySelector('span').innerHTML = `Run <code>${esc(s.pending)}</code>?`;
+  el.querySelector('.offbar').hidden = s.status !== 'off';
+  el.querySelector('.lt').textContent = s.title;
+  el.querySelector('.lod-s').textContent = ({ live: 'Connected', busy: 'Running…', attn: 'Needs your approval', off: 'Disconnected' })[s.status] + ' · ' + (s.kind === 'agent' ? s.host : s.host);
+  const last = [...s.lines].reverse().find(l => l.t.trim());
+  el.querySelector('.lod-l').textContent = last ? (last.p || '') + last.t : '';
+}
+function renderOut(id) {
+  const s = S.sessions[id], el = els[id]; if (!el) return;
+  const term = el.querySelector('.term');
+  const atBottom = term.scrollHeight - term.scrollTop - term.clientHeight < 30;
+  el.querySelector('.out').innerHTML = s.lines.map(l => l.p != null
+    ? `<div><span class="pr">${esc(l.p)}</span>${esc(l.t)}</div>`
+    : `<div class="${l.c}">${esc(l.t) || ' '}</div>`).join('');
+  const last = [...s.lines].reverse().find(l => l.t.trim());
+  el.querySelector('.lod-l').textContent = last ? (last.p || '') + last.t : '';
+  if (atBottom) term.scrollTop = term.scrollHeight;
+}
+function renderInput(id) {
+  const s = S.sessions[id], el = els[id]; if (!el) return;
+  const cmd = el.querySelector('.cmd');
+  cmd.classList.toggle('hide', !!(s.tail || s.streaming || s.status === 'off'));
+  cmd.querySelector('.pr').textContent = promptOf(s);
+  cmd.querySelector('.inp').textContent = s.input;
+  const term = el.querySelector('.term'); term.scrollTop = term.scrollHeight;
+}
+function push(s, lines) {
+  s.lines.push(...lines);
+  if (s.lines.length > 400) s.lines.splice(0, s.lines.length - 400);
+  renderOut(s.id);
+}
+function setStatus(s, st) { s.status = st; renderPane(s.id); updateChrome(); }
+
+// ---------------------------------------------------------------- layout
+function stageSize() { return { W: stage.clientWidth, H: stage.clientHeight }; }
+
+function layout() {
+  const { W, H } = stageSize();
+  document.body.dataset.view = S.view;
+  for (const id in S.sessions) paneEl(id);
+  for (const id in S.notes) noteEl(id);
+  for (const id in S.groups) groupEl(id);
+
+  if (S.view === 'split') {
+    world.style.transform = 'translate(0px,0px) scale(1)';
+    world.style.setProperty('--inv', 1);
+    stage.classList.remove('far');
+    stage.style.backgroundSize = '';
+    const rects = {}, divs = [];
+    const full = { x: PAD, y: PAD, w: W - PAD * 2, h: H - PAD * 2 };
+    if (S.tree) {
+      if (S.zoomed && inTree(S.zoomed)) { layoutTree(S.tree, full, rects, []); rects[S.zoomed] = full; }
+      else { S.zoomed = null; layoutTree(S.tree, full, rects, divs); }
+    }
+    S.rects = rects; S.divs = divs;
+    for (const id in S.sessions) {
+      const el = els[id], r = rects[id];
+      const visible = r && (!S.zoomed || id === S.zoomed);
+      if (r) place(el, r);
+      el.classList.toggle('off', !visible);
+      el.classList.toggle('notree', !r);
+      el.querySelector('[data-act=zoom]').innerHTML = S.zoomed === id ? I.unzoom : I.zoom;
+    }
+    renderDividers();
+    $('#empty').classList.toggle('show', !S.tree);
+  } else {
+    const { x, y, k } = S.t;
+    world.style.transform = `translate(${x}px,${y}px) scale(${k})`;
+    world.style.setProperty('--inv', 1 / k);
+    stage.classList.toggle('far', k < 0.55);
+    stage.style.backgroundSize = `${24 * k}px ${24 * k}px`;
+    stage.style.backgroundPosition = `${x}px ${y}px`;
+    for (const id in S.geo) {
+      const el = els[id]; if (!el) continue;
+      place(el, S.geo[id]);
+      el.classList.remove('off');
+      if (S.sessions[id]) el.classList.toggle('notree', !inTree(id));
+    }
+    renderDividers();
+    renderEdges();
+    $('#empty').classList.remove('show');
+    drawMinimap();
+  }
+  updateChrome();
+}
+function place(el, r) { el.style.left = r.x + 'px'; el.style.top = r.y + 'px'; el.style.width = r.w + 'px'; el.style.height = r.h + 'px'; }
+
+let divEls = [];
+function renderDividers() {
+  const want = S.view === 'split' ? S.divs : [];
+  while (divEls.length < want.length) { const d = document.createElement('div'); d.className = 'divider'; world.appendChild(d); divEls.push(d); }
+  divEls.forEach((d, i) => {
+    const v = want[i];
+    if (!v) { d.style.display = 'none'; return; }
+    d.style.display = '';
+    d.dataset.i = i;
+    d.className = 'divider ' + v.n.axis + (S.activeDiv === v.n ? ' active' : '') + (S.activeDiv === v.n && S.divSnapped ? ' snapped' : '');
+    place(d, v);
+  });
+}
+
+function renderEdges() {
+  const svg = $('#edges');
+  $$('.elabel', world).forEach(e => e.remove());
+  let html = '';
+  for (const e of S.edges) {
+    const a = S.geo[e.from], b = S.geo[e.to];
+    if (!a || !b) continue;
+    const x1 = a.x + a.w, y1 = a.y + a.h / 2, x2 = b.x, y2 = b.y + b.h / 2;
+    const dx = Math.max(60, Math.abs(x2 - x1) * 0.45);
+    const flow = S.sessions[e.to]?.status === 'busy' || S.sessions[e.from]?.status === 'busy';
+    html += `<path class="${flow ? 'flow' : ''}" d="M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}"/>`;
+    const lab = document.createElement('div');
+    lab.className = 'elabel'; lab.dataset.edge = e.id; lab.textContent = e.label;
+    lab.style.left = (x1 + x2) / 2 + 'px'; lab.style.top = (y1 + y2) / 2 + 'px';
+    world.appendChild(lab);
+  }
+  if (tmpLink) html += `<path class="tmp" d="${tmpLink}"/>`;
+  svg.innerHTML = html;
+}
+
+// ---------------------------------------------------------------- chrome
+function updateChrome() {
+  $$('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.view === S.view));
+  $('#bcBtn').classList.toggle('on', S.broadcast);
+  stage.classList.toggle('bc-on', S.broadcast);
+  const targets = S.broadcast ? broadcastTargets() : [];
+  for (const id in S.sessions) {
+    const el = els[id]; if (!el) continue;
+    el.classList.toggle('focused', S.focus === id);
+    el.classList.toggle('sel', S.view === 'canvas' && S.sel.has(id));
+    el.classList.toggle('bc', targets.includes(id));
+  }
+  for (const id in S.notes) els[id]?.classList.toggle('sel', S.sel.has(id));
+  for (const id in S.groups) els[id]?.classList.toggle('sel', S.sel.has(id));
+  $('#zl').textContent = Math.round(S.t.k * 100) + '%';
+  $('#snapBtn').classList.toggle('on', S.snap);
+
+  const attn = Object.values(S.sessions).filter(s => s.status === 'attn');
+  const pill = $('#attn');
+  const showAttn = attn.length && !(S.view === 'split' && S.zoomed);
+  pill.classList.toggle('show', !!showAttn);
+  if (attn.length) pill.innerHTML = `<span class="st attn"></span>${attn.length} needs you <small>${esc(attn[0].title)} · ${S.view === 'split' && !inTree(attn[0].id) ? 'open on canvas' : 'jump'} →</small>`;
+
+  const zp = $('#zoompill');
+  zp.classList.toggle('show', !!S.zoomed && S.view === 'split');
+  if (S.zoomed) {
+    const hidden = leaves(S.tree).length - 1;
+    zp.innerHTML = `<span><b style="color:var(--t1)">${esc(S.sessions[S.zoomed].title)}</b> zoomed · ${hidden} pane${hidden === 1 ? '' : 's'} hidden</span><button class="btn" id="unzoom">Restore <kbd>⌘⇧↵</kbd></button>`;
+  }
+  renderPresets();
+
+  const f = S.sessions[S.focus];
+  const n = leaves(S.tree).length;
+  $('#status').innerHTML = [
+    f ? `<span><span class="dot" style="background:${({ live: 'var(--live)', busy: 'var(--acc)', attn: 'var(--warn)', off: 'var(--t4)' })[f.status]}"></span><b>${esc(f.title)}</b> · ${esc(f.kind === 'agent' ? f.host : f.user + '@' + f.host)}</span>` : '<span>No pane focused. Click one to type</span>',
+    S.view === 'split' ? `<span>${n} / ${MAX_PANES} panes${S.zoomed ? ' · zoomed' : ''}</span>` : `<span>${Object.keys(S.sessions).length} sessions · ${Math.round(S.t.k * 100)}%${S.snap ? ' · snap on' : ''}</span>`,
+    S.broadcast ? `<span style="color:var(--warn)">Broadcasting to ${broadcastTargets().length} panes</span>` : '',
+    '<span class="grow"></span>',
+    S.view === 'split' ? '<span><kbd>⌘D</kbd> split · <kbd>⌥ arrows</kbd> focus · <kbd>⌘⇧↵</kbd> zoom · <kbd>⌘\\</kbd> canvas</span>'
+                       : '<span>drag empty space to pan · shift-drag to select · double-click to create · <kbd>⌘\\</kbd> split</span>',
+  ].join('');
+}
+
+const PRESETS = [
+  ['single', 'One pane', '<rect x="1" y="1" width="20" height="14" rx="2"/>'],
+  ['cols2', 'Two columns', '<rect x="1" y="1" width="9.5" height="14" rx="2"/><rect x="11.5" y="1" width="9.5" height="14" rx="2"/>'],
+  ['rows2', 'Two rows', '<rect x="1" y="1" width="20" height="6.5" rx="2"/><rect x="1" y="8.5" width="20" height="6.5" rx="2"/>'],
+  ['main', 'Main + stack', '<rect x="1" y="1" width="12" height="14" rx="2"/><rect x="14" y="1" width="7" height="6.5" rx="2"/><rect x="14" y="8.5" width="7" height="6.5" rx="2"/>'],
+  ['cols3', 'Three columns', '<rect x="1" y="1" width="6" height="14" rx="2"/><rect x="8" y="1" width="6" height="14" rx="2"/><rect x="15" y="1" width="6" height="14" rx="2"/>'],
+  ['grid', 'Grid', '<rect x="1" y="1" width="9.5" height="6.5" rx="2"/><rect x="11.5" y="1" width="9.5" height="6.5" rx="2"/><rect x="1" y="8.5" width="9.5" height="6.5" rx="2"/><rect x="11.5" y="8.5" width="9.5" height="6.5" rx="2"/>'],
+  ['grid6', 'Grid of six', '<rect x="1" y="1" width="6" height="6.5" rx="1.5"/><rect x="8" y="1" width="6" height="6.5" rx="1.5"/><rect x="15" y="1" width="6" height="6.5" rx="1.5"/><rect x="1" y="8.5" width="6" height="6.5" rx="1.5"/><rect x="8" y="8.5" width="6" height="6.5" rx="1.5"/><rect x="15" y="8.5" width="6" height="6.5" rx="1.5"/>'],
+];
+let presetsBuilt = false;
+function renderPresets() {
+  if (presetsBuilt) return; presetsBuilt = true;
+  $('#presets').innerHTML = PRESETS.map(([k, n, svg]) => `<button data-p="${k}" title="${n}"><svg class="lay" viewBox="0 0 22 16">${svg}</svg></button>`).join('') +
+    `<span class="sep"></span><button data-p="eq" title="Equalize (⌘⇧E)">Equalize</button><button data-p="zoom" title="Zoom focused pane (⌘⇧↵)">${I.zoom}Zoom</button>`;
+}
+
+// ---------------------------------------------------------------- animation helpers
+let morphT;
+function morph(ms = 440, cls = 'morph') {
+  world.classList.remove('morph', 'quick');
+  void world.offsetWidth;
+  world.classList.add(cls);
+  clearTimeout(morphT);
+  morphT = setTimeout(() => { world.classList.remove(cls); if (S.view === 'canvas') { renderEdges(); drawMinimap(); } }, ms + 60);
+  if (S.view === 'canvas') { let n = 0; const tick = () => { renderEdges(); if (++n < 30) requestAnimationFrame(tick); }; requestAnimationFrame(tick); }
+}
+
+// ---------------------------------------------------------------- toasts, hints
+function toast(html, action, fn, ms = 3600) {
+  const t = document.createElement('div'); t.className = 'toast';
+  t.innerHTML = `<span>${html}</span>` + (action ? `<button>${action}</button>` : '');
+  if (action) t.querySelector('button').onclick = () => { fn(); t.remove(); };
+  $('#toasts').appendChild(t);
+  while ($('#toasts').children.length > 3) $('#toasts').firstChild.remove();
+  setTimeout(() => t.remove(), ms);
+}
+function pulse(sel) { $$(sel).forEach(e => { e.classList.remove('pulse'); void e.offsetWidth; e.classList.add('pulse'); setTimeout(() => e.classList.remove('pulse'), 2600); }); }
+
+// ---------------------------------------------------------------- sessions
+const HOSTS = { 'api-3': '10.0.1.14', 'db-replica': '10.0.2.6', bastion: '10.0.0.2', 'stage-web': '10.1.0.20', 'gpu-lab': '10.9.3.7' };
+let zshN = 1, agentN = 1;
+function createSession(kind, host) {
+  const id = 's' + (++uid);
+  if (kind === 'local') {
+    mkSession({ id, title: 'zsh ' + (++zshN), host: 'this Mac', user: 'you', kind: 'local', tag: 'local', lines: [L('Welcome to your local shell. Type help.', 'dim')] });
+  } else if (kind === 'agent') {
+    agentN++;
+    mkSession({ id, title: 'Claude · task ' + agentN, host: 'agent/task-' + agentN, kind: 'agent', tag: 'agent', lines: [L('● Claude Code · new worktree agent/task-' + agentN, 'lab'), L('  Tell me what to work on.', 'dim')] });
+  } else {
+    const tag = host.startsWith('stage') ? '' : host === 'gpu-lab' || host === 'bastion' ? '' : 'prod';
+    mkSession({ id, title: host, host: HOSTS[host] || '10.0.0.' + (uid % 250), tag, lines: [L(`Connecting to ${host}…`, 'dim'), L(`Last login: Thu Sep 24 09:20:11 2026 from 100.72.4.18`, 'dim')] });
+  }
+  return id;
+}
+function freeSpotNear(id, w, h, pt) {
+  let x, y;
+  if (pt) { x = pt.x - w / 2; y = pt.y - 15; }
+  else if (id && S.geo[id]) { x = S.geo[id].x + S.geo[id].w + 32; y = S.geo[id].y; }
+  else { const c = viewCenter(); x = c.x - w / 2; y = c.y - h / 2; }
+  x = Math.round(x / GRID) * GRID; y = Math.round(y / GRID) * GRID;
+  const hits = (x, y) => Object.entries(S.geo).some(([k, g]) => !S.groups[k] && x < g.x + g.w + 16 && x + w + 16 > g.x && y < g.y + g.h + 16 && y + h + 16 > g.y);
+  for (let i = 0; i < 40 && hits(x, y); i++) { if (pt) { x += 32; y += 32; } else y += h / 2 + 24; }
+  return { x, y, w, h };
+}
+function viewCenter() { const { W, H } = stageSize(); return { x: (W / 2 - S.t.x) / S.t.k, y: (H / 2 - S.t.y) / S.t.k }; }
+
+function focusSession(id, reveal) {
+  if (S.focus === id) { updateChrome(); return; }
+  S.focus = id;
+  if (reveal && S.view === 'canvas' && id) revealNode(id);
+  updateChrome();
+  if (id) renderInput(id);
+}
+
+function splitFocused(side, kind = 'local', host) {
+  if (S.view === 'canvas') {
+    const id = createSession(kind, host);
+    S.geo[id] = freeSpotNear(S.focus, 520, 320);
+    layout(); focusSession(id, true); selectOnly(id);
+    toast(`Opened <b>${esc(S.sessions[id].title)}</b> next to the focused node`);
+    return id;
+  }
+  if (leaves(S.tree).length >= MAX_PANES) { toast(`This split is full (${MAX_PANES} panes). Open it on the canvas, or in a new tab`, 'Open on canvas', () => { setView('canvas'); splitFocused(side, kind, host); }); return; }
+  S.zoomed = null;
+  const id = createSession(kind, host);
+  S.geo[id] = freeSpotNear(S.focus, 520, 320);
+  const target = inTree(S.focus) ? S.focus : leaves(S.tree).slice(-1)[0];
+  if (!S.tree) S.tree = leaf(id); else splitAt(target, id, side);
+  paneEl(id);
+  morph(260, 'quick');
+  layout(); focusSession(id);
+  return id;
+}
+
+let lastClosed = null;
+function closeSession(id) {
+  const s = S.sessions[id]; if (!s) return;
+  lastClosed = { s, geo: S.geo[id], tree: JSON.stringify(S.tree), edges: S.edges.filter(e => e.from === id || e.to === id) };
+  s.streaming = false; clearTimeout(s.timer);
+  const order = S.view === 'split' ? leaves(S.tree) : Object.keys(S.sessions);
+  const idx = order.indexOf(id);
+  S.tree = removeLeaf(S.tree, id);
+  delete S.sessions[id]; delete S.geo[id]; S.sel.delete(id);
+  S.edges = S.edges.filter(e => e.from !== id && e.to !== id);
+  els[id]?.remove(); delete els[id];
+  if (S.zoomed === id) S.zoomed = null;
+  if (S.focus === id) { const rest = order.filter(x => x !== id && S.sessions[x]); S.focus = rest[Math.min(idx, rest.length - 1)] || null; }
+  morph(260, 'quick'); layout();
+  toast(`Closed <b>${esc(s.title)}</b>`, 'Undo', undoClose);
+}
+function undoClose() {
+  if (!lastClosed) return;
+  const { s, geo, tree, edges } = lastClosed; lastClosed = null;
+  S.sessions[s.id] = s; S.geo[s.id] = geo; S.tree = JSON.parse(tree); S.edges.push(...edges);
+  paneEl(s.id); morph(260, 'quick'); layout(); focusSession(s.id);
+}
+
+function addToSplit(id) {
+  if (inTree(id)) return;
+  if (leaves(S.tree).length >= MAX_PANES) { toast(`The split is full (${MAX_PANES} panes)`); return; }
+  const target = inTree(S.focus) ? S.focus : leaves(S.tree).slice(-1)[0];
+  if (!S.tree) S.tree = leaf(id); else splitAt(target, id, 'right');
+  equalizeNode(S.tree);
+  layout();
+  toast(`<b>${esc(S.sessions[id].title)}</b> added to the split`, 'Show split', () => setView('split'));
+}
+
+// ---------------------------------------------------------------- view switching & camera
+function setView(v) {
+  if (v === S.view) return;
+  if (v === 'canvas' && !S.fitted) { S.view = v; fitAll(false); S.fitted = true; S.view = 'split'; }
+  S.view = v;
+  if (v === 'canvas' && S.focus) S.sel = new Set([S.focus]);
+  morph(); layout();
+}
+function bounds(ids) {
+  let x1 = 1e9, y1 = 1e9, x2 = -1e9, y2 = -1e9;
+  for (const id of ids) { const g = S.geo[id]; if (!g) continue; x1 = Math.min(x1, g.x); y1 = Math.min(y1, g.y); x2 = Math.max(x2, g.x + g.w); y2 = Math.max(y2, g.y + g.h); }
+  return x1 > x2 ? null : { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+}
+function frame(b, anim = true, maxK = 1.1, pad = 70) {
+  if (!b) return;
+  const { W, H } = stageSize();
+  const k = clamp(Math.min((W - pad * 2) / b.w, (H - pad * 2 - 50) / b.h), MIN_K, maxK);
+  S.t = { k, x: (W - b.w * k) / 2 - b.x * k, y: (H - 50 - b.h * k) / 2 - b.y * k };
+  if (anim) morph(460);
+  layout();
+}
+const fitAll = (anim = true) => frame(bounds(Object.keys(S.geo)), anim);
+function zoomTo(k, anim = true, pt) {
+  const { W, H } = stageSize(); const p = pt || { x: W / 2, y: H / 2 };
+  k = clamp(k, MIN_K, MAX_K);
+  S.t = { k, x: p.x - (p.x - S.t.x) * k / S.t.k, y: p.y - (p.y - S.t.y) * k / S.t.k };
+  if (anim) morph(300);
+  layout();
+}
+function revealNode(id) {
+  const g = S.geo[id]; if (!g) return;
+  const { W, H } = stageSize(); const { x, y, k } = S.t;
+  const sx = g.x * k + x, sy = g.y * k + y, sw = g.w * k, sh = g.h * k;
+  if (sx >= 20 && sy >= 20 && sx + sw <= W - 20 && sy + sh <= H - 70) return;
+  const kk = Math.max(k, 0.55);
+  S.t = { k: kk, x: W / 2 - (g.x + g.w / 2) * kk, y: (H - 50) / 2 - (g.y + g.h / 2) * kk };
+  morph(420); layout();
+}
+function flyTo(id) { if (S.geo[id]) frame(bounds([id]), true, 1, 90); }
+function jumpTo(id) {
+  if (!S.sessions[id]) return;
+  if (S.view === 'split' && !inTree(id)) { setView('canvas'); setTimeout(() => { flyTo(id); focusSession(id); selectOnly(id); }, 60); return; }
+  if (S.view === 'split') { if (S.zoomed && S.zoomed !== id) S.zoomed = id; focusSession(id); layout(); return; }
+  flyTo(id); focusSession(id); selectOnly(id);
+}
+
+// ---------------------------------------------------------------- split operations
+function toggleZoom() {
+  if (S.view !== 'split' || !inTree(S.focus)) { toast('Zoom works on a pane in the split'); return; }
+  if (leaves(S.tree).length < 2 && !S.zoomed) { toast('Only one pane. Nothing to hide'); return; }
+  S.zoomed = S.zoomed ? null : S.focus;
+  morph(300); layout();
+}
+function equalize() {
+  if (S.view !== 'split' || !S.tree) return;
+  S.zoomed = null; equalizeNode(S.tree); morph(300); layout();
+  toast('Panes evened out');
+}
+function applyPreset(name) {
+  if (name === 'eq') return equalize();
+  if (name === 'zoom') return toggleZoom();
+  const need = { single: 1, cols2: 2, rows2: 2, main: 3, cols3: 3, grid: 4, grid6: 6 }[name];
+  let ids = leaves(S.tree);
+  if (S.focus && ids.includes(S.focus)) ids = [S.focus, ...ids.filter(i => i !== S.focus)];
+  const added = [];
+  while (ids.length < need) { const id = createSession('local'); S.geo[id] = freeSpotNear(ids[ids.length - 1], 520, 320); paneEl(id); ids.push(id); added.push(id); }
+  const dropped = ids.slice(need); ids = ids.slice(0, need);
+  const [a, b, c, d, e, f] = ids.map(leaf);
+  S.tree = {
+    single: a, cols2: split('row', a, b), rows2: split('col', a, b),
+    main: split('row', a, split('col', b, c), 0.6),
+    cols3: split('row', a, split('row', b, c), 1 / 3),
+    grid: split('col', split('row', a, b), split('row', c, d)),
+    grid6: split('col', split('row', a, split('row', b, c), 1 / 3), split('row', d, split('row', e, f), 1 / 3)),
+  }[name];
+  S.zoomed = null;
+  morph(360); layout();
+  const bits = [];
+  if (added.length) bits.push(`opened ${added.length} new shell${added.length > 1 ? 's' : ''}`);
+  if (dropped.length) bits.push(`${dropped.map(i => '<b>' + esc(S.sessions[i].title) + '</b>').join(', ')} still running on the canvas`);
+  toast(PRESETS.find(p => p[0] === name)[1] + (bits.length ? ': ' + bits.join('; ') : ''));
+}
+function navRects() {
+  if (S.view === 'split') { const r = {}; for (const id of leaves(S.tree)) if (!S.zoomed || id === S.zoomed) r[id] = S.rects[id]; return r; }
+  const r = {}; for (const id in S.sessions) r[id] = S.geo[id]; return r;
+}
+function focusDir(dir) {
+  const R = navRects(); const cur = R[S.focus];
+  if (!cur) { const first = Object.keys(R)[0]; if (first) focusSession(first, true); return; }
+  const cx = cur.x + cur.w / 2, cy = cur.y + cur.h / 2;
+  let best = null, bd = Infinity;
+  for (const id in R) {
+    if (id === S.focus || !R[id]) continue;
+    const r = R[id], ox = r.x + r.w / 2, oy = r.y + r.h / 2;
+    const ok = { left: r.x + r.w <= cur.x + 4, right: r.x >= cur.x + cur.w - 4, up: r.y + r.h <= cur.y + 4, down: r.y >= cur.y + cur.h - 4 }[dir];
+    if (!ok) continue;
+    const horiz = dir === 'left' || dir === 'right';
+    const overlap = horiz ? Math.min(r.y + r.h, cur.y + cur.h) - Math.max(r.y, cur.y) : Math.min(r.x + r.w, cur.x + cur.w) - Math.max(r.x, cur.x);
+    const d = (horiz ? Math.abs(ox - cx) : Math.abs(oy - cy)) + (horiz ? Math.abs(oy - cy) : Math.abs(ox - cx)) * (overlap > 0 ? 0.3 : 2);
+    if (d < bd) { bd = d; best = id; }
+  }
+  if (best) { focusSession(best, true); if (S.view === 'canvas') selectOnly(best); }
+}
+function resizeDir(dir) {
+  if (S.view === 'canvas') {
+    const ids = S.sel.size ? [...S.sel] : [S.focus];
+    const d = { left: [-24, 0], right: [24, 0], up: [0, -24], down: [0, 24] }[dir];
+    ids.forEach(id => { if (S.geo[id]) { S.geo[id].x += d[0]; S.geo[id].y += d[1]; } });
+    layout(); return;
+  }
+  const axis = dir === 'left' || dir === 'right' ? 'row' : 'col';
+  const path = pathTo(S.tree, S.focus); if (!path) return;
+  for (let i = path.length - 1; i >= 0; i--) {
+    const { n } = path[i];
+    if (n.axis === axis) { n.ratio = clamp(n.ratio + (dir === 'right' || dir === 'down' ? 0.05 : -0.05), 0.15, 0.85); morph(140, 'quick'); layout(); return; }
+  }
+}
+
+// ---------------------------------------------------------------- broadcast
+function broadcastTargets() {
+  const pool = S.view === 'split' ? leaves(S.tree).filter(id => !S.zoomed || id === S.zoomed) : Object.keys(S.sessions);
+  return pool.filter(id => S.sessions[id] && S.sessions[id].kind !== 'agent' && S.sessions[id].status !== 'off');
+}
+function toggleBroadcast() {
+  S.broadcast = !S.broadcast; updateChrome();
+  toast(S.broadcast ? `Broadcasting keystrokes to <b>${broadcastTargets().length}</b> panes` : 'Broadcast off');
+}
+function toggleSnap() { S.snap = !S.snap; updateChrome(); toast(S.snap ? 'Snapping on' : 'Snapping off. Nodes move freely'); }
+
+// ---------------------------------------------------------------- terminal simulation
+const ROUTES = ['GET /v1/sessions', 'POST /v1/pair', 'GET /healthz', 'GET /v1/hosts', 'PUT /v1/vault', 'GET /v1/devices'];
+function logLine(host) {
+  const ts = new Date().toTimeString().slice(0, 8);
+  const code = Math.random() < 0.05 ? 500 : Math.random() < 0.1 ? 404 : 200;
+  return L(`Sep 24 ${ts} ${host} api[2211]: ${pick(ROUTES)} ${code} ${4 + Math.floor(Math.random() * 90)}ms`, code >= 500 ? 'err' : code >= 400 ? 'warn' : '');
+}
+setInterval(() => {
+  for (const s of Object.values(S.sessions)) if (s.tail && s.status !== 'off' && Math.random() < 0.7) push(s, [logLine(s.title)]);
+}, 1300);
+
+function stream(s, lines, gap = 160, done) {
+  s.streaming = true; setStatus(s, 'busy'); renderInput(s.id);
+  let i = 0;
+  const tick = () => {
+    if (!S.sessions[s.id] || !s.streaming) return;
+    if (i >= lines.length) { s.streaming = false; setStatus(s, 'live'); renderInput(s.id); if (S.view === 'canvas') renderEdges(); done && done(); return; }
+    push(s, [lines[i++]]);
+    s.timer = setTimeout(tick, typeof gap === 'function' ? gap() : gap);
+  };
+  if (S.view === 'canvas') renderEdges();
+  tick();
+}
+function interrupt(s) {
+  if (s.tail) { s.tail = false; push(s, [L('^C')]); renderInput(s.id); return; }
+  if (s.streaming) { s.streaming = false; clearTimeout(s.timer); push(s, [L('^C')]); setStatus(s, 'live'); renderInput(s.id); return; }
+  push(s, [L(s.input + '^C', 'cmd', promptOf(s))]); s.input = ''; renderInput(s.id);
+}
+function run(s, raw) {
+  if (s.status === 'off') { reconnect(s); return; }
+  if (s.kind === 'agent') return agentSay(s, raw);
+  const cmd = raw.trim();
+  push(s, [L(raw, 'cmd', promptOf(s))]);
+  if (!cmd) return;
+  s.hist.push(raw); s.hi = s.hist.length;
+  const [c, ...args] = cmd.split(/\s+/);
+  const out = t => push(s, t.map(x => typeof x === 'string' ? L(x) : x));
+  switch (c) {
+    case 'help': out([L('Simulated commands:', 'b'), '  ls  pwd  whoami  date  uptime  echo …  clear  git status', '  ping <host>   cargo test   tail -f   top   exit', L('Ctrl-C interrupts, Ctrl-L clears, ↑ recalls history.', 'dim')]); break;
+    case 'ls': out([s.kind === 'local' ? L('Cargo.toml  Cargo.lock  CLAUDE.md  apps  crates  design  docs  scripts  tests', 'acc') : L('app  deploy.sh  logs  releases  shared', 'acc')]); break;
+    case 'pwd': out([s.kind === 'local' ? '/Users/you/projects/multiplex' : '/home/deploy']); break;
+    case 'whoami': out([s.user]); break;
+    case 'date': out([new Date().toString()]); break;
+    case 'uptime': out([' ' + new Date().toTimeString().slice(0, 8) + ' up 41 days,  3:02,  1 user,  load average: 0.24, 0.19, 0.12']); break;
+    case 'echo': out([args.join(' ')]); break;
+    case 'clear': s.lines = []; renderOut(s.id); break;
+    case 'git': out(['On branch dev', 'nothing to commit, working tree clean']); break;
+    case 'top': case 'htop': case 'vim': case 'nvim': out([L(`${c}: full-screen programs draw normally in the real app. This mock only simulates line output.`, 'dim')]); break;
+    case 'ping': { const h = args[0] || '1.1.1.1'; stream(s, [L(`PING ${h}: 56 data bytes`), ...[0, 1, 2, 3].map(i => L(`64 bytes from ${h}: icmp_seq=${i} ttl=57 time=${(8 + Math.random() * 6).toFixed(3)} ms`)), L(`--- ${h} ping statistics ---`, 'dim'), L('4 packets transmitted, 4 packets received, 0.0% packet loss')], 520); break; }
+    case 'cargo': stream(s, testLines(), () => 60 + Math.random() * 220); break;
+    case 'tail': case 'journalctl': s.tail = true; renderInput(s.id); break;
+    case 'exit': case 'logout': push(s, [L('logout'), L(`Connection to ${s.host} closed.`, 'dim')]); setStatus(s, 'off'); renderInput(s.id); break;
+    default: out([L(`${c}: command not found (this is a mock, try help)`, 'err')]);
+  }
+}
+function testLines() {
+  const names = ['reconnect_after_drop', 'keepalive_resets_after_handshake', 'split_tree_removes_leaf', 'canvas_snaps_to_neighbour', 'broadcast_skips_agents', 'zoomed_pane_restores_ratios', 'drop_zone_center_swaps'];
+  return [L('   Compiling multiplex v0.0.5', 'ok'), L('    Finished `test` profile in 9.41s', 'ok'), L('     Running unittests src/main.rs'), L(''), L(`running ${names.length} tests`),
+    ...names.map(n => L(`test ${n} ... ok`)), L(''), L(`test result: ok. ${names.length} passed; 0 failed; 0 ignored`, 'ok')];
+}
+function reconnect(s) {
+  push(s, [L(`Reconnecting to ${s.host}…`, 'dim'), L('Authenticated with ~/.ssh/id_ed25519', 'ok')]);
+  setStatus(s, 'live'); renderInput(s.id);
+}
+function agentSay(s, raw) {
+  if (!raw.trim()) return;
+  push(s, [L(raw, 'cmd', '› ')]);
+  if (s.status === 'attn') push(s, [L('  Noted. I will pick that up after the pending command is approved or denied.', 'dim')]);
+  else stream(s, [L('  Thinking…', 'dim'), L('  Read crates/multiplex-desktop/src/ui/app/workspace.rs', 'dim'), L('  Done. Nothing to change for that request in this mock.', '')], 500);
+}
+function approve(s, ok) {
+  const cmd = s.pending; s.pending = null;
+  if (!ok) { push(s, [L(`  Denied: ${cmd}`, 'err'), L('  Okay. I will not run tests. Tell me what to do instead.', 'dim')]); setStatus(s, 'live'); return; }
+  push(s, [L(`  Approved: ${cmd}`, 'ok')]);
+  stream(s, [...testLines(), L('  All green across 20 runs. The flake is fixed. Ready for review.', 'lab')], () => 80 + Math.random() * 200);
+}
+
+// ---------------------------------------------------------------- keyboard
+document.addEventListener('keydown', e => {
+  if ($('#scrim').classList.contains('show')) return paletteKey(e);
+  if ($('#menu').classList.contains('show') && e.key === 'Escape') return closeMenu();
+  const tg = e.target;
+  if (tg.isContentEditable || tg.tagName === 'INPUT') { if (e.key === 'Escape') tg.blur(); return; }
+  const mod = e.metaKey || e.ctrlKey;
+  const s = S.sessions[S.focus];
+
+  if (e.ctrlKey && !e.metaKey && e.code === 'KeyC' && s) { e.preventDefault(); forTargets(x => interrupt(x)); return; }
+  if (e.ctrlKey && !e.metaKey && e.code === 'KeyL' && s) { e.preventDefault(); forTargets(x => { x.lines = []; renderOut(x.id); }); return; }
+  if (mod && e.code === 'KeyK') { e.preventDefault(); openPalette(); return; }
+  if (mod && e.code === 'KeyD') { e.preventDefault(); splitFocused(e.shiftKey ? 'bottom' : 'right'); return; }
+  if (mod && e.code === 'Backslash') { e.preventDefault(); setView(S.view === 'split' ? 'canvas' : 'split'); return; }
+  if (mod && e.shiftKey && e.key === 'Enter') { e.preventDefault(); toggleZoom(); return; }
+  if (mod && e.shiftKey && e.code === 'KeyE') { e.preventDefault(); equalize(); return; }
+  if (mod && e.shiftKey && e.code === 'KeyB') { e.preventDefault(); toggleBroadcast(); return; }
+  const arrow = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }[e.key];
+  if (e.altKey && !mod && arrow) { e.preventDefault(); e.shiftKey ? resizeDir(arrow) : focusDir(arrow); return; }
+  if (e.altKey && !mod && S.view === 'canvas') {
+    if (e.code === 'Digit1') { e.preventDefault(); fitAll(); return; }
+    if (e.code === 'Digit2') { e.preventDefault(); S.focus && flyTo(S.focus); return; }
+    if (e.code === 'Digit0') { e.preventDefault(); zoomTo(1); return; }
+    if (e.code === 'KeyT') { e.preventDefault(); tidy(); return; }
+  }
+  if (e.key === 'Escape') {
+    if (S.view === 'split' && S.zoomed) { toggleZoom(); return; }
+    if (S.view === 'canvas') { S.focus = null; S.sel.clear(); updateChrome(); return; }
+  }
+  if (mod || e.altKey || !s) return;
+  const visible = S.view === 'canvas' || (inTree(s.id) && (!S.zoomed || S.zoomed === s.id));
+  if (!visible) return;
+  if (e.key === 'Enter') { e.preventDefault(); forTargets(x => { const v = x.input; x.input = ''; renderInput(x.id); run(x, v); }); return; }
+  if (e.key === 'Backspace') { e.preventDefault(); forTargets(x => { x.input = x.input.slice(0, -1); renderInput(x.id); }); return; }
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    e.preventDefault(); if (!s.hist.length) return;
+    s.hi = clamp(s.hi + (e.key === 'ArrowUp' ? -1 : 1), 0, s.hist.length);
+    s.input = s.hist[s.hi] || ''; renderInput(s.id); return;
+  }
+  if (e.key.length === 1) { e.preventDefault(); if (e.key === ' ' && s.tail) return; forTargets(x => { if (x.tail || x.streaming) return; x.input += e.key; renderInput(x.id); }); }
+});
+function forTargets(fn) {
+  const s = S.sessions[S.focus];
+  if (S.broadcast && s && s.kind !== 'agent') broadcastTargets().forEach(id => fn(S.sessions[id]));
+  else if (s) fn(s);
+}
+
+// ---------------------------------------------------------------- pointer helpers
+function drag(onMove, onUp) {
+  const mv = ev => onMove(ev);
+  const up = ev => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); document.body.style.cursor = ''; onUp && onUp(ev); };
+  document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+}
+function local(ev) { const r = stage.getBoundingClientRect(); return { x: ev.clientX - r.left, y: ev.clientY - r.top }; }
+function toWorld(p) { return S.view === 'canvas' ? { x: (p.x - S.t.x) / S.t.k, y: (p.y - S.t.y) / S.t.k } : p; }
+function selectOnly(id) { S.sel = new Set(id ? [id] : []); updateChrome(); }
+function selectOnDown(id, e) {
+  if (e.shiftKey) { S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); }
+  else if (!S.sel.has(id)) S.sel = new Set([id]);
+  updateChrome();
+}
+function bringFront(el) { if (!el.classList.contains('group')) el.style.zIndex = ++zTop; }
+
+stage.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  const t = e.target;
+  if (t.closest('.hud') || t.closest('button')) return;
+  closeMenu();
+  const dv = t.closest('.divider'); if (dv) return startDivider(e, S.divs[+dv.dataset.i]);
+  const lab = t.closest('.elabel'); if (lab) { S.edges = S.edges.filter(x => x.id !== lab.dataset.edge); renderEdges(); toast('Link removed'); return; }
+  if (t.closest('.pout')) return startLink(e, t.closest('.pane').dataset.id);
+  const rz = t.closest('.rz'); if (rz) { e.preventDefault(); return startResize(e, rz.parentElement.dataset.id); }
+  const pane = t.closest('.pane');
+  if (pane) {
+    const id = pane.dataset.id;
+    const wasFocused = S.focus === id;
+    focusSession(id);
+    if (S.view === 'canvas') { selectOnDown(id, e); bringFront(pane); if (t.closest('.ph')) { e.preventDefault(); startMove(e, id); } }
+    else if (t.closest('.ph')) { e.preventDefault(); startPaneDrag(e, id); }
+    if (!wasFocused && !t.closest('.term')) e.preventDefault();
+    return;
+  }
+  const note = t.closest('.note');
+  if (note) { selectOnDown(note.dataset.id, e); bringFront(note); if (t.closest('.nh')) { e.preventDefault(); startMove(e, note.dataset.id); } return; }
+  const gh = t.closest('.gh'); if (gh) { e.preventDefault(); const id = gh.parentElement.dataset.id; selectOnDown(id, e); return startMove(e, id); }
+  if (S.view === 'canvas') { e.preventDefault(); startBackground(e); }
+});
+stage.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const pane = b.closest('.pane'); const act = b.dataset.act;
+  if (pane && act) {
+    const id = pane.dataset.id, s = S.sessions[id];
+    if (act === 'close') closeSession(id);
+    if (act === 'zoom') { focusSession(id); toggleZoom(); }
+    if (act === 'tosplit') addToSplit(id);
+    if (act === 'approve') approve(s, true);
+    if (act === 'deny') approve(s, false);
+    if (act === 'reconnect') reconnect(s);
+    return;
+  }
+  if (b.id === 'unzoom') return toggleZoom();
+  if (b.dataset.p) return applyPreset(b.dataset.p);
+  const tool = b.dataset.t;
+  if (tool) {
+    if (tool === 'term') { createAt('local'); }
+    if (tool === 'agent') { createAt('agent'); }
+    if (tool === 'note') { createAt('note'); }
+    if (tool === 'group') groupSelection();
+    if (tool === 'in') zoomTo(S.t.k * 1.25);
+    if (tool === 'out') zoomTo(S.t.k / 1.25);
+    if (tool === '100') zoomTo(1);
+    if (tool === 'fit') fitAll();
+    if (tool === 'tidy') tidy();
+    if (tool === 'snap') toggleSnap();
+  }
+});
+stage.addEventListener('dblclick', e => {
+  const t = e.target;
+  if (t.closest('.ttl') && t.closest('.pane')) { renameInline(t.closest('.ttl'), t.closest('.pane').dataset.id); return; }
+  if (t.closest('.ph') && S.view === 'canvas') { flyTo(t.closest('.pane').dataset.id); return; }
+  if (t.closest('.ph') && S.view === 'split') { focusSession(t.closest('.pane').dataset.id); toggleZoom(); return; }
+  if (t.closest('.divider')) { const d = S.divs[+t.closest('.divider').dataset.i]; if (d) { equalizeNode(d.n); morph(240, 'quick'); layout(); } return; }
+  if (S.view === 'canvas' && !t.closest('.pane,.note,.hud,.gh')) openCreateMenu(e.clientX, e.clientY, toWorld(local(e)));
+});
+function renameInline(el, id) {
+  el.contentEditable = 'true'; el.focus();
+  document.getSelection().selectAllChildren(el);
+  const done = () => { el.contentEditable = 'false'; const v = el.textContent.trim(); if (v) S.sessions[id].title = v; renderPane(id); updateChrome(); el.removeEventListener('blur', done); };
+  el.addEventListener('blur', done);
+  el.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); } ev.stopPropagation(); });
+}
+
+// ---- divider
+function startDivider(e, d) {
+  e.preventDefault(); if (!d) return;
+  S.activeDiv = d.n;
+  const tip = document.createElement('div'); tip.className = 'rtip'; stage.appendChild(tip);
+  document.body.style.cursor = d.n.axis === 'row' ? 'col-resize' : 'row-resize';
+  drag(ev => {
+    const p = local(ev), r = d.r;
+    let ratio = d.n.axis === 'row' ? (p.x - r.x - GAP / 2) / (r.w - GAP) : (p.y - r.y - GAP / 2) / (r.h - GAP);
+    ratio = clamp(ratio, 0.15, 0.85);
+    S.divSnapped = false; let label;
+    for (const [v, lab] of [[1 / 3, '⅓'], [0.5, '½'], [2 / 3, '⅔']]) if (!ev.altKey && Math.abs(ratio - v) < 0.02) { ratio = v; S.divSnapped = true; label = lab; }
+    d.n.ratio = ratio; layout();
+    const nd = S.divs.find(x => x.n === d.n);
+    tip.style.left = (nd.x + nd.w / 2) + 'px'; tip.style.top = (nd.y + nd.h / 2) + 'px';
+    tip.className = 'rtip' + (S.divSnapped ? ' snapped' : '');
+    tip.textContent = S.divSnapped ? label : `${Math.round(ratio * 100)} : ${Math.round((1 - ratio) * 100)}`;
+  }, () => { S.activeDiv = null; S.divSnapped = false; tip.remove(); layout(); });
+}
+
+// ---- split: drag pane or host onto pane
+function zoneFor(r, p, center) {
+  const rx = (p.x - r.x) / r.w, ry = (p.y - r.y) / r.h;
+  if (center && rx > 0.3 && rx < 0.7 && ry > 0.3 && ry < 0.7) return 'center';
+  const d = { left: rx, right: 1 - rx, top: ry, bottom: 1 - ry };
+  return Object.keys(d).reduce((a, b) => d[a] < d[b] ? a : b);
+}
+function zoneRect(r, z) {
+  const hw = (r.w - GAP) / 2, hh = (r.h - GAP) / 2;
+  return { left: { x: r.x, y: r.y, w: hw, h: r.h }, right: { x: r.x + r.w - hw, y: r.y, w: hw, h: r.h }, top: { x: r.x, y: r.y, w: r.w, h: hh }, bottom: { x: r.x, y: r.y + r.h - hh, w: r.w, h: hh }, center: r }[z];
+}
+const ZLABEL = { left: 'Split left', right: 'Split right', top: 'Split up', bottom: 'Split down', center: 'Swap' };
+function showZones(r) {
+  const z = $('#zones'); if (!r) { z.style.display = 'none'; return; }
+  z.style.display = 'block'; place(z, { x: 0, y: 0, w: 0, h: 0 });
+  const zs = [zoneRect(r, 'left'), zoneRect(r, 'right'), zoneRect(r, 'top'), zoneRect(r, 'bottom'), { x: r.x + r.w * 0.3, y: r.y + r.h * 0.3, w: r.w * 0.4, h: r.h * 0.4 }];
+  $$('i', z).forEach((el, i) => place(el, zs[i]));
+}
+function showDrop(r, label, full) {
+  const d = $('#drop');
+  if (!r) { d.style.display = 'none'; return; }
+  d.style.display = 'grid'; d.classList.toggle('full', !!full); place(d, { x: r.x + 3, y: r.y + 3, w: r.w - 6, h: r.h - 6 });
+  d.querySelector('span').textContent = label;
+}
+function makeGhost(html) { const g = document.createElement('div'); g.className = 'ghost'; g.innerHTML = html; document.body.appendChild(g); return g; }
+
+function startPaneDrag(e, src) {
+  const sx = e.clientX, sy = e.clientY; let ghost = null, target = null, zone = null;
+  drag(ev => {
+    if (!ghost) { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return; ghost = makeGhost(`<span class="st ${S.sessions[src].status}"></span>${esc(S.sessions[src].title)}`); els[src].classList.add('dragging'); }
+    ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px';
+    ({ target, zone } = hitSplit(ev, src, true));
+  }, () => {
+    showDrop(null); showZones(null);
+    if (!ghost) return; ghost.remove(); els[src]?.classList.remove('dragging');
+    if (!target || !zone) return;
+    if (zone === 'center') { swapLeaves(src, target); toast(`Swapped <b>${esc(S.sessions[src].title)}</b> and <b>${esc(S.sessions[target].title)}</b>`); }
+    else { S.tree = removeLeaf(S.tree, src); splitAt(target, src, zone); }
+    S.zoomed = null; morph(300); layout();
+  });
+}
+function hitSplit(ev, src, allowCenter) {
+  const p = local(ev);
+  let target = null;
+  for (const id of leaves(S.tree)) { if (S.zoomed && id !== S.zoomed) continue; const r = S.rects[id]; if (r && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) target = id; }
+  if (!target || target === src) { showDrop(null); showZones(null); return { target: null, zone: null }; }
+  const r = S.rects[target];
+  const zone = zoneFor(r, p, allowCenter);
+  showZones(r);
+  const full = !src && leaves(S.tree).length >= MAX_PANES;
+  showDrop(zoneRect(r, zone), full ? `Split is full (${MAX_PANES})` : ZLABEL[zone], full);
+  return { target, zone: full ? null : zone };
+}
+
+// ---- rail hosts
+$('#rail').addEventListener('mousedown', e => {
+  const h = e.target.closest('.host'); if (!h || e.button !== 0) return;
+  e.preventDefault();
+  const kind = h.dataset.kind || 'ssh', host = h.dataset.host;
+  const label = host || h.textContent.trim();
+  const sx = e.clientX, sy = e.clientY; let ghost = null, hit = { target: null, zone: null }, onStage = false;
+  drag(ev => {
+    if (!ghost) { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return; ghost = makeGhost(esc(label)); }
+    ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px';
+    const sr = stage.getBoundingClientRect();
+    onStage = ev.clientX > sr.left && ev.clientX < sr.right && ev.clientY > sr.top && ev.clientY < sr.bottom;
+    if (S.view === 'split' && S.tree) hit = hitSplit(ev, null, false);
+    else if (S.view === 'split' && onStage) showDrop({ x: PAD, y: PAD, w: sr.width - PAD * 2, h: sr.height - PAD * 2 }, 'Open here');
+  }, ev => {
+    showDrop(null); showZones(null);
+    if (!ghost) { splitFocused('right', kind, host); return; }
+    ghost.remove();
+    if (!onStage) return;
+    if (S.view === 'canvas') { createAt(kind, host, toWorld(local(ev))); return; }
+    if (!S.tree) { const id = createSession(kind, host); S.geo[id] = freeSpotNear(null, 520, 320); S.tree = leaf(id); layout(); focusSession(id); return; }
+    if (!hit.target) return;
+    const id = createSession(kind, host); S.geo[id] = freeSpotNear(hit.target, 520, 320);
+    splitAt(hit.target, id, hit.zone); paneEl(id); morph(260, 'quick'); layout(); focusSession(id);
+  });
+});
+
+// ---- canvas: pan, marquee
+function startBackground(e) {
+  const p0 = local(e), t0 = { ...S.t }; let moved = false;
+  if (e.shiftKey) {
+    const m = $('#marquee'); const base = new Set(S.sel);
+    drag(ev => {
+      const p = local(ev); moved = true;
+      const r = { x: Math.min(p0.x, p.x), y: Math.min(p0.y, p.y), w: Math.abs(p.x - p0.x), h: Math.abs(p.y - p0.y) };
+      m.style.display = 'block'; place(m, r);
+      const a = toWorld({ x: r.x, y: r.y }), b = toWorld({ x: r.x + r.w, y: r.y + r.h });
+      S.sel = new Set(base);
+      for (const [id, g] of Object.entries(S.geo)) if (!S.groups[id] && g.x < b.x && g.x + g.w > a.x && g.y < b.y && g.y + g.h > a.y) S.sel.add(id);
+      updateChrome();
+    }, () => { m.style.display = 'none'; if (S.sel.size > 1) toast(`${S.sel.size} selected. Drag any of them to move together, or press Group`); });
+    return;
+  }
+  document.body.style.cursor = 'grabbing';
+  drag(ev => {
+    const p = local(ev);
+    if (!moved && Math.hypot(p.x - p0.x, p.y - p0.y) < 3) return;
+    moved = true; S.t = { ...t0, x: t0.x + p.x - p0.x, y: t0.y + p.y - p0.y }; layout();
+  }, () => { if (!moved) { S.sel.clear(); S.focus = null; updateChrome(); } });
+}
+stage.addEventListener('wheel', e => {
+  if (S.view !== 'canvas') return;
+  if (e.target.closest('.minimap')) { e.preventDefault(); return; }
+  const term = e.target.closest('.term'), pane = e.target.closest('.pane');
+  if (!e.ctrlKey && term && pane && pane.dataset.id === S.focus && !stage.classList.contains('far')) return;
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey) zoomTo(S.t.k * Math.exp(-e.deltaY * 0.01), false, local(e));
+  else { S.t.x -= e.deltaX; S.t.y -= e.deltaY; layout(); }
+}, { passive: false });
+
+// ---- canvas: move with snapping and guides
+function membersOf(gid) {
+  const g = S.geo[gid];
+  return Object.keys(S.geo).filter(id => { if (id === gid || S.groups[id]) return false; const r = S.geo[id]; const cx = r.x + r.w / 2, cy = r.y + r.h / 2; return cx > g.x && cx < g.x + g.w && cy > g.y && cy < g.y + g.h; });
+}
+function startMove(e, id) {
+  let ids = S.sel.has(id) ? [...S.sel] : [id];
+  for (const x of [...ids]) if (S.groups[x]) ids.push(...membersOf(x));
+  ids = [...new Set(ids)];
+  const orig = Object.fromEntries(ids.map(x => [x, { ...S.geo[x] }]));
+  const others = Object.keys(S.geo).filter(x => !ids.includes(x) && !S.groups[x]).map(x => S.geo[x]);
+  const p0 = toWorld(local(e)); let moved = false;
+  drag(ev => {
+    const p = toWorld(local(ev));
+    let dx = p.x - p0.x, dy = p.y - p0.y;
+    if (!moved && Math.hypot(dx, dy) * S.t.k < 3) return;
+    moved = true; document.body.style.cursor = 'grabbing';
+    const o = orig[id], r = { x: o.x + dx, y: o.y + dy, w: o.w, h: o.h };
+    let guides = [];
+    if (S.snap && !ev.altKey) {
+      const sn = snapRect(r, others, 7 / S.t.k);
+      dx += sn.dx ?? (Math.round(r.x / GRID) * GRID - r.x);
+      dy += sn.dy ?? (Math.round(r.y / GRID) * GRID - r.y);
+      const fr = { x: o.x + dx, y: o.y + dy, w: o.w, h: o.h };
+      if (sn.gx) guides.push({ v: true, at: sn.gx.v, a: Math.min(fr.y, sn.gx.o.y) - 24, b: Math.max(fr.y + fr.h, sn.gx.o.y + sn.gx.o.h) + 24 });
+      if (sn.gy) guides.push({ v: false, at: sn.gy.v, a: Math.min(fr.x, sn.gy.o.x) - 24, b: Math.max(fr.x + fr.w, sn.gy.o.x + sn.gy.o.w) + 24 });
+    }
+    for (const x of ids) { S.geo[x].x = orig[x].x + dx; S.geo[x].y = orig[x].y + dy; }
+    drawGuides(guides); layout();
+  }, () => { drawGuides([]); });
+}
+function snapRect(r, others, thr) {
+  const xs = [r.x, r.x + r.w / 2, r.x + r.w], ys = [r.y, r.y + r.h / 2, r.y + r.h];
+  let gx = null, gy = null;
+  for (const o of others) {
+    const oxs = [o.x, o.x + o.w / 2, o.x + o.w], oys = [o.y, o.y + o.h / 2, o.y + o.h];
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+      if ((i === 1) !== (j === 1)) continue;
+      const d = oxs[j] - xs[i]; if (Math.abs(d) < thr && (!gx || Math.abs(d) < Math.abs(gx.d))) gx = { d, v: oxs[j], o };
+      const e = oys[j] - ys[i]; if (Math.abs(e) < thr && (!gy || Math.abs(e) < Math.abs(gy.d))) gy = { d: e, v: oys[j], o };
+    }
+    for (const [a, b] of [[0, 2], [2, 0]]) { // edge-to-edge with a gap of 32
+      const d = (b === 0 ? oxs[0] - 32 : oxs[2] + 32) - xs[a]; if (Math.abs(d) < thr && (!gx || Math.abs(d) < Math.abs(gx.d))) gx = { d, v: b === 0 ? oxs[0] - 32 : oxs[2] + 32, o, gap: true };
+    }
+  }
+  return { dx: gx?.d ?? null, dy: gy?.d ?? null, gx, gy };
+}
+function drawGuides(gs) {
+  const c = $('#guides'); c.innerHTML = '';
+  const w = 1 / S.t.k;
+  for (const g of gs) {
+    const d = document.createElement('div'); d.className = 'guide';
+    if (g.v) place(d, { x: g.at - w / 2, y: g.a, w, h: g.b - g.a }); else place(d, { x: g.a, y: g.at - w / 2, w: g.b - g.a, h: w });
+    c.appendChild(d);
+  }
+}
+function startResize(e, id) {
+  const o = { ...S.geo[id] }, p0 = toWorld(local(e));
+  const min = S.groups[id] ? [320, 200] : S.notes[id] ? [160, 100] : [280, 170];
+  document.body.style.cursor = 'nwse-resize';
+  drag(ev => {
+    const p = toWorld(local(ev));
+    let w = Math.max(min[0], o.w + p.x - p0.x), h = Math.max(min[1], o.h + p.y - p0.y);
+    if (S.snap && !ev.altKey) { w = Math.round(w / GRID) * GRID; h = Math.round(h / GRID) * GRID; }
+    S.geo[id].w = w; S.geo[id].h = h;
+    if (S.view === 'split') return;
+    layout();
+  });
+}
+
+// ---- links
+let tmpLink = null;
+function startLink(e, from) {
+  e.preventDefault(); document.body.classList.add('linking');
+  const a = S.geo[from];
+  drag(ev => {
+    const p = toWorld(local(ev));
+    const x1 = a.x + a.w, y1 = a.y + a.h / 2, dx = Math.max(60, Math.abs(p.x - x1) * 0.45);
+    tmpLink = `M${x1},${y1} C${x1 + dx},${y1} ${p.x - dx},${p.y} ${p.x},${p.y}`; renderEdges();
+  }, ev => {
+    tmpLink = null; document.body.classList.remove('linking');
+    const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.pane');
+    const to = el?.dataset.id;
+    if (to && to !== from && !S.edges.some(x => x.from === from && x.to === to)) {
+      S.edges.push({ id: 'e' + (++uid), from, to, label: 'context' });
+      toast(`Linked <b>${esc(S.sessions[from].title)}</b> → <b>${esc(S.sessions[to].title)}</b>. It will share its output as context`);
+    }
+    renderEdges();
+  });
+}
+
+// ---- create
+function createAt(kind, host, pt) {
+  if (S.view !== 'canvas') setView('canvas');
+  if (kind === 'note') {
+    const id = 'n' + (++uid); S.notes[id] = { text: 'New note' };
+    S.geo[id] = freeSpotNear(null, 240, 180, pt); noteEl(id); layout(); selectOnly(id);
+    const nb = els[id].querySelector('.nb'); nb.focus(); document.getSelection().selectAllChildren(nb);
+    return;
+  }
+  const id = createSession(kind, host);
+  const w = kind === 'agent' ? 560 : 520, h = kind === 'agent' ? 340 : 320;
+  S.geo[id] = freeSpotNear(pt ? null : S.focus, w, h, pt);
+  paneEl(id); layout(); focusSession(id, true); selectOnly(id);
+  bringFront(els[id]);
+}
+function groupSelection() {
+  const ids = [...S.sel].filter(id => !S.groups[id]);
+  if (!ids.length) { toast('Select nodes first. Shift-drag on empty space, or shift-click'); return; }
+  const b = bounds(ids); const id = 'g' + (++uid);
+  S.groups[id] = { title: 'group ' + (Object.keys(S.groups).length + 1) };
+  S.geo[id] = { x: b.x - 28, y: b.y - 56, w: b.w + 56, h: b.h + 84 };
+  groupEl(id); layout(); toast('Grouped. Drag the label to move everything inside');
+}
+function openCreateMenu(cx, cy, pt) {
+  const m = $('#menu');
+  m.innerHTML = `<h5>Create here</h5>
+    <button class="mi" data-k="local">Local terminal</button>
+    <button class="mi" data-k="agent">Claude Code agent</button>
+    <button class="mi" data-k="note">Sticky note</button>
+    <h5>Connect</h5>` + Object.keys(HOSTS).map(h => `<button class="mi" data-k="ssh" data-h="${h}">${h}<kbd>${HOSTS[h]}</kbd></button>`).join('');
+  m.style.left = Math.min(cx, innerWidth - 240) + 'px'; m.style.top = Math.min(cy, innerHeight - 330) + 'px';
+  m.classList.add('show');
+  m.onclick = ev => { const b = ev.target.closest('.mi'); if (!b) return; closeMenu(); createAt(b.dataset.k, b.dataset.h, pt); };
+}
+function closeMenu() { $('#menu').classList.remove('show'); }
+document.addEventListener('mousedown', e => { if (!e.target.closest('.menu')) closeMenu(); });
+
+// ---- tidy
+function tidy() {
+  if (S.view !== 'canvas') setView('canvas');
+  const G = 32; let y = 0; const placed = new Set();
+  for (const gid of Object.keys(S.groups)) {
+    const mem = membersOf(gid).sort((a, b) => S.geo[a].x - S.geo[b].x);
+    if (!mem.length) continue;
+    let x = 28, mh = 0;
+    for (const m of mem) { const g = S.geo[m]; g.x = x; g.y = y + 56; x += g.w + G; mh = Math.max(mh, g.h); placed.add(m); }
+    Object.assign(S.geo[gid], { x: 0, y, w: x - G + 28, h: mh + 84 });
+    y += mh + 84 + 56;
+  }
+  const rest = Object.keys(S.geo).filter(id => !placed.has(id) && !S.groups[id]).sort((a, b) => (S.notes[a] ? 1 : 0) - (S.notes[b] ? 1 : 0));
+  let x = 0, mh = 0, col = 0;
+  for (const id of rest) {
+    const g = S.geo[id];
+    if (col === 3) { x = 0; y += mh + 48; mh = 0; col = 0; }
+    g.x = x; g.y = y; x += g.w + 48; mh = Math.max(mh, g.h); col++;
+  }
+  morph(460); layout();
+  setTimeout(() => fitAll(), 480);
+}
+
+// ---- minimap
+let mmGeom = null;
+function drawMinimap() {
+  if (S.view !== 'canvas') return;
+  const c = $('#mm'), dpr = devicePixelRatio || 1, W = c.clientWidth || 208, H = c.clientHeight || 138;
+  c.width = W * dpr; c.height = H * dpr;
+  const ctx = c.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, W, H);
+  const { W: sw, H: sh } = stageSize();
+  const view = { x: -S.t.x / S.t.k, y: -S.t.y / S.t.k, w: sw / S.t.k, h: sh / S.t.k };
+  const b = bounds(Object.keys(S.geo)) || view;
+  const x1 = Math.min(b.x, view.x), y1 = Math.min(b.y, view.y), x2 = Math.max(b.x + b.w, view.x + view.w), y2 = Math.max(b.y + b.h, view.y + view.h);
+  const pad = 10, sc = Math.min((W - pad * 2) / (x2 - x1), (H - pad * 2) / (y2 - y1));
+  const ox = (W - (x2 - x1) * sc) / 2 - x1 * sc, oy = (H - (y2 - y1) * sc) / 2 - y1 * sc;
+  mmGeom = { sc, ox, oy };
+  const R = (g, fill, stroke) => { ctx.beginPath(); ctx.roundRect(g.x * sc + ox, g.y * sc + oy, g.w * sc, g.h * sc, 2); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke(); } };
+  for (const id in S.groups) R(S.geo[id], 'rgba(116,167,242,.06)', 'rgba(116,167,242,.35)');
+  for (const id in S.notes) R(S.geo[id], '#4A4128');
+  for (const id in S.sessions) { const s = S.sessions[id]; R(S.geo[id], id === S.focus ? '#3B5680' : '#2E333B', s.status === 'attn' ? '#E9B061' : null); }
+  ctx.strokeStyle = '#74A7F2'; ctx.lineWidth = 1.5; ctx.strokeRect(view.x * sc + ox, view.y * sc + oy, view.w * sc, view.h * sc);
+}
+$('#minimap').addEventListener('mousedown', e => {
+  e.preventDefault(); e.stopPropagation();
+  const go = ev => {
+    if (!mmGeom) return;
+    const r = $('#mm').getBoundingClientRect();
+    const wx = (ev.clientX - r.left - mmGeom.ox) / mmGeom.sc, wy = (ev.clientY - r.top - mmGeom.oy) / mmGeom.sc;
+    const { W, H } = stageSize(); S.t.x = W / 2 - wx * S.t.k; S.t.y = H / 2 - wy * S.t.k; layout();
+  };
+  go(e); drag(go);
+});
+
+// ---------------------------------------------------------------- palette
+let palItems = [], palIdx = 0;
+function actions() {
+  const a = [
+    { n: 'Split right', k: '⌘D', f: () => splitFocused('right') },
+    { n: 'Split down', k: '⌘⇧D', f: () => splitFocused('bottom') },
+    { n: 'Zoom or restore focused pane', k: '⌘⇧↵', f: () => { setView('split'); toggleZoom(); } },
+    { n: 'Equalize panes', k: '⌘⇧E', f: () => { setView('split'); equalize(); } },
+    ...PRESETS.map(([k, n]) => ({ n: 'Layout: ' + n, f: () => { setView('split'); applyPreset(k); } })),
+    { n: S.view === 'split' ? 'Switch to Canvas' : 'Switch to Split', k: '⌘\\', f: () => setView(S.view === 'split' ? 'canvas' : 'split') },
+    { n: 'Canvas: fit everything', k: '⌥1', f: () => { setView('canvas'); setTimeout(fitAll, 50); } },
+    { n: 'Canvas: tidy layout', k: '⌥T', f: tidy },
+    { n: 'Canvas: new sticky note', f: () => createAt('note') },
+    { n: 'Canvas: new agent', f: () => createAt('agent') },
+    { n: 'Toggle broadcast input', k: '⌘⇧B', f: toggleBroadcast },
+    { n: 'Toggle snapping', f: toggleSnap },
+    { n: 'Close focused session', f: () => S.focus && closeSession(S.focus) },
+  ];
+  for (const s of Object.values(S.sessions)) a.push({ n: 'Go to ' + s.title, k: s.status === 'attn' ? 'needs you' : '', f: () => jumpTo(s.id) });
+  return a;
+}
+function openPalette() { $('#scrim').classList.add('show'); const i = $('#palIn'); i.value = ''; i.focus(); renderPalette(); }
+function closePalette() { $('#scrim').classList.remove('show'); }
+function renderPalette() {
+  const q = $('#palIn').value.toLowerCase().trim();
+  palItems = actions().filter(a => !q || q.split(/\s+/).every(w => a.n.toLowerCase().includes(w)));
+  palIdx = clamp(palIdx, 0, Math.max(0, palItems.length - 1));
+  $('#palList').innerHTML = palItems.map((a, i) => `<button class="mi ${i === palIdx ? 'act' : ''}" data-i="${i}">${esc(a.n)}${a.k ? `<kbd>${esc(a.k)}</kbd>` : ''}</button>`).join('') || '<div style="padding:12px;color:var(--t3)">No matches</div>';
+  $('#palList .act')?.scrollIntoView({ block: 'nearest' });
+}
+function paletteKey(e) {
+  if (e.key === 'Escape') { e.preventDefault(); closePalette(); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); palIdx++; renderPalette(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); palIdx--; renderPalette(); }
+  else if (e.key === 'Enter') { e.preventDefault(); const a = palItems[palIdx]; closePalette(); a && a.f(); }
+}
+$('#palIn').addEventListener('input', () => { palIdx = 0; renderPalette(); });
+$('#palList').addEventListener('click', e => { const b = e.target.closest('.mi'); if (!b) return; const a = palItems[+b.dataset.i]; closePalette(); a && a.f(); });
+$('#scrim').addEventListener('mousedown', e => { if (e.target.id === 'scrim') closePalette(); });
+
+// ---------------------------------------------------------------- chrome wiring
+$('#viewSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setView(b.dataset.view); });
+$('#bcBtn').onclick = toggleBroadcast;
+$('#palBtn').onclick = openPalette;
+$('#panelBtn').onclick = () => { $('#panel').classList.toggle('closed'); $('#panelBtn').classList.toggle('pon'); };
+$('#tab2').onclick = () => toast('This mock has one workspace tab. The layout ideas apply to every tab');
+$('#attn').onclick = () => { const s = Object.values(S.sessions).find(x => x.status === 'attn'); if (s) jumpTo(s.id); };
+
+const TRY = {
+  morph: () => setView(S.view === 'split' ? 'canvas' : 'split'),
+  attn: () => { const s = Object.values(S.sessions).find(x => x.status === 'attn'); if (s) jumpTo(s.id); else toast('No agent is waiting right now. Approve or deny already happened'); },
+  palette: openPalette,
+  drop: () => { setView('split'); setTimeout(() => { pulse('.pane:not(.off) .ph'); pulse('#rail .host'); }, 80); toast('Drag a pane by its header, or a host from the left, onto any pane. Center swaps'); },
+  dividers: () => { setView('split'); setTimeout(() => pulse('.divider'), 80); toast('Drag a divider. It clicks into ½, ⅓, ⅔ (⌥ to bypass). Double-click to even out'); },
+  zoom: () => { setView('split'); if (!inTree(S.focus)) S.focus = leaves(S.tree)[0]; toggleZoom(); },
+  presets: () => { setView('split'); applyPreset('grid'); setTimeout(() => pulse('#presets'), 100); },
+  nav: () => {
+    setView('split'); if (!inTree(S.focus)) focusSession(leaves(S.tree)[0]);
+    toast('⌥ arrows move focus by position on screen. ⌥⇧ arrows move the nearest divider');
+    const seq = ['right', 'down', 'left', 'right', 'up']; seq.forEach((d, i) => setTimeout(() => focusDir(d), 500 + i * 450));
+  },
+  snap: () => { setView('canvas'); setTimeout(() => pulse('.pane .ph'), 500); toast('Drag a node by its header near another. Pink guides show alignment. Hold ⌥ to place freely'); },
+  lod: () => { setView('canvas'); setTimeout(() => { zoomTo(0.32); }, S.fitted ? 0 : 480); toast('Zoomed out: each terminal is now a readable status card. Scroll or ⌥1 to come back'); },
+  create: () => { setView('canvas'); const r = stage.getBoundingClientRect(); setTimeout(() => openCreateMenu(r.left + r.width / 2 - 110, r.top + 80, viewCenter()), 480); },
+  marquee: () => { setView('canvas'); toast('Shift-drag on empty canvas to box-select, then drag any selected node'); },
+  tidy: () => tidy(),
+  links: () => { setView('canvas'); setTimeout(() => pulse('.pout'), 480); toast('Hover a node, then drag from the blue dot on its right edge onto another node'); },
+};
+$('#panel').addEventListener('click', e => { const b = e.target.closest('[data-try]'); if (b) TRY[b.dataset.try](); });
+
+new ResizeObserver(() => layout()).observe(stage);
+layout();
+setTimeout(() => toast('Click a pane and type <code>help</code>, or press <kbd>⌘\\</kbd> to watch Split become Canvas'), 400);
+})();
+</script>
+</body>
+</html>

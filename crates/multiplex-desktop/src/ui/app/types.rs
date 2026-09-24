@@ -30,14 +30,16 @@ pub enum ToolbarMenu {
     Avatar,
 }
 
-/// Which half of a terminal pane a dragged tab is hovering over, deciding the
-/// split direction when it is dropped.
+/// Which part of a terminal pane a dragged tab or pane is hovering over: an
+/// edge splits the pane on that side, and the middle swaps two panes.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum DropZone {
     Left,
     Right,
     Top,
     Bottom,
+    /// Only a pane dragged within its own split offers this.
+    Center,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

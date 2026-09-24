@@ -462,15 +462,31 @@ artifact-type-file = ⟦Ƒîļé⟧
 artifact-type-jpeg = ⟦ĴÞÉĜ îɱåĝé~~⟧
 artifact-type-png = ⟦ÞÑĜ îɱåĝé~~⟧
 artifact-type-text = ⟦Þļåîñ ţéẋţ~~⟧
+attention-pill-count = { $count ->
+    [many] { $count }⟦ ñééð ýøû~~⟧
+    [one] ⟦1 ñééðš ýøû~~~⟧
+   *[other] { $count }⟦ ñééð ýøû~~⟧
+    [zero] ⟦Ñøţĥîñĝ ñééðš ýøû~~~~~⟧
+    }
+attention-pill-jump = ⟦ĵûɱþ⟧
+attention-pill-open-canvas = ⟦øþéñ øñ çåñṽåš~~~~⟧
 autocomplete-applied-argument-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ åŕĝûɱéñţ.~~~~~~~~~~~~⟧
 autocomplete-applied-builtin-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ ƀûîļţîñ.~~~~~~~~~~~~⟧
 autocomplete-applied-context-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ çøñţéẋţ.~~~~~~~~~~~~⟧
 autocomplete-applied-history-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ ĥîšţøŕý.~~~~~~~~~~~~⟧
 autocomplete-applied-path-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ þåţĥ.~~~~~~~~~~~⟧
 autocomplete-applied-snippet-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ šñîþþéţ.~~~~~~~~~~~~⟧
+canvas-link-context-label = ⟦çøñţéẋţ~⟧
+canvas-link-dependency-label = ⟦ŕûñš åƒţéŕ~~⟧
+canvas-link-remove-tooltip = ⟦Ŕéɱøṽé ţĥîš ļîñķ~~~~~⟧
 canvas-node-rename-placeholder = ⟦Ñøðé ţîţļé~~⟧
 canvas-note-editor-placeholder = ⟦Ŵŕîţé çøñţéẋţ, ðéçîšîøñš, çøɱɱåñðš, øŕ å ţåšķ ƀŕîéƒ~~~~~~~~~~~~~~~~~~~⟧
+canvas-port-tooltip = ⟦Ðŕåĝ øñţø åñøţĥéŕ ñøðé ţø šĥåŕé ţĥîš øñé åš çøñţéẋţ~~~~~~~~~~~~~~~~~~~⟧
 canvas-project-editor-placeholder = ⟦Šéļéçţ å ÛŢƑ-8 ţéẋţ ƒîļé ţø ṽîéŵ øŕ éðîţ~~~~~~~~~~~~~~⟧
+canvas-snap-off-status = ⟦Šñåþþîñĝ øƒƒ. Ñøðéš ɱøṽé ƒŕééļý.~~~~~~~~~~~⟧
+canvas-snap-on-status = ⟦Šñåþþîñĝ øñ.~~~⟧
+canvas-snap-tooltip = ⟦Šñåþ ţø ţĥé ĝŕîð åñð ţø øţĥéŕ ñøðéš (ĥøļð Øþţîøñ ţø þļåçé ƒŕééļý)~~~~~~~~~~~~~~~~~~~~~~~~⟧
+canvas-tidy-tooltip = ⟦Ţîðý: åŕŕåñĝé ñøðéš ƀý ĝŕøûþ (Çɱð+Øþţîøñ+Ţ)~~~~~~~~~~~~~~~~⟧
 certificate-file-choose-status = ⟦Çĥøøšé åñ ØþéñŠŠĤ ûšéŕ çéŕţîƒîçåţé ƒîļé.~~~~~~~~~~~~~~⟧
 certificate-file-selected-status = ⟦ØþéñŠŠĤ ûšéŕ çéŕţîƒîçåţé šéļéçţéð.~~~~~~~~~~~~⟧
 chrome-home-tooltip = ⟦Ĥøɱé⟧
@@ -1255,22 +1271,35 @@ overlay-paste-preview = ⟦Ƒîŕšţ ļîñé: ~~~⟧{ $preview }⟦…⟧
 overlay-snippet-prompts-title = ⟦Šñîþþéţ þŕøɱþţš~~~~⟧
 palette-current-directory = ⟦Çûŕŕéñţ ðîŕéçţøŕý~~~~~⟧
 palette-docker-target = ⟦Ðøçķéŕ ţåŕĝéţ~~~~⟧
+palette-equalize = ⟦Éʠûåļîžé Þåñéš~~~~⟧
 palette-files-scope = ⟦Ƒîļéš · ~~⟧{ $path }
+palette-fit-canvas = ⟦Ƒîţ Çåñṽåš~~⟧
 palette-git-branch = ⟦Ĝîţ ƀŕåñçĥ~~⟧
 palette-group-snippet-detail = ⟦Šñîþþéţ · ~~⟧{ $group }⟦ · ⟧{ $command }
 palette-history-detail = ⟦Ĥîšţøŕý · ~~⟧{ $scope }
 palette-kubernetes-pod = ⟦Ķûƀéŕñéţéš þøð~~~~⟧
+palette-layout-prefix = ⟦Ļåýøûţ:~⟧
 palette-parent-directory = ⟦Þåŕéñţ ðîŕéçţøŕý~~~~~⟧
 palette-pinned-group-snippet-detail = ⟦Þîññéð šñîþþéţ · ~~~~~⟧{ $group }⟦ · ⟧{ $command }
 palette-pinned-snippet-detail = ⟦Þîññéð šñîþþéţ · ~~~~~⟧{ $command }
 palette-recent-command = ⟦Ŕéçéñţ çøɱɱåñð~~~~⟧
 palette-recent-path = ⟦Ŕéçéñţ þåţĥ~~~⟧
+palette-show-canvas = ⟦Šŵîţçĥ ţø Çåñṽåš~~~~~⟧
+palette-show-split = ⟦Šŵîţçĥ ţø Šþļîţ~~~~⟧
 palette-snippet-detail = ⟦Šñîþþéţ · ~~⟧{ $command }
+palette-split-down = ⟦Šþļîţ Ðøŵñ~~⟧
+palette-split-right = ⟦Šþļîţ Ŕîĝĥţ~~~⟧
 palette-startup-path = ⟦Šţåŕţûþ þåţĥ~~~⟧
 palette-systemd-unit = ⟦Šýšţéɱð ûñîţ~~~⟧
 palette-this-target = ⟦Ţĥîš ţåŕĝéţ~~~⟧
+palette-tidy-canvas = ⟦Ţîðý Çåñṽåš~~~⟧
+palette-toggle-broadcast = ⟦Ţøĝĝļé Ɓŕøåðçåšţ Îñþûţ~~~~~~~⟧
+palette-toggle-snap = ⟦Ţøĝĝļé Çåñṽåš Šñåþþîñĝ~~~~~~~⟧
+palette-zoom-pane = ⟦Žøøɱ øŕ Ŕéšţøŕé Þåñé~~~~~~⟧
 pane-already-own-workspace-error = ⟦Ţĥîš þåñé îš åļŕéåðý îñ îţš øŵñ ŵøŕķšþåçé.~~~~~~~~~~~~~~~⟧
 pane-closed-status = ⟦Þåñé çļøšéð.~~~⟧
+pane-context-restore-action = ⟦Ŕéšţøŕé Šþļîţ~~~~⟧
+pane-context-zoom-action = ⟦Žøøɱ Þåñé~~⟧
 pane-detached-new-workspace-status = ⟦Þåñé ðéţåçĥéð îñţø å ñéŵ ŵøŕķšþåçé ţåƀ.~~~~~~~~~~~~~~⟧
 pane-rename-placeholder = ⟦Þåñé ñåɱé~~⟧
 pane-renamed-status = ⟦Þåñé ŕéñåɱéð ţø ~~~~~⟧{ $title }⟦.⟧
@@ -1965,15 +1994,23 @@ settings-shared-folder-sync-title = ⟦Šĥåŕéð-ƒøļðéŕ šýñç~~~~~~�
 settings-shell-program-required = ⟦Éñţéŕ å ļøçåļ šĥéļļ þŕøĝŕåɱ ƀéƒøŕé šåṽîñĝ.~~~~~~~~~~~~~~~⟧
 settings-shortcut-autocomplete-accept = ⟦Åççéþţ ţĥé ĥîĝĥļîĝĥţéð šûĝĝéšţîøñ~~~~~~~~~~~~⟧
 settings-shortcut-autocomplete-move = ⟦Ṁøṽé ţĥé åûţøçøɱþļéţé šéļéçţîøñ~~~~~~~~~~~⟧
+settings-shortcut-box-select = ⟦Ðŕåĝ øṽéŕ éɱþţý çåñṽåš ţø šéļéçţ šéṽéŕåļ ñøðéš~~~~~~~~~~~~~~~~~⟧
 settings-shortcut-broadcast = ⟦Ţøĝĝļé ƀŕøåðçåšţ îñþûţ åçŕøšš þåñéš~~~~~~~~~~~~⟧
+settings-shortcut-canvas-actual-size = ⟦Žøøɱ ţĥé çåñṽåš ţø 100%~~~~~~~~⟧
 settings-shortcut-clear-terminal = ⟦Çļéåŕ ţĥé åçţîṽé þåñé šçŕééñ åñð šçŕøļļƀåçķ~~~~~~~~~~~~~~~~⟧
 settings-shortcut-close-dialog = ⟦Çļøšé ðîåļøĝš øŕ ŕéţûŕñ ƒŕøɱ Ƒîļéš~~~~~~~~~~~~⟧
 settings-shortcut-close-workspace = ⟦Çļøšé ţĥé åçţîṽé ŵøŕķšþåçé ţåƀ~~~~~~~~~~⟧
 settings-shortcut-command-palette = ⟦Øþéñ ţĥé çøɱɱåñð þåļéţţé~~~~~~~~⟧
 settings-shortcut-copy = ⟦Çøþý ţĥé çûŕŕéñţ šéļéçţîøñ~~~~~~~~~⟧
+settings-shortcut-create-here = ⟦Ðøûƀļé-çļîçķ éɱþţý çåñṽåš ţø çŕéåţé å ñøðé ţĥéŕé~~~~~~~~~~~~~~~~~~⟧
+settings-shortcut-drag-freely = ⟦Ĥøļð ŵĥîļé ðŕåĝĝîñĝ å ðîṽîðéŕ øŕ çåñṽåš ñøðé ţø þļåçé îţ ƒŕééļý~~~~~~~~~~~~~~~~~~~~~~~~⟧
 settings-shortcut-duplicate-pane = ⟦Ðûþļîçåţé ţĥé åçţîṽé þåñé~~~~~~~~⟧
+settings-shortcut-equalize = ⟦Ĝîṽé éṽéŕý šþļîţ þåñé åñ éʠûåļ šĥåŕé~~~~~~~~~~~~~⟧
 settings-shortcut-files-browser = ⟦Øþéñ ţĥé ŵøŕķšþåçé Ƒîļéš ƀŕøŵšéŕ~~~~~~~~~~~⟧
+settings-shortcut-fit-canvas = ⟦Ƒîţ éṽéŕý çåñṽåš ñøðé îñ ṽîéŵ~~~~~~~~~~⟧
+settings-shortcut-fly-to-node = ⟦Ƒļý ţø ţĥé šéļéçţéð çåñṽåš ñøðé~~~~~~~~~~~⟧
 settings-shortcut-focus-hosts = ⟦Ƒøçûš Ĥøšţ šéåŕçĥ øŕ ţøĝĝļé Ļøĝš~~~~~~~~~~~⟧
+settings-shortcut-focus-pane = ⟦Ƒøçûš ţĥé ñéåŕéšţ þåñé, øŕ çåñṽåš ñøðé, îñ ţĥåţ ðîŕéçţîøñ~~~~~~~~~~~~~~~~~~~~~⟧
 settings-shortcut-jump-settings = ⟦Ĵûɱþ ţø Šéţţîñĝš~~~~~⟧
 settings-shortcut-navigation = ⟦Ñåṽîĝåţîøñ~~⟧
 settings-shortcut-new-host = ⟦Çŕéåţé å ñéŵ Ĥøšţ îñ ţĥé Ļîƀŕåŕý~~~~~~~~~~~⟧
@@ -1987,12 +2024,17 @@ settings-shortcut-open-sessions = ⟦Øþéñ Šéššîøñš~~~~⟧
 settings-shortcut-open-settings = ⟦Øþéñ Šéţţîñĝš~~~~⟧
 settings-shortcut-paste = ⟦Þåšţé ƒŕøɱ ţĥé çļîþƀøåŕð~~~~~~~~⟧
 settings-shortcut-previous-workspace = ⟦Çýçļé ţø ţĥé þŕéṽîøûš ŵøŕķšþåçé ţåƀ~~~~~~~~~~~~⟧
+settings-shortcut-resize-pane = ⟦Ṁøṽé ţĥé ñéåŕéšţ ðîṽîðéŕ, øŕ ñûðĝé ţĥé šéļéçţéð çåñṽåš ñøðé~~~~~~~~~~~~~~~~~~~~~~⟧
 settings-shortcut-scroll-back = ⟦Šçŕøļļ ƀåçķ øñé šçŕééñ~~~~~~~⟧
 settings-shortcut-scroll-forward = ⟦Šçŕøļļ ƒøŕŵåŕð øñé šçŕééñ~~~~~~~~⟧
+settings-shortcut-split-canvas = ⟦Šþļîţ åñð Çåñṽåš~~~~~⟧
+settings-shortcut-split-down = ⟦Šþļîţ ţĥé åçţîṽé þåñé ŵîţĥ å ñéŵ øñé ƀéļøŵ îţ~~~~~~~~~~~~~~~~⟧
 settings-shortcut-terminal = ⟦Ţéŕɱîñåļ~~⟧
 settings-shortcut-terminal-search = ⟦Šéåŕçĥ ţĥé åçţîṽé ţéŕɱîñåļ~~~~~~~~~⟧
+settings-shortcut-tidy-canvas = ⟦Åŕŕåñĝé çåñṽåš ñøðéš ƀý ĝŕøûþ~~~~~~~~~~⟧
 settings-shortcut-toggle-files = ⟦Ţøĝĝļé Ƒîļéš åñð Ţéŕɱîñåļ ṽîéŵ~~~~~~~~~~⟧
 settings-shortcut-workspace = ⟦Ŵøŕķšþåçé~~⟧
+settings-shortcut-zoom-pane = ⟦Ļéţ ţĥé åçţîṽé þåñé ƒîļļ ţĥé šþļîţ, øŕ ƀŕîñĝ ţĥé šþļîţ ƀåçķ~~~~~~~~~~~~~~~~~~~~~~⟧
 settings-show-welcome-action = ⟦Šĥøŵ ŵéļçøɱé þåñéļ åĝåîñ~~~~~~~~⟧
 settings-ssh-keepalive-description = ⟦Šéñð ŠŠĤ ķééþåļîṽé ɱéššåĝéš šø îðļé šéššîøñš çåñ šûŕṽîṽé ñéţŵøŕķ ţîɱéøûţš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 settings-ssh-keepalive-label = ⟦ŠŠĤ ķééþåļîṽé~~~~⟧
@@ -2265,6 +2307,41 @@ snippet-select-action = ⟦Šéļéçţ Šñîþþéţ~~~~⟧
 snippet-unpin-action-label = ⟦Ûñþîñ⟧
 snippet-unpinned-status = ⟦Šñîþþéţ ŕéɱøṽéð ƒŕøɱ ŵøŕķšþåçé ʠûîçķ åçţîøñš.~~~~~~~~~~~~~~~~⟧
 snippets-title = ⟦Šñîþþéţš~~⟧
+split-drop-down = ⟦Šþļîţ Ðøŵñ~~⟧
+split-drop-full = ⟦Šþļîţ îš ƒûļļ (~~~~⟧{ $limit }⟦)⟧
+split-drop-left = ⟦Šþļîţ Ļéƒţ~~⟧
+split-drop-right = ⟦Šþļîţ Ŕîĝĥţ~~~⟧
+split-drop-swap = ⟦Šŵåþ⟧
+split-drop-up = ⟦Šþļîţ Ûþ~~⟧
+split-equalize-action = ⟦Éʠûåļîžé~~⟧
+split-pane-broadcast-badge = ⟦ƁŔØÅÐÇÅŠŢ~~⟧
+split-preset-columns = ⟦Ţŵø Çøļûɱñš~~~⟧
+split-preset-grid = ⟦Ĝŕîð⟧
+split-preset-grid-of-six = ⟦Ĝŕîð øƒ Šîẋ~~~⟧
+split-preset-kept-status = { $count ->
+    [many] ⟦Åŕŕåñĝéð ţĥé šþļîţ. ~~~~~~⟧{ $count }⟦ þåñéš åŕé šţîļļ ŕûññîñĝ øñ ţĥé çåñṽåš.~~~~~~~~~~~~~~⟧
+    [one] ⟦Åŕŕåñĝéð ţĥé šþļîţ. 1 þåñé îš šţîļļ ŕûññîñĝ øñ ţĥé çåñṽåš.~~~~~~~~~~~~~~~~~~~~~~⟧
+   *[other] ⟦Åŕŕåñĝéð ţĥé šþļîţ. ~~~~~~⟧{ $count }⟦ þåñéš åŕé šţîļļ ŕûññîñĝ øñ ţĥé çåñṽåš.~~~~~~~~~~~~~~⟧
+    [zero] ⟦Åŕŕåñĝéð ţĥé šþļîţ.~~~~~~⟧
+    }
+split-preset-main-and-stack = ⟦Ṁåîñ åñð Šţåçķ~~~~⟧
+split-preset-opened-status = { $count ->
+    [many] ⟦Åŕŕåñĝéð ţĥé šþļîţ åñð øþéñéð ~~~~~~~~~~⟧{ $count }⟦ ñéŵ þåñéš.~~~⟧
+    [one] ⟦Åŕŕåñĝéð ţĥé šþļîţ åñð øþéñéð 1 ñéŵ þåñé.~~~~~~~~~~~~~~~⟧
+   *[other] ⟦Åŕŕåñĝéð ţĥé šþļîţ åñð øþéñéð ~~~~~~~~~~⟧{ $count }⟦ ñéŵ þåñéš.~~~⟧
+    [zero] ⟦Åŕŕåñĝéð ţĥé šþļîţ.~~~~~~⟧
+    }
+split-preset-rows = ⟦Ţŵø Ŕøŵš~~⟧
+split-preset-single = ⟦Øñé Þåñé~~⟧
+split-preset-three-columns = ⟦Ţĥŕéé Çøļûɱñš~~~~⟧
+split-zoom-action = ⟦Žøøɱ⟧
+split-zoom-hidden-panes = { $count ->
+    [many] ⟦žøøɱéð · ~~⟧{ $count }⟦ þåñéš ĥîððéñ~~~~⟧
+    [one] ⟦žøøɱéð · 1 þåñé ĥîððéñ~~~~~~~⟧
+   *[other] ⟦žøøɱéð · ~~⟧{ $count }⟦ þåñéš ĥîððéñ~~~~⟧
+    [zero] ⟦žøøɱéð~⟧
+    }
+split-zoom-restore-action = ⟦Ŕéšţøŕé~⟧
 ssh-config-host-read-only-status = ⟦Îɱþøŕţéð ŠŠĤ çøñƒîĝ ĥøšţš åŕé ŕéåð ƒŕøɱ ~~~~~~~~~~~~~~⟧{ $path }⟦. Éðîţ ţĥé çøñƒîĝ øŕ šåṽé å ļøçåļ çøþý îñšţéåð.~~~~~~~~~~~~~~~~~⟧
 status-connecting = ⟦Çøññéçţîñĝ ţø ~~~~⟧{ $host }⟦…⟧
 status-ready = ⟦Ŕéåðý⟧

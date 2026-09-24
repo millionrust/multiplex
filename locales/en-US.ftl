@@ -1757,6 +1757,19 @@ settings-shortcut-terminal-search = Search the active terminal
 settings-shortcut-new-terminal = Open a new local terminal in a fresh tab
 settings-shortcut-close-workspace = Close the active workspace tab
 settings-shortcut-duplicate-pane = Duplicate the active pane
+settings-shortcut-split-canvas = Split and Canvas
+settings-shortcut-split-down = Split the active pane with a new one below it
+settings-shortcut-focus-pane = Focus the nearest pane, or canvas node, in that direction
+settings-shortcut-resize-pane = Move the nearest divider, or nudge the selected canvas node
+settings-shortcut-zoom-pane = Let the active pane fill the split, or bring the split back
+settings-shortcut-equalize = Give every split pane an equal share
+settings-shortcut-drag-freely = Hold while dragging a divider or canvas node to place it freely
+settings-shortcut-tidy-canvas = Arrange canvas nodes by group
+settings-shortcut-fit-canvas = Fit every canvas node in view
+settings-shortcut-canvas-actual-size = Zoom the canvas to 100%
+settings-shortcut-fly-to-node = Fly to the selected canvas node
+settings-shortcut-box-select = Drag over empty canvas to select several nodes
+settings-shortcut-create-here = Double-click empty canvas to create a node there
 settings-shortcut-next-workspace = Cycle to the next workspace tab
 settings-shortcut-previous-workspace = Cycle to the previous workspace tab
 settings-shortcut-broadcast = Toggle broadcast input across panes
@@ -2349,6 +2362,70 @@ workspace-reconnecting-panes-status = { $count ->
     }
 quick-connect-auth-required-error = Quick connect needs a password, a stored system password, or an SSH key in { $directory }.
 workspace-split-cap-error = Split panes are capped at { $limit } for now.
+split-zoom-hidden-panes = { $count ->
+    [zero] zoomed
+    [one] zoomed · 1 pane hidden
+    [many] zoomed · { $count } panes hidden
+   *[other] zoomed · { $count } panes hidden
+    }
+split-zoom-restore-action = Restore
+pane-context-zoom-action = Zoom Pane
+pane-context-restore-action = Restore Split
+split-preset-single = One Pane
+split-preset-columns = Two Columns
+split-preset-rows = Two Rows
+split-preset-main-and-stack = Main and Stack
+split-preset-three-columns = Three Columns
+split-preset-grid = Grid
+split-preset-grid-of-six = Grid of Six
+split-equalize-action = Equalize
+split-zoom-action = Zoom
+split-preset-opened-status = { $count ->
+    [zero] Arranged the split.
+    [one] Arranged the split and opened 1 new pane.
+    [many] Arranged the split and opened { $count } new panes.
+   *[other] Arranged the split and opened { $count } new panes.
+    }
+split-preset-kept-status = { $count ->
+    [zero] Arranged the split.
+    [one] Arranged the split. 1 pane is still running on the canvas.
+    [many] Arranged the split. { $count } panes are still running on the canvas.
+   *[other] Arranged the split. { $count } panes are still running on the canvas.
+    }
+split-drop-left = Split Left
+split-drop-right = Split Right
+split-drop-up = Split Up
+split-drop-down = Split Down
+split-drop-swap = Swap
+split-drop-full = Split is full ({ $limit })
+split-pane-broadcast-badge = BROADCAST
+canvas-snap-tooltip = Snap to the grid and to other nodes (hold Option to place freely)
+canvas-snap-on-status = Snapping on.
+canvas-snap-off-status = Snapping off. Nodes move freely.
+canvas-tidy-tooltip = Tidy: arrange nodes by group (Cmd+Option+T)
+canvas-port-tooltip = Drag onto another node to share this one as context
+canvas-link-context-label = context
+canvas-link-dependency-label = runs after
+canvas-link-remove-tooltip = Remove this link
+attention-pill-count = { $count ->
+    [zero] Nothing needs you
+    [one] 1 needs you
+    [many] { $count } need you
+   *[other] { $count } need you
+    }
+attention-pill-jump = jump
+attention-pill-open-canvas = open on canvas
+palette-split-right = Split Right
+palette-split-down = Split Down
+palette-zoom-pane = Zoom or Restore Pane
+palette-equalize = Equalize Panes
+palette-layout-prefix = Layout:
+palette-show-canvas = Switch to Canvas
+palette-show-split = Switch to Split
+palette-fit-canvas = Fit Canvas
+palette-tidy-canvas = Tidy Canvas
+palette-toggle-broadcast = Toggle Broadcast Input
+palette-toggle-snap = Toggle Canvas Snapping
 local-terminal-split-launching-status = Launching split local terminal...
 workspace-disconnecting-status = Disconnecting workspace...
 pane-closed-status = Pane closed.

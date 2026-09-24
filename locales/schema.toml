@@ -985,6 +985,58 @@ id = "settings-shortcut-duplicate-pane"
 context = "Keyboard shortcut description."
 description = "Duplicate pane shortcut"
 [[messages]]
+id = "settings-shortcut-split-canvas"
+context = "Settings keyboard shortcut group heading for split panes and the canvas."
+description = "Split and canvas shortcuts group"
+[[messages]]
+id = "settings-shortcut-split-down"
+context = "Keyboard shortcut description."
+description = "Split down shortcut"
+[[messages]]
+id = "settings-shortcut-focus-pane"
+context = "Keyboard shortcut description."
+description = "Focus pane shortcut"
+[[messages]]
+id = "settings-shortcut-resize-pane"
+context = "Keyboard shortcut description."
+description = "Resize pane shortcut"
+[[messages]]
+id = "settings-shortcut-zoom-pane"
+context = "Keyboard shortcut description."
+description = "Zoom pane shortcut"
+[[messages]]
+id = "settings-shortcut-equalize"
+context = "Keyboard shortcut description."
+description = "Equalize shortcut"
+[[messages]]
+id = "settings-shortcut-drag-freely"
+context = "Keyboard shortcut description."
+description = "Drag without snapping"
+[[messages]]
+id = "settings-shortcut-tidy-canvas"
+context = "Keyboard shortcut description."
+description = "Tidy canvas shortcut"
+[[messages]]
+id = "settings-shortcut-fit-canvas"
+context = "Keyboard shortcut description."
+description = "Fit canvas shortcut"
+[[messages]]
+id = "settings-shortcut-canvas-actual-size"
+context = "Keyboard shortcut description."
+description = "Canvas 100% shortcut"
+[[messages]]
+id = "settings-shortcut-fly-to-node"
+context = "Keyboard shortcut description."
+description = "Fly to node shortcut"
+[[messages]]
+id = "settings-shortcut-box-select"
+context = "Keyboard shortcut description."
+description = "Box select gesture"
+[[messages]]
+id = "settings-shortcut-create-here"
+context = "Keyboard shortcut description."
+description = "Create here gesture"
+[[messages]]
 id = "settings-shortcut-next-workspace"
 context = "Keyboard shortcut description."
 description = "Next workspace shortcut"
@@ -10931,6 +10983,263 @@ name = "limit"
 type = "Count"
 sensitivity = "public"
 bidi = "none"
+
+[[messages]]
+id = "split-zoom-hidden-panes"
+context = "Pill shown while one pane is zoomed to fill a split, after the zoomed pane's name."
+description = "How many split panes the zoom hides"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "split-zoom-restore-action"
+context = "Button on the zoom pill that brings back every pane of the split."
+description = "Restore the zoomed split"
+
+[[messages]]
+id = "pane-context-zoom-action"
+context = "Pane context menu item that lets the pane fill its split."
+description = "Zoom pane"
+
+[[messages]]
+id = "pane-context-restore-action"
+context = "Pane context menu item shown while a pane is zoomed, bringing the split back."
+description = "Restore split"
+
+[[messages]]
+id = "split-preset-single"
+context = "Layout bar button and palette command arranging a split as one pane."
+description = "One pane layout"
+
+[[messages]]
+id = "split-preset-columns"
+context = "Layout bar button and palette command arranging a split as two side-by-side panes."
+description = "Two columns layout"
+
+[[messages]]
+id = "split-preset-rows"
+context = "Layout bar button and palette command arranging a split as two stacked panes."
+description = "Two rows layout"
+
+[[messages]]
+id = "split-preset-main-and-stack"
+context = "Layout bar button and palette command arranging a split as one large pane beside two stacked panes."
+description = "Main and stack layout"
+
+[[messages]]
+id = "split-preset-three-columns"
+context = "Layout bar button and palette command arranging a split as three equal columns."
+description = "Three columns layout"
+
+[[messages]]
+id = "split-preset-grid"
+context = "Layout bar button and palette command arranging a split as a two-by-two grid."
+description = "Grid layout"
+
+[[messages]]
+id = "split-preset-grid-of-six"
+context = "Layout bar button and palette command arranging a split as a three-by-two grid."
+description = "Grid of six layout"
+
+[[messages]]
+id = "split-equalize-action"
+context = "Layout bar button that gives every split pane an equal share."
+description = "Equalize split panes"
+
+[[messages]]
+id = "split-zoom-action"
+context = "Layout bar button that lets the active pane fill the split."
+description = "Zoom the active pane"
+
+[[messages]]
+id = "split-preset-opened-status"
+context = "Status after a split layout needed more panes than were open and opened copies of the active pane."
+description = "Panes a layout opened"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "split-preset-kept-status"
+context = "Status after a split layout had fewer places than open panes; the rest keep running and show on the canvas."
+description = "Panes a layout left running off the split"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "split-drop-left"
+context = "Label on the drop preview when a dragged pane or tab will split the target pane on its left."
+description = "Drop to split left"
+
+[[messages]]
+id = "split-drop-right"
+context = "Label on the drop preview when a dragged pane or tab will split the target pane on its right."
+description = "Drop to split right"
+
+[[messages]]
+id = "split-drop-up"
+context = "Label on the drop preview when a dragged pane or tab will split the target pane above it."
+description = "Drop to split up"
+
+[[messages]]
+id = "split-drop-down"
+context = "Label on the drop preview when a dragged pane or tab will split the target pane below it."
+description = "Drop to split down"
+
+[[messages]]
+id = "split-drop-swap"
+context = "Label on the drop preview when a dragged pane will trade places with the target pane."
+description = "Drop to swap panes"
+
+[[messages]]
+id = "split-drop-full"
+context = "Label on the drop preview when a dragged tab would take the split past its pane cap."
+description = "Split is full"
+[[messages.args]]
+name = "limit"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "split-pane-broadcast-badge"
+context = "Short capitalised mark on a split pane's header while typing is broadcast to it."
+description = "Broadcast mark"
+
+[[messages]]
+id = "canvas-snap-tooltip"
+context = "Tooltip on the canvas toolbar toggle that makes dragged nodes snap to a grid and line up with other nodes."
+description = "Snap canvas nodes"
+
+[[messages]]
+id = "canvas-snap-on-status"
+context = "Status after turning canvas snapping on."
+description = "Canvas snapping on"
+
+[[messages]]
+id = "canvas-snap-off-status"
+context = "Status after turning canvas snapping off."
+description = "Canvas snapping off"
+
+[[messages]]
+id = "canvas-tidy-tooltip"
+context = "Tooltip on the canvas toolbar button that arranges every node neatly by group, then fits the view."
+description = "Tidy the canvas"
+
+[[messages]]
+id = "canvas-port-tooltip"
+context = "Tooltip on the dot at a canvas node's right edge, which is dragged onto another node to link them."
+description = "Drag to link context"
+
+[[messages]]
+id = "canvas-link-context-label"
+context = "Short label drawn at the middle of a context link between two canvas nodes."
+description = "Context link label"
+
+[[messages]]
+id = "canvas-link-dependency-label"
+context = "Short label drawn at the middle of a dependency link between two canvas nodes."
+description = "Dependency link label"
+
+[[messages]]
+id = "canvas-link-remove-tooltip"
+context = "Tooltip on a canvas link's label, which removes the link when clicked."
+description = "Remove link"
+
+[[messages]]
+id = "attention-pill-count"
+context = "Pill in Split and Canvas when sessions in the workspace are waiting for the user, such as an agent asking for approval."
+description = "Sessions that need the user"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "attention-pill-jump"
+context = "Action text on the attention pill that goes to the waiting session."
+description = "Jump to the waiting session"
+
+[[messages]]
+id = "attention-pill-open-canvas"
+context = "Action text on the attention pill in Split when the waiting session is only on the canvas."
+description = "Open the waiting session on the canvas"
+
+[[messages]]
+id = "palette-split-right"
+context = "Command palette entry that splits the active pane with a new one to its right."
+description = "Split right"
+
+[[messages]]
+id = "palette-split-down"
+context = "Command palette entry that splits the active pane with a new one below it."
+description = "Split down"
+
+[[messages]]
+id = "palette-zoom-pane"
+context = "Command palette entry that lets the active pane fill its split, or restores the split."
+description = "Zoom or restore pane"
+
+[[messages]]
+id = "palette-equalize"
+context = "Command palette entry that gives every split pane an equal share."
+description = "Equalize panes"
+
+[[messages]]
+id = "palette-layout-prefix"
+context = "Prefix before a layout name in command palette entries, such as 'Layout: Grid'."
+description = "Layout prefix"
+
+[[messages]]
+id = "palette-show-canvas"
+context = "Command palette entry that switches the workspace to its canvas."
+description = "Switch to Canvas"
+
+[[messages]]
+id = "palette-show-split"
+context = "Command palette entry that switches the workspace to its split."
+description = "Switch to Split"
+
+[[messages]]
+id = "palette-fit-canvas"
+context = "Command palette entry that fits every canvas node in view."
+description = "Fit canvas"
+
+[[messages]]
+id = "palette-tidy-canvas"
+context = "Command palette entry that arranges canvas nodes by group."
+description = "Tidy canvas"
+
+[[messages]]
+id = "palette-toggle-broadcast"
+context = "Command palette entry that turns typing into every pane on or off."
+description = "Toggle broadcast input"
+
+[[messages]]
+id = "palette-toggle-snap"
+context = "Command palette entry that turns canvas snapping on or off."
+description = "Toggle canvas snapping"
 
 [[messages]]
 id = "local-terminal-split-launching-status"
