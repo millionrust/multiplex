@@ -114,6 +114,18 @@ pub(super) struct RemoteDevicesState {
         std::collections::HashMap<String, crate::controller::watch_session::WatchSession>,
 }
 
+/// Which part of Devices is on show.
+///
+/// The page answers three different questions — what this computer can watch, what is paired with
+/// it, and what it lets others see — and they were one long scroll.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum DevicesTab {
+    #[default]
+    Computers,
+    Phones,
+    ThisComputer,
+}
+
 impl RemoteDevicesState {
     #[cfg(not(test))]
     pub(super) fn open_default(
@@ -1389,8 +1401,9 @@ impl MultiplexApp {
         )
     }
 
-    /// The sidebar's Devices destination: what is paired with this computer, and a way to add
-    /// more. Everything else about remote access lives in Settings → Remote Devices.
+    /// The sidebar's Devices destination, in three parts: the computers this one can watch, the
+    /// phones and tablets paired with it, and what it lets them see. Everything else about remote
+    /// access lives in Settings → Remote Devices.
     pub(super) fn render_devices_view(&self, cx: &Context<Self>) -> AnyElement {
         let ready = matches!(
             self.remote_devices.listener_state,
@@ -1400,8 +1413,9 @@ impl MultiplexApp {
             self.remote_devices.pairing_state,
             PairingUiState::Generating | PairingUiState::Waiting | PairingUiState::SasReady
         );
-        let form_open = self.remote_devices.watched_form_open();
+        let tab = self.devices_tab;
         let computers = self.remote_devices.watched();
+        let phones = self.remote_devices.devices.len();
         v_flex()
             .id("devices-view")
             .debug_selector(|| "devices-view".to_string())
@@ -1436,7 +1450,17 @@ impl MultiplexApp {
                                 div()
                                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                     .text_color(theme::text_muted())
-                                    .child(localization::devices_view_description()),
+                                    .child(match tab {
+                                        DevicesTab::Computers => {
+                                            localization::devices_computers_description()
+                                        }
+                                        DevicesTab::Phones => {
+                                            localization::devices_phones_description()
+                                        }
+                                        DevicesTab::ThisComputer => {
+                                            localization::devices_this_computer_description()
+                                        }
+                                    }),
                             ),
                     )
                     .child(
@@ -1455,17 +1479,19 @@ impl MultiplexApp {
                                         this.pair_phone_from_devices(cx);
                                     })),
                             )
-                            .child(
-                                Button::new("devices-add-computer")
-                                    .debug_selector(|| "devices-add-computer".to_string())
-                                    .small()
-                                    .icon(IconName::Plus)
-                                    .label(localization::devices_add_computer_action())
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.remote_devices.toggle_watched_form();
-                                        cx.notify();
-                                    })),
-                            )
+                            .when(tab == DevicesTab::Computers, |this| {
+                                this.child(
+                                    Button::new("devices-add-computer")
+                                        .debug_selector(|| "devices-add-computer".to_string())
+                                        .small()
+                                        .icon(IconName::Plus)
+                                        .label(localization::devices_add_computer_action())
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.remote_devices.toggle_watched_form();
+                                            cx.notify();
+                                        })),
+                                )
+                            })
                             .child(
                                 Button::new("devices-settings")
                                     .debug_selector(|| "devices-settings".to_string())
@@ -1489,6 +1515,40 @@ impl MultiplexApp {
                     ),
             )
             .child(
+                h_flex()
+                    .flex_none()
+                    .px(px(theme::SPACE_6))
+                    .py(px(theme::SPACE_3))
+                    .child(self.segmented_control(
+                        "devices-tabs",
+                        [
+                            (
+                                DevicesTab::Computers,
+                                format!(
+                                    "{} {}",
+                                    localization::devices_tab_computers(),
+                                    computers.len()
+                                ),
+                            ),
+                            (
+                                DevicesTab::Phones,
+                                format!("{} {phones}", localization::devices_tab_phones()),
+                            ),
+                            (
+                                DevicesTab::ThisComputer,
+                                localization::devices_tab_this_computer(),
+                            ),
+                        ],
+                        tab,
+                        false,
+                        cx,
+                        |this, tab, _, cx| {
+                            this.devices_tab = tab;
+                            cx.notify();
+                        },
+                    )),
+            )
+            .child(
                 v_flex()
                     .id("devices-scroll")
                     .debug_selector(|| "devices-scroll".to_string())
@@ -1496,7 +1556,8 @@ impl MultiplexApp {
                     .min_w_0()
                     .min_h_0()
                     .overflow_y_scroll()
-                    .p(px(theme::SPACE_6))
+                    .px(px(theme::SPACE_6))
+                    .pb(px(theme::SPACE_6))
                     .gap_3()
                     .when(!ready, |this| {
                         this.child(
@@ -1513,39 +1574,162 @@ impl MultiplexApp {
                     .when_some(self.render_pairing_code_card(cx), |this, card| {
                         this.child(card)
                     })
-                    .child(self.render_trusted_remote_devices(cx))
-                    .child(self.settings_divider())
+                    .child(match tab {
+                        DevicesTab::Computers => self.render_devices_computers(cx),
+                        DevicesTab::Phones => self.render_trusted_remote_devices(cx),
+                        DevicesTab::ThisComputer => self.render_remote_screens_section(cx),
+                    }),
+            )
+            .into_any_element()
+    }
+
+    /// The computers this one can watch, as cards with their last preview.
+    fn render_devices_computers(&self, cx: &Context<Self>) -> AnyElement {
+        let computers = self.remote_devices.watched();
+        let form_open = self.remote_devices.watched_form_open();
+        v_flex()
+            .id("devices-computers")
+            .debug_selector(|| "devices-computers".to_string())
+            .gap_3()
+            .when(form_open, |this| {
+                this.child(
+                    div()
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                        .text_color(theme::text_muted())
+                        .child(localization::watched_computers_description()),
+                )
+                .child(self.render_watched_computer_form(cx))
+            })
+            .when(computers.is_empty() && !form_open, |this| {
+                this.child(
+                    div()
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                        .text_color(theme::text_muted())
+                        .child(localization::watched_computers_none()),
+                )
+            })
+            .child(h_flex().flex_wrap().gap_3().children(
+                computers.iter().enumerate().map(|(index, computer)| {
+                    self.render_watched_computer_card(index, computer, cx)
+                }),
+            ))
+            .into_any_element()
+    }
+
+    /// One computer: its last preview, what it granted, and the way in.
+    fn render_watched_computer_card(
+        &self,
+        index: usize,
+        computer: &crate::controller::watched::WatchedComputer,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let address = computer.address.clone();
+        let watch_address = address.clone();
+        let forget_address = address.clone();
+        let preview = self.remote_devices.watched_preview(&address);
+        let picture = preview.and_then(|session| session.picture());
+        let state = preview.map(|session| session.state());
+        let may_watch = computer.may_watch_screen();
+        v_flex()
+            .id(("watched-computer", index))
+            .debug_selector(move || format!("watched-computer-{index}"))
+            .w(px(theme::SCREEN_CARD_WIDTH))
+            .gap_0()
+            .rounded(px(theme::CARD_RADIUS))
+            .border_1()
+            .border_color(theme::soft_border())
+            .bg(theme::library_card())
+            .overflow_hidden()
+            .child(
+                div()
+                    .w_full()
+                    .h(px(theme::SCREEN_CARD_PREVIEW_HEIGHT))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(theme::terminal_bg())
+                    .map(|this| match picture {
+                        Some(picture) => this.child(
+                            img(picture)
+                                .object_fit(ObjectFit::Contain)
+                                .w_full()
+                                .h_full(),
+                        ),
+                        None => this.child(
+                            div()
+                                .text_size(px(theme::TYPE_MICRO_SIZE))
+                                .text_color(theme::text_muted())
+                                .child(if may_watch {
+                                    localization::watched_computers_may_watch()
+                                } else {
+                                    localization::watched_computers_no_screen()
+                                }),
+                        ),
+                    }),
+            )
+            .child(
+                v_flex()
+                    .gap_2()
+                    .p(px(theme::SPACE_3))
                     .child(
-                        v_flex()
-                            .gap_2()
-                            .child(
+                        div()
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                            .font_medium()
+                            .text_color(theme::text_main())
+                            .child(computer.display_name.clone()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(address),
+                    )
+                    .when_some(
+                        state.and_then(|state| match state {
+                            crate::controller::watch_session::WatchState::Ended(reason) => {
+                                Some(reason)
+                            }
+                            _ => None,
+                        }),
+                        |this, reason| {
+                            this.child(
                                 div()
-                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                                    .font_medium()
-                                    .text_color(theme::text_main())
-                                    .child(localization::watched_computers_title()),
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(reason),
                             )
-                            .when(form_open, |this| {
+                        },
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .when(may_watch, |this| {
                                 this.child(
-                                    div()
-                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                        .text_color(theme::text_muted())
-                                        .child(localization::watched_computers_description()),
-                                )
-                                .child(self.render_watched_computer_form(cx))
-                            })
-                            .when(computers.is_empty() && !form_open, |this| {
-                                this.child(
-                                    div()
-                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                        .text_color(theme::text_muted())
-                                        .child(localization::watched_computers_none()),
+                                    Button::new(SharedString::from(format!(
+                                        "watched-computers-watch-{watch_address}"
+                                    )))
+                                    .xsmall()
+                                    .primary()
+                                    .label(localization::watched_computers_watch_action())
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.open_remote_screen(&watch_address, window, cx);
+                                    })),
                                 )
                             })
-                            .children(
-                                computers
-                                    .iter()
-                                    .map(|computer| self.render_watched_computer_row(computer, cx)),
+                            .child(
+                                Button::new(SharedString::from(format!(
+                                    "watched-computers-forget-{forget_address}"
+                                )))
+                                .xsmall()
+                                .ghost()
+                                .label(localization::watched_computers_forget_action())
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        this.remote_devices
+                                            .forget_watched_computer(&forget_address);
+                                        cx.notify();
+                                    },
+                                )),
                             ),
                     ),
             )

@@ -88,6 +88,14 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   network changes, and announces `_multiplex._tcp` with Bonjour on LAN interfaces only.
   **Pair phone** shows a six-digit code (CPace bound into the Noise XX pairing, three attempts,
   five minutes); the QR offer and SAS comparison remain under "Other ways to pair".
+- The Devices page answers three questions on three tabs (`design/remote-screens/desktop.html`):
+  Computers, cards for the computers this one paired with as their device, each with its last
+  1 fps preview and a way in; Phones and tablets, what is paired with this computer; and This
+  computer, what it lets paired devices see and who is watching now. Watching one opens a
+  workspace tab with a toolbar — display picker, Fit / actual size / double, a Watching or
+  Controlling chip, take or give back control, Disconnect — over the picture, with the last
+  picture kept under an overlay when the session ends. Route, latency and bandwidth are in the
+  prototype but not in the protocol, so they are not shown.
 - Paired mobile controllers can list, watch, and type into tmux sessions the app did not
   create while the retired tmux startup change is still installed (there is no separate
   switch), over LAN, SSH, and relay routes. That change, which started new terminal tabs inside

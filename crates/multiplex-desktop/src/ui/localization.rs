@@ -800,7 +800,32 @@ static_message!(
 static_message!(remote_screens_watching_none, RemoteScreensWatchingNoneArgs);
 static_message!(remote_screens_stop_action, RemoteScreensStopActionArgs);
 static_message!(watched_computers_title, WatchedComputersTitleArgs);
-static_message!(devices_view_description, DevicesViewDescriptionArgs);
+static_message!(devices_tab_computers, DevicesTabComputersArgs);
+static_message!(devices_tab_phones, DevicesTabPhonesArgs);
+static_message!(devices_tab_this_computer, DevicesTabThisComputerArgs);
+static_message!(
+    devices_computers_description,
+    DevicesComputersDescriptionArgs
+);
+static_message!(devices_phones_description, DevicesPhonesDescriptionArgs);
+static_message!(
+    devices_this_computer_description,
+    DevicesThisComputerDescriptionArgs
+);
+static_message!(
+    remote_screen_disconnect_action,
+    RemoteScreenDisconnectActionArgs
+);
+static_message!(remote_screen_zoom_fit, RemoteScreenZoomFitArgs);
+static_message!(remote_screen_zoom_actual, RemoteScreenZoomActualArgs);
+static_message!(remote_screen_zoom_double, RemoteScreenZoomDoubleArgs);
+static_message!(remote_screen_ended_title, RemoteScreenEndedTitleArgs);
+static_message!(remote_screen_ended_note, RemoteScreenEndedNoteArgs);
+static_message!(remote_screen_watching_chip, RemoteScreenWatchingChipArgs);
+static_message!(
+    remote_screen_controlling_chip,
+    RemoteScreenControllingChipArgs
+);
 static_message!(chrome_home_tooltip, ChromeHomeTooltipArgs);
 static_message!(settings_section_about, SettingsSectionAboutArgs);
 static_message!(

@@ -625,6 +625,9 @@ pub const HOST_COMPACT_ROW_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
 // screen is narrower than an inspector because it lists displays, not fields.
 pub const SCREEN_PREVIEW_WIDTH: f32 = SPACE_8 + SPACE_8;
 pub const SCREEN_PREVIEW_HEIGHT: f32 = SPACE_8 + SPACE_4;
+/// A watched computer's card on the Devices page, and the preview across its top.
+pub const SCREEN_CARD_WIDTH: f32 = SPACE_9 + SPACE_9 + SPACE_9;
+pub const SCREEN_CARD_PREVIEW_HEIGHT: f32 = SPACE_9 + SPACE_7;
 pub const SCREEN_PANEL_WIDTH: f32 = SPACE_9 + SPACE_9 + SPACE_9 + SPACE_8;
 
 // SFTP library geometry is composed from the governed global scale so the

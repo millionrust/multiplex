@@ -15,11 +15,27 @@ use super::*;
 #[allow(dead_code)]
 pub const MAXIMUM_ZOOM: f32 = 6.0;
 
+/// How much of the other computer's screen the tab shows at once.
+///
+/// Separate from [`ScreenGeometry`], which measures a magnified picture against the tab for the
+/// dragging gesture that has not landed. This is what the toolbar sets today: fit the picture, or
+/// draw it at its own size in a pane that scrolls.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum ScreenZoom {
+    #[default]
+    Fit,
+    Actual,
+    Double,
+}
+
 /// One watched computer, in a workspace tab.
 pub(super) struct WorkspaceScreenState {
     pub session: WatchSession,
     pub title: String,
     pub geometry: ScreenGeometry,
+    pub zoom: ScreenZoom,
+    /// The display being watched, once the computer has said it has more than one.
+    pub display: Option<u32>,
 }
 
 impl std::fmt::Debug for WorkspaceScreenState {
@@ -38,6 +54,8 @@ impl WorkspaceScreenState {
             session,
             title,
             geometry: ScreenGeometry::default(),
+            zoom: ScreenZoom::default(),
+            display: None,
         }
     }
 
@@ -223,34 +241,233 @@ impl MultiplexApp {
         let picture = screen.session.picture();
         let state = screen.session.state();
         let (width, height) = screen.session.size();
-        v_flex().flex_1().min_w_0().min_h_0().child(
-            h_flex()
-                .id("remote-screen")
-                .debug_selector(|| "remote-screen".to_string())
-                .flex_1()
-                .min_w_0()
-                .min_h_0()
-                .bg(theme::terminal_bg())
-                .child(
-                    div()
-                        .id("remote-screen-stage")
-                        .flex_1()
-                        .min_w_0()
-                        .min_h_0()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .when_some(picture, |this, picture| {
-                            this.child(
-                                img(picture)
-                                    .object_fit(ObjectFit::Contain)
-                                    .w_full()
-                                    .h_full(),
-                            )
-                        }),
+        let zoom = screen.zoom;
+        v_flex()
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .child(self.render_remote_screen_toolbar(screen, &state, cx))
+            .child(
+                h_flex()
+                    .id("remote-screen")
+                    .debug_selector(|| "remote-screen".to_string())
+                    .flex_1()
+                    .min_w_0()
+                    .min_h_0()
+                    .bg(theme::terminal_bg())
+                    .child(
+                        div()
+                            .id("remote-screen-stage")
+                            .debug_selector(|| "remote-screen-stage".to_string())
+                            .flex_1()
+                            .min_w_0()
+                            .min_h_0()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .when(zoom != ScreenZoom::Fit, |this| this.overflow_scroll())
+                            .when_some(picture, |this, picture| {
+                                let drawn = img(picture);
+                                this.child(match zoom {
+                                    ScreenZoom::Fit => {
+                                        drawn.object_fit(ObjectFit::Contain).w_full().h_full()
+                                    }
+                                    // Its own pixels, in a pane that scrolls: nothing is resampled,
+                                    // which is what reading text on another screen needs.
+                                    ScreenZoom::Actual => {
+                                        drawn.w(px(width as f32)).h(px(height as f32))
+                                    }
+                                    ScreenZoom::Double => {
+                                        drawn.w(px(width as f32 * 2.0)).h(px(height as f32 * 2.0))
+                                    }
+                                })
+                            })
+                            .when(matches!(state, WatchState::Ended(_)), |this| {
+                                this.child(self.render_remote_screen_ended(&state))
+                            }),
+                    )
+                    .child(self.render_remote_screen_inspector(screen, &state, width, height, cx)),
+            )
+    }
+
+    /// The row above the picture: which display, how big, who is in control, and the way out.
+    fn render_remote_screen_toolbar(
+        &self,
+        screen: &WorkspaceScreenState,
+        state: &WatchState,
+        cx: &Context<Self>,
+    ) -> Stateful<Div> {
+        let displays = screen.session.displays();
+        let control = screen.session.control();
+        let holding = control == multiplex_screen_protocol::ControlHolder::You;
+        let selected_display = screen
+            .display
+            .or_else(|| displays.first().map(|one| one.id));
+        h_flex()
+            .id("remote-screen-toolbar")
+            .debug_selector(|| "remote-screen-toolbar".to_string())
+            .flex_none()
+            .items_center()
+            .gap_3()
+            .px(px(theme::SPACE_4))
+            .py(px(theme::SPACE_2))
+            .border_b_1()
+            .border_color(theme::border())
+            .bg(theme::library_bg())
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                    .font_medium()
+                    .text_color(theme::text_main())
+                    .child(screen.title.clone()),
+            )
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_MICRO_SIZE))
+                    .text_color(theme::text_muted())
+                    .child(describe(state)),
+            )
+            .when(displays.len() > 1, |this| {
+                this.child(
+                    self.segmented_control(
+                        "remote-screen-displays",
+                        displays
+                            .iter()
+                            .map(|display| (display.id, display.name.clone()))
+                            .collect::<Vec<_>>(),
+                        selected_display.unwrap_or_default(),
+                        false,
+                        cx,
+                        |this, id, _, cx| {
+                            if let Some(screen) = this
+                                .active_workspace_mut()
+                                .and_then(|workspace| workspace.screen.as_mut())
+                            {
+                                screen.display = Some(id);
+                                screen.session.send(WatchInput::Display(id));
+                            }
+                            cx.notify();
+                        },
+                    ),
                 )
-                .child(self.render_remote_screen_inspector(screen, &state, width, height, cx)),
-        )
+            })
+            .child(self.segmented_control(
+                "remote-screen-zoom",
+                [
+                    (ScreenZoom::Fit, localization::remote_screen_zoom_fit()),
+                    (
+                        ScreenZoom::Actual,
+                        localization::remote_screen_zoom_actual(),
+                    ),
+                    (
+                        ScreenZoom::Double,
+                        localization::remote_screen_zoom_double(),
+                    ),
+                ],
+                screen.zoom,
+                false,
+                cx,
+                |this, zoom, _, cx| {
+                    if let Some(screen) = this
+                        .active_workspace_mut()
+                        .and_then(|workspace| workspace.screen.as_mut())
+                    {
+                        screen.zoom = zoom;
+                    }
+                    cx.notify();
+                },
+            ))
+            .child(div().flex_1())
+            .child(
+                div()
+                    .px_2()
+                    .py(px(theme::SPACE_MICRO))
+                    .rounded(px(theme::CONTROL_RADIUS))
+                    .bg(if holding {
+                        theme::with_alpha(theme::accent(), 0.16)
+                    } else {
+                        theme::library_card()
+                    })
+                    .text_size(px(theme::TYPE_MICRO_SIZE))
+                    .text_color(theme::text_main())
+                    .child(if holding {
+                        localization::remote_screen_controlling_chip()
+                    } else {
+                        localization::remote_screen_watching_chip()
+                    }),
+            )
+            .child(
+                gpui_component::button::Button::new("remote-screen-control-toolbar")
+                    .debug_selector(|| "remote-screen-control-toolbar".to_string())
+                    .xsmall()
+                    .primary()
+                    .label(if holding {
+                        localization::remote_screen_give_back_control()
+                    } else {
+                        localization::remote_screen_take_control()
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        if let Some(screen) = this
+                            .active_workspace()
+                            .and_then(|workspace| workspace.screen.as_ref())
+                        {
+                            let holding = screen.session.control()
+                                == multiplex_screen_protocol::ControlHolder::You;
+                            screen.session.send(if holding {
+                                WatchInput::ReleaseControl
+                            } else {
+                                WatchInput::RequestControl
+                            });
+                        }
+                        cx.notify();
+                    })),
+            )
+            .child(
+                gpui_component::button::Button::new("remote-screen-disconnect")
+                    .debug_selector(|| "remote-screen-disconnect".to_string())
+                    .xsmall()
+                    .ghost()
+                    .label(localization::remote_screen_disconnect_action())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        if let Some(workspace_id) = this.active_workspace_id {
+                            this.close_workspace(workspace_id, cx);
+                        }
+                    })),
+            )
+    }
+
+    /// Over the last picture when the session is gone, rather than a blank tab that says nothing.
+    fn render_remote_screen_ended(&self, state: &WatchState) -> Stateful<Div> {
+        v_flex()
+            .id("remote-screen-ended")
+            .debug_selector(|| "remote-screen-ended".to_string())
+            .absolute()
+            .gap_1()
+            .px(px(theme::SPACE_4))
+            .py(px(theme::SPACE_3))
+            .rounded(px(theme::CARD_RADIUS))
+            .border_1()
+            .border_color(theme::soft_border())
+            .bg(theme::library_card())
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                    .font_medium()
+                    .text_color(theme::text_main())
+                    .child(localization::remote_screen_ended_title()),
+            )
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_MICRO_SIZE))
+                    .text_color(theme::text_muted())
+                    .child(describe(state)),
+            )
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_MICRO_SIZE))
+                    .text_color(theme::text_muted())
+                    .child(localization::remote_screen_ended_note()),
+            )
     }
 
     /// What the connection is doing, in words rather than a graph: Stage A has no round-trip

@@ -4953,6 +4953,62 @@ context = "Explains that the Stage A transport reports no round-trip time or los
 description = "Stage A transport note"
 
 [[messages]]
+id = "devices-tab-computers"
+context = "Devices filter tab."
+description = "Computers tab"
+[[messages]]
+id = "devices-tab-phones"
+context = "Devices filter tab."
+description = "Phones tab"
+[[messages]]
+id = "devices-tab-this-computer"
+context = "Devices filter tab."
+description = "This computer tab"
+[[messages]]
+id = "devices-computers-description"
+context = "Devices tab description."
+description = "Computers tab description"
+[[messages]]
+id = "devices-phones-description"
+context = "Devices tab description."
+description = "Phones tab description"
+[[messages]]
+id = "devices-this-computer-description"
+context = "Devices tab description."
+description = "This computer tab description"
+[[messages]]
+id = "remote-screen-disconnect-action"
+context = "Remote screen toolbar button."
+description = "Disconnect from a watched screen"
+[[messages]]
+id = "remote-screen-zoom-fit"
+context = "Remote screen zoom option."
+description = "Fit zoom option"
+[[messages]]
+id = "remote-screen-zoom-actual"
+context = "Remote screen zoom option."
+description = "Actual size zoom option"
+[[messages]]
+id = "remote-screen-zoom-double"
+context = "Remote screen zoom option."
+description = "Double size zoom option"
+[[messages]]
+id = "remote-screen-ended-title"
+context = "Remote screen overlay heading."
+description = "Watch session ended heading"
+[[messages]]
+id = "remote-screen-ended-note"
+context = "Remote screen overlay note."
+description = "Watch session ended note"
+[[messages]]
+id = "remote-screen-watching-chip"
+context = "Remote screen state chip."
+description = "Watching state chip"
+[[messages]]
+id = "remote-screen-controlling-chip"
+context = "Remote screen state chip."
+description = "Controlling state chip"
+[[messages]]
 id = "watched-computers-forget-action"
 context = "Action that forgets a computer this Mac paired with, deleting its device identity."
 description = "Forget computer action"
@@ -12015,11 +12071,6 @@ description = "Recent Hosts heading"
 id = "logs-view-switched-status"
 context = "Status after switching to the Logs library view."
 description = "Switched to Logs"
-
-[[messages]]
-id = "devices-view-description"
-context = "Description under the Devices heading in the sidebar destination, which lists paired devices only."
-description = "Devices view description"
 
 [[messages]]
 id = "devices-add-computer-action"

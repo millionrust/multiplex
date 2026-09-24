@@ -1286,6 +1286,7 @@ pub struct MultiplexApp {
     draft_vault_id: Option<String>,
     draft_profile_favorite: bool,
     draft_start_in_files: bool,
+    devices_tab: remote_devices::DevicesTab,
     draft_persistent_session: bool,
     draft_persistent_session_detach_others: bool,
     draft_color_tag: Option<HostColorTag>,
@@ -1770,6 +1771,7 @@ impl MultiplexApp {
             draft_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             draft_profile_favorite: false,
             draft_start_in_files: false,
+            devices_tab: remote_devices::DevicesTab::default(),
             draft_persistent_session: false,
             draft_persistent_session_detach_others: false,
             draft_color_tag: None,
@@ -28985,6 +28987,62 @@ sleep 1
                 view.right()
             );
         }
+    }
+
+    #[gpui::test]
+    fn devices_separates_computers_phones_and_this_computer(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Devices, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+
+        // Computers first, and only that tab offers the way to add one.
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.devices_tab,
+                super::remote_devices::DevicesTab::Computers
+            );
+        });
+        assert!(visual.debug_bounds("devices-computers").is_some());
+        assert!(visual.debug_bounds("devices-add-computer").is_some());
+
+        let click = |cx: &mut TestAppContext, selector: &'static str| {
+            let point = selector_click_center(window, cx, selector);
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.simulate_click(point, gpui::Modifiers::none());
+            visual.run_until_parked();
+        };
+
+        click(cx, "devices-tabs-2");
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.devices_tab,
+                super::remote_devices::DevicesTab::ThisComputer
+            );
+        });
+        window
+            .update(cx, |_, _, _| {})
+            .expect("window update should succeed");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        assert!(
+            visual.debug_bounds("remote-screens").is_some(),
+            "This computer should hold what it lets others see"
+        );
+
+        click(cx, "devices-tabs-1");
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.devices_tab, super::remote_devices::DevicesTab::Phones);
+        });
     }
 
     #[gpui::test]
