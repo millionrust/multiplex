@@ -30,12 +30,11 @@
     <string name="screen_done">Done</string>
     <string name="screen_keyboard">Keyboard</string>
     <string name="screen_minimap">Minimap</string>
-    <string name="screen_open">Open Screen</string>
-    <string name="screen_preview_description">Preview of this computer\'s screen</string>
+    <string name="screen_open">Open screen</string>
+    <string name="screen_preview_description">Preview of the computer\'s screen</string>
     <string name="screen_reconnecting">Reconnecting…</string>
     <string name="screen_stop_controlling">Stop controlling</string>
     <string name="screen_take_control">Take control</string>
-    <string name="screen_this_computers_screen">This Computer\'s Screen</string>
     <string name="screen_not_granted">This computer has not given this phone screen access.</string>
     <string name="screen_description">This computer\'s screen</string>
     <string name="screen_type_here">Type on this computer</string>

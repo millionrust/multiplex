@@ -64,6 +64,8 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -783,24 +785,29 @@ private fun FleetDetail(
 /** Screen or Terminals: which of the two a computer's page is showing. */
 @Composable
 private fun HostPageTabs(tab: HostPageTab, onSelectTab: (HostPageTab) -> Unit) {
-    SingleChoiceSegmentedButtonRow(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+    // Tabs, not a segmented button. These two swap the whole page under them, which is what a tab
+    // does; a segmented button picks an option within a page, and reading as one made the page
+    // look like it was holding a setting.
+    TabRow(
+        selectedTabIndex = HostPageTab.entries.indexOf(tab),
+        containerColor = MaterialTheme.colorScheme.background,
     ) {
-        HostPageTab.entries.forEachIndexed { index, entry ->
-            SegmentedButton(
+        HostPageTab.entries.forEach { entry ->
+            Tab(
                 selected = tab == entry,
                 onClick = { onSelectTab(entry) },
-                shape = SegmentedButtonDefaults.itemShape(index, HostPageTab.entries.size),
-            ) {
-                Text(
-                    stringResource(
-                        when (entry) {
-                            HostPageTab.Screen -> com.multiplex.mobile.R.string.controller_tab_screen
-                            HostPageTab.Terminals -> com.multiplex.mobile.R.string.controller_tab_terminals
-                        },
-                    ),
-                )
-            }
+                text = {
+                    Text(
+                        stringResource(
+                            when (entry) {
+                                HostPageTab.Screen -> com.multiplex.mobile.R.string.controller_tab_screen
+                                HostPageTab.Terminals ->
+                                    com.multiplex.mobile.R.string.controller_tab_terminals
+                            },
+                        ),
+                    )
+                },
+            )
         }
     }
 }

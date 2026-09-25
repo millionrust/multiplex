@@ -95,7 +95,7 @@ class ControllerScreenCoordinator(
             unavailable = ControllerScreenUnavailable.NotGranted
             return
         }
-        session?.cancel()
+        val previous = session
         session = null
         preview = null
         viewer = null
@@ -104,6 +104,16 @@ class ControllerScreenCoordinator(
         reconnectAttempt = 0
         watchingHost = host
         session = scope.launch {
+            // The session being replaced holds the connection's serialization lock while it
+            // blocks on a socket read, and cancelling its coroutine does not unblock that read.
+            // Closing the socket does, which is what `cancel` is for. Without this, opening the
+            // full screen from the running preview waited for a lock that was never released:
+            // no picture, no error, nothing.
+            if (previous != null) {
+                previous.cancel()
+                runCatching { connection.cancel() }
+                previous.join()
+            }
             // A screen session is a long-lived connection and a phone loses those: it changes
             // network, sleeps, or walks out of range. The last picture stays on screen while
             // this reopens it, because a frozen picture of the right computer says more than an

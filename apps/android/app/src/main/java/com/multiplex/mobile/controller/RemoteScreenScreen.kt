@@ -59,15 +59,24 @@ fun ControllerScreenPreviewCard(
     onOpenScreen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // No heading: the tab above says Screen and the bar says which computer. "This Computer's
+    // Screen" also read, on a phone, as the phone's own.
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(stringResource(com.multiplex.mobile.R.string.screen_this_computers_screen), style = MaterialTheme.typography.titleSmall)
         val picture = preview?.picture ?: lastPicture
         if (picture != null) {
+            // The picture's own shape, so the card is as wide as the page. Without it the box
+            // took the bitmap's intrinsic height, and `Fit` then drew a postage stamp in the
+            // middle of a full-width row.
+            val shape = (picture.width.toFloat() / picture.height.toFloat())
+                .takeIf { it.isFinite() && it > 0f } ?: (16f / 10f)
             Image(
                 bitmap = picture.asImageBitmap(),
                 contentDescription = stringResource(com.multiplex.mobile.R.string.screen_preview_description),
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(shape)
+                    .clip(RoundedCornerShape(8.dp)),
             )
         } else {
             Box(
@@ -235,9 +244,22 @@ fun RemoteScreenView(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
             )
         }
+        // The bar used to be one Row: the buttons took their own widths, the status label had
+        // `weight(1f)` and so got none, and it wrapped into a column of single words that made
+        // the bar taller than the picture and pushed Done off the end — leaving no way out but
+        // the back gesture. The status gets its own line and the buttons scroll.
+        Text(
+            controlLabel(model),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+        )
         Row(
-            Modifier.fillMaxWidth().padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (model.canControlKeyboard) {
@@ -257,11 +279,6 @@ fun RemoteScreenView(
                     enabled = model.isDriving,
                 ) { Text(model.pointerMode.title) }
             }
-            Text(
-                controlLabel(model),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.weight(1f),
-            )
             if (model.canControlPointer || model.canControlKeyboard) {
                 TextButton(
                     onClick = {

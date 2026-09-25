@@ -48,8 +48,11 @@ fun UnifiedMobileApp(
     }
     val lifecycleOwner = LocalLifecycleOwner.current
     val controllerState by controller.state.collectAsState()
-    val controllerTerminalOpen = destination == MobileRootDestination.DEVICES &&
-        controllerState.activeTerminal != null
+    // A terminal or a computer's screen fills the phone, so the shell's own bar steps out of the
+    // way for both. The screen was left out, and the viewer opened with the tab bar still under
+    // it and the picture squeezed above it.
+    val controllerFullScreen = destination == MobileRootDestination.DEVICES &&
+        (controllerState.activeTerminal != null || controller.screens.viewer != null)
 
     DisposableEffect(lifecycleOwner, destination) {
         var foregrounded = false
@@ -88,7 +91,7 @@ fun UnifiedMobileApp(
     // both halves' own themes and stayed Material's stock purple.
     MultiplexMaterialTheme {
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            if (maxWidth >= 840.dp && !controllerTerminalOpen) {
+            if (maxWidth >= 840.dp && !controllerFullScreen) {
                 Row(Modifier.fillMaxSize()) {
                     RouteRail(destination, onSelect = { destination = it })
                     RouteContent(
@@ -110,7 +113,7 @@ fun UnifiedMobileApp(
                         onImportCredentialFile,
                         Modifier.weight(1f),
                     )
-                    if (!controllerTerminalOpen) {
+                    if (!controllerFullScreen) {
                         RouteBar(destination, onSelect = { destination = it })
                     }
                 }
