@@ -66,6 +66,13 @@ final class EnrollmentUITests: XCTestCase {
 
     private func openEnrollment(_ app: XCUIApplication) {
         app.buttons["Devices"].firstMatch.tap()
+        // The app reopens on the computer it was last using. Enrollment is about this phone
+        // rather than any one computer, so it lives on the list of them; go back when one is
+        // already open.
+        let toComputers = app.buttons["Computers"].firstMatch
+        if toComputers.waitForExistence(timeout: 5), toComputers.isHittable {
+            toComputers.tap()
+        }
         let actions = app.buttons["Device actions"]
         XCTAssertTrue(actions.waitForExistence(timeout: 10))
         actions.tap()

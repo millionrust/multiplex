@@ -37,6 +37,10 @@ final class ControllerTerminalViewModelTests: XCTestCase {
             viewport: TerminalViewportState(columns: 40, rows: 4)
         )
 
+        // The phone drives the size here. Left to follow the host, which is what a pane
+        // does by default, `updateViewport` keeps the size the computer reported and
+        // resizes nothing — a different path from the one under test.
+        viewModel.setFollowsHostSize(false)
         viewModel.updateViewport(columns: 32, rows: 6, final: true)
         XCTAssertEqual(viewModel.screen.cells.first?.count, 32)
         XCTAssertEqual(viewModel.screen.lines.count, 6)

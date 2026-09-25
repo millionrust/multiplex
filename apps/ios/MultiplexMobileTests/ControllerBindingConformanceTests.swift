@@ -160,9 +160,11 @@ private struct GoldenVector {
     private let object: [String: Any]
 
     static func load() throws -> Self {
+        // The vector this bundles is controller-v2; the loader was left naming the one it
+        // replaced, so every test that reads it failed on a file that is not there.
         let url = try XCTUnwrap(
             Bundle(for: ControllerBindingConformanceTests.self)
-                .url(forResource: "controller-v1", withExtension: "json")
+                .url(forResource: "controller-v2", withExtension: "json")
         )
         let object = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]

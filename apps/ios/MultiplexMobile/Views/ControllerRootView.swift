@@ -101,150 +101,28 @@ struct ControllerRootView: View {
             }
         }
         .background(Flow.canvas)
-    }
-
-    /// multiplex-mobile-flow.html's first screen.
-    private var computersScreen: some View {
-            // multiplex-mobile-flow.html's Computers screen: the ones this phone can reach now,
-            // then the ones it cannot, each saying how it is reached and when it was last seen.
-            // The prototype's own nav, not the platform's: what the list is, how many are
-            // reachable, and the one action it offers.
-            VStack(spacing: 0) {
-                FlowNav(
-                    title: String(localized: "Computers"),
-                    subtitle: "\(reachable.count) \(String(localized: "reachable"))"
-                ) {
-                    HStack(spacing: 14) {
-                        FlowAction(title: String(localized: "Pair")) { showingPairing = true }
-                        Menu {
-                            Button("Enrollment") { showingEnrollment = true }
-                        } label: {
-                            Image(systemName: "ellipsis")
-                                .font(.system(size: 15))
-                                .foregroundStyle(Flow.accent)
-                        }
-                        .accessibilityLabel("Device actions")
-                        .accessibilityIdentifier("Device actions")
-                    }
+        // Every sheet on this screen goes through one modifier, and the modifiers hang off the
+        // whole screen rather than the computer page. Chained, SwiftUI honours one of them and
+        // drops the rest, and bolted onto one branch they did not exist on the other: opening
+        // Enrollment from the list of computers set the flag and nothing appeared.
+        .sheet(item: sheetRoute) { route in
+            switch route {
+            case .enrollment:
+                EnrollmentView()
+            case .newTerminal:
+                NewTerminalSheet { folder, shell, name in
+                    showingNewTerminal = false
+                    viewModel.createSession(folder: folder, shell: shell, title: name)
                 }
-                computersList
+            case .pairing:
+                PairHostView(viewModel: viewModel, isPresented: $showingPairing)
+            case .hostDetails:
+                hostDetailsSheet
+            case .sshConfiguration:
+                sshConfigurationSheet
+            case .relayConfiguration:
+                relayConfigurationSheet
             }
-            .background(Flow.canvas)
-            .toolbar(.hidden, for: .navigationBar)
-            .navigationTitle("Computers")
-            .overlay {
-                if viewModel.state.hosts.isEmpty {
-                    ContentUnavailableView {
-                        Label("No computers yet", systemImage: "desktopcomputer")
-                    } description: {
-                        Text(
-                            "Pair with Multiplex on a computer on the same private network. "
-                                + "Its screen and its terminals then appear here."
-                        )
-                    } actions: {
-                        Button("Pair a Computer") { showingPairing = true }
-                            .buttonStyle(.borderedProminent)
-                    }
-                }
-            }
-    }
-
-    /// One computer: what this phone is doing with it.
-    private var computerScreen: some View {
-            ControllerSessionFleetView(
-                state: viewModel.state,
-                routeAdvice: viewModel.routeAdvice,
-                onRetry: viewModel.retry,
-                onForget: { showingForgetConfirmation = true },
-                onShowDetails: { showingHostDetails = true },
-                onOpenSession: viewModel.openReadOnlyTerminal,
-                canCreateSession: viewModel.canCreateSessionOnSelectedHost,
-                onNewTerminal: { showingNewTerminal = true },
-                screens: viewModel.screens,
-                canWatch: viewModel.canWatchSelectedHost,
-                onStartPreview: viewModel.startScreenPreview,
-                onStopPreview: viewModel.stopScreenPreview,
-                onOpenScreen: viewModel.openScreen,
-                mode: $hostMode,
-                onBack: { viewModel.selectHost(id: nil) }
-            )
-        .sheet(isPresented: $showingEnrollment) { EnrollmentView() }
-        .sheet(isPresented: $showingNewTerminal) {
-            NewTerminalSheet { folder, shell, name in
-                showingNewTerminal = false
-                viewModel.createSession(folder: folder, shell: shell, title: name)
-            }
-        }
-        .sheet(isPresented: $showingPairing) {
-            PairHostView(viewModel: viewModel, isPresented: $showingPairing)
-        }
-        .sheet(isPresented: $showingHostDetails) {
-            if let host = viewModel.state.hosts.first(where: {
-                $0.id == viewModel.state.selectedHostID
-            }) {
-                ControllerHostSettingsView(
-                    host: host,
-                    routes: viewModel.routeProjections,
-                    routeSelectionError: viewModel.routeSelectionError,
-                    onSelectRoute: { pendingRoute = $0 },
-                    onConfigureSSH: {
-                        showingHostDetails = false
-                        showingSSHConfiguration = true
-                    },
-                    onConfigureRelay: {
-                        showingHostDetails = false
-                        showingRelayConfiguration = true
-                    },
-                    onReconnect: {
-                        showingHostDetails = false
-                        viewModel.retry()
-                    },
-                    onForget: {
-                        showingHostDetails = false
-                        showingForgetConfirmation = true
-                    }
-                )
-            }
-        }
-        .sheet(isPresented: $showingSSHConfiguration) {
-            SSHControllerConfigurationView(
-                configuration: viewModel.selectedSSHConfiguration,
-                suggestedEndpoint: viewModel.selectedHost?.route.address ?? "",
-                configurationError: viewModel.routeConfigurationError,
-                onSave: { endpoint, port, username, pin, authentication, secret in
-                    viewModel.configureSSHRoute(
-                        endpoint: endpoint,
-                        port: port,
-                        username: username,
-                        hostKeyPin: pin,
-                        authentication: authentication,
-                        secret: secret
-                    )
-                },
-                onRemove: {
-                    viewModel.removeSSHRoute()
-                    showingSSHConfiguration = false
-                }
-            )
-        }
-        .sheet(isPresented: $showingRelayConfiguration) {
-            RelayControllerConfigurationView(
-                configuration: viewModel.selectedRelayConfiguration,
-                configurationError: viewModel.routeConfigurationError,
-                onSave: { endpoint, pin, routeID, epoch, credential in
-                    viewModel.configureRelayRoute(
-                        endpoint: endpoint,
-                        spkiPin: pin,
-                        routeID: routeID,
-                        revocationEpoch: epoch,
-                        admissionCredential: credential
-                    )
-                },
-                onRemove: {
-                    viewModel.removeRelayRoute()
-                    showingRelayConfiguration = false
-                }
-            )
         }
         .confirmationDialog(
             "Forget this Host on this device?",
@@ -306,6 +184,189 @@ struct ControllerRootView: View {
                 }
             }
         }
+    }
+
+
+    @ViewBuilder
+    private var hostDetailsSheet: some View {
+        if let host = viewModel.state.hosts.first(where: {
+            $0.id == viewModel.state.selectedHostID
+        }) {
+            ControllerHostSettingsView(
+                host: host,
+                routes: viewModel.routeProjections,
+                routeSelectionError: viewModel.routeSelectionError,
+                onSelectRoute: { pendingRoute = $0 },
+                onConfigureSSH: {
+                    showingHostDetails = false
+                    showingSSHConfiguration = true
+                },
+                onConfigureRelay: {
+                    showingHostDetails = false
+                    showingRelayConfiguration = true
+                },
+                onReconnect: {
+                    showingHostDetails = false
+                    viewModel.retry()
+                },
+                onForget: {
+                    showingHostDetails = false
+                    showingForgetConfirmation = true
+                }
+            )
+        }
+    }
+
+    private var sshConfigurationSheet: some View {
+        SSHControllerConfigurationView(
+            configuration: viewModel.selectedSSHConfiguration,
+            suggestedEndpoint: viewModel.selectedHost?.route.address ?? "",
+            configurationError: viewModel.routeConfigurationError,
+            onSave: { endpoint, port, username, pin, authentication, secret in
+                viewModel.configureSSHRoute(
+                    endpoint: endpoint,
+                    port: port,
+                    username: username,
+                    hostKeyPin: pin,
+                    authentication: authentication,
+                    secret: secret
+                )
+            },
+            onRemove: {
+                viewModel.removeSSHRoute()
+                showingSSHConfiguration = false
+            }
+        )
+    }
+
+    private var relayConfigurationSheet: some View {
+        RelayControllerConfigurationView(
+            configuration: viewModel.selectedRelayConfiguration,
+            configurationError: viewModel.routeConfigurationError,
+            onSave: { endpoint, pin, routeID, epoch, credential in
+                viewModel.configureRelayRoute(
+                    endpoint: endpoint,
+                    spkiPin: pin,
+                    routeID: routeID,
+                    revocationEpoch: epoch,
+                    admissionCredential: credential
+                )
+            },
+            onRemove: {
+                viewModel.removeRelayRoute()
+                showingRelayConfiguration = false
+            }
+        )
+    }
+
+    /// Which sheet is open. One modifier serves them all; see the note on `body`.
+    private enum SheetRoute: Identifiable {
+        case enrollment
+        case newTerminal
+        case pairing
+        case hostDetails
+        case sshConfiguration
+        case relayConfiguration
+
+        var id: Self { self }
+    }
+
+    private var sheetRoute: Binding<SheetRoute?> {
+        Binding(
+            get: {
+                if showingEnrollment { return .enrollment }
+                if showingNewTerminal { return .newTerminal }
+                if showingPairing { return .pairing }
+                if showingSSHConfiguration { return .sshConfiguration }
+                if showingRelayConfiguration { return .relayConfiguration }
+                if showingHostDetails { return .hostDetails }
+                return nil
+            },
+            set: { next in
+                guard next == nil else { return }
+                showingEnrollment = false
+                showingNewTerminal = false
+                showingPairing = false
+                showingHostDetails = false
+                showingSSHConfiguration = false
+                showingRelayConfiguration = false
+            }
+        )
+    }
+
+    /// multiplex-mobile-flow.html's first screen.
+    private var computersScreen: some View {
+            // multiplex-mobile-flow.html's Computers screen: the ones this phone can reach now,
+            // then the ones it cannot, each saying how it is reached and when it was last seen.
+            // The prototype's own nav, not the platform's: what the list is, how many are
+            // reachable, and the one action it offers.
+            VStack(spacing: 0) {
+                FlowNav(
+                    title: String(localized: "Computers"),
+                    subtitle: "\(reachable.count) \(String(localized: "reachable"))"
+                ) {
+                    HStack(spacing: 14) {
+                        FlowAction(title: String(localized: "Pair")) { showingPairing = true }
+                        Menu {
+                            Button("Enrollment") { showingEnrollment = true }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 15))
+                                .foregroundStyle(Flow.accent)
+                        }
+                        .accessibilityLabel("Device actions")
+                        .accessibilityIdentifier("Device actions")
+                    }
+                }
+                // The empty state covers the list, not the screen: over the whole thing it also
+                // covered the nav, and Pair and the overflow with it, so a phone with no
+                // computers could not reach enrollment at all.
+                computersList
+                    .overlay { emptyComputers }
+            }
+            .background(Flow.canvas)
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationTitle("Computers")
+    }
+
+    @ViewBuilder
+    private var emptyComputers: some View {
+        Group {
+                if viewModel.state.hosts.isEmpty {
+                    ContentUnavailableView {
+                        Label("No computers yet", systemImage: "desktopcomputer")
+                    } description: {
+                        Text(
+                            "Pair with Multiplex on a computer on the same private network. "
+                                + "Its screen and its terminals then appear here."
+                        )
+                    } actions: {
+                        Button("Pair a Computer") { showingPairing = true }
+                            .buttonStyle(.borderedProminent)
+                    }
+                }
+            }
+    }
+
+    /// One computer: what this phone is doing with it.
+    private var computerScreen: some View {
+            ControllerSessionFleetView(
+                state: viewModel.state,
+                routeAdvice: viewModel.routeAdvice,
+                onRetry: viewModel.retry,
+                onForget: { showingForgetConfirmation = true },
+                onShowDetails: { showingHostDetails = true },
+                onOpenSession: viewModel.openReadOnlyTerminal,
+                canCreateSession: viewModel.canCreateSessionOnSelectedHost,
+                onNewTerminal: { showingNewTerminal = true },
+                screens: viewModel.screens,
+                canWatch: viewModel.canWatchSelectedHost,
+                onStartPreview: viewModel.startScreenPreview,
+                onStopPreview: viewModel.stopScreenPreview,
+                onOpenScreen: viewModel.openScreen,
+                mode: $hostMode,
+                onBack: { viewModel.selectHost(id: nil) }
+            )
     }
 
     /// What is covering the screen, if anything. The screen wins over a terminal, because when

@@ -103,6 +103,10 @@ final class ControllerWriterTests: XCTestCase {
             connection: fixture,
             viewport: TerminalViewportState(columns: 40, rows: 5)
         )
+        // The phone drives the size here. Left to follow the host, which is what a pane
+        // does by default, `updateViewport` keeps the size the computer reported and
+        // resizes nothing — a different path from the one under test.
+        viewModel.setFollowsHostSize(false)
         viewModel.updateViewport(columns: 36, rows: 8, final: true)
 
         viewModel.start()
