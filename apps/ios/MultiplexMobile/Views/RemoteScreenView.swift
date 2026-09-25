@@ -14,6 +14,9 @@ struct RemoteScreenView: View {
     var reconnecting = false
     /// What this phone is connected over, for the connection sheet.
     var routeName: String?
+    /// Whether the picture shares the screen with something below it, and so keeps its own shape
+    /// instead of filling what is left.
+    var fitsPicture = false
 
     @State private var zoomAnchor: CGFloat = 1
     @State private var showingKeyboard = false
@@ -32,6 +35,7 @@ struct RemoteScreenView: View {
                 weakBanner
             }
             picture
+                .frame(maxHeight: fitsPicture ? nil : .infinity)
             if showingKeyboard, model.canControlKeyboard {
                 keyboard
             }
@@ -264,20 +268,24 @@ struct RemoteScreenView: View {
                 Label("Connection", systemImage: "antenna.radiowaves.left.and.right")
                     .labelStyle(.iconOnly)
             }
-            Text(controlLabel)
-                .font(.footnote)
-                .foregroundStyle(Color.terminalMuted)
-                .lineLimit(1)
             Spacer(minLength: 4)
+            // A glyph, like the rest of the dock: as words these read as a paragraph of buttons
+            // over the desktop they are meant to leave alone.
             if model.canControlPointer || model.canControlKeyboard {
-                Button(model.control == .you ? "Stop controlling" : "Take control") {
+                Button {
                     if model.control == .you {
                         onReleaseControl()
                     } else {
                         onRequestControl()
                     }
+                } label: {
+                    Label(
+                        model.control == .you ? "Stop controlling" : "Take control",
+                        systemImage: "cursorarrow.click"
+                    )
+                    .labelStyle(.iconOnly)
                 }
-                .font(.footnote)
+                .buttonStyle(.borderedProminent)
                 .disabled(model.control == .anotherDevice)
             } else {
                 // Nothing here at all used to be the only sign that this computer never granted

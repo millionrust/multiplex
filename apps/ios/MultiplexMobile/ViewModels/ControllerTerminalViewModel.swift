@@ -14,6 +14,8 @@ private enum ControllerTerminalMutation: Equatable, Sendable {
 final class ControllerTerminalViewModel: ObservableObject, Identifiable {
     let id = UUID()
     let hostTitle: String
+    /// Which terminal this is, so a tab strip can tell two of the same name apart.
+    let sessionID: String
     let sessionTitle: String
 
     @Published private(set) var attachState: ReadOnlyAttachState = .detached
@@ -77,6 +79,7 @@ final class ControllerTerminalViewModel: ObservableObject, Identifiable {
         self.connection = connection
         self.viewport = viewport
         self.hostTitle = host.displayName
+        self.sessionID = session.id.uuidString
         self.sessionTitle = session.title
         self.reducer = try ReadOnlyAttachReducer(identity: identity)
         self.writerReducer = try WriterControlReducer(identity: identity)

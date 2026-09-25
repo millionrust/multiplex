@@ -237,7 +237,11 @@ struct ControllerRootView: View {
                     screens: viewModel.screens,
                     title: viewModel.selectedHost?.displayName ?? "Screen",
                     routeName: viewModel.selectedRoute.map(ControllerPresentation.routeTitle),
-                    onClose: viewModel.closeScreen
+                    onClose: viewModel.closeScreen,
+                    terminals: ControllerPresentation.openTerminals(viewModel.state.sessions),
+                    attached: viewModel.activeTerminal,
+                    onSelectTerminal: viewModel.openReadOnlyTerminal,
+                    onCloseTerminal: viewModel.closeReadOnlyTerminal
                 )
             }
         }
@@ -251,8 +255,10 @@ struct ControllerRootView: View {
     }
 
     private var terminalPresented: Binding<Bool> {
+        // Not while the screen is being watched: there the terminal is drawn under the picture
+        // rather than over it.
         Binding(
-            get: { viewModel.activeTerminal != nil },
+            get: { viewModel.activeTerminal != nil && viewModel.screens.viewer == nil },
             set: { if !$0 { viewModel.closeReadOnlyTerminal() } }
         )
     }
@@ -265,6 +271,55 @@ struct ControllerRootView: View {
     }
 }
 
+/// Terminal tabs under a computer's screen.
+///
+/// The chosen one is cut out of the strip in the terminal's own ground and carries the way to
+/// close it; the rest sit behind, divided by a hairline.
+private struct ScreenTerminalTabs: View {
+    let terminals: [ControllerSessionSummary]
+    let attachedID: String?
+    let onSelect: (ControllerSessionSummary) -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 0) {
+                ForEach(Array(terminals.enumerated()), id: \.element.id) { index, session in
+                    let on = session.id.uuidString == attachedID
+                    if index > 0, !on {
+                        Divider().frame(height: 22)
+                    }
+                    HStack(spacing: 8) {
+                        Image(systemName: "terminal")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(ControllerPresentation.isolated(session.title))
+                            .font(.subheadline)
+                            .foregroundStyle(on ? Color.primary : Color.secondary)
+                            .lineLimit(1)
+                        if on {
+                            Button(action: onClose) {
+                                Image(systemName: "xmark")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Close this terminal")
+                        }
+                    }
+                    .padding(.leading, 14)
+                    .padding(.trailing, on ? 10 : 14)
+                    .frame(minHeight: 44)
+                    .background(on ? Color.mobileBackground : Color.clear)
+                    .contentShape(Rectangle())
+                    .onTapGesture { if !on { onSelect(session) } }
+                }
+            }
+        }
+        .background(Color.secondary.opacity(0.12))
+    }
+}
+
 /// The full screen, with a way back to the computer's page.
 private struct ControllerScreenViewerSheet: View {
     @ObservedObject var model: RemoteScreenViewModel
@@ -272,16 +327,48 @@ private struct ControllerScreenViewerSheet: View {
     let title: String
     let routeName: String?
     let onClose: () -> Void
+    /// The computer's terminals, for the strip under the picture in portrait.
+    var terminals: [ControllerSessionSummary] = []
+    var attached: ControllerTerminalViewModel?
+    var onSelectTerminal: (ControllerSessionSummary) -> Void = { _ in }
+    var onCloseTerminal: () -> Void = {}
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    /// Portrait has room under the picture; landscape gives the whole screen to it.
+    private var showTerminals: Bool {
+        verticalSizeClass == .regular && !terminals.isEmpty
+    }
 
     var body: some View {
         NavigationStack {
-            RemoteScreenView(
-                model: model,
-                onRequestControl: model.requestControl,
-                onReleaseControl: model.releaseControl,
-                reconnecting: screens.reconnecting,
-                routeName: routeName
-            )
+            // A desktop is wider than it is tall, so a portrait phone watching one has room left
+            // under the picture: the computer's terminals go there, on a connection of their own.
+            VStack(spacing: 0) {
+                RemoteScreenView(
+                    model: model,
+                    onRequestControl: model.requestControl,
+                    onReleaseControl: model.releaseControl,
+                    reconnecting: screens.reconnecting,
+                    routeName: routeName,
+                    fitsPicture: showTerminals
+                )
+                if showTerminals {
+                    ScreenTerminalTabs(
+                        terminals: terminals,
+                        attachedID: attached?.sessionID,
+                        onSelect: onSelectTerminal,
+                        onClose: onCloseTerminal
+                    )
+                    if let attached {
+                        ControllerReadOnlyTerminalView(viewModel: attached, onClose: onCloseTerminal)
+                    } else {
+                        Text("Choose a terminal to watch it here.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+            }
             .navigationTitle(ControllerPresentation.isolated(title))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
