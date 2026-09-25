@@ -11,6 +11,7 @@
     <string name="pair_private_network_hint">Pair with Multiplex Desktop on the same private network.</string>
     <string name="paired_hosts">Paired Hosts</string>
     <string name="controller_computers">Computers</string>
+    <string name="screen_displays">Displays</string>
     <string name="live_updated">Live · updated %1$s</string>
     <string name="screen_about_one_picture">About one picture a second.</string>
     <string name="screen_another_device_controls">Another device is controlling it</string>

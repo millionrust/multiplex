@@ -128,6 +128,7 @@ fun RemoteScreenView(
     var showKeyboard by remember { mutableStateOf(false) }
     var typed by remember { mutableStateOf("") }
     var showConnection by remember { mutableStateOf(false) }
+    var showDisplays by remember { mutableStateOf(false) }
     // Nothing arrives to say the pictures stopped, so the view asks the clock once a second.
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(model) {
@@ -289,6 +290,27 @@ fun RemoteScreenView(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            if (model.displays.size > 1) {
+                Box {
+                    TextButton(onClick = { showDisplays = true }) {
+                        Text(stringResource(com.multiplex.mobile.R.string.screen_displays))
+                    }
+                    androidx.compose.material3.DropdownMenu(
+                        expanded = showDisplays,
+                        onDismissRequest = { showDisplays = false },
+                    ) {
+                        model.displays.forEach { display ->
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(display.name) },
+                                onClick = {
+                                    showDisplays = false
+                                    model.watch(display)
+                                },
+                            )
+                        }
+                    }
+                }
             }
             TextButton(onClick = { showConnection = true }) {
                 Text(stringResource(com.multiplex.mobile.R.string.screen_connection))
