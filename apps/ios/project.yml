@@ -71,6 +71,7 @@ targets:
       - MultiplexMobile/ViewModels/RemoteScreenViewModel.swift
       - MultiplexMobile/Vault
       - MultiplexMobile/Views/ContentView.swift
+      - MultiplexMobile/Views/FlowUI.swift
       - MultiplexMobile/Views/RemoteScreenView.swift
       - MultiplexMobile/Views/ControllerPresentation.swift
       - MultiplexMobile/Views/ControllerQRCodeScanner.swift

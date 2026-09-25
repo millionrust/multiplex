@@ -96,6 +96,18 @@ enum ControllerPresentation {
         return known.compactMap { bit, label in bits & bit == bit ? label : nil }
     }
 
+    /// The same words as `lifecycleLabel`, for a place that needs a plain string.
+    static func lifecycleText(_ lifecycle: String) -> String {
+        switch lifecycle {
+        case "live", "running", "running_app_attached": String(localized: "Live")
+        case "starting", "attaching", "provisioning", "replaying": String(localized: "Starting")
+        case "offline": String(localized: "Offline")
+        case "failed": String(localized: "Failed")
+        case "exited", "stopped", "cancelled": String(localized: "Exited")
+        default: String(localized: "Unknown")
+        }
+    }
+
     static func lifecycleLabel(_ lifecycle: String) -> LocalizedStringKey {
         switch lifecycle {
         case "draft": return "Draft"

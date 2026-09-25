@@ -41,7 +41,7 @@ private struct UnifiedMobileRootView: View {
             ContentView(viewModel: connectionViewModel)
                 .tabItem { Label("Connections", systemImage: "terminal") }
                 .tag(MobileRootDestination.connections)
-            ControllerRootView(viewModel: controllerViewModel)
+            ControllerRootView(viewModel: controllerViewModel, screens: controllerViewModel.screens)
                 .tabItem { Label("Devices", systemImage: "macbook.and.iphone") }
                 .tag(MobileRootDestination.devices)
         }

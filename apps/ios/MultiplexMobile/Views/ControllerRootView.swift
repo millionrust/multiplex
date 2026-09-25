@@ -8,6 +8,10 @@ import UIKit
 
 struct ControllerRootView: View {
     @ObservedObject var viewModel: ControllerViewModel
+    /// The screen coordinator publishes on itself, not on the view model, so a view that only
+    /// observes the view model never hears that a viewer opened — and the cover that shows it
+    /// never presented.
+    @ObservedObject var screens: ControllerScreenCoordinator
     @State private var showingPairing = false
     @State private var showingNewTerminal = false
     @State private var showingEnrollment = false
@@ -24,43 +28,107 @@ struct ControllerRootView: View {
         viewModel.state.hosts.filter { viewModel.state.glances[$0.id] == nil }
     }
 
-    /// multiplex-mobile-flow.html's Computers screen.
+    /// multiplex-mobile-flow.html's Computers screen, drawn as the prototype draws it.
     private var computersList: some View {
-        List(selection: hostSelection) {
+        FlowBody {
             if !reachable.isEmpty {
-                Section("Reachable now") { rows(for: reachable, reachable: true) }
+                FlowGroupLabel("Reachable now")
+                FlowCard {
+                    ForEach(Array(reachable.enumerated()), id: \.element.id) { index, host in
+                        computerRow(host, reachable: true, last: index == reachable.count - 1)
+                    }
+                }
             }
             if !unreachable.isEmpty {
-                Section("Not reachable") { rows(for: unreachable, reachable: false) }
+                FlowGroupLabel("Not reachable")
+                FlowCard {
+                    ForEach(Array(unreachable.enumerated()), id: \.element.id) { index, host in
+                        computerRow(host, reachable: false, last: index == unreachable.count - 1)
+                    }
+                }
             }
-            Section {
-                Text("Pairing is per computer and asks for a six-digit code shown on its screen.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .listRowBackground(Color.clear)
+            Text("Pairing is per computer and asks for a six-digit code shown on its screen.")
+                .font(.system(size: 12))
+                .foregroundStyle(Flow.muted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 4)
+                .padding(.top, 14)
+        }
+    }
+
+    private func computerRow(_ host: HostSummary, reachable isReachable: Bool, last: Bool) -> some View {
+        let glance = viewModel.state.glances[host.id]
+        return FlowRow(
+            name: ControllerPresentation.isolated(host.title),
+            meta: meta(for: host, glance: glance, reachable: isReachable),
+            dot: isReachable ? Flow.good : Flow.off,
+            glyph: "desktopcomputer",
+            glyphOn: isReachable,
+            divider: !last,
+            onTap: { viewModel.selectHost(id: host.id) }
+        ) {
+            HStack(spacing: 8) {
+                if let glance {
+                    FlowBadge(text: "\(glance.openTerminals) terminals")
+                }
+                FlowChevron()
             }
         }
     }
 
-    private func rows(for computers: [HostSummary], reachable isReachable: Bool) -> some View {
-        ForEach(computers) { host in
-            ControllerHostRow(
-                host: host,
-                reachable: isReachable,
-                glance: viewModel.state.glances[host.id]
-            )
-            .tag(Optional(host.id))
-        }
+    /// How the computer is reached, and when this phone last saw it.
+    private func meta(for host: HostSummary, glance: HostGlance?, reachable: Bool) -> String {
+        let address = ControllerPresentation.isolated(host.route.address)
+        guard let glance else { return address }
+        let when = reachable
+            ? String(localized: "now")
+            : glance.updatedAt.formatted(.relative(presentation: .named))
+        return "\(address) · \(when)"
     }
     @State private var showingSSHConfiguration = false
     @State private var showingRelayConfiguration = false
     @State private var pendingRoute: ControllerRemoteRouteKind?
 
     var body: some View {
-        NavigationSplitView {
+        // The prototype is a state machine, not a navigation stack: the screen is whichever one
+        // the state says. `NavigationSplitView` drove the push from a `List`'s selection, and
+        // with the list gone nothing pushed — tapping a computer did nothing at all.
+        Group {
+            if viewModel.state.selectedHostID == nil {
+                computersScreen
+            } else {
+                computerScreen
+            }
+        }
+        .background(Flow.canvas)
+    }
+
+    /// multiplex-mobile-flow.html's first screen.
+    private var computersScreen: some View {
             // multiplex-mobile-flow.html's Computers screen: the ones this phone can reach now,
             // then the ones it cannot, each saying how it is reached and when it was last seen.
-            computersList
+            // The prototype's own nav, not the platform's: what the list is, how many are
+            // reachable, and the one action it offers.
+            VStack(spacing: 0) {
+                FlowNav(
+                    title: String(localized: "Computers"),
+                    subtitle: "\(reachable.count) \(String(localized: "reachable"))"
+                ) {
+                    HStack(spacing: 14) {
+                        FlowAction(title: String(localized: "Pair")) { showingPairing = true }
+                        Menu {
+                            Button("Enrollment") { showingEnrollment = true }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 15))
+                                .foregroundStyle(Flow.accent)
+                        }
+                    }
+                }
+                computersList
+            }
+            .background(Flow.canvas)
+            .toolbar(.hidden, for: .navigationBar)
             .navigationTitle("Computers")
             .overlay {
                 if viewModel.state.hosts.isEmpty {
@@ -92,7 +160,10 @@ struct ControllerRootView: View {
                     }
                 }
             }
-        } detail: {
+    }
+
+    /// One computer: what this phone is doing with it.
+    private var computerScreen: some View {
             ControllerSessionFleetView(
                 state: viewModel.state,
                 routeAdvice: viewModel.routeAdvice,
@@ -107,10 +178,9 @@ struct ControllerRootView: View {
                 onStartPreview: viewModel.startScreenPreview,
                 onStopPreview: viewModel.stopScreenPreview,
                 onOpenScreen: viewModel.openScreen,
-                mode: $hostMode
+                mode: $hostMode,
+                onBack: { viewModel.selectHost(id: nil) }
             )
-        }
-        .navigationSplitViewStyle(.balanced)
         .sheet(isPresented: $showingEnrollment) { EnrollmentView() }
         .sheet(isPresented: $showingNewTerminal) {
             NewTerminalSheet { folder, shell, name in
@@ -231,7 +301,7 @@ struct ControllerRootView: View {
             }
         }
         .fullScreenCover(isPresented: screenPresented) {
-            if let screen = viewModel.screens.viewer {
+            if let screen = screens.viewer {
                 ControllerScreenViewerSheet(
                     model: screen,
                     screens: viewModel.screens,
@@ -258,14 +328,14 @@ struct ControllerRootView: View {
         // Not while the screen is being watched: there the terminal is drawn under the picture
         // rather than over it.
         Binding(
-            get: { viewModel.activeTerminal != nil && viewModel.screens.viewer == nil },
+            get: { viewModel.activeTerminal != nil && screens.viewer == nil },
             set: { if !$0 { viewModel.closeReadOnlyTerminal() } }
         )
     }
 
     private var screenPresented: Binding<Bool> {
         Binding(
-            get: { viewModel.screens.viewer != nil },
+            get: { screens.viewer != nil },
             set: { if !$0 { viewModel.closeScreen() } }
         )
     }
@@ -596,30 +666,63 @@ private struct ControllerSessionFleetView: View {
     let onStopPreview: () -> Void
     let onOpenScreen: (UInt32?) -> Void
     @Binding var mode: ControllerHostMode
+    var onBack: () -> Void = {}
+
+    /// `.sub` on the nav: how this phone is reaching the computer.
+    private var routeSubtitle: String {
+        state.hosts.first(where: { $0.id == state.selectedHostID })
+            .map { ControllerPresentation.isolated($0.route.address) } ?? ""
+    }
 
     var body: some View {
         Group {
             if state.selectedHostID == nil {
                 ContentUnavailableView("Select a Computer", systemImage: "rectangle.connected.to.line.below")
             } else {
-                List {
-                    Section {
-                        ControllerStatusBanner(state: state, advice: routeAdvice, onRetry: onRetry)
-                    }
-                    // multiplex-mobile-flow.html: one control decides what you are doing with
-                    // this computer, and the page under it is that.
-                    Section {
-                        Picker("Showing", selection: $mode) {
-                            Text("Screen").tag(ControllerHostMode.screen)
-                            Text("Terminals").tag(ControllerHostMode.terminals)
+                // multiplex-mobile-flow.html's computer page, drawn as the prototype draws it:
+                // one control decides what you are doing here, and the page under it is that.
+                VStack(spacing: 0) {
+                FlowNav(
+                    title: selectedTitle,
+                    subtitle: routeSubtitle,
+                    back: String(localized: "Computers"),
+                    onBack: onBack
+                ) {
+                    HStack(spacing: 14) {
+                        Button(action: onRetry) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 15))
+                                .foregroundStyle(Flow.accent)
                         }
-                        .pickerStyle(.segmented)
-                        .listRowBackground(Color.clear)
+                        .buttonStyle(.plain)
+                        Menu {
+                            Button(action: onShowDetails) { Label("Details", systemImage: "info.circle") }
+                            Button(role: .destructive, action: onForget) {
+                                Label("Forget This Computer", systemImage: "trash")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 15))
+                                .foregroundStyle(Flow.accent)
+                        }
                     }
+                }
+                FlowBody {
+                    ControllerStatusBanner(state: state, advice: routeAdvice, onRetry: onRetry)
+                        .padding(.bottom, 12)
+                    FlowSegmented(
+                        options: [
+                            (ControllerHostMode.screen, String(localized: "Screen")),
+                            (ControllerHostMode.terminals, String(localized: "Terminals")),
+                        ],
+                        selection: $mode
+                    )
+                    .padding(.bottom, 12)
                     switch mode {
-                    case .screen: screenSections
-                    case .terminals: terminalSections
+                    case .screen: screenPage
+                    case .terminals: terminalPage
                     }
+                }
                 }
                 .navigationTitle(selectedTitle)
                 // Refresh is the one thing done often enough to stand on the bar. Details and
@@ -672,76 +775,140 @@ private struct ControllerSessionFleetView: View {
     /// The displays are known only once the preview session has connected, so the list fills in
     /// after the picture does. A computer that never shared its screen says so rather than
     /// offering a button that would fail.
-    @ViewBuilder private var screenSections: some View {
+    /// Screen: the computer's displays, then what it has been running lately.
+    @ViewBuilder private var screenPage: some View {
         if canWatch {
-            // multiplex-mobile-flow.html's Screen mode: this computer's displays, each saying how
-            // big it is and whether this phone may drive it, then what it has been running.
             let displays = screens.preview?.displays ?? []
-            Section {
+            FlowCard {
                 if displays.isEmpty {
-                    Button { onOpenScreen(nil) } label: {
-                        displayRow(name: String(localized: "Main display"), size: nil)
-                    }
-                    .buttonStyle(.plain)
+                    FlowRow(
+                        name: String(localized: "Main display"),
+                        meta: controlNote,
+                        glyph: "display",
+                        glyphOn: true,
+                        divider: false,
+                        onTap: { onOpenScreen(nil) }
+                    )
                 }
-                ForEach(displays, id: \.id) { display in
-                    Button { onOpenScreen(display.id) } label: {
-                        displayRow(
-                            name: ControllerPresentation.isolated(display.name),
-                            size: "\(display.width) × \(display.height)"
-                        )
-                    }
-                    .buttonStyle(.plain)
+                ForEach(Array(displays.enumerated()), id: \.element.id) { index, display in
+                    FlowRow(
+                        name: ControllerPresentation.isolated(display.name),
+                        meta: "\(display.width) × \(display.height) · \(controlNote)",
+                        glyph: "display",
+                        glyphOn: true,
+                        divider: index < displays.count - 1,
+                        onTap: { onOpenScreen(display.id) }
+                    )
                 }
             }
-            let recent = ControllerPresentation.openTerminals(state.sessions).prefix(2)
+            let recent = Array(ControllerPresentation.openTerminals(state.sessions).prefix(2))
             if !recent.isEmpty {
-                Section("Recent on this computer") {
-                    ForEach(Array(recent)) { session in
-                        Button { onOpenSession(session) } label: {
-                            ControllerSessionRow(session: session, cached: state.isCachedReadOnly)
-                        }
-                        .buttonStyle(.plain)
+                FlowGroupLabel("Recent on this computer")
+                FlowCard {
+                    ForEach(Array(recent.enumerated()), id: \.element.id) { index, session in
+                        terminalRow(session, last: index == recent.count - 1)
                     }
                 }
             }
         } else {
-            Section {
-                ContentUnavailableView {
-                    Label("Screen Not Shared", systemImage: "rectangle.slash")
-                } description: {
-                    Text("This computer has not shared its screen. Its terminals are still here.")
-                }
-                .frame(maxWidth: .infinity, minHeight: 220)
-                .listRowBackground(Color.clear)
+            FlowCard {
+                FlowRow(
+                    name: String(localized: "Screen not shared"),
+                    meta: String(localized: "Its terminals are still here."),
+                    glyph: "rectangle.slash",
+                    divider: false
+                ) { EmptyView() }
             }
         }
     }
 
-    /// One display, in the flow's words.
-    private func displayRow(name: String, size: String?) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "display")
-                .font(.title3)
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 28, height: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: name)
-                Text(
-                    [size, canControl ? "you may take control" : "watch only"]
-                        .compactMap { $0 }
-                        .joined(separator: " · ")
-                )
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+    /// Terminals: what is running, the way to start one, and where they come from.
+    @ViewBuilder private var terminalPage: some View {
+        let open = ControllerPresentation.openTerminals(state.sessions)
+        let previous = ControllerPresentation.previousSessions(state.sessions)
+        if open.isEmpty && previous.isEmpty {
+            FlowCard {
+                FlowRow(
+                    name: String(localized: "No open terminals"),
+                    meta: emptyMessage,
+                    glyph: "terminal",
+                    divider: false
+                ) { EmptyView() }
             }
-            Spacer(minLength: 8)
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
+        } else {
+            if !open.isEmpty {
+                FlowCard {
+                    ForEach(Array(open.enumerated()), id: \.element.id) { index, session in
+                        terminalRow(session, last: index == open.count - 1)
+                    }
+                }
+            }
+            if !previous.isEmpty {
+                FlowGroupLabel("Previous sessions")
+                FlowCard {
+                    ForEach(Array(previous.enumerated()), id: \.element.id) { index, session in
+                        terminalRow(session, last: index == previous.count - 1)
+                    }
+                }
+            }
         }
-        .frame(minHeight: 44)
-        .contentShape(Rectangle())
+        if canCreateSession {
+            FlowButton(
+                title: String(localized: "New terminal"),
+                systemImage: "plus",
+                primary: true,
+                wide: true,
+                action: onNewTerminal
+            )
+            .padding(.top, 12)
+        } else {
+            Text("This computer has not allowed this phone to start terminals.")
+                .font(.system(size: 12))
+                .foregroundStyle(Flow.muted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 4)
+                .padding(.top, 12)
+        }
+        Text(
+            "Terminals opened with the Multiplex profile and tmux sessions appear here, "
+                + "whoever started them."
+        )
+        .font(.system(size: 12))
+        .foregroundStyle(Flow.muted)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
+        .padding(.top, 12)
+    }
+
+    private func terminalRow(_ session: ControllerSessionSummary, last: Bool) -> some View {
+        let waiting = session.activity == "needs_input"
+        return FlowRow(
+            name: ControllerPresentation.isolated(session.title),
+            meta: [session.runtime, session.project]
+                .compactMap { $0 }
+                .joined(separator: " · "),
+            glyph: "terminal",
+            glyphOn: waiting,
+            divider: !last,
+            onTap: { onOpenSession(session) }
+        ) {
+            HStack(spacing: 8) {
+                FlowBadge(
+                    text: ControllerPresentation.lifecycleText(session.lifecycle),
+                    tone: waiting ? .warn : .good
+                )
+                FlowChevron()
+            }
+        }
+    }
+
+    private var selectedTitle: String {
+        state.hosts.first(where: { $0.id == state.selectedHostID })?.title ?? "Sessions"
+    }
+
+    /// Whether this phone may drive the computer, in the flow's words.
+    private var controlNote: String {
+        canControl ? String(localized: "you may take control") : String(localized: "watch only")
     }
 
     /// Whether the computer granted this phone pointer or keyboard.
@@ -752,66 +919,10 @@ private struct ControllerSessionFleetView: View {
         return host.capabilityBits & ((1 << 6) | (1 << 7)) != 0
     }
 
-    @ViewBuilder private var terminalSections: some View {
-        // multiplex-mobile-flow.html's Terminals mode: what is running, then the way to start
-        // one, then where they come from.
-        if state.sessions.isEmpty {
-            Section {
-                ContentUnavailableView {
-                    Label("No Open Terminals", systemImage: "terminal")
-                } description: {
-                    Text(emptyMessage)
-                }
-                .frame(maxWidth: .infinity, minHeight: 180)
-                .listRowBackground(Color.clear)
-            }
-        } else {
-            Section { sessionRows(ControllerPresentation.openTerminals(state.sessions)) }
-            let previous = ControllerPresentation.previousSessions(state.sessions)
-            if !previous.isEmpty {
-                Section("Previous sessions") { sessionRows(previous) }
-            }
-        }
-        Section {
-            if canCreateSession {
-                Button(action: onNewTerminal) {
-                    Label("New terminal", systemImage: "plus")
-                }
-            } else {
-                Text("This computer has not allowed this phone to start terminals.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        Section {
-            Text(
-                "Terminals opened with the Multiplex profile and tmux sessions appear here, "
-                    + "whoever started them."
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .listRowBackground(Color.clear)
-        }
-    }
-
-    private var selectedTitle: String {
-        state.hosts.first(where: { $0.id == state.selectedHostID })?.title ?? "Sessions"
-    }
-
-    private func sessionRows(_ sessions: [ControllerSessionSummary]) -> some View {
-        ForEach(sessions) { session in
-            Button { onOpenSession(session) } label: {
-                ControllerSessionRow(session: session, cached: state.isCachedReadOnly)
-            }
-            .buttonStyle(.plain)
-            .disabled(state.isCachedReadOnly || state.connection != .readyReadOnly)
-        }
-    }
-
-    private var emptyMessage: LocalizedStringKey {
+    private var emptyMessage: String {
         state.isCachedReadOnly
-            ? "No terminals were saved in the last complete snapshot."
-            : "Open a local or SSH terminal in Multiplex Desktop, then refresh."
+            ? String(localized: "No terminals were saved in the last complete snapshot.")
+            : String(localized: "Open a local or SSH terminal in Multiplex Desktop, then refresh.")
     }
 }
 
