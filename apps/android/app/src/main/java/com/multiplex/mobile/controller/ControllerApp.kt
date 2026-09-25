@@ -1215,9 +1215,11 @@ private fun ConnectionBanner(state: ControllerUiState, onRetry: () -> Unit) {
             if (state.connection.isBusy()) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             Column(Modifier.weight(1f)) {
                 Text(connectionLabel(state.connection), fontWeight = FontWeight.SemiBold)
-                if (state.cachedReadOnly) {
+                // How old what is on screen is, live or cached — it used to say only when the
+                // data was stale, so a live list looked the same as one from an hour ago.
+                freshnessLabelResource(state)?.let { label ->
                     Text(
-                        stringResource(com.multiplex.mobile.R.string.cached_updated, relativeTime(state.cachedAtMillis)),
+                        stringResource(label, relativeTime(state.cachedAtMillis)),
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
@@ -2499,6 +2501,20 @@ private fun capabilityLabels(bits: Int): List<String> {
  * this build does not know reads as Unknown instead of leaking a protocol string. Kept apart
  * from the drawing so the mapping can be checked without a device.
  */
+/**
+ * How fresh the list on screen is, or nothing when there is no snapshot to date.
+ *
+ * Cached data said so; live data said nothing at all, which reads the same as a stale list on a
+ * phone that has been in a pocket.
+ */
+internal fun freshnessLabelResource(state: ControllerUiState): Int? = when {
+    state.cachedAtMillis == null -> null
+    state.cachedReadOnly -> com.multiplex.mobile.R.string.cached_updated
+    state.connection == ControllerConnectionState.ReadyReadOnly ->
+        com.multiplex.mobile.R.string.live_updated
+    else -> com.multiplex.mobile.R.string.cached_updated
+}
+
 internal fun lifecycleLabelResource(lifecycle: String): Int = when (lifecycle) {
     "draft" -> com.multiplex.mobile.R.string.lifecycle_draft
     "validating" -> com.multiplex.mobile.R.string.lifecycle_validating
