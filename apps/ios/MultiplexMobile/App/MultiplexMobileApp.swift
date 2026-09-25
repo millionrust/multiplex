@@ -21,6 +21,9 @@ struct MultiplexMobileApp: App {
                 connectionViewModel: connectionViewModel,
                 controllerViewModel: controllerViewModel
             )
+            // Dark, whatever the phone is set to: design/remote-screens/ios.html is drawn dark
+            // and the app is meant to look like it.
+            .preferredColorScheme(.dark)
         }
     }
 }

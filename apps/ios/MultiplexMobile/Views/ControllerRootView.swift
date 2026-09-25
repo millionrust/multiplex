@@ -5,15 +5,9 @@ import UIKit
 ///
 /// The Controller connection carries one session at a time, so these are two states of the phone
 /// rather than two panes: the screen preview runs only while Screen is showing, and a terminal
-/// attaches only from Terminals.
-enum ControllerHostPageTab: Hashable {
-    case screen
-    case terminals
-}
 
 struct ControllerRootView: View {
     @ObservedObject var viewModel: ControllerViewModel
-    @State private var hostTab: ControllerHostPageTab = .terminals
     @State private var showingPairing = false
     @State private var showingNewTerminal = false
     @State private var showingEnrollment = false
@@ -31,8 +25,13 @@ struct ControllerRootView: View {
                         ControllerHostRow(
                             host: host,
                             selected: host.id == viewModel.state.selectedHostID,
-                            picture: viewModel.screens.lastPictures[host.id]
+                            picture: viewModel.screens.lastPictures[host.id],
+                            live: host.id == viewModel.state.selectedHostID
+                                && viewModel.state.connection == .readyReadOnly
                         )
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                         .tag(Optional(host.id))
                     }
                 }
@@ -72,7 +71,6 @@ struct ControllerRootView: View {
             ControllerSessionFleetView(
                 state: viewModel.state,
                 routeAdvice: viewModel.routeAdvice,
-                tab: $hostTab,
                 onRetry: viewModel.retry,
                 onForget: { showingForgetConfirmation = true },
                 onShowDetails: { showingHostDetails = true },
@@ -321,41 +319,58 @@ private struct ControllerHostRow: View {
     let selected: Bool
     /// The last picture this phone saw of the computer, when it has watched it.
     var picture: CGImage?
+    /// Whether the phone is connected to this computer right now.
+    var live: Bool = false
 
+    /// `.ccard` in design/remote-screens/ios.html: the computer's own screen across the top with
+    /// a badge over it, and what it is underneath.
     var body: some View {
-        HStack(spacing: 12) {
-            if let picture {
-                Image(decorative: picture, scale: 1)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 44, height: 28)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(Color.secondary.opacity(0.3))
-                    )
-                    .accessibilityLabel("Last picture of this computer")
-            } else {
-                Image(systemName: "desktopcomputer")
-                    .font(.title3)
-                    .foregroundStyle(selected ? Color.accentColor : .secondary)
-                    .frame(width: 28, height: 28)
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .topLeading) {
+                Color(red: 0.043, green: 0.051, blue: 0.063)
+                if let picture {
+                    Image(decorative: picture, scale: 1)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .accessibilityLabel("Last picture of this computer")
+                }
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(live ? Color.green : Color.clear)
+                        .strokeBorder(live ? Color.clear : Color.secondary, lineWidth: 1.5)
+                        .frame(width: 7, height: 7)
+                    Text(live ? "Live" : "Offline")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(Color(white: 0.9))
+                }
+                .padding(.horizontal, 9)
+                .frame(height: 24)
+                .background(Color(white: 0.07).opacity(0.8), in: Capsule())
+                .padding(10)
             }
+            .aspectRatio(5.0 / 2.0, contentMode: .fill)
+            .clipped()
             VStack(alignment: .leading, spacing: 3) {
-                Text(ControllerPresentation.isolated(host.title))
-                    .font(.body.weight(.semibold))
-                    .lineLimit(2)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(ControllerPresentation.isolated(host.title))
+                        .font(.body.weight(.semibold))
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
                 Text(ControllerPresentation.isolated("\(host.route.address):\(host.route.port)"))
-                    .font(.caption.monospaced())
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(1)
             }
-            Spacer(minLength: 8)
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
+            .padding(.horizontal, 14)
+            .padding(.top, 11)
+            .padding(.bottom, 13)
         }
-        .frame(minHeight: 44)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }
@@ -386,7 +401,7 @@ private struct ControllerScreenPreviewCard: View {
                 }
             }
             Button(action: onOpenScreen) {
-                Label("Open Screen", systemImage: "display")
+                Label("Open screen", systemImage: "display")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -475,7 +490,6 @@ private struct ControllerScreenPlaceholder: View {
 private struct ControllerSessionFleetView: View {
     let state: ControllerViewState
     let routeAdvice: ControllerRouteAdvice?
-    @Binding var tab: ControllerHostPageTab
     let onRetry: () -> Void
     let onForget: () -> Void
     let onShowDetails: () -> Void
@@ -497,20 +511,12 @@ private struct ControllerSessionFleetView: View {
                     Section {
                         ControllerStatusBanner(state: state, advice: routeAdvice, onRetry: onRetry)
                     }
-                    Section {
-                        Picker("Showing", selection: $tab) {
-                            Text("Screen").tag(ControllerHostPageTab.screen)
-                            Text("Terminals").tag(ControllerHostPageTab.terminals)
-                        }
-                        .pickerStyle(.segmented)
-                        .listRowBackground(Color.clear)
-                    }
-                    switch tab {
-                    case .screen:
-                        screenSections
-                    case .terminals:
-                        terminalSections
-                    }
+                    // One page, as design/remote-screens/ios.html has it: the picture and its one
+                    // action, then the terminals. The connection still carries one thing at a
+                    // time — the preview ends when a terminal opens — but that is the
+                    // connection's business, not a choice to put in front of anyone.
+                    screenSections
+                    terminalSections
                 }
                 .navigationTitle(selectedTitle)
                 // Refresh is the one thing done often enough to stand on the bar. Details and
@@ -540,7 +546,6 @@ private struct ControllerSessionFleetView: View {
                 // switching to Terminals gives the connection up rather than holding both.
                 .onAppear { updatePreview() }
                 .onDisappear(perform: onStopPreview)
-                .onChange(of: tab) { _, _ in updatePreview() }
                 .onChange(of: state.connection) { _, _ in updatePreview() }
                 .onChange(of: state.selectedHostID) { _, _ in
                     onStopPreview()
@@ -550,7 +555,9 @@ private struct ControllerSessionFleetView: View {
     }
 
     private func updatePreview() {
-        if tab == .screen, canWatch {
+        // The page is open and nothing else is using the connection, so the preview runs; opening
+        // a terminal ends it and coming back starts it again.
+        if canWatch {
             onStartPreview()
         } else {
             onStopPreview()
@@ -564,7 +571,9 @@ private struct ControllerSessionFleetView: View {
     /// offering a button that would fail.
     @ViewBuilder private var screenSections: some View {
         if canWatch {
-            Section("This Computer's Screen") {
+            // No heading: the bar says which computer, and on a phone "This Computer's Screen"
+            // reads as the phone's own.
+            Section {
                 ControllerScreenPreviewCard(
                     preview: screens.preview,
                     lastPicture: state.selectedHostID
@@ -587,11 +596,6 @@ private struct ControllerSessionFleetView: View {
                         .buttonStyle(.plain)
                     }
                 }
-            }
-            Section {
-                Text("A connection carries one thing at a time, so opening the screen leaves the terminals, and opening a terminal leaves the screen.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
             }
         } else {
             Section {

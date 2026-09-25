@@ -66,6 +66,7 @@
     "Connected over Tailscale because this network could not reach the computer directly. If Tailscale uses an exit node, turn on “Allow local network access” in Tailscale." : {},
     "More" : {},
     "No recent activity" : {},
+    "Open screen" : {},
     "The computer did not answer. Check its terminals before asking again." : {},
     "The computer is busy. Try again in a moment." : {},
     "The computer refused that." : {},
