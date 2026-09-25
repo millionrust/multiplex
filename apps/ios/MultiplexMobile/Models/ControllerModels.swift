@@ -505,6 +505,12 @@ enum ControllerFailure: String, Codable, Error, Sendable {
     case hostRefused
 }
 
+/// What a computer was running when this phone last looked at it.
+struct HostGlance: Equatable, Sendable {
+    let openTerminals: Int
+    let updatedAt: Date
+}
+
 struct ControllerViewState: Equatable, Sendable {
     let hosts: [HostSummary]
     let selectedHostID: String?
@@ -512,6 +518,8 @@ struct ControllerViewState: Equatable, Sendable {
     let connection: ControllerConnectionState
     let cacheUpdatedAt: Date?
     let isCachedReadOnly: Bool
+    /// One per computer this phone has looked at, so the list can say what each is running.
+    var glances: [String: HostGlance] = [:]
 
     static let empty = Self(
         hosts: [],

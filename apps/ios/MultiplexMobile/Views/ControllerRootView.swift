@@ -13,29 +13,54 @@ struct ControllerRootView: View {
     @State private var showingEnrollment = false
     @State private var showingForgetConfirmation = false
     @State private var showingHostDetails = false
+    @State private var hostMode: ControllerHostMode = .screen
+
+    /// The computers this phone has looked at, and so can say something about.
+    private var reachable: [HostSummary] {
+        viewModel.state.hosts.filter { viewModel.state.glances[$0.id] != nil }
+    }
+
+    private var unreachable: [HostSummary] {
+        viewModel.state.hosts.filter { viewModel.state.glances[$0.id] == nil }
+    }
+
+    /// multiplex-mobile-flow.html's Computers screen.
+    private var computersList: some View {
+        List(selection: hostSelection) {
+            if !reachable.isEmpty {
+                Section("Reachable now") { rows(for: reachable, reachable: true) }
+            }
+            if !unreachable.isEmpty {
+                Section("Not reachable") { rows(for: unreachable, reachable: false) }
+            }
+            Section {
+                Text("Pairing is per computer and asks for a six-digit code shown on its screen.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear)
+            }
+        }
+    }
+
+    private func rows(for computers: [HostSummary], reachable isReachable: Bool) -> some View {
+        ForEach(computers) { host in
+            ControllerHostRow(
+                host: host,
+                reachable: isReachable,
+                glance: viewModel.state.glances[host.id]
+            )
+            .tag(Optional(host.id))
+        }
+    }
     @State private var showingSSHConfiguration = false
     @State private var showingRelayConfiguration = false
     @State private var pendingRoute: ControllerRemoteRouteKind?
 
     var body: some View {
         NavigationSplitView {
-            List(selection: hostSelection) {
-                Section {
-                    ForEach(viewModel.state.hosts) { host in
-                        ControllerHostRow(
-                            host: host,
-                            selected: host.id == viewModel.state.selectedHostID,
-                            picture: viewModel.screens.lastPictures[host.id],
-                            live: host.id == viewModel.state.selectedHostID
-                                && viewModel.state.connection == .readyReadOnly
-                        )
-                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .tag(Optional(host.id))
-                    }
-                }
-            }
+            // multiplex-mobile-flow.html's Computers screen: the ones this phone can reach now,
+            // then the ones it cannot, each saying how it is reached and when it was last seen.
+            computersList
             .navigationTitle("Computers")
             .overlay {
                 if viewModel.state.hosts.isEmpty {
@@ -81,7 +106,8 @@ struct ControllerRootView: View {
                 canWatch: viewModel.canWatchSelectedHost,
                 onStartPreview: viewModel.startScreenPreview,
                 onStopPreview: viewModel.stopScreenPreview,
-                onOpenScreen: viewModel.openScreen
+                onOpenScreen: viewModel.openScreen,
+                mode: $hostMode
             )
         }
         .navigationSplitViewStyle(.balanced)
@@ -316,61 +342,36 @@ private struct NewTerminalSheet: View {
 
 private struct ControllerHostRow: View {
     let host: HostSummary
-    let selected: Bool
-    /// The last picture this phone saw of the computer, when it has watched it.
-    var picture: CGImage?
-    /// Whether the phone is connected to this computer right now.
-    var live: Bool = false
+    /// Whether this phone can reach the computer right now.
+    let reachable: Bool
+    /// What it was running when this phone last looked.
+    let glance: HostGlance?
 
-    /// `.ccard` in design/remote-screens/ios.html: the computer's own screen across the top with
-    /// a badge over it, and what it is underneath.
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ZStack(alignment: .topLeading) {
-                Color(red: 0.043, green: 0.051, blue: 0.063)
-                if let picture {
-                    Image(decorative: picture, scale: 1)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .accessibilityLabel("Last picture of this computer")
-                }
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(live ? Color.green : Color.clear)
-                        .strokeBorder(live ? Color.clear : Color.secondary, lineWidth: 1.5)
-                        .frame(width: 7, height: 7)
-                    Text(live ? "Live" : "Offline")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(Color(white: 0.9))
-                }
-                .padding(.horizontal, 9)
-                .frame(height: 24)
-                .background(Color(white: 0.07).opacity(0.8), in: Capsule())
-                .padding(10)
-            }
-            .aspectRatio(5.0 / 2.0, contentMode: .fill)
-            .clipped()
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(ControllerPresentation.isolated(host.title))
-                        .font(.body.weight(.semibold))
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                Text(ControllerPresentation.isolated("\(host.route.address):\(host.route.port)"))
+        HStack(spacing: 12) {
+            Image(systemName: "desktopcomputer")
+                .font(.title3)
+                .foregroundStyle(reachable ? Color.accentColor : .secondary)
+                .frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(ControllerPresentation.isolated(host.title))
+                    .lineLimit(1)
+                Text(ControllerPresentation.isolated(host.route.address))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 11)
-            .padding(.bottom, 13)
+            Spacer(minLength: 8)
+            if let glance {
+                Text("\(glance.openTerminals) terminals")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.secondary.opacity(0.15), in: Capsule())
+            }
         }
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .frame(minHeight: 44)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }
@@ -487,6 +488,12 @@ private struct ControllerScreenPlaceholder: View {
     }
 }
 
+/// What this phone is doing with a computer.
+enum ControllerHostMode: Hashable {
+    case screen
+    case terminals
+}
+
 private struct ControllerSessionFleetView: View {
     let state: ControllerViewState
     let routeAdvice: ControllerRouteAdvice?
@@ -501,6 +508,7 @@ private struct ControllerSessionFleetView: View {
     let onStartPreview: () -> Void
     let onStopPreview: () -> Void
     let onOpenScreen: (UInt32?) -> Void
+    @Binding var mode: ControllerHostMode
 
     var body: some View {
         Group {
@@ -511,12 +519,20 @@ private struct ControllerSessionFleetView: View {
                     Section {
                         ControllerStatusBanner(state: state, advice: routeAdvice, onRetry: onRetry)
                     }
-                    // One page, as design/remote-screens/ios.html has it: the picture and its one
-                    // action, then the terminals. The connection still carries one thing at a
-                    // time — the preview ends when a terminal opens — but that is the
-                    // connection's business, not a choice to put in front of anyone.
-                    screenSections
-                    terminalSections
+                    // multiplex-mobile-flow.html: one control decides what you are doing with
+                    // this computer, and the page under it is that.
+                    Section {
+                        Picker("Showing", selection: $mode) {
+                            Text("Screen").tag(ControllerHostMode.screen)
+                            Text("Terminals").tag(ControllerHostMode.terminals)
+                        }
+                        .pickerStyle(.segmented)
+                        .listRowBackground(Color.clear)
+                    }
+                    switch mode {
+                    case .screen: screenSections
+                    case .terminals: terminalSections
+                    }
                 }
                 .navigationTitle(selectedTitle)
                 // Refresh is the one thing done often enough to stand on the bar. Details and
@@ -571,27 +587,32 @@ private struct ControllerSessionFleetView: View {
     /// offering a button that would fail.
     @ViewBuilder private var screenSections: some View {
         if canWatch {
-            // No heading: the bar says which computer, and on a phone "This Computer's Screen"
-            // reads as the phone's own.
-            Section {
-                ControllerScreenPreviewCard(
-                    preview: screens.preview,
-                    lastPicture: state.selectedHostID
-                        .flatMap { screens.lastPictures[$0] },
-                    unavailable: screens.unavailable,
-                    onOpenScreen: { onOpenScreen(nil) }
-                )
-            }
+            // multiplex-mobile-flow.html's Screen mode: this computer's displays, each saying how
+            // big it is and whether this phone may drive it, then what it has been running.
             let displays = screens.preview?.displays ?? []
-            if displays.count > 1 {
-                Section("Displays") {
-                    ForEach(displays, id: \.id) { display in
-                        Button { onOpenScreen(display.id) } label: {
-                            LabeledContent(ControllerPresentation.isolated(display.name)) {
-                                Text("\(display.width) × \(display.height)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+            Section {
+                if displays.isEmpty {
+                    Button { onOpenScreen(nil) } label: {
+                        displayRow(name: String(localized: "Main display"), size: nil)
+                    }
+                    .buttonStyle(.plain)
+                }
+                ForEach(displays, id: \.id) { display in
+                    Button { onOpenScreen(display.id) } label: {
+                        displayRow(
+                            name: ControllerPresentation.isolated(display.name),
+                            size: "\(display.width) × \(display.height)"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            let recent = ControllerPresentation.openTerminals(state.sessions).prefix(2)
+            if !recent.isEmpty {
+                Section("Recent on this computer") {
+                    ForEach(Array(recent)) { session in
+                        Button { onOpenSession(session) } label: {
+                            ControllerSessionRow(session: session, cached: state.isCachedReadOnly)
                         }
                         .buttonStyle(.plain)
                     }
@@ -610,12 +631,63 @@ private struct ControllerSessionFleetView: View {
         }
     }
 
+    /// One display, in the flow's words.
+    private func displayRow(name: String, size: String?) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "display")
+                .font(.title3)
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: name)
+                Text(
+                    [size, canControl ? "you may take control" : "watch only"]
+                        .compactMap { $0 }
+                        .joined(separator: " · ")
+                )
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+    }
+
+    /// Whether the computer granted this phone pointer or keyboard.
+    private var canControl: Bool {
+        guard let host = state.hosts.first(where: { $0.id == state.selectedHostID }) else {
+            return false
+        }
+        return host.capabilityBits & ((1 << 6) | (1 << 7)) != 0
+    }
+
     @ViewBuilder private var terminalSections: some View {
+        // multiplex-mobile-flow.html's Terminals mode: what is running, then the way to start
+        // one, then where they come from.
+        if state.sessions.isEmpty {
+            Section {
+                ContentUnavailableView {
+                    Label("No Open Terminals", systemImage: "terminal")
+                } description: {
+                    Text(emptyMessage)
+                }
+                .frame(maxWidth: .infinity, minHeight: 180)
+                .listRowBackground(Color.clear)
+            }
+        } else {
+            Section { sessionRows(ControllerPresentation.openTerminals(state.sessions)) }
+            let previous = ControllerPresentation.previousSessions(state.sessions)
+            if !previous.isEmpty {
+                Section("Previous sessions") { sessionRows(previous) }
+            }
+        }
         Section {
             if canCreateSession {
-                Button {
-                    onNewTerminal()
-                } label: {
+                Button(action: onNewTerminal) {
                     Label("New terminal", systemImage: "plus")
                 }
             } else {
@@ -624,51 +696,29 @@ private struct ControllerSessionFleetView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        if state.sessions.isEmpty {
-            Section {
-                ContentUnavailableView {
-                    Label("No Open Terminals", systemImage: "terminal")
-                } description: {
-                    Text(emptyMessage)
-                }
-                .frame(maxWidth: .infinity, minHeight: 220)
-                .listRowBackground(Color.clear)
-            }
-        } else {
-            let openTerminals = ControllerPresentation.openTerminals(state.sessions)
-            let previousSessions = ControllerPresentation.previousSessions(state.sessions)
-            if !openTerminals.isEmpty {
-                Section("Open Terminals") {
-                    ForEach(openTerminals) { session in
-                        Button { onOpenSession(session) } label: {
-                            ControllerSessionRow(
-                                session: session,
-                                cached: state.isCachedReadOnly
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(
-                            state.isCachedReadOnly
-                                || state.connection != .readyReadOnly
-                        )
-                    }
-                }
-            }
-            if !previousSessions.isEmpty {
-                Section("Previous Sessions") {
-                    ForEach(previousSessions) { session in
-                        ControllerSessionRow(
-                            session: session,
-                            cached: state.isCachedReadOnly
-                        )
-                    }
-                }
-            }
+        Section {
+            Text(
+                "Terminals opened with the Multiplex profile and tmux sessions appear here, "
+                    + "whoever started them."
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .listRowBackground(Color.clear)
         }
     }
 
     private var selectedTitle: String {
         state.hosts.first(where: { $0.id == state.selectedHostID })?.title ?? "Sessions"
+    }
+
+    private func sessionRows(_ sessions: [ControllerSessionSummary]) -> some View {
+        ForEach(sessions) { session in
+            Button { onOpenSession(session) } label: {
+                ControllerSessionRow(session: session, cached: state.isCachedReadOnly)
+            }
+            .buttonStyle(.plain)
+            .disabled(state.isCachedReadOnly || state.connection != .readyReadOnly)
+        }
     }
 
     private var emptyMessage: LocalizedStringKey {

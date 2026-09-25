@@ -21,6 +21,8 @@ final class ControllerViewModel: ObservableObject {
     @Published private(set) var routeAdvice: ControllerRouteAdvice?
 
     private var routeConnections: AppleControllerRouteConnections
+    /// A second private-network connection, so a terminal and the screen can run together.
+    private let companionConnection: ControllerConnectionActor?
     private let controllerBlobStore: any SecureBlobStore
     private let routeConfigurationStore: any ControllerRouteConfigurationStoring
     private let routeCredentialStore: any ControllerRouteCredentialStoring
@@ -77,6 +79,14 @@ final class ControllerViewModel: ObservableObject {
                 )
             )
         }
+        // Only when this view model owns its connections: a caller that passes its own (a test,
+        // or a route harness) keeps the single connection it handed in.
+        self.companionConnection = routeConnections == nil && connectionActor == nil
+            ? try? ControllerConnectionActor(
+                blobStore: resolvedBlobStore,
+                discovery: computerBrowser
+            )
+            : nil
         self.hostStore = hostStore ?? (try? PairedHostStore())
         self.cacheStore = cacheStore ?? (try? ControllerFleetCacheStore())
         var coordinator = AppleControllerRouteCoordinator(
@@ -133,6 +143,21 @@ final class ControllerViewModel: ObservableObject {
 
     private var selectedConnection: (any ControllerConnecting)? {
         guard let selectedRoute else { return nil }
+        return routeConnections.connection(for: selectedRoute)
+    }
+
+    /// The connection a terminal runs on.
+    ///
+    /// Everything the phone does opens its own connection and the listener has no per-device cap,
+    /// so "a connection carries one session at a time" was the phone serialising itself, not the
+    /// wire's rule. Over the private network a terminal gets one of its own, so the computer's
+    /// screen can be watched at the same time; the other routes keep the single connection and
+    /// with it the old behaviour.
+    private var terminalConnection: (any ControllerConnecting)? {
+        guard let selectedRoute else { return nil }
+        if selectedRoute == .privateNetwork, let companion = companionConnection {
+            return companion
+        }
         return routeConnections.connection(for: selectedRoute)
     }
 
@@ -474,7 +499,7 @@ final class ControllerViewModel: ObservableObject {
               !state.isCachedReadOnly,
               state.connection == .readyReadOnly,
               let host = selectedHost,
-              let connectionActor = selectedConnection,
+              let connectionActor = terminalConnection,
               host.capabilityBits & (1 << 1) != 0,
               session.capabilities.isEmpty || session.capabilities.contains(.attachOutput),
               session.occupantGeneration != nil else { return }
@@ -559,8 +584,8 @@ final class ControllerViewModel: ObservableObject {
     /// Opens the computer's screen, on the display the person picked when they picked one.
     func openScreen(surface: UInt32? = nil) {
         guard let host = selectedHost, let connection = selectedConnection else { return }
-        operation?.cancel()
-        operation = nil
+        // `operation` is not cancelled: a terminal runs on its own connection, so watching the
+        // screen no longer ends it.
         screens.openViewer(host: host, connection: connection, surface: surface)
     }
 
@@ -944,7 +969,8 @@ final class ControllerViewModel: ObservableObject {
             sessions: sessions,
             connection: connection,
             cacheUpdatedAt: state.cacheUpdatedAt,
-            isCachedReadOnly: state.isCachedReadOnly
+            isCachedReadOnly: state.isCachedReadOnly,
+            glances: state.glances
         )
     }
 
@@ -969,7 +995,13 @@ final class ControllerViewModel: ObservableObject {
             sessions: sessions,
             connection: connection,
             cacheUpdatedAt: cacheUpdatedAt,
-            isCachedReadOnly: isCached
+            isCachedReadOnly: isCached,
+            glances: cache.hosts.mapValues {
+                HostGlance(
+                    openTerminals: ControllerPresentation.openTerminals($0.sessions).count,
+                    updatedAt: $0.updatedAt
+                )
+            }
         )
     }
 
