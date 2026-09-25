@@ -2591,7 +2591,38 @@ private fun connectionLabel(state: ControllerConnectionState): String = when (st
     ControllerConnectionState.ReadyReadOnly -> stringResource(com.multiplex.mobile.R.string.state_live_read_only)
     ControllerConnectionState.Revoked -> stringResource(com.multiplex.mobile.R.string.state_device_revoked)
     ControllerConnectionState.Incompatible -> stringResource(com.multiplex.mobile.R.string.state_incompatible)
-    is ControllerConnectionState.Failed -> stringResource(com.multiplex.mobile.R.string.state_connection_failed, state.code)
+    is ControllerConnectionState.Failed -> connectionFailureLabel(state.code)
+}
+
+/**
+ * What went wrong, in words. The banner showed whatever code came back, so pressing New terminal
+ * on a computer that cannot start one read "Connection failed: create_session_unavailable". A code
+ * this build does not know keeps its name, because then the name is the only thing to go on.
+ */
+@Composable
+internal fun connectionFailureLabel(code: String): String {
+    val resource = connectionFailureResource(code)
+    return if (resource == com.multiplex.mobile.R.string.state_connection_failed) {
+        stringResource(resource, code)
+    } else {
+        stringResource(resource)
+    }
+}
+
+internal fun connectionFailureResource(code: String): Int = when (code) {
+    "create_session_unavailable" -> com.multiplex.mobile.R.string.failure_create_session_unavailable
+    "create_session_denied" -> com.multiplex.mobile.R.string.failure_create_session_denied
+    "create_session_busy" -> com.multiplex.mobile.R.string.failure_create_session_busy
+    "create_session_refused" -> com.multiplex.mobile.R.string.failure_create_session_refused
+    "create_session_failed" -> com.multiplex.mobile.R.string.failure_create_session_failed
+    "completion_unknown" -> com.multiplex.mobile.R.string.failure_completion_unknown
+    "unsupported_command" -> com.multiplex.mobile.R.string.failure_unsupported_command
+    "offline" -> com.multiplex.mobile.R.string.failure_offline
+    "timeout" -> com.multiplex.mobile.R.string.failure_timeout
+    "invalid_data" -> com.multiplex.mobile.R.string.failure_invalid_data
+    "sequence_gap" -> com.multiplex.mobile.R.string.failure_sequence_gap
+    "keystore_invalidated", "secret_corrupt" -> com.multiplex.mobile.R.string.failure_key_unusable
+    else -> com.multiplex.mobile.R.string.state_connection_failed
 }
 
 /**

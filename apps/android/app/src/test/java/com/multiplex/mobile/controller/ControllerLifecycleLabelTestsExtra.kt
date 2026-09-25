@@ -122,3 +122,38 @@ class ControllerActivityLabelTests {
         )
     }
 }
+
+/** What the banner says when something did not work. */
+class ControllerFailureLabelTests {
+    /**
+     * The banner showed whatever code came back. Pressing New terminal on a computer that cannot
+     * start one read "Connection failed: create_session_unavailable", which is the listener's
+     * word for itself, not a sentence for the person holding the phone.
+     */
+    @Test
+    fun the_codes_a_computer_answers_with_read_as_sentences() {
+        val named = listOf(
+            "create_session_unavailable" to com.multiplex.mobile.R.string.failure_create_session_unavailable,
+            "create_session_denied" to com.multiplex.mobile.R.string.failure_create_session_denied,
+            "create_session_busy" to com.multiplex.mobile.R.string.failure_create_session_busy,
+            "create_session_refused" to com.multiplex.mobile.R.string.failure_create_session_refused,
+            "create_session_failed" to com.multiplex.mobile.R.string.failure_create_session_failed,
+            "completion_unknown" to com.multiplex.mobile.R.string.failure_completion_unknown,
+            "unsupported_command" to com.multiplex.mobile.R.string.failure_unsupported_command,
+            "offline" to com.multiplex.mobile.R.string.failure_offline,
+            "timeout" to com.multiplex.mobile.R.string.failure_timeout,
+            "invalid_data" to com.multiplex.mobile.R.string.failure_invalid_data,
+            "sequence_gap" to com.multiplex.mobile.R.string.failure_sequence_gap,
+            "keystore_invalidated" to com.multiplex.mobile.R.string.failure_key_unusable,
+            "secret_corrupt" to com.multiplex.mobile.R.string.failure_key_unusable,
+        )
+        for ((code, expected) in named) {
+            assertEquals(code, expected, connectionFailureResource(code))
+        }
+        // A code this build does not know keeps its name: then the name is all there is to go on.
+        assertEquals(
+            com.multiplex.mobile.R.string.state_connection_failed,
+            connectionFailureResource("something_new"),
+        )
+    }
+}

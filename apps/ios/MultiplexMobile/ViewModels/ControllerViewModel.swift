@@ -873,12 +873,17 @@ final class ControllerViewModel: ObservableObject {
         }
         if let error = error as? ControllerFailure {
             switch error {
-            case .networkUnavailable, .timedOut, .sequenceGap:
+            case .networkUnavailable, .timedOut, .sequenceGap, .createSessionBusy:
                 return true
+            // A refusal is an answer, so asking again the same way gets the same answer. The
+            // computer that did not answer at all is not retried either: it may have opened the
+            // terminal, and a retry would be the second one.
             case .cancelled, .invalidOffer, .offerExpired, .sasMismatch,
                  .authenticationFailed, .keychainUnavailable, .malformedResponse,
                  .resourceLimit, .storageUnavailable, .pairingUncertain,
-                 .codeRejected, .invalidAddress:
+                 .codeRejected, .invalidAddress, .createSessionUnavailable,
+                 .createSessionDenied, .createSessionRefused, .completionUnknown,
+                 .unsupportedCommand, .hostRefused:
                 return false
             }
         }
@@ -968,6 +973,20 @@ final class ControllerViewModel: ObservableObject {
         )
     }
 
+    /// A code a computer answered with, named. An unknown one is still a refusal, not a failure
+    /// of trust.
+    static func hostFailure(_ code: String) -> ControllerFailure {
+        switch code {
+        case "create_session_unavailable": return .createSessionUnavailable
+        case "create_session_denied": return .createSessionDenied
+        case "create_session_busy": return .createSessionBusy
+        case "create_session_refused", "create_session_failed": return .createSessionRefused
+        case "completion_unknown": return .completionUnknown
+        case "unsupported_command": return .unsupportedCommand
+        default: return .hostRefused
+        }
+    }
+
     private static func failure(_ error: Error) -> ControllerFailure {
         if error is CancellationError { return .cancelled }
         if let error = error as? ControllerFailure { return error }
@@ -989,7 +1008,12 @@ final class ControllerViewModel: ObservableObject {
             case .sequenceGap: return .sequenceGap
             case .resourceLimit: return .resourceLimit
             case .malformedResponse: return .malformedResponse
-            case .authenticationFailed, .capabilityDenied, .hostError(_): return .authenticationFailed
+            // A computer that refused a command by name is not a computer that stopped trusting
+            // this phone. Every host code used to arrive here as `authenticationFailed`, so a
+            // terminal the computer would not start read as a possible revocation.
+            case .hostError(let code): return Self.hostFailure(code)
+            case .capabilityDenied: return .createSessionDenied
+            case .authenticationFailed: return .authenticationFailed
             }
         }
         if error is SecureBlobError { return .keychainUnavailable }

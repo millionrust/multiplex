@@ -1095,7 +1095,12 @@ private struct ControllerStatusBanner: View {
 
     @ViewBuilder
     private var detailText: some View {
-        if let date = state.cacheUpdatedAt {
+        // Why it failed, before how old the page is. A computer that refused a terminal said only
+        // "Host Unavailable" and then how old the snapshot was, because a cached page took this
+        // branch and the reason was never reached.
+        if case .failed(let failure) = state.connection {
+            Text(failureMessage(failure))
+        } else if let date = state.cacheUpdatedAt {
             Text("Last complete snapshot \(date.formatted(.relative(presentation: .named))).")
         } else {
             switch state.connection {
@@ -1128,6 +1133,14 @@ private struct ControllerStatusBanner: View {
         case .malformedResponse: return "The Host returned an incompatible response."
         case .timedOut: return "The Host did not respond before the secure connection deadline."
         case .pairingUncertain: return "The Host may have saved this device, but confirmation was interrupted. Keep the pairing offer open and try again."
+        // The same words the Android app uses.
+        case .createSessionUnavailable: return "This computer cannot start terminals from here."
+        case .createSessionDenied: return "This computer has not allowed this phone to start terminals."
+        case .createSessionBusy: return "The computer is busy. Try again in a moment."
+        case .createSessionRefused: return "The computer would not start a terminal."
+        case .completionUnknown: return "The computer did not answer. Check its terminals before asking again."
+        case .unsupportedCommand: return "This computer's Multiplex does not know this yet."
+        case .hostRefused: return "The computer refused that."
         default: return "Connect to the same LAN or VPN, then retry."
         }
     }
@@ -1172,20 +1185,13 @@ private struct ControllerSessionRow: View {
                 Text(ControllerPresentation.isolated(session.title))
                     .font(.body.weight(.medium))
                     .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 8) {
-                    Text(ControllerPresentation.originLabel(session.origin))
-                    if let runtime = session.runtime {
-                        Text(ControllerPresentation.isolated(runtime))
-                            .fontDesign(.monospaced)
-                    }
-                    Text(
-                        session.capabilities.contains(.sendInput)
-                            ? LocalizedStringKey("Control available")
-                            : LocalizedStringKey("View only")
-                    )
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                // One Text, so it wraps between words and the runtime keeps its monospace. As a
+                // row of separate views the runtime was broken mid-word ("lo-/cal_shell"), and
+                // before that the three ran together into one phrase for want of a separator.
+                originLine
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 if session.project != nil || session.group != nil {
                     Text(metadata)
                         .font(.caption)
@@ -1197,7 +1203,8 @@ private struct ControllerSessionRow: View {
                         ? AnyLayout(VStackLayout(alignment: .leading, spacing: 3))
                         : AnyLayout(HStackLayout(spacing: 8))
                 ) {
-                    Text(ControllerPresentation.lifecycleLabel(session.lifecycle))
+                    // Not the lifecycle: the badge beside the title is the lifecycle now, and a
+                    // row said "Live" twice.
                     if let activity = session.activity {
                         Text(ControllerPresentation.activityLabel(activity))
                     }
@@ -1212,6 +1219,20 @@ private struct ControllerSessionRow: View {
         }
     }
 
+    private var originLine: Text {
+        let separator = Text(verbatim: " · ")
+        var line = Text(ControllerPresentation.originLabel(session.origin))
+        if let runtime = session.runtime {
+            line = line + separator
+                + Text(ControllerPresentation.isolated(runtime)).fontDesign(.monospaced)
+        }
+        return line + separator + Text(
+            session.capabilities.contains(.sendInput)
+                ? LocalizedStringKey("Control available")
+                : LocalizedStringKey("View only")
+        )
+    }
+
     private var freshnessBadge: some View {
         Text(freshnessText)
             .font(.caption2.weight(.semibold))
@@ -1224,7 +1245,9 @@ private struct ControllerSessionRow: View {
 
     private var freshnessText: LocalizedStringKey {
         if cached { return "Cached" }
-        return canOpen ? "Live" : "Closed"
+        // The lifecycle itself, like the Android chip. "Closed" covered exited, failed and
+        // cancelled alike, and the line below repeated "Live" for everything else.
+        return ControllerPresentation.lifecycleLabel(session.lifecycle)
     }
 
     private var freshnessColor: Color {

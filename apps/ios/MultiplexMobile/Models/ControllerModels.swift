@@ -494,6 +494,15 @@ enum ControllerFailure: String, Codable, Error, Sendable {
     case pairingUncertain
     case codeRejected
     case invalidAddress
+    /// A computer answering a command by name rather than failing. A Session Host has no window
+    /// to open a terminal in; the app may be busy, may refuse, or may not answer at all.
+    case createSessionUnavailable
+    case createSessionDenied
+    case createSessionBusy
+    case createSessionRefused
+    case completionUnknown
+    case unsupportedCommand
+    case hostRefused
 }
 
 struct ControllerViewState: Equatable, Sendable {
