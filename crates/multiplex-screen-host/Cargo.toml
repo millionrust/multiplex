@@ -1,6 +1,6 @@
 [package]
 name = "multiplex-screen-host"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2024"
 rust-version.workspace = true
 description = "Serves TermiRust Remote Screens over the Controller channel: the screen session the listener carries, fed by captured frames and answered with tile batches"
@@ -8,18 +8,18 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 async-trait = "0.1"
-multiplex-controller-listener = { version = "0.0.4", path = "../multiplex-controller-listener" }
-multiplex-screen-codec = { version = "0.0.4", path = "../multiplex-screen-codec" }
-multiplex-screen-protocol = { version = "0.0.4", path = "../multiplex-screen-protocol" }
-multiplex-screen-session = { version = "0.0.4", path = "../multiplex-screen-session" }
-multiplex-screen-transport = { version = "0.0.4", path = "../multiplex-screen-transport" }
+multiplex-controller-listener = { version = "0.0.5", path = "../multiplex-controller-listener" }
+multiplex-screen-codec = { version = "0.0.5", path = "../multiplex-screen-codec" }
+multiplex-screen-protocol = { version = "0.0.5", path = "../multiplex-screen-protocol" }
+multiplex-screen-session = { version = "0.0.5", path = "../multiplex-screen-session" }
+multiplex-screen-transport = { version = "0.0.5", path = "../multiplex-screen-transport" }
 tokio = { version = "1", features = ["sync"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-multiplex-screen-video = { version = "0.0.4", path = "../multiplex-screen-video" }
+multiplex-screen-video = { version = "0.0.5", path = "../multiplex-screen-video" }
 
 [dev-dependencies]
-multiplex-controller-security = { version = "0.0.4", path = "../multiplex-controller-security" }
-multiplex-domain = { version = "0.0.4", path = "../multiplex-domain" }
+multiplex-controller-security = { version = "0.0.5", path = "../multiplex-controller-security" }
+multiplex-domain = { version = "0.0.5", path = "../multiplex-domain" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "io-util"] }
 tokio-util = { version = "0.7", features = ["rt"] }

@@ -1,12 +1,12 @@
 [package]
 name = "multiplex-screen-session"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2024"
 rust-version.workspace = true
 description = "Sans-IO host and viewer session state machines for TermiRust Remote Screens"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-multiplex-screen-codec = { version = "0.0.4", path = "../multiplex-screen-codec" }
-multiplex-screen-protocol = { version = "0.0.4", path = "../multiplex-screen-protocol" }
-multiplex-screen-video = { version = "0.0.4", path = "../multiplex-screen-video" }
+multiplex-screen-codec = { version = "0.0.5", path = "../multiplex-screen-codec" }
+multiplex-screen-protocol = { version = "0.0.5", path = "../multiplex-screen-protocol" }
+multiplex-screen-video = { version = "0.0.5", path = "../multiplex-screen-video" }

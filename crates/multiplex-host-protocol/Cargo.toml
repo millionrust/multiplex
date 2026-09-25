@@ -1,6 +1,6 @@
 [package]
 name = "multiplex-host-protocol"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2024"
 rust-version.workspace = true
 description = "Versioned bounded wire protocol for TermiRust session Hosts"
@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 crc32c = "0.6"
 prost = "0.14"
 serde = { version = "1.0", features = ["derive"] }
-multiplex-domain = { version = "0.0.4", path = "../multiplex-domain" }
+multiplex-domain = { version = "0.0.5", path = "../multiplex-domain" }
 uuid = "1.22"
 
 [build-dependencies]

@@ -1,6 +1,6 @@
 [package]
 name = "multiplex-relay-server"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2024"
 rust-version.workspace = true
 description = "Authenticated local-loopback ciphertext relay server core"
@@ -11,7 +11,7 @@ name = "multiplex-relay"
 path = "src/main.rs"
 
 [dependencies]
-multiplex-env = { version = "0.0.4", path = "../multiplex-env" }
+multiplex-env = { version = "0.0.5", path = "../multiplex-env" }
 futures-util = { version = "=0.3.32", features = ["sink"] }
 base64 = "=0.22.1"
 fs2 = "=0.4.3"
@@ -21,7 +21,7 @@ rustls = { version = "=0.23.45", default-features = false, features = ["ring", "
 rustls-pemfile = "=2.2.0"
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.149"
-multiplex-relay-protocol = { version = "0.0.4", path = "../multiplex-relay-protocol" }
+multiplex-relay-protocol = { version = "0.0.5", path = "../multiplex-relay-protocol" }
 tokio = { version = "=1.50.0", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-tungstenite = { version = "=0.28.0", default-features = false, features = ["connect", "handshake"] }
 tokio-rustls = { version = "=0.26.4", default-features = false, features = ["ring"] }
@@ -31,4 +31,4 @@ zeroize = "=1.9.0"
 [dev-dependencies]
 rcgen = { version = "=0.14.10", default-features = false, features = ["crypto", "ring"] }
 tempfile = "=3.27.0"
-multiplex-controller-security = { version = "0.0.4", path = "../multiplex-controller-security" }
+multiplex-controller-security = { version = "0.0.5", path = "../multiplex-controller-security" }

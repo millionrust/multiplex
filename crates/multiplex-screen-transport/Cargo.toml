@@ -1,13 +1,13 @@
 [package]
 name = "multiplex-screen-transport"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2024"
 rust-version.workspace = true
 description = "What carries a TermiRust Remote Screens session: the delivery each class of message needs, and the QUIC route that fits the seam"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-multiplex-screen-protocol = { version = "0.0.4", path = "../multiplex-screen-protocol" }
+multiplex-screen-protocol = { version = "0.0.5", path = "../multiplex-screen-protocol" }
 
 # The QUIC route for Stage B. Off by default: nothing in Stage A needs it, and it pulls in a QUIC
 # stack, a relay client and a Tokio runtime that a host serving tiles over the Controller channel

@@ -1,6 +1,6 @@
 [package]
 name = "multiplex-accessibility-macos"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2024"
 rust-version.workspace = true
 description = "macOS accessibility bridge for TermiRust semantic UI snapshots"
@@ -13,7 +13,7 @@ publish = false
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(cargo_clippy)'] }
 
 [dependencies]
-multiplex-ui-contract = { version = "0.0.4", path = "../multiplex-ui-contract" }
+multiplex-ui-contract = { version = "0.0.5", path = "../multiplex-ui-contract" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"

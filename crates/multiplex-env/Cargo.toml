@@ -1,6 +1,6 @@
 [package]
 name = "multiplex-env"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2024"
 rust-version.workspace = true
 description = "Reads Multiplex's own environment variables, and the names they used to have"

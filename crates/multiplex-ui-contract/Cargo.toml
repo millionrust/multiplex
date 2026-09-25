@@ -1,13 +1,13 @@
 [package]
 name = "multiplex-ui-contract"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2024"
 rust-version.workspace = true
 description = "Generated semantic design-token contract for TermiRust interfaces"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-multiplex-env = { version = "0.0.4", path = "../multiplex-env" }
+multiplex-env = { version = "0.0.5", path = "../multiplex-env" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
