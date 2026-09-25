@@ -36,6 +36,9 @@ pub(super) struct WorkspaceScreenState {
     pub zoom: ScreenZoom,
     /// The display being watched, once the computer has said it has more than one.
     pub display: Option<u32>,
+    /// Where the tab is looking when the picture is bigger than it, which is also what the
+    /// minimap draws. The scrolling pane owns the panning; this reads back what it did.
+    pub stage_scroll: gpui::ScrollHandle,
 }
 
 impl std::fmt::Debug for WorkspaceScreenState {
@@ -56,6 +59,7 @@ impl WorkspaceScreenState {
             geometry: ScreenGeometry::default(),
             zoom: ScreenZoom::default(),
             display: None,
+            stage_scroll: gpui::ScrollHandle::new(),
         }
     }
 
@@ -175,6 +179,28 @@ impl ScreenGeometry {
     }
 }
 
+/// Which part of the computer's screen a scrolled stage is showing, in the computer's own pixels.
+///
+/// The scrolling pane does the panning, so this reads its answer rather than keeping a second
+/// one: `offset` is how far it has been scrolled (negative), `viewport` is how much of the pane
+/// is on screen, and `factor` is how many tab pixels one of the computer's pixels takes.
+pub(super) fn visible_in_scrolled_stage(
+    picture: (u32, u32),
+    factor: f32,
+    viewport: (f32, f32),
+    offset: (f32, f32),
+) -> (f32, f32, f32, f32) {
+    let (width, height) = picture;
+    if width == 0 || height == 0 || factor <= 0.0 || viewport.0 <= 0.0 || viewport.1 <= 0.0 {
+        return (0.0, 0.0, 0.0, 0.0);
+    }
+    let left = (-offset.0 / factor).clamp(0.0, width as f32);
+    let top = (-offset.1 / factor).clamp(0.0, height as f32);
+    let right = (left + viewport.0 / factor).min(width as f32);
+    let bottom = (top + viewport.1 / factor).min(height as f32);
+    (left, top, (right - left).max(0.0), (bottom - top).max(0.0))
+}
+
 impl MultiplexApp {
     /// Opens a workspace tab watching `address`, at the computer's full detail.
     ///
@@ -281,6 +307,9 @@ impl MultiplexApp {
                                         drawn.w(px(width as f32 * 2.0)).h(px(height as f32 * 2.0))
                                     }
                                 })
+                            })
+                            .when(zoom != ScreenZoom::Fit, |this| {
+                                this.child(self.render_remote_screen_minimap(screen, zoom))
                             })
                             .when(matches!(state, WatchState::Ended(_)), |this| {
                                 this.child(self.render_remote_screen_ended(&state))
@@ -434,6 +463,64 @@ impl MultiplexApp {
                         }
                     })),
             )
+    }
+
+    /// Where the tab is looking, when the picture is bigger than the tab.
+    ///
+    /// Drawn from what the scrolling pane reports, so it cannot disagree with what is on screen.
+    fn render_remote_screen_minimap(
+        &self,
+        screen: &WorkspaceScreenState,
+        zoom: ScreenZoom,
+    ) -> Stateful<Div> {
+        let picture = screen.session.size();
+        let factor = match zoom {
+            ScreenZoom::Fit | ScreenZoom::Actual => 1.0,
+            ScreenZoom::Double => 2.0,
+        };
+        let bounds = screen.stage_scroll.bounds();
+        let offset = screen.stage_scroll.offset();
+        let (left, top, width, height) = visible_in_scrolled_stage(
+            picture,
+            factor,
+            (f32::from(bounds.size.width), f32::from(bounds.size.height)),
+            (f32::from(offset.x), f32::from(offset.y)),
+        );
+        let map_width = theme::SCREEN_MINIMAP_WIDTH;
+        let map_height = if picture.0 > 0 {
+            map_width * picture.1 as f32 / picture.0 as f32
+        } else {
+            0.0
+        };
+        let scale = if picture.0 > 0 {
+            map_width / picture.0 as f32
+        } else {
+            0.0
+        };
+        div()
+            .id("remote-screen-minimap")
+            .debug_selector(|| "remote-screen-minimap".to_string())
+            .absolute()
+            .top(px(theme::SPACE_3))
+            .right(px(theme::SPACE_3))
+            .w(px(map_width))
+            .h(px(map_height))
+            .rounded(px(theme::CONTROL_RADIUS))
+            .bg(theme::with_alpha(theme::terminal_bg(), 0.65))
+            .border_1()
+            .border_color(theme::soft_border())
+            .when(width > 0.0 && height > 0.0, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .left(px(left * scale))
+                        .top(px(top * scale))
+                        .w(px(width * scale))
+                        .h(px(height * scale))
+                        .border_1()
+                        .border_color(theme::accent()),
+                )
+            })
     }
 
     /// Over the last picture when the session is gone, rather than a blank tab that says nothing.
@@ -618,7 +705,7 @@ fn inspector_row(label: String, value: String) -> Div {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAXIMUM_ZOOM, ScreenGeometry};
+    use super::{MAXIMUM_ZOOM, ScreenGeometry, visible_in_scrolled_stage};
 
     /// The geometry a person's hand depends on, without needing another computer to connect to.
     fn geometry() -> ScreenGeometry {
@@ -627,6 +714,32 @@ mod tests {
 
     const COMPUTER: (u32, u32) = (1000, 500);
     const TAB: (f32, f32) = (500.0, 500.0);
+
+    #[test]
+    fn the_minimap_follows_the_pane_that_does_the_scrolling() {
+        // A 1000x500 screen at its own size, in a 400x250 pane scrolled to the middle.
+        let (left, top, width, height) =
+            visible_in_scrolled_stage((1_000, 500), 1.0, (400.0, 250.0), (-300.0, -125.0));
+        assert_eq!((left, top), (300.0, 125.0));
+        assert_eq!((width, height), (400.0, 250.0));
+
+        // Doubled, the same pane shows half as much of the computer's screen.
+        let (_, _, width, height) =
+            visible_in_scrolled_stage((1_000, 500), 2.0, (400.0, 250.0), (0.0, 0.0));
+        assert_eq!((width, height), (200.0, 125.0));
+
+        // Scrolled past the end, the rectangle stops at the edge rather than leaving the picture.
+        let (left, top, width, height) =
+            visible_in_scrolled_stage((1_000, 500), 1.0, (400.0, 250.0), (-900.0, -400.0));
+        assert_eq!((left, top), (900.0, 400.0));
+        assert_eq!((width, height), (100.0, 100.0));
+
+        // Nothing is drawn before the first picture arrives.
+        assert_eq!(
+            visible_in_scrolled_stage((0, 0), 1.0, (400.0, 250.0), (0.0, 0.0)),
+            (0.0, 0.0, 0.0, 0.0)
+        );
+    }
 
     #[test]
     fn a_whole_screen_is_fitted_and_reads_as_fit() {

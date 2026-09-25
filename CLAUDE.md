@@ -94,8 +94,9 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   computer, what it lets paired devices see and who is watching now. Watching one opens a
   workspace tab with a toolbar — display picker, Fit / actual size / double, a Watching or
   Controlling chip, take or give back control, Disconnect — over the picture, with the last
-  picture kept under an overlay when the session ends. Route, latency and bandwidth are in the
-  prototype but not in the protocol, so they are not shown.
+  picture kept under an overlay when the session ends, and a minimap over a magnified picture
+  drawn from what the scrolling pane reports. Route, latency and bandwidth are in the prototype
+  but not in the protocol, so they are not shown.
 - Paired mobile controllers can list, watch, and type into tmux sessions the app did not
   create while the retired tmux startup change is still installed (there is no separate
   switch), over LAN, SSH, and relay routes. That change, which started new terminal tabs inside
