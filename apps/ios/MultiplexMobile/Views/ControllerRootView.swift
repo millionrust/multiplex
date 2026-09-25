@@ -1,8 +1,19 @@
 import SwiftUI
 import UIKit
 
+/// What a computer's page is showing.
+///
+/// The Controller connection carries one session at a time, so these are two states of the phone
+/// rather than two panes: the screen preview runs only while Screen is showing, and a terminal
+/// attaches only from Terminals.
+enum ControllerHostPageTab: Hashable {
+    case screen
+    case terminals
+}
+
 struct ControllerRootView: View {
     @ObservedObject var viewModel: ControllerViewModel
+    @State private var hostTab: ControllerHostPageTab = .terminals
     @State private var showingPairing = false
     @State private var showingEnrollment = false
     @State private var showingForgetConfirmation = false
@@ -14,7 +25,7 @@ struct ControllerRootView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: hostSelection) {
-                Section("Paired Hosts") {
+                Section("Computers") {
                     ForEach(viewModel.state.hosts) { host in
                         ControllerHostRow(
                             host: host,
@@ -25,7 +36,7 @@ struct ControllerRootView: View {
                     }
                 }
             }
-            .navigationTitle("Fleet")
+            .navigationTitle("Computers")
             .overlay {
                 if viewModel.state.hosts.isEmpty {
                     ContentUnavailableView {
@@ -56,15 +67,11 @@ struct ControllerRootView: View {
             ControllerSessionFleetView(
                 state: viewModel.state,
                 routeAdvice: viewModel.routeAdvice,
-                routes: viewModel.routeProjections,
-                routeSelectionError: viewModel.routeSelectionError,
+                tab: $hostTab,
                 onRetry: viewModel.retry,
                 onForget: { showingForgetConfirmation = true },
                 onShowDetails: { showingHostDetails = true },
                 onOpenSession: viewModel.openReadOnlyTerminal,
-                onSelectRoute: { pendingRoute = $0 },
-                onConfigureSSH: { showingSSHConfiguration = true },
-                onConfigureRelay: { showingRelayConfiguration = true },
                 screens: viewModel.screens,
                 canWatch: viewModel.canWatchSelectedHost,
                 onStartPreview: viewModel.startScreenPreview,
@@ -83,6 +90,17 @@ struct ControllerRootView: View {
             }) {
                 ControllerHostSettingsView(
                     host: host,
+                    routes: viewModel.routeProjections,
+                    routeSelectionError: viewModel.routeSelectionError,
+                    onSelectRoute: { pendingRoute = $0 },
+                    onConfigureSSH: {
+                        showingHostDetails = false
+                        showingSSHConfiguration = true
+                    },
+                    onConfigureRelay: {
+                        showingHostDetails = false
+                        showingRelayConfiguration = true
+                    },
                     onReconnect: {
                         showingHostDetails = false
                         viewModel.retry()
@@ -395,97 +413,39 @@ private struct ControllerScreenPlaceholder: View {
 private struct ControllerSessionFleetView: View {
     let state: ControllerViewState
     let routeAdvice: ControllerRouteAdvice?
-    let routes: [AppleControllerRouteProjection]
-    let routeSelectionError: AppleControllerRouteCoordinatorError?
+    @Binding var tab: ControllerHostPageTab
     let onRetry: () -> Void
     let onForget: () -> Void
     let onShowDetails: () -> Void
     let onOpenSession: (ControllerSessionSummary) -> Void
-    let onSelectRoute: (ControllerRemoteRouteKind) -> Void
-    let onConfigureSSH: () -> Void
-    let onConfigureRelay: () -> Void
     @ObservedObject var screens: ControllerScreenCoordinator
     let canWatch: Bool
     let onStartPreview: () -> Void
     let onStopPreview: () -> Void
-    let onOpenScreen: () -> Void
+    let onOpenScreen: (UInt32?) -> Void
 
     var body: some View {
         Group {
             if state.selectedHostID == nil {
-                ContentUnavailableView("Select a Host", systemImage: "rectangle.connected.to.line.below")
+                ContentUnavailableView("Select a Computer", systemImage: "rectangle.connected.to.line.below")
             } else {
                 List {
                     Section {
                         ControllerStatusBanner(state: state, advice: routeAdvice, onRetry: onRetry)
                     }
-                    if canWatch {
-                        Section("This Computer's Screen") {
-                            ControllerScreenPreviewCard(
-                                preview: screens.preview,
-                                lastPicture: state.selectedHostID
-                                    .flatMap { screens.lastPictures[$0] },
-                                unavailable: screens.unavailable,
-                                onOpenScreen: onOpenScreen
-                            )
+                    Section {
+                        Picker("Showing", selection: $tab) {
+                            Text("Screen").tag(ControllerHostPageTab.screen)
+                            Text("Terminals").tag(ControllerHostPageTab.terminals)
                         }
+                        .pickerStyle(.segmented)
+                        .listRowBackground(Color.clear)
                     }
-                    if state.sessions.isEmpty {
-                        Section {
-                            ContentUnavailableView {
-                                Label("No Open Terminals", systemImage: "terminal")
-                            } description: {
-                                Text(emptyMessage)
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 220)
-                            .listRowBackground(Color.clear)
-                        }
-                    } else {
-                        let openTerminals = ControllerPresentation.openTerminals(state.sessions)
-                        let previousSessions = ControllerPresentation.previousSessions(state.sessions)
-                        if !openTerminals.isEmpty {
-                            Section("Open Terminals") {
-                                ForEach(openTerminals) { session in
-                                    Button { onOpenSession(session) } label: {
-                                        ControllerSessionRow(
-                                            session: session,
-                                            cached: state.isCachedReadOnly
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
-                                    .disabled(
-                                        state.isCachedReadOnly
-                                            || state.connection != .readyReadOnly
-                                    )
-                                }
-                            }
-                        }
-                        if !previousSessions.isEmpty {
-                            Section("Previous Sessions") {
-                                ForEach(previousSessions) { session in
-                                    ControllerSessionRow(
-                                        session: session,
-                                        cached: state.isCachedReadOnly
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    Section("Connection Route") {
-                        ForEach(routes) { route in
-                            ControllerRouteRow(
-                                route: route,
-                                onSelect: { onSelectRoute(route.route) },
-                                onConfigureSSH: onConfigureSSH,
-                                onConfigureRelay: onConfigureRelay
-                            )
-                        }
-                        if routeSelectionError != nil {
-                            Label("Route switch was not completed", systemImage: "exclamationmark.triangle")
-                                .font(.caption)
-                                .foregroundStyle(Color.slateAttention)
-                                .accessibilityAddTraits(.isStaticText)
-                        }
+                    switch tab {
+                    case .screen:
+                        screenSections
+                    case .terminals:
+                        terminalSections
                     }
                 }
                 .navigationTitle(selectedTitle)
@@ -503,15 +463,115 @@ private struct ControllerSessionFleetView: View {
                     }
                 }
                 .refreshable { onRetry() }
-                // The connection carries one session at a time, so the preview runs only while
-                // this page is on screen, and only once the fleet has finished loading.
-                .onAppear { if canWatch { onStartPreview() } }
+                // One session at a time: the preview runs only while Screen is showing, so
+                // switching to Terminals gives the connection up rather than holding both.
+                .onAppear { updatePreview() }
                 .onDisappear(perform: onStopPreview)
-                .onChange(of: state.connection) { _, _ in
-                    if canWatch { onStartPreview() }
-                }
+                .onChange(of: tab) { _, _ in updatePreview() }
+                .onChange(of: state.connection) { _, _ in updatePreview() }
                 .onChange(of: state.selectedHostID) { _, _ in
                     onStopPreview()
+                }
+            }
+        }
+    }
+
+    private func updatePreview() {
+        if tab == .screen, canWatch {
+            onStartPreview()
+        } else {
+            onStopPreview()
+        }
+    }
+
+    /// The computer's screen, and the displays it has.
+    ///
+    /// The displays are known only once the preview session has connected, so the list fills in
+    /// after the picture does. A computer that never shared its screen says so rather than
+    /// offering a button that would fail.
+    @ViewBuilder private var screenSections: some View {
+        if canWatch {
+            Section("This Computer's Screen") {
+                ControllerScreenPreviewCard(
+                    preview: screens.preview,
+                    lastPicture: state.selectedHostID
+                        .flatMap { screens.lastPictures[$0] },
+                    unavailable: screens.unavailable,
+                    onOpenScreen: { onOpenScreen(nil) }
+                )
+            }
+            let displays = screens.preview?.displays ?? []
+            if displays.count > 1 {
+                Section("Displays") {
+                    ForEach(displays, id: \.id) { display in
+                        Button { onOpenScreen(display.id) } label: {
+                            LabeledContent(ControllerPresentation.isolated(display.name)) {
+                                Text("\(display.width) × \(display.height)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            Section {
+                Text("A connection carries one thing at a time, so opening the screen leaves the terminals, and opening a terminal leaves the screen.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            Section {
+                ContentUnavailableView {
+                    Label("Screen Not Shared", systemImage: "rectangle.slash")
+                } description: {
+                    Text("This computer has not shared its screen. Its terminals are still here.")
+                }
+                .frame(maxWidth: .infinity, minHeight: 220)
+                .listRowBackground(Color.clear)
+            }
+        }
+    }
+
+    @ViewBuilder private var terminalSections: some View {
+        if state.sessions.isEmpty {
+            Section {
+                ContentUnavailableView {
+                    Label("No Open Terminals", systemImage: "terminal")
+                } description: {
+                    Text(emptyMessage)
+                }
+                .frame(maxWidth: .infinity, minHeight: 220)
+                .listRowBackground(Color.clear)
+            }
+        } else {
+            let openTerminals = ControllerPresentation.openTerminals(state.sessions)
+            let previousSessions = ControllerPresentation.previousSessions(state.sessions)
+            if !openTerminals.isEmpty {
+                Section("Open Terminals") {
+                    ForEach(openTerminals) { session in
+                        Button { onOpenSession(session) } label: {
+                            ControllerSessionRow(
+                                session: session,
+                                cached: state.isCachedReadOnly
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(
+                            state.isCachedReadOnly
+                                || state.connection != .readyReadOnly
+                        )
+                    }
+                }
+            }
+            if !previousSessions.isEmpty {
+                Section("Previous Sessions") {
+                    ForEach(previousSessions) { session in
+                        ControllerSessionRow(
+                            session: session,
+                            cached: state.isCachedReadOnly
+                        )
+                    }
                 }
             }
         }
@@ -1606,6 +1666,11 @@ private struct PairOfferView: View {
 
 private struct ControllerHostSettingsView: View {
     let host: HostSummary
+    let routes: [AppleControllerRouteProjection]
+    let routeSelectionError: AppleControllerRouteCoordinatorError?
+    let onSelectRoute: (ControllerRemoteRouteKind) -> Void
+    let onConfigureSSH: () -> Void
+    let onConfigureRelay: () -> Void
     let onReconnect: () -> Void
     let onForget: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -1613,6 +1678,24 @@ private struct ControllerHostSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // How this phone reaches the computer belongs with the rest of what is known
+                // about it, not across the top of the page it is used from.
+                Section("Connection Route") {
+                    ForEach(routes) { route in
+                        ControllerRouteRow(
+                            route: route,
+                            onSelect: { onSelectRoute(route.route) },
+                            onConfigureSSH: onConfigureSSH,
+                            onConfigureRelay: onConfigureRelay
+                        )
+                    }
+                    if routeSelectionError != nil {
+                        Label("Route switch was not completed", systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(Color.slateAttention)
+                            .accessibilityAddTraits(.isStaticText)
+                    }
+                }
                 Section("Connection") {
                     LabeledContent("Host", value: ControllerPresentation.isolated(host.title))
                     LabeledContent("Route") {

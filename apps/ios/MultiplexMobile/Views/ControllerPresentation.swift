@@ -77,6 +77,11 @@ enum ControllerPresentation {
         )
     }
 
+    /// What a computer has granted this phone.
+    ///
+    /// All eight bits, not the first five: Host Details is the only place a person can see
+    /// whether watching and control were granted, and a computer that shares its screen should
+    /// not look the same there as one that does not.
     static func capabilityLabels(bits: UInt16) -> [LocalizedStringKey] {
         let known: [(UInt16, LocalizedStringKey)] = [
             (1 << 0, "View session list"),
@@ -84,6 +89,9 @@ enum ControllerPresentation {
             (1 << 2, "Send terminal input"),
             (1 << 3, "Resize terminal"),
             (1 << 4, "Respond to approvals"),
+            (1 << 5, "Watch this computer's screen"),
+            (1 << 6, "Move the pointer"),
+            (1 << 7, "Type on this computer"),
         ]
         return known.compactMap { bit, label in bits & bit == bit ? label : nil }
     }

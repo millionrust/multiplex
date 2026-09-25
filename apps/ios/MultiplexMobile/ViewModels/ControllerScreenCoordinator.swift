@@ -58,9 +58,14 @@ final class ControllerScreenCoordinator: ObservableObject {
         start(host: host, connection: connection, preview: true)
     }
 
-    /// Opens the full screen. The preview, if any, ends: there is one connection.
-    func openViewer(host: PairedHostRecord, connection: any ControllerConnecting) {
-        start(host: host, connection: connection, preview: false)
+    /// Opens the full screen, on `surface` when the person picked one of the computer's displays.
+    /// The preview, if any, ends: there is one connection.
+    func openViewer(
+        host: PairedHostRecord,
+        connection: any ControllerConnecting,
+        surface: UInt32? = nil
+    ) {
+        start(host: host, connection: connection, preview: false, surface: surface)
     }
 
     /// Closes the viewer and goes back to previewing the same computer.
@@ -86,7 +91,8 @@ final class ControllerScreenCoordinator: ObservableObject {
     private func start(
         host: PairedHostRecord,
         connection: any ControllerConnecting,
-        preview wantsPreview: Bool
+        preview wantsPreview: Bool,
+        surface: UInt32? = nil
     ) {
         guard Self.mayWatch(host) else {
             unavailable = .notGranted
@@ -100,7 +106,7 @@ final class ControllerScreenCoordinator: ObservableObject {
         reconnecting = false
         reconnectAttempt = 0
         watchingHost = host
-        run(host: host, connection: connection, preview: wantsPreview)
+        run(host: host, connection: connection, preview: wantsPreview, surface: surface)
     }
 
     /// Opens the session, and opens it again from the last picture when it drops.
@@ -111,7 +117,8 @@ final class ControllerScreenCoordinator: ObservableObject {
     private func run(
         host: PairedHostRecord,
         connection: any ControllerConnecting,
-        preview wantsPreview: Bool
+        preview wantsPreview: Bool,
+        surface: UInt32? = nil
     ) {
         let hostID = host.id
         session = Task { [weak self] in
@@ -119,7 +126,7 @@ final class ControllerScreenCoordinator: ObservableObject {
                 do {
                     try await connection.watchScreen(
                         host: host,
-                        surface: nil,
+                        surface: surface,
                         preview: wantsPreview,
                         onOpened: { [weak self] ticket, viewer in
                             await self?.opened(

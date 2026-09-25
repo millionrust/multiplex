@@ -519,11 +519,12 @@ final class ControllerViewModel: ObservableObject {
         retry()
     }
 
-    func openScreen() {
+    /// Opens the computer's screen, on the display the person picked when they picked one.
+    func openScreen(surface: UInt32? = nil) {
         guard let host = selectedHost, let connection = selectedConnection else { return }
         operation?.cancel()
         operation = nil
-        screens.openViewer(host: host, connection: connection)
+        screens.openViewer(host: host, connection: connection, surface: surface)
     }
 
     func closeScreen() {

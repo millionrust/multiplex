@@ -456,6 +456,9 @@ final class ControllerPairingFleetTests: XCTestCase {
         )
         XCTAssertEqual(ControllerPresentation.capabilityLabels(bits: 0).count, 0)
         XCTAssertEqual(ControllerPresentation.capabilityLabels(bits: 0b1_1111).count, 5)
+        // Watching and control are grants a person has to be able to see they made.
+        XCTAssertEqual(ControllerPresentation.capabilityLabels(bits: 0b1111_1111).count, 8)
+        XCTAssertEqual(ControllerPresentation.capabilityLabels(bits: 1 << 5).count, 1)
         XCTAssertFalse(ControllerPresentation.unreadDescription(2).isEmpty)
     }
 
