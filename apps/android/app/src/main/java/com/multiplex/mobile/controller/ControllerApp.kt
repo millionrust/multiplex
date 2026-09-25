@@ -36,6 +36,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Keyboard
@@ -115,6 +116,7 @@ import com.multiplex.mobile.ui.SlateTokens
 fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier) {
     var showEnrollment by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var showEnrollmentMenu by remember { mutableStateOf(false) }
+    var showHostMenu by remember { mutableStateOf(false) }
     if (showEnrollment) {
         com.multiplex.mobile.replication.EnrollmentScreen(onBack = { showEnrollment = false }, modifier = modifier)
         return
@@ -193,9 +195,11 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                                 )
                                 Text(connectionLabel(state.connection), style = MaterialTheme.typography.labelMedium)
                             }
-                        } else Column {
-                            Text(stringResource(com.multiplex.mobile.R.string.app_name), fontWeight = FontWeight.Bold)
-                            Text(stringResource(com.multiplex.mobile.R.string.controller_computers), style = MaterialTheme.typography.labelMedium)
+                        } else {
+                            // One line, the name of what is below it, as design/remote-screens/
+                            // android.html has it. The app's own name and a second line of chrome
+                            // were repeating what the launcher and the tab bar already say.
+                            Text(stringResource(com.multiplex.mobile.R.string.controller_computers))
                         }
                     },
                     navigationIcon = {
@@ -210,6 +214,10 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                             }
                         }
                     },
+                    // A bar carries the actions of what it is titled. The computers list is where
+                    // a computer is added, so pairing and enrollment stay there; one computer's page
+                    // carries only that computer's, behind a single overflow, and the name gets the
+                    // width it was being squeezed out of.
                     actions = {
                         if (activeTerminal != null) {
                             IconButton(onClick = viewModel::detachTerminal) {
@@ -218,24 +226,54 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                                     contentDescription = stringResource(com.multiplex.mobile.R.string.detach),
                                 )
                             }
-                        } else {
-                            Box {
-                                IconButton(onClick = { showEnrollmentMenu = true }) {
-                                    Icon(Icons.Outlined.MoreVert, stringResource(com.multiplex.mobile.R.string.enrollment_title))
-                                }
-                                DropdownMenu(expanded = showEnrollmentMenu, onDismissRequest = { showEnrollmentMenu = false }) {
-                                    DropdownMenuItem(text = { Text(stringResource(com.multiplex.mobile.R.string.enrollment_title)) },
-                                        onClick = { showEnrollmentMenu = false; showEnrollment = true })
+                        } else if (openHostId != null) {
+                            if (state.selectedHostId != null) {
+                                Box {
+                                    IconButton(onClick = { showHostMenu = true }) {
+                                        Icon(
+                                            Icons.Outlined.MoreVert,
+                                            stringResource(com.multiplex.mobile.R.string.more_actions),
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = showHostMenu,
+                                        onDismissRequest = { showHostMenu = false },
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(com.multiplex.mobile.R.string.details)) },
+                                            onClick = { showHostMenu = false; showHostDetails = true },
+                                        )
+                                    }
                                 }
                             }
-                            TextButton(onClick = { showPairing = true }) { Text(stringResource(com.multiplex.mobile.R.string.pair_computer)) }
-                        }
-                        if (activeTerminal == null && openHostId != null && state.selectedHostId != null) {
-                            TextButton(onClick = { showHostDetails = true }) { Text(stringResource(com.multiplex.mobile.R.string.details)) }
+                        } else {
+                            IconButton(onClick = { showPairing = true }) {
+                                Icon(
+                                    Icons.Outlined.Add,
+                                    stringResource(com.multiplex.mobile.R.string.pair_computer),
+                                )
+                            }
+                            Box {
+                                IconButton(onClick = { showEnrollmentMenu = true }) {
+                                    Icon(
+                                        Icons.Outlined.MoreVert,
+                                        stringResource(com.multiplex.mobile.R.string.more_actions),
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showEnrollmentMenu,
+                                    onDismissRequest = { showEnrollmentMenu = false },
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(com.multiplex.mobile.R.string.enrollment_title)) },
+                                        onClick = { showEnrollmentMenu = false; showEnrollment = true },
+                                    )
+                                }
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
+                        containerColor = MaterialTheme.colorScheme.background,
                     ),
                     modifier = Modifier.statusBarsPadding(),
                 )
@@ -558,20 +596,10 @@ private fun HostList(
     modifier: Modifier = Modifier,
     lastPictures: Map<String, android.graphics.Bitmap> = emptyMap(),
 ) {
+    // The bar above says Computers, so the list goes straight to them, as
+    // design/remote-screens/android.html has it. A heading repeating the bar and a line telling
+    // the reader to tap a card were between them.
     LazyColumn(modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
-                Text(
-                    stringResource(com.multiplex.mobile.R.string.controller_computers),
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Text(
-                    stringResource(com.multiplex.mobile.R.string.controller_computers_subtitle),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
         items(state.hosts, key = { it.id }) { host ->
             HostRow(
                 host = host,
@@ -1294,6 +1322,11 @@ private fun controllerRouteError(error: String): String = when (error) {
 
 @Composable
 private fun ConnectionBanner(state: ControllerUiState, onRetry: () -> Unit) {
+    // The bar above this one already names the connection, so the band says something only when
+    // there is more to say than the name: it is still working, it failed, or what is on screen is
+    // cached rather than live. A healthy live page used to carry the same words twice.
+    val needsRetry = state.connection is ControllerConnectionState.Failed || state.cachedReadOnly
+    if (!state.connection.isBusy() && !needsRetry) return
     Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
@@ -1377,7 +1410,10 @@ private fun SessionRow(session: ControllerSessionSummary, cached: Boolean, onOpe
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(session.activity ?: stringResource(com.multiplex.mobile.R.string.no_recent_activity), style = MaterialTheme.typography.labelMedium)
+                Text(
+                    stringResource(activityLabelResource(session.activity)),
+                    style = MaterialTheme.typography.labelMedium,
+                )
                 if (session.unreadCount > 0) Text(stringResource(com.multiplex.mobile.R.string.unread), color = MaterialTheme.colorScheme.primary)
                 if (session.hasWriter) Text(stringResource(com.multiplex.mobile.R.string.writer_active), color = MaterialTheme.colorScheme.tertiary)
             }
@@ -2622,6 +2658,20 @@ internal fun lifecycleLabelResource(lifecycle: String): Int = when (lifecycle) {
     "cancelled" -> com.multiplex.mobile.R.string.lifecycle_cancelled
     "exited", "stopped" -> com.multiplex.mobile.R.string.lifecycle_exited
     else -> com.multiplex.mobile.R.string.lifecycle_unknown
+}
+
+/**
+ * What a session is doing, in words. `activity` is a protocol code, and a code this build does not
+ * know — including the "unknown" every session starts as — reads as no activity rather than
+ * reaching the screen as itself. A row used to say "unknown".
+ */
+internal fun activityLabelResource(activity: String?): Int = when (activity) {
+    "idle" -> com.multiplex.mobile.R.string.activity_idle
+    "busy" -> com.multiplex.mobile.R.string.activity_busy
+    "needs_input" -> com.multiplex.mobile.R.string.activity_needs_input
+    "done" -> com.multiplex.mobile.R.string.activity_done
+    "failed" -> com.multiplex.mobile.R.string.activity_failed
+    else -> com.multiplex.mobile.R.string.no_recent_activity
 }
 
 @Composable

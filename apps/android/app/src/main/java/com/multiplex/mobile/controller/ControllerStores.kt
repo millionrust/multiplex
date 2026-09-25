@@ -135,7 +135,7 @@ internal object ControllerCacheReducer {
 }
 
 @kotlinx.serialization.Serializable
-private data class PairedHostDocument(
+internal data class PairedHostDocument(
     @kotlinx.serialization.SerialName("schema_version") val schemaVersion: Int = 1,
     val hosts: List<PairedHostRecord> = emptyList(),
 )

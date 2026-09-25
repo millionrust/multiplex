@@ -93,3 +93,32 @@ class FleetRevisionRangeTests {
         assertEquals(fromTheWire, snapshot.revision)
     }
 }
+
+/** What a session is doing, in words rather than in the protocol's. */
+class ControllerActivityLabelTests {
+    @Test
+    fun every_activity_a_computer_sends_reads_as_a_phrase() {
+        // The codes in multiplex-controller-listener's `activity_code`.
+        assertEquals(com.multiplex.mobile.R.string.activity_idle, activityLabelResource("idle"))
+        assertEquals(com.multiplex.mobile.R.string.activity_busy, activityLabelResource("busy"))
+        assertEquals(
+            com.multiplex.mobile.R.string.activity_needs_input,
+            activityLabelResource("needs_input"),
+        )
+        assertEquals(com.multiplex.mobile.R.string.activity_done, activityLabelResource("done"))
+        assertEquals(com.multiplex.mobile.R.string.activity_failed, activityLabelResource("failed"))
+
+        // "unknown" is what every session starts as, and it reached the screen as itself: a row
+        // for a freshly opened shell said "unknown".
+        assertEquals(
+            com.multiplex.mobile.R.string.no_recent_activity,
+            activityLabelResource("unknown"),
+        )
+        assertEquals(com.multiplex.mobile.R.string.no_recent_activity, activityLabelResource(null))
+        // A code from a newer computer is not shown raw either.
+        assertEquals(
+            com.multiplex.mobile.R.string.no_recent_activity,
+            activityLabelResource("compacting"),
+        )
+    }
+}

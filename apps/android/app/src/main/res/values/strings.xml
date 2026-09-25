@@ -3,6 +3,7 @@
     <string name="controller_fleet">Controller Fleet</string>
     <string name="pair_host">Pair Host</string>
     <string name="details">Details</string>
+    <string name="more_actions">More</string>
     <string name="forget_host_title">Forget this Host on this device?</string>
     <string name="forget_host_explanation">This removes the local pairing key and cache. It does not revoke the device on the Host.</string>
     <string name="forget_on_device">Forget on This Device</string>
@@ -92,7 +93,6 @@
     <string name="capability_control_pointer">Pointer</string>
     <string name="capability_control_keyboard">Keyboard</string>
     <string name="capability_none">None</string>
-    <string name="controller_computers_subtitle">Paired with this phone. Tap one to take it over.</string>
     <string name="controller_tab_screen">Screen</string>
     <string name="controller_tab_terminals">Terminals</string>
     <string name="controller_back_to_computers">Back to computers</string>
@@ -110,6 +110,11 @@
     <string name="retry">Retry</string>
     <string name="cached">Cached</string>
     <string name="no_recent_activity">No recent activity</string>
+    <string name="activity_idle">Idle</string>
+    <string name="activity_busy">Working</string>
+    <string name="activity_needs_input">Waiting for you</string>
+    <string name="activity_done">Finished</string>
+    <string name="activity_failed">Failed</string>
     <string name="unread">Unread</string>
     <string name="writer_active">Writer active</string>
     <string name="session_origin_terminal">Terminal</string>

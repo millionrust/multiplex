@@ -53,17 +53,18 @@ struct ControllerRootView: View {
                     }
                 }
             }
+            // Pairing first, the overflow at the trailing edge, the same order as the Android bar.
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showingPairing = true } label: {
+                        Label("Pair a Computer", systemImage: "plus")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button("Enrollment") { showingEnrollment = true }
                     } label: {
-                        Label("Device actions", systemImage: "ellipsis.circle")
-                    }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button { showingPairing = true } label: {
-                        Label("Pair a Computer", systemImage: "plus")
+                        Label("More", systemImage: "ellipsis.circle")
                     }
                 }
             }
@@ -510,16 +511,25 @@ private struct ControllerSessionFleetView: View {
                     }
                 }
                 .navigationTitle(selectedTitle)
+                // Refresh is the one thing done often enough to stand on the bar. Details and
+                // Forget go behind the overflow: three buttons crowded the computer's name out,
+                // and Forget is not something to keep one tap from a thumb.
                 .toolbar {
-                    ToolbarItemGroup(placement: .primaryAction) {
+                    ToolbarItem(placement: .primaryAction) {
                         Button(action: onRetry) {
                             Label("Refresh", systemImage: "arrow.clockwise")
                         }
-                        Button(action: onShowDetails) {
-                            Label("Host Details", systemImage: "info.circle")
-                        }
-                        Button(role: .destructive, action: onForget) {
-                            Label("Forget", systemImage: "trash")
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        Menu {
+                            Button(action: onShowDetails) {
+                                Label("Details", systemImage: "info.circle")
+                            }
+                            Button(role: .destructive, action: onForget) {
+                                Label("Forget This Computer", systemImage: "trash")
+                            }
+                        } label: {
+                            Label("More", systemImage: "ellipsis.circle")
                         }
                     }
                 }

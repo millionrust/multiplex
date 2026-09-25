@@ -119,14 +119,17 @@ enum ControllerPresentation {
         }
     }
 
+    /// The same words the Android app uses. A code this build does not know — including the
+    /// "unknown" every session starts as — reads as no activity: "Activity unknown" was shown
+    /// for every freshly opened shell.
     static func activityLabel(_ activity: String) -> LocalizedStringKey {
         switch activity {
         case "idle": return "Idle"
-        case "busy": return "Busy"
-        case "needs_input": return "Needs input"
-        case "done": return "Done"
+        case "busy": return "Working"
+        case "needs_input": return "Waiting for you"
+        case "done": return "Finished"
         case "failed": return "Failed"
-        default: return "Activity unknown"
+        default: return "No recent activity"
         }
     }
 

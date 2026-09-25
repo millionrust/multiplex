@@ -23,6 +23,7 @@ import kotlin.math.min
 import com.multiplex.mobile.security.KeystoreSecretStore
 
 class ControllerViewModel(application: Application) : AndroidViewModel(application) {
+    private val restored = kotlinx.coroutines.CompletableDeferred<Unit>()
     private val hostStore = PairedHostStore(application)
     private val cacheStore = ControllerFleetCacheStore(application)
     private val secureBlobs = ControllerSecureBlobStore(application)
@@ -70,7 +71,16 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
             ?.takeIf { it in ControllerRemoteRouteKind.androidRoutes }
             ?: ControllerRemoteRouteKind.PRIVATE_NETWORK
         routeCoordinator.restorePersistedSelection(persisted)
-        operation = viewModelScope.launch { restore() }
+        // Reading the paired computers off disk is deliberately not `operation`. The lifecycle
+        // cancels `operation` the moment this half comes to the foreground, and that is now the
+        // launch, because the app opens on the computers. The read was being cancelled before it
+        // returned, so every paired computer disappeared on a cold start and the page said there
+        // were none. Everything that needs them waits on `restored` instead.
+        viewModelScope.launch { restore() }
+        operation = viewModelScope.launch {
+            restored.await()
+            if (selectedHost() != null) refreshSelected(retry = true)
+        }
     }
 
     fun selectControllerRoute(target: ControllerRemoteRouteKind, explicitlyConfirmed: Boolean): Boolean {
@@ -364,7 +374,10 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
                 runTerminal(terminal)
             }
         } else {
-            viewModelScope.launch { refreshSelected(retry = true) }
+            viewModelScope.launch {
+                restored.await()
+                refreshSelected(retry = true)
+            }
         }
     }
 
@@ -652,22 +665,27 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private suspend fun restore() {
-        hosts = hostStore.load()
-        cache = cacheStore.load()
-        val savedHostId = routePreferences.getString(SELECTED_HOST_KEY, null)
-        val selected = hosts.firstOrNull { it.id == savedHostId }
-            ?: hosts.maxByOrNull(PairedHostRecord::pairedAtMillis)
-        selected?.let { routePreferences.edit().putString(SELECTED_HOST_KEY, it.id).apply() }
-        selected?.id?.let(::installStoredRoutes)
-        _state.value = makeState(
-            selectedHostId = selected?.id,
-            connectionState = if (selected == null) {
-                ControllerConnectionState.Unpaired
-            } else {
-                ControllerConnectionState.PairedOffline
-            },
-        )
-        if (selected != null) refreshSelected(retry = true)
+        try {
+            hosts = hostStore.load()
+            cache = cacheStore.load()
+            val savedHostId = routePreferences.getString(SELECTED_HOST_KEY, null)
+            val selected = hosts.firstOrNull { it.id == savedHostId }
+                ?: hosts.maxByOrNull(PairedHostRecord::pairedAtMillis)
+            selected?.let { routePreferences.edit().putString(SELECTED_HOST_KEY, it.id).apply() }
+            selected?.id?.let(::installStoredRoutes)
+            _state.value = makeState(
+                selectedHostId = selected?.id,
+                connectionState = if (selected == null) {
+                    ControllerConnectionState.Unpaired
+                } else {
+                    ControllerConnectionState.PairedOffline
+                },
+            )
+        } finally {
+            // Opened whatever happened, so a failed read leaves the page empty rather than
+            // leaving everything that waits on it waiting for good.
+            restored.complete(Unit)
+        }
     }
 
     private suspend fun refreshSelected(retry: Boolean) {
