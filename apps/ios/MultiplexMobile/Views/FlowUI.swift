@@ -330,3 +330,43 @@ struct FlowBody<Content: View>: View {
         .background(Flow.canvas)
     }
 }
+
+/// One control over the screen: a glyph in a rounded square, the way `.overlay-bottom` draws them
+/// in the prototype. Words here read as a paragraph of buttons over a desktop, so there are none.
+struct FlowPill: View {
+    let label: String
+    let systemImage: String
+    var primary = false
+    var on = false
+    var enabled = true
+    let action: () -> Void
+
+    private var ink: Color {
+        if !enabled { return Flow.off }
+        if primary { return Flow.accentInk }
+        return on ? Flow.accent : Flow.text2
+    }
+
+    private var ground: Color {
+        if primary, enabled { return Flow.accent }
+        return on ? Flow.selection : Flow.raised
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(ink)
+                .frame(width: 38, height: 34)
+                .background(ground)
+                .clipShape(RoundedRectangle(cornerRadius: Flow.radiusSmall))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Flow.radiusSmall)
+                        .strokeBorder(primary && enabled ? Flow.accent : Flow.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .accessibilityLabel(label)
+    }
+}

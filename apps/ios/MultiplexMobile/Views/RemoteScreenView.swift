@@ -17,6 +17,9 @@ struct RemoteScreenView: View {
     /// Whether the picture shares the screen with something below it, and so keeps its own shape
     /// instead of filling what is left.
     var fitsPicture = false
+    /// The way out, when this is the whole screen. It sits in the dock with the other controls
+    /// rather than in a bar over the picture, which is where the picture goes.
+    var onClose: (() -> Void)?
 
     @State private var zoomAnchor: CGFloat = 1
     @State private var showingKeyboard = false
@@ -34,8 +37,16 @@ struct RemoteScreenView: View {
             if weak {
                 weakBanner
             }
-            picture
-                .frame(maxHeight: fitsPicture ? nil : .infinity)
+            // Sharing the screen with terminals, the picture takes exactly the height the
+            // desktop's own shape asks for. Left to fill what is offered it keeps the space and
+            // letterboxes inside it, which reads as a black band nobody put there.
+            if fitsPicture, model.size.width > 0, model.size.height > 0 {
+                picture
+                    .aspectRatio(model.size.width / model.size.height, contentMode: .fit)
+            } else {
+                picture
+                    .frame(maxHeight: .infinity)
+            }
             if showingKeyboard, model.canControlKeyboard {
                 keyboard
             }
@@ -233,74 +244,70 @@ struct RemoteScreenView: View {
     }
 
     private var dock: some View {
-        HStack(spacing: 14) {
-            if model.canControlKeyboard {
-                Button {
-                    showingKeyboard.toggle()
-                    typing = showingKeyboard
-                } label: {
-                    Label("Keyboard", systemImage: "keyboard")
-                        .labelStyle(.iconOnly)
-                }
-                .disabled(!model.isDriving)
+        HStack(spacing: 6) {
+            if let onClose {
+                FlowPill(label: "Back", systemImage: "chevron.left", action: onClose)
             }
-            if model.canControlPointer {
-                Button {
-                    model.pointerMode = model.pointerMode == .direct ? .trackpad : .direct
-                } label: {
-                    Label(model.pointerMode.title, systemImage: pointerIcon)
-                        .labelStyle(.iconOnly)
-                }
-                .disabled(!model.isDriving)
-                .accessibilityValue(model.pointerMode.title)
-            }
-            if model.displays.count > 1 {
-                Button {
-                    showingDisplays = true
-                } label: {
-                    Label("Displays", systemImage: "rectangle.on.rectangle")
-                        .labelStyle(.iconOnly)
-                }
-            }
-            Button {
-                showingConnection = true
-            } label: {
-                Label("Connection", systemImage: "antenna.radiowaves.left.and.right")
-                    .labelStyle(.iconOnly)
-            }
-            Spacer(minLength: 4)
-            // A glyph, like the rest of the dock: as words these read as a paragraph of buttons
-            // over the desktop they are meant to leave alone.
             if model.canControlPointer || model.canControlKeyboard {
-                Button {
+                FlowPill(
+                    label: model.control == .you ? "Stop controlling" : "Take control",
+                    systemImage: "cursorarrow.click",
+                    primary: model.control != .you,
+                    on: model.control == .you,
+                    enabled: model.control != .anotherDevice
+                ) {
                     if model.control == .you {
                         onReleaseControl()
                     } else {
                         onRequestControl()
                     }
-                } label: {
-                    Label(
-                        model.control == .you ? "Stop controlling" : "Take control",
-                        systemImage: "cursorarrow.click"
-                    )
-                    .labelStyle(.iconOnly)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(model.control == .anotherDevice)
             } else {
                 // Nothing here at all used to be the only sign that this computer never granted
                 // pointer or keyboard, which reads as a missing button rather than an answer.
-                Text("Control not granted")
-                    .font(.footnote)
-                    .foregroundStyle(Color.terminalMuted)
-                    .lineLimit(1)
-                    .accessibilityLabel(
-                        "This computer has not granted pointer or keyboard control to this phone."
-                    )
+                FlowPill(
+                    label: "This computer has not granted pointer or keyboard control to this "
+                        + "phone.",
+                    systemImage: "cursorarrow.slash",
+                    enabled: false
+                ) {}
+            }
+            if model.canControlKeyboard {
+                FlowPill(
+                    label: "Keyboard",
+                    systemImage: "keyboard",
+                    on: showingKeyboard,
+                    enabled: model.isDriving
+                ) {
+                    showingKeyboard.toggle()
+                    typing = showingKeyboard
+                }
+            }
+            if model.canControlPointer {
+                FlowPill(
+                    label: model.pointerMode.title,
+                    systemImage: pointerIcon,
+                    enabled: model.isDriving
+                ) {
+                    model.pointerMode = model.pointerMode == .direct ? .trackpad : .direct
+                }
+            }
+            if model.displays.count > 1 {
+                FlowPill(label: "Displays", systemImage: "rectangle.on.rectangle") {
+                    showingDisplays = true
+                }
+            }
+            Spacer(minLength: 0)
+            FlowPill(
+                label: "Connection",
+                systemImage: "antenna.radiowaves.left.and.right"
+            ) {
+                showingConnection = true
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Flow.surface)
     }
 
     private var pointerIcon: String {

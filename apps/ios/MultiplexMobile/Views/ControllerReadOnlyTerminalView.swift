@@ -6,6 +6,9 @@ struct ControllerReadOnlyTerminalView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @ObservedObject var viewModel: ControllerTerminalViewModel
     let onClose: () -> Void
+    /// Drawn without a bar of its own, for when it sits under a screen that already carries the
+    /// computer's name and the way out. Two bars there read as one confused one.
+    var chromeless = false
     @AppStorage("controllerTerminalFontSize") private var terminalFontSize = 14.0
     @AppStorage("controllerTerminalDesktopWidth") private var usesDesktopWidth = true
     @State private var followsOutput = true
@@ -14,41 +17,45 @@ struct ControllerReadOnlyTerminalView: View {
     @State private var displayedTerminalColumns = 40
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                if !usesFocusedLandscapeLayout { statusBar }
-                terminalSurface
-                if viewModel.canSendInput, usesFocusedLandscapeLayout {
-                    focusedLandscapeInputBar
-                }
-            }
-            .background(Color.black)
-            .navigationTitle(ControllerPresentation.isolated(viewModel.sessionTitle))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(action: onClose) {
-                        Image(systemName: "xmark")
-                    }
-                    .accessibilityLabel("Detach")
-                }
-                ToolbarItemGroup(placement: .primaryAction) {
-                    if viewModel.canSendInput {
-                        Button { keyboardPresented.toggle() } label: {
-                            Image(systemName: keyboardPresented
-                                ? "keyboard.chevron.compact.down" : "keyboard")
-                        }
-                        .accessibilityLabel(
-                            keyboardPresented ? "Hide Keyboard" : "Show Keyboard"
+        // Under a screen this is one pane among others: the tab strip above it already carries
+        // the computer's name and the way to close it, and a bar of its own read as a second,
+        // confused one stacked on the first.
+        Group {
+            if chromeless {
+                surface
+            } else {
+                NavigationStack {
+                    surface
+                        .navigationTitle(
+                            ControllerPresentation.isolated(viewModel.sessionTitle)
                         )
-                    }
-                    terminalMenu
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button(action: onClose) {
+                                    Image(systemName: "xmark")
+                                }
+                                .accessibilityLabel("Detach")
+                            }
+                            ToolbarItemGroup(placement: .primaryAction) {
+                                if viewModel.canSendInput {
+                                    Button { keyboardPresented.toggle() } label: {
+                                        Image(systemName: keyboardPresented
+                                            ? "keyboard.chevron.compact.down" : "keyboard")
+                                    }
+                                    .accessibilityLabel(
+                                        keyboardPresented ? "Hide Keyboard" : "Show Keyboard"
+                                    )
+                                }
+                                terminalMenu
+                            }
+                        }
+                        .toolbar(
+                            usesFocusedLandscapeLayout ? .hidden : .visible,
+                            for: .navigationBar
+                        )
                 }
             }
-            .toolbar(
-                usesFocusedLandscapeLayout ? .hidden : .visible,
-                for: .navigationBar
-            )
         }
         .tint(.green)
         .onAppear { viewModel.start() }
@@ -66,6 +73,17 @@ struct ControllerReadOnlyTerminalView: View {
         } message: {
             Text("The paste contains multiple lines or is large (\(viewModel.pendingPasteByteCount) bytes). Review the destination before sending it.")
         }
+    }
+
+    private var surface: some View {
+        VStack(spacing: 0) {
+            if !usesFocusedLandscapeLayout { statusBar }
+            terminalSurface
+            if viewModel.canSendInput, usesFocusedLandscapeLayout {
+                focusedLandscapeInputBar
+            }
+        }
+        .background(Color.black)
     }
 
     private var statusBar: some View {

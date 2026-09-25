@@ -302,7 +302,6 @@ struct ControllerRootView: View {
                     ControllerScreenViewerSheet(
                         model: screen,
                         screens: viewModel.screens,
-                        title: viewModel.selectedHost?.displayName ?? "Screen",
                         routeName: viewModel.selectedRoute.map(ControllerPresentation.routeTitle),
                         onClose: viewModel.closeScreen,
                         terminals: ControllerPresentation.openTerminals(viewModel.state.sessions),
@@ -411,7 +410,6 @@ private struct ScreenTerminalTabs: View {
 private struct ControllerScreenViewerSheet: View {
     @ObservedObject var model: RemoteScreenViewModel
     @ObservedObject var screens: ControllerScreenCoordinator
-    let title: String
     let routeName: String?
     let onClose: () -> Void
     /// The computer's terminals, for the strip under the picture in portrait.
@@ -427,43 +425,45 @@ private struct ControllerScreenViewerSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            // A desktop is wider than it is tall, so a portrait phone watching one has room left
-            // under the picture: the computer's terminals go there, on a connection of their own.
-            VStack(spacing: 0) {
-                RemoteScreenView(
-                    model: model,
-                    onRequestControl: model.requestControl,
-                    onReleaseControl: model.releaseControl,
-                    reconnecting: screens.reconnecting,
-                    routeName: routeName,
-                    fitsPicture: showTerminals
+        // A desktop is wider than it is tall, so a portrait phone watching one has room left
+        // under the picture: the computer's terminals go there, on a connection of their own.
+        //
+        // The picture starts under the status bar. A title bar over it would name the computer
+        // that is already on screen, and push what the person came to see down by its height.
+        VStack(spacing: 0) {
+            RemoteScreenView(
+                model: model,
+                onRequestControl: model.requestControl,
+                onReleaseControl: model.releaseControl,
+                reconnecting: screens.reconnecting,
+                routeName: routeName,
+                fitsPicture: showTerminals,
+                onClose: onClose
+            )
+            if showTerminals {
+                ScreenTerminalTabs(
+                    terminals: terminals,
+                    attachedID: attached?.sessionID,
+                    onSelect: onSelectTerminal,
+                    onClose: onCloseTerminal
                 )
-                if showTerminals {
-                    ScreenTerminalTabs(
-                        terminals: terminals,
-                        attachedID: attached?.sessionID,
-                        onSelect: onSelectTerminal,
-                        onClose: onCloseTerminal
+                if let attached {
+                    ControllerReadOnlyTerminalView(
+                        viewModel: attached,
+                        onClose: onCloseTerminal,
+                        chromeless: true
                     )
-                    if let attached {
-                        ControllerReadOnlyTerminalView(viewModel: attached, onClose: onCloseTerminal)
-                    } else {
-                        Text("Choose a terminal to watch it here.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-                }
-            }
-            .navigationTitle(ControllerPresentation.isolated(title))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done", action: onClose)
+                } else {
+                    Text("Choose a terminal to watch it here.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Flow.muted)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Flow.canvas)
                 }
             }
         }
+        .background(Flow.canvas)
+        .ignoresSafeArea(.container, edges: .bottom)
     }
 }
 
