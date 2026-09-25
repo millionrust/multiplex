@@ -51,8 +51,8 @@ class ControllerFleetTests {
     @Test
     fun fleetSnapshotCarriesOnlySupportedNegotiatedCapabilities() {
         val writable = ControllerFleetSnapshot(
-            revision = 1,
-            updateSequence = 1,
+            revision = 1uL,
+            updateSequence = 1uL,
             sessions = listOf(session(1)),
             capabilityBits = 0b1_1111,
         )
@@ -135,7 +135,7 @@ class ControllerFleetTests {
 
     private fun cached(id: String, viewed: Long) = CachedHostFleet(
         host = host(id),
-        snapshot = ControllerFleetSnapshot(1, 1, listOf(session(viewed.toInt()))),
+        snapshot = ControllerFleetSnapshot(1uL, 1uL, listOf(session(viewed.toInt()))),
         updatedAtMillis = viewed,
         lastViewedAtMillis = viewed,
     )

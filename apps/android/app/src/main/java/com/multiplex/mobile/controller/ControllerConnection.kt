@@ -417,10 +417,11 @@ class ControllerConnection internal constructor(
         revocationEpoch: Long,
         sessionGeneration: Long,
         capabilityBits: Int,
-    ) = PairedHostRecord(
+    ) = bounded(pairing.routes).let { routes ->
+        PairedHostRecord(
         id = pairing.hostKey.hex(),
         displayName = pairing.hostName,
-        route = pairing.routes.first(),
+        route = routes.first(),
         hostStaticPublicKey = Base64.getEncoder().encodeToString(pairing.hostKey),
         deviceStaticKeyId = pairing.keyId,
         deviceId = pairing.deviceId.toString(),
@@ -429,9 +430,24 @@ class ControllerConnection internal constructor(
         sessionGeneration = sessionGeneration,
         capabilityBits = capabilityBits,
         pairedAtMillis = clockMillis(),
-        routes = pairing.routes,
+        routes = routes,
         discoveryId = ControllerNetworkAddresses.discoveryId(pairing.hostKey),
-    )
+        )
+    }
+
+    /**
+     * The addresses a record may hold, in the order they were offered.
+     *
+     * A computer announces every private address it is bound to, and a laptop with Wi-Fi, a VPN
+     * and a tunnel or two has more than the eight a record keeps — and can offer the same one
+     * twice. Storing them as they arrived wrote a record the app then called invalid: pairing
+     * looked like it worked, the first connection failed with invalid_data, and the computer
+     * vanished from the list at the next launch, because a record that fails validation is
+     * dropped on load. The first address is the one pairing actually connected on, so keeping
+     * the front of the list keeps the route that is known to work.
+     */
+    private fun bounded(routes: List<HostRoute>): List<HostRoute> =
+        routes.distinct().take(ControllerLimits.MAX_HOST_ROUTES)
 
     private fun closePairingSession(session: ControllerPairingSession) {
         runCatching { session.finish() }
@@ -1104,8 +1120,8 @@ class ControllerConnection internal constructor(
     ): ControllerFleetSnapshot {
         repeat(3) {
             var offset = 0
-            var revision: Long? = null
-            var updateSequence: Long? = null
+            var revision: ULong? = null
+            var updateSequence: ULong? = null
             val summaries = mutableListOf<ControllerSessionSummary>()
             var restart = false
             do {
@@ -1149,7 +1165,7 @@ class ControllerConnection internal constructor(
                 }
                 val page = json.decodeFromString<SessionsResponse>(responseText)
                 require(page.kind == "sessions" && page.commandId == commandId)
-                require(page.revision > 0 && page.updateSequence > 0)
+                require(page.revision > 0uL && page.updateSequence > 0uL)
                 require(page.sessions.size <= ControllerLimits.MAX_PAGE_RECORDS)
                 require(revision == null || revision == page.revision)
                 require(updateSequence == null || updateSequence == page.updateSequence)
@@ -1396,7 +1412,7 @@ private class ConfirmedPairing(
     val kind: String = "list_sessions",
     val offset: Int,
     val limit: Int,
-    @SerialName("expected_revision") val expectedRevision: Long?,
+    @SerialName("expected_revision") val expectedRevision: ULong?,
 )
 
 @Serializable private data class CreateSessionEnvelope(
@@ -1433,8 +1449,8 @@ private class ConfirmedPairing(
 @Serializable private data class SessionsResponse(
     val kind: String,
     @SerialName("command_id") val commandId: String,
-    val revision: Long,
-    @SerialName("update_sequence") val updateSequence: Long,
+    val revision: ULong,
+    @SerialName("update_sequence") val updateSequence: ULong,
     val sessions: List<SessionSummaryPayload>,
     @SerialName("next_offset") val nextOffset: Int?,
 )

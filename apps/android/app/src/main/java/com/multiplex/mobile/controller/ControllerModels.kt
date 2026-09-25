@@ -157,13 +157,20 @@ fun ControllerSessionSummary.isOpenTerminal(): Boolean {
 
 @Serializable
 data class ControllerFleetSnapshot(
-    val revision: Long,
-    @SerialName("update_sequence") val updateSequence: Long,
+    /**
+     * The host's revision, which is a 64-bit unsigned value on the wire.
+     *
+     * It was read into a signed Long, so a computer whose revision happened to land above
+     * 2^63 — the host derives it by hashing, so about half of them do — failed every session
+     * listing with a numeric overflow the phone reported as invalid_data.
+     */
+    val revision: ULong,
+    @SerialName("update_sequence") val updateSequence: ULong,
     val sessions: List<ControllerSessionSummary>,
     @SerialName("capability_bits") val capabilityBits: Int = 0,
 ) {
     fun validate() {
-        require(revision > 0 && updateSequence > 0)
+        require(revision > 0uL && updateSequence > 0uL)
         require(capabilityBits in 0..ControllerLimits.ALL_CAPABILITY_BITS)
         require(sessions.size <= ControllerLimits.MAX_SESSIONS_PER_HOST)
         sessions.forEach(ControllerSessionSummary::validate)
