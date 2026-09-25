@@ -20,15 +20,24 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Monitor
+import androidx.compose.material.icons.outlined.Mouse
+import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -205,20 +214,12 @@ fun RemoteScreenView(
     val weak = model.state is RemoteScreenState.Watching && !reconnecting &&
         quietFor != null && quietFor > WEAK_AFTER_MILLIS
 
-    // A computer's screen is wider than it is tall, so landscape is where it is worth looking at,
-    // and there the bar is drawn over the picture rather than taking a slice out of a screen that
-    // is already short. The terminal sheds its chrome in landscape for the same reason.
+    // The picture gets the whole screen and the chrome floats over it, as
+    // design/remote-screens/android.html has it: `.ficon` at the top, `.ftoolbar` and `.ctl` at
+    // the bottom. Nothing takes a slice out of a screen a desktop is being drawn on.
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val controls: @Composable () -> Unit = {
-        Column(
-            if (landscape) {
-                Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
-            } else {
-                Modifier.fillMaxWidth()
-            },
-        ) {
+        Column(Modifier.wrapContentWidth()) {
             ScreenControls(
                 model = model,
                 showKeyboard = showKeyboard,
@@ -233,14 +234,10 @@ fun RemoteScreenView(
         }
     }
 
-    Column(modifier.fillMaxSize()) {
-        if (weak) {
-            WeakConnectionBanner(onDetails = { showConnection = true })
-        }
+    Box(modifier.fillMaxSize().background(Color(0xFF07080A))) {
         Box(
             Modifier
-                .fillMaxWidth()
-                .weight(1f)
+                .fillMaxSize()
                 .background(Color.Black)
                 .onSizeChanged {
                     viewWidth = it.width.toFloat()
@@ -289,12 +286,36 @@ fun RemoteScreenView(
                     Modifier.align(Alignment.TopEnd).padding(12.dp),
                 )
             }
-            Text(
-                model.zoomLabel,
-                color = Color.White,
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
-            )
+            // `.vtop`: the way out and the zoom, floating over the picture's top-left corner.
+            Row(
+                Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.95f))
+                        .clickable(onClick = onClose),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Outlined.ArrowBack,
+                        contentDescription = stringResource(com.multiplex.mobile.R.string.screen_done),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                Text(
+                    model.zoomLabel,
+                    color = Color(0xFFE6E8EB),
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xCC111316))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
             if (reconnecting) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -304,13 +325,21 @@ fun RemoteScreenView(
                     Text(stringResource(com.multiplex.mobile.R.string.screen_reconnecting), color = Color.White)
                 }
             }
-            if (landscape) {
-                Box(Modifier.align(Alignment.BottomCenter)) { controls() }
+        }
+        if (weak) {
+            Box(Modifier.align(Alignment.TopCenter).padding(top = 56.dp)) {
+                WeakConnectionBanner(onDetails = { showConnection = true })
             }
         }
-        if (!landscape) {
-            controls()
-        }
+        // `.ftoolbar`: the bar floats, so the desktop behind it is never cut down to make room.
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp, vertical = if (landscape) 8.dp else 24.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.94f)),
+        ) { controls() }
     }
 
     if (showConnection) {
@@ -483,31 +512,31 @@ private fun ScreenControls(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
         )
     }
-    // The bar used to be one Row: the buttons took their own widths, the status label had
-    // `weight(1f)` and so got none, and it wrapped into a column of single words that made
-    // the bar taller than the picture and pushed Done off the end — leaving no way out but
-    // the back gesture. The status gets its own line and the buttons scroll.
-    Text(
-        controlLabel(model),
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-    )
+    // `.ftoolbar`: icon buttons, and taking control as its own `.ctl` pill beside them. As text
+    // buttons the five ran past the edge of the phone and Done fell off it.
     Row(
-        Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 4.dp, vertical = 2.dp),
+        Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (model.canControlKeyboard) {
-            TextButton(onClick = { onToggleKeyboard() }, enabled = model.isDriving) {
-                Text(stringResource(com.multiplex.mobile.R.string.screen_keyboard))
-            }
+            ToolbarIcon(
+                icon = Icons.Outlined.Keyboard,
+                label = stringResource(com.multiplex.mobile.R.string.screen_keyboard),
+                on = showKeyboard,
+                enabled = model.isDriving,
+                onClick = onToggleKeyboard,
+            )
         }
         if (model.canControlPointer) {
-            TextButton(
+            ToolbarIcon(
+                icon = if (model.pointerMode == RemotePointerMode.TOUCH) {
+                    Icons.Outlined.TouchApp
+                } else {
+                    Icons.Outlined.Mouse
+                },
+                label = model.pointerMode.title,
+                enabled = model.isDriving,
                 onClick = {
                     model.pointerMode = if (model.pointerMode == RemotePointerMode.TOUCH) {
                         RemotePointerMode.TRACKPAD
@@ -515,43 +544,15 @@ private fun ScreenControls(
                         RemotePointerMode.TOUCH
                     }
                 },
-                enabled = model.isDriving,
-            ) { Text(model.pointerMode.title) }
-        }
-        if (model.canControlPointer || model.canControlKeyboard) {
-            TextButton(
-                onClick = {
-                    if (model.control == com.multiplex.screens.ScreenControlHolder.YOU) {
-                        model.releaseControl()
-                    } else {
-                        model.requestControl()
-                    }
-                },
-                enabled = model.control != com.multiplex.screens.ScreenControlHolder.ANOTHER_DEVICE,
-            ) {
-                Text(
-                    if (model.control == com.multiplex.screens.ScreenControlHolder.YOU) {
-                        stringResource(com.multiplex.mobile.R.string.screen_stop_controlling)
-                    } else {
-                        stringResource(com.multiplex.mobile.R.string.screen_take_control)
-                    },
-                )
-            }
-        }
-        else {
-            // The absence of a button was the only sign that this computer never granted
-            // pointer or keyboard.
-            Text(
-                stringResource(com.multiplex.mobile.R.string.screen_control_not_granted),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         if (model.displays.size > 1) {
             Box {
-                TextButton(onClick = { onShowDisplays(true) }) {
-                    Text(stringResource(com.multiplex.mobile.R.string.screen_displays))
-                }
+                ToolbarIcon(
+                    icon = Icons.Outlined.Monitor,
+                    label = stringResource(com.multiplex.mobile.R.string.screen_displays),
+                    onClick = { onShowDisplays(true) },
+                )
                 androidx.compose.material3.DropdownMenu(
                     expanded = showDisplays,
                     onDismissRequest = { onShowDisplays(false) },
@@ -568,10 +569,75 @@ private fun ScreenControls(
                 }
             }
         }
-        TextButton(onClick = { onShowConnection() }) {
-            Text(stringResource(com.multiplex.mobile.R.string.screen_connection))
+        ToolbarIcon(
+            icon = Icons.Outlined.Info,
+            label = stringResource(com.multiplex.mobile.R.string.screen_connection),
+            onClick = onShowConnection,
+        )
+        ToolbarIcon(
+            icon = Icons.Outlined.Close,
+            label = stringResource(com.multiplex.mobile.R.string.screen_done),
+            onClick = onClose,
+        )
+        if (model.canControlPointer || model.canControlKeyboard) {
+            Spacer(Modifier.size(6.dp))
+            Button(
+                onClick = {
+                    if (model.control == com.multiplex.screens.ScreenControlHolder.YOU) {
+                        model.releaseControl()
+                    } else {
+                        model.requestControl()
+                    }
+                },
+                enabled = model.control != com.multiplex.screens.ScreenControlHolder.ANOTHER_DEVICE,
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.height(48.dp),
+            ) {
+                Text(
+                    if (model.control == com.multiplex.screens.ScreenControlHolder.YOU) {
+                        stringResource(com.multiplex.mobile.R.string.screen_stop_controlling)
+                    } else {
+                        stringResource(com.multiplex.mobile.R.string.screen_take_control)
+                    },
+                )
+            }
+        } else {
+            Text(
+                stringResource(com.multiplex.mobile.R.string.screen_control_not_granted),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 8.dp),
+            )
         }
-        TextButton(onClick = onClose) { Text(stringResource(com.multiplex.mobile.R.string.screen_done)) }
+    }
+}
+
+/** `.ftoolbar .tb`: a 48-unit icon button, lit when its mode is on. */
+@Composable
+private fun ToolbarIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    on: Boolean = false,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(if (on) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription = label,
+            tint = when {
+                !enabled -> com.multiplex.mobile.ui.SlateExtras.dimText
+                on -> MaterialTheme.colorScheme.onSecondaryContainer
+                else -> MaterialTheme.colorScheme.onSurface
+            },
+        )
     }
 }
 
