@@ -132,6 +132,7 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
     // list is the launch surface, and it stays that until a computer is opened from it.
     var openHostId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     var hostTab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(HostPageTab.Terminals) }
+    var showNewTerminal by remember { mutableStateOf(false) }
     val activeTerminal = state.activeTerminal
     val configuration = LocalConfiguration.current
     val windowDensity = LocalDensity.current
@@ -279,6 +280,8 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                             onOpenScreen = viewModel::openScreen,
                             tab = hostTab,
                             onSelectTab = { hostTab = it },
+                            canCreateSession = viewModel.canCreateSessionOnSelectedHost(),
+                            onNewTerminal = { showNewTerminal = true },
                         )
                     }
                 } else if (openHostId == null) {
@@ -300,12 +303,23 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                         onOpenScreen = viewModel::openScreen,
                         tab = hostTab,
                         onSelectTab = { hostTab = it },
+                        canCreateSession = viewModel.canCreateSessionOnSelectedHost(),
+                        onNewTerminal = { showNewTerminal = true },
                     )
                 }
             }
         }
     }
 
+    if (showNewTerminal) {
+        NewTerminalDialog(
+            onDismiss = { showNewTerminal = false },
+            onStart = { folder, shell, name ->
+                showNewTerminal = false
+                viewModel.createSession(folder, shell, name)
+            },
+        )
+    }
     if (showPairing) {
         PairComputerDialog(
             viewModel = viewModel,
@@ -457,6 +471,64 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
  * attaches only from Terminals.
  */
 internal enum class HostPageTab { Screen, Terminals }
+
+/**
+ * What to start, and where.
+ *
+ * Everything is optional: a person who wants "a terminal, here" says nothing and gets the
+ * computer's own defaults, which is what the computer would have opened itself.
+ */
+@Composable
+private fun NewTerminalDialog(
+    onDismiss: () -> Unit,
+    onStart: (String?, String?, String?) -> Unit,
+) {
+    var folder by remember { mutableStateOf("") }
+    var shell by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(com.multiplex.mobile.R.string.new_terminal_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = folder,
+                    onValueChange = { folder = it },
+                    singleLine = true,
+                    label = { Text(stringResource(com.multiplex.mobile.R.string.new_terminal_folder)) },
+                    supportingText = {
+                        Text(stringResource(com.multiplex.mobile.R.string.new_terminal_folder_hint))
+                    },
+                )
+                OutlinedTextField(
+                    value = shell,
+                    onValueChange = { shell = it },
+                    singleLine = true,
+                    label = { Text(stringResource(com.multiplex.mobile.R.string.new_terminal_shell)) },
+                    supportingText = {
+                        Text(stringResource(com.multiplex.mobile.R.string.new_terminal_shell_hint))
+                    },
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    singleLine = true,
+                    label = { Text(stringResource(com.multiplex.mobile.R.string.new_terminal_name)) },
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onStart(folder, shell, name) }) {
+                Text(stringResource(com.multiplex.mobile.R.string.new_terminal_start))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(com.multiplex.mobile.R.string.cancel))
+            }
+        },
+    )
+}
 
 @Composable
 private fun EmptyFleet(onPair: () -> Unit) {
@@ -610,6 +682,8 @@ private fun FleetDetail(
     onOpenScreen: (UInt?) -> Unit = {},
     tab: HostPageTab = HostPageTab.Terminals,
     onSelectTab: (HostPageTab) -> Unit = {},
+    canCreateSession: Boolean = false,
+    onNewTerminal: () -> Unit = {},
 ) {
     val openTerminals = state.sessions.filter(ControllerSessionSummary::isOpenTerminal)
     val previousSessions = state.sessions.filterNot(ControllerSessionSummary::isOpenTerminal)
@@ -627,6 +701,20 @@ private fun FleetDetail(
                 Modifier.fillMaxSize().padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                item(key = "new-terminal") {
+                    if (canCreateSession) {
+                        Button(
+                            onClick = onNewTerminal,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(com.multiplex.mobile.R.string.new_terminal)) }
+                    } else {
+                        Text(
+                            stringResource(com.multiplex.mobile.R.string.new_terminal_not_granted),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 if (openTerminals.isEmpty()) {
                     item(key = "no-open-terminals") {
                         Box(

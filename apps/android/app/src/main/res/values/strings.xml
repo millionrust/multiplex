@@ -11,6 +11,15 @@
     <string name="pair_private_network_hint">Pair with Multiplex on a computer on the same private network. Its screen and its terminals then appear here.</string>
     <string name="paired_hosts">Paired Hosts</string>
     <string name="controller_computers">Computers</string>
+    <string name="new_terminal">New terminal</string>
+    <string name="new_terminal_title">Start a terminal</string>
+    <string name="new_terminal_folder">Folder</string>
+    <string name="new_terminal_folder_hint">Where it starts. The computer\'s home folder when empty.</string>
+    <string name="new_terminal_shell">Shell</string>
+    <string name="new_terminal_shell_hint">The computer\'s own default when empty.</string>
+    <string name="new_terminal_name">Name</string>
+    <string name="new_terminal_start">Start</string>
+    <string name="new_terminal_not_granted">This computer has not allowed this phone to start terminals.</string>
     <string name="destination_connections">Connections</string>
     <string name="destination_devices">Devices</string>
     <string name="screen_displays">Displays</string>

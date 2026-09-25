@@ -58,10 +58,10 @@ class ControllerFleetTests {
         )
         writable.validate()
         assertEquals(0b1_1111, writable.capabilityBits)
-        // The three screen bits are ours to understand too.
-        writable.copy(capabilityBits = 0b1111_1111).validate()
+        // The three screen bits and starting a terminal are ours to understand too.
+        writable.copy(capabilityBits = 0b1_1111_1111).validate()
         assertThrows(IllegalArgumentException::class.java) {
-            writable.copy(capabilityBits = 0b1_0000_0000).validate()
+            writable.copy(capabilityBits = 0b10_0000_0000).validate()
         }
     }
 

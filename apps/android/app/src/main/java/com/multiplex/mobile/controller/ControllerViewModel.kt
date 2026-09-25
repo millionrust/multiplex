@@ -427,6 +427,43 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    /** Whether the selected computer has granted this phone the right to start a terminal. */
+    fun canCreateSessionOnSelectedHost(): Boolean = selectedHost()?.let { host ->
+        host.capabilityBits and ControllerConnection.CREATE_SESSION_CAPABILITY ==
+            ControllerConnection.CREATE_SESSION_CAPABILITY
+    } ?: false
+
+    /**
+     * Asks the computer for a terminal and opens it here once it exists.
+     *
+     * The list is refreshed first so the new session is in it, because attaching reads the
+     * summary the computer published rather than trusting what this phone asked for.
+     */
+    fun createSession(folder: String?, shell: String?, title: String?) {
+        val host = selectedHost() ?: return
+        val connection = runCatching { connectionFor(selectedRoute()) }.getOrNull() ?: return
+        operation?.cancel()
+        operation = viewModelScope.launch {
+            _state.value = makeState(host.id, ControllerConnectionState.Syncing)
+            val created = runCatching {
+                connection.createSession(host, folder, shell, title, TerminalViewport(120, 40))
+            }
+            created.onFailure { error ->
+                _state.value = makeState(host.id, ControllerConnectionState.Failed(createFailure(error)))
+            }
+            val session = created.getOrNull() ?: return@launch
+            refreshSelected(retry = true)
+            attachSession(session.sessionId)
+        }
+    }
+
+    /** What to call a creation that did not happen, in the words the banner already knows. */
+    private fun createFailure(error: Throwable): String = when (error) {
+        is ControllerConnectionException.CapabilityDenied -> "create_session_denied"
+        is ControllerConnectionException.HostError -> error.code
+        else -> "create_session_failed"
+    }
+
     fun retryTerminal() {
         val runtime = terminalRuntime ?: return
         if (operation?.isActive == true) return

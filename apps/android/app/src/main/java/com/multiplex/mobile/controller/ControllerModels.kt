@@ -15,15 +15,15 @@ object ControllerLimits {
     const val MAX_REMEMBERED_NETWORKS = 8
 
     /**
-     * Every capability bit this build understands: the five session ones and the three screen
-     * ones. A record is rejected above this, never below it — a computer may grant watching or
-     * control at any time, and a phone that called that record invalid would refuse to talk to
-     * the computer at all, terminals included.
+     * Every capability bit this build understands: the five session ones, the three screen ones,
+     * and starting a terminal. A record is rejected above this, never below it — a computer may
+     * grant watching, control or terminal creation at any time, and a phone that called that
+     * record invalid would refuse to talk to the computer at all, terminals included.
      *
      * [ControllerConnection.ALL_SUPPORTED_CAPABILITIES] spells out which bits these are, and a
      * test holds the two to the same value.
      */
-    const val ALL_CAPABILITY_BITS = 0xff
+    const val ALL_CAPABILITY_BITS = 0x1ff
 }
 
 @Serializable

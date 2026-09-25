@@ -82,8 +82,29 @@ interface ControllerConnecting : AutoCloseable {
         onEvent: suspend (List<com.multiplex.screens.ScreenEvent>) -> Unit,
     ): Unit = throw ControllerConnectionException.CapabilityDenied
 
+    /**
+     * Starts a terminal on the computer and says which session it is, so the phone can attach.
+     *
+     * Every field is the device's suggestion; the computer's own defaults answer for whatever is
+     * left out. A transport that cannot carry this, or a computer that never granted it, refuses
+     * rather than every caller having to know which can.
+     */
+    suspend fun createSession(
+        host: PairedHostRecord,
+        folder: String?,
+        shell: String?,
+        title: String?,
+        viewport: TerminalViewport,
+    ): CreatedSession = throw ControllerConnectionException.CapabilityDenied
+
     suspend fun cancel()
 }
+
+/** The terminal a computer opened because a device asked it to. */
+data class CreatedSession(
+    val sessionId: String,
+    val occupantGeneration: Long,
+)
 
 class AndroidControllerRouteConnections(
     val privateNetwork: ControllerConnecting?,

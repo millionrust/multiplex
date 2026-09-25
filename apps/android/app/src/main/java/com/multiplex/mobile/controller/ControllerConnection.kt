@@ -749,6 +749,111 @@ class ControllerConnection internal constructor(
     }
 
     /**
+     * Starts a terminal on the computer and says which session it is.
+     *
+     * One command on a connection of its own: the computer opens the terminal, publishes it, and
+     * answers with the session to attach to. What it runs is the device's suggestion and the
+     * computer's decision, so a refusal is an answer rather than a failure.
+     */
+    override suspend fun createSession(
+        host: PairedHostRecord,
+        folder: String?,
+        shell: String?,
+        title: String?,
+        viewport: TerminalViewport,
+    ): CreatedSession = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            cancelUnlocked(deleteCreatedKey = true)
+            host.validate()
+            if (host.capabilityBits and CREATE_SESSION_CAPABILITY != CREATE_SESSION_CAPABILITY) {
+                throw ControllerConnectionException.CapabilityDenied
+            }
+            val socket = openHost(host)
+            activeTransport = socket
+            try {
+                val input = DataInputStream(socket.input)
+                val output = DataOutputStream(socket.output)
+                val hostKey = Base64.getDecoder().decode(host.hostStaticPublicKey)
+                val request = ConnectionStartRequest(
+                    staticKeyId = host.deviceStaticKeyId,
+                    ephemeralPrivateKey = randomBytes(32),
+                    hostStaticPublicKey = hostKey,
+                    identityGeneration = host.identityGeneration.toULong(),
+                    revocationEpoch = host.revocationEpoch.toULong(),
+                    requestedCapabilityBits =
+                        (host.capabilityBits and ALL_SUPPORTED_CAPABILITIES).toUShort(),
+                    clientNonce = randomBytes(32),
+                    nowMillis = uptimeMillis().toULong(),
+                )
+                output.write(AUTH_PREFACE)
+                output.write(engine.connectionPrelude(request))
+                output.flush()
+                val challenge = ByteArray(36).also(input::readFully)
+                val session = engine.connectionStart(request, challenge)
+                try {
+                    writeFrame(output, session.handshakeOutbound(uptimeMillis().toULong()), MAX_HANDSHAKE_BYTES)
+                    val publicResult = session.handshakeReceiveAccept(
+                        readFrame(input, MAX_HANDSHAKE_BYTES),
+                        uptimeMillis().toULong(),
+                    )
+                    require(publicResult.hostStaticPublicKey.contentEquals(hostKey))
+                    require(publicResult.identityGeneration.toLong() == host.identityGeneration)
+                    require(publicResult.revocationEpoch.toLong() == host.revocationEpoch)
+                    val granted = publicResult.grantedCapabilityBits.toInt()
+                    if (granted and CREATE_SESSION_CAPABILITY != CREATE_SESSION_CAPABILITY) {
+                        throw ControllerConnectionException.CapabilityDenied
+                    }
+                    val commandId = UUID.randomUUID().toString()
+                    val payload = json.encodeToString(
+                        CreateSessionEnvelope(
+                            commandId = commandId,
+                            sessionGeneration = host.sessionGeneration,
+                            deadlineMillis = clockMillis() + 30_000,
+                            command = CreateSessionCommand(
+                                folder = folder?.takeIf(String::isNotBlank),
+                                shell = shell?.takeIf(String::isNotBlank),
+                                title = title?.takeIf(String::isNotBlank),
+                                columns = viewport.columns,
+                                rows = viewport.rows,
+                            ),
+                        ),
+                    ).encodeToByteArray()
+                    require(payload.size <= MAX_SECURE_FRAME_BYTES)
+                    val sealed = session.sealFrame(
+                        ControllerFrameKind.CONTROL,
+                        ControllerCapability.CREATE_SESSION,
+                        host.revocationEpoch.toULong(),
+                        payload,
+                    )
+                    writeFrame(output, sealed, MAX_SECURE_FRAME_BYTES)
+                    val opened = session.openFrame(readFrame(input, MAX_SECURE_FRAME_BYTES))
+                    require(opened.kind == ControllerFrameKind.CONTROL)
+                    require(opened.revocationEpoch.toLong() == host.revocationEpoch)
+                    val text = opened.payload.decodeToString()
+                    val kind = json.parseToJsonElement(text)
+                        .jsonObject["kind"]?.jsonPrimitive?.content
+                        ?: throw IllegalArgumentException("missing response kind")
+                    if (kind == "error") {
+                        val error = json.decodeFromString<ErrorResponse>(text)
+                        require(error.commandId == commandId)
+                        throw ControllerConnectionException.HostError(error.code)
+                    }
+                    val created = json.decodeFromString<SessionCreatedResponse>(text)
+                    require(created.kind == "session_created" && created.commandId == commandId)
+                    require(created.occupantGeneration > 0)
+                    CreatedSession(created.sessionId, created.occupantGeneration)
+                } finally {
+                    runCatching { session.finish() }
+                    session.close()
+                }
+            } finally {
+                socket.close()
+                if (activeTransport === socket) activeTransport = null
+            }
+        }
+    }
+
+    /**
      * Watches a computer's screen until [onEvent] throws or the coroutine is cancelled.
      *
      * The session starts with an `open_screen` command, whose one-time ticket the screen
@@ -1166,12 +1271,13 @@ class ControllerConnection internal constructor(
         const val OBSERVE_SCREENS_CAPABILITY = 1 shl 5
         const val CONTROL_POINTER_CAPABILITY = 1 shl 6
         const val CONTROL_KEYBOARD_CAPABILITY = 1 shl 7
+        const val CREATE_SESSION_CAPABILITY = 1 shl 8
         const val ALL_SCREEN_CAPABILITIES = OBSERVE_SCREENS_CAPABILITY or
             CONTROL_POINTER_CAPABILITY or CONTROL_KEYBOARD_CAPABILITY
         // Every bit this build understands. A computer may grant a screen capability at any time,
         // and a phone that refused to recognise one would break its own terminal connection.
         const val ALL_SUPPORTED_CAPABILITIES = OBSERVE_CAPABILITY or ALL_INTERACTIVE_CAPABILITIES or
-            ALL_SCREEN_CAPABILITIES
+            ALL_SCREEN_CAPABILITIES or CREATE_SESSION_CAPABILITY
         const val OFFER_CORE_BYTES = 84
         const val CODE_SHARE_BYTES = 32
         const val CODE_PAIRING_TIMEOUT_MILLIS = 60_000L
@@ -1291,6 +1397,30 @@ private class ConfirmedPairing(
     val offset: Int,
     val limit: Int,
     @SerialName("expected_revision") val expectedRevision: Long?,
+)
+
+@Serializable private data class CreateSessionEnvelope(
+    val version: Int = 1,
+    @SerialName("command_id") val commandId: String,
+    @SerialName("session_generation") val sessionGeneration: Long,
+    @SerialName("deadline_millis") val deadlineMillis: Long,
+    val command: CreateSessionCommand,
+)
+
+@Serializable private data class CreateSessionCommand(
+    val kind: String = "create_session",
+    val folder: String?,
+    val shell: String?,
+    val title: String?,
+    val columns: Int,
+    val rows: Int,
+)
+
+@Serializable private data class SessionCreatedResponse(
+    val kind: String,
+    @SerialName("command_id") val commandId: String,
+    @SerialName("session_id") val sessionId: String,
+    @SerialName("occupant_generation") val occupantGeneration: Long,
 )
 
 @Serializable private data class ErrorResponse(
