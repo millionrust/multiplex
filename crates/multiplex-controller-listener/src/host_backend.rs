@@ -1413,7 +1413,7 @@ mod tests {
             async move {
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
                 while std::time::Instant::now() < deadline {
-                    for request in registry.take_pane_requests() {
+                    if let Some(request) = registry.take_pane_requests().into_iter().next() {
                         assert_eq!(request.spec().folder.as_deref(), Some("/tmp"));
                         assert_eq!(request.spec().title.as_deref(), Some("From the phone"));
                         request.opened(opened, OccupantGeneration::new(1));
