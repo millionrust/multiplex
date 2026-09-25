@@ -1147,7 +1147,9 @@ class ControllerConnection internal constructor(
         return transport
     }
 
-    private companion object {
+    // Internal rather than private so the tests can hold the capability mask here and the one the
+    // records accept to the same value.
+    internal companion object {
         const val MAX_OFFER_BYTES = 4 * 1_024
         const val MAX_HANDSHAKE_BYTES = 1 * 1_024
         const val MAX_SECURE_FRAME_BYTES = 64 * 1_024

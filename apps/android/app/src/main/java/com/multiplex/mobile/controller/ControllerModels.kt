@@ -13,6 +13,17 @@ object ControllerLimits {
     const val MAX_TITLE_CODE_POINTS = 256
     const val MAX_HOST_ROUTES = 8
     const val MAX_REMEMBERED_NETWORKS = 8
+
+    /**
+     * Every capability bit this build understands: the five session ones and the three screen
+     * ones. A record is rejected above this, never below it — a computer may grant watching or
+     * control at any time, and a phone that called that record invalid would refuse to talk to
+     * the computer at all, terminals included.
+     *
+     * [ControllerConnection.ALL_SUPPORTED_CAPABILITIES] spells out which bits these are, and a
+     * test holds the two to the same value.
+     */
+    const val ALL_CAPABILITY_BITS = 0xff
 }
 
 @Serializable
@@ -69,7 +80,7 @@ data class PairedHostRecord(
         require(displayName.codePointCount() in 1..ControllerLimits.MAX_TITLE_CODE_POINTS)
         require(deviceStaticKeyId.toByteArray().size in 1..128)
         require(identityGeneration > 0 && revocationEpoch >= 0 && sessionGeneration >= 0)
-        require(capabilityBits in 0..0x1f)
+        require(capabilityBits in 0..ControllerLimits.ALL_CAPABILITY_BITS)
         require(routes.size in 1..ControllerLimits.MAX_HOST_ROUTES && routes.first() == route)
         require(routes.toSet().size == routes.size)
         require(discoveryId == null || DISCOVERY_ID_PATTERN.matches(discoveryId))
@@ -153,7 +164,7 @@ data class ControllerFleetSnapshot(
 ) {
     fun validate() {
         require(revision > 0 && updateSequence > 0)
-        require(capabilityBits in 0..0x1f)
+        require(capabilityBits in 0..ControllerLimits.ALL_CAPABILITY_BITS)
         require(sessions.size <= ControllerLimits.MAX_SESSIONS_PER_HOST)
         sessions.forEach(ControllerSessionSummary::validate)
         require(sessions.map { it.id }.toSet().size == sessions.size)

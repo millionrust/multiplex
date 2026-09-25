@@ -57,9 +57,44 @@ class ControllerFleetTests {
         )
         writable.validate()
         assertEquals(0b1_1111, writable.capabilityBits)
+        // The three screen bits are ours to understand too.
+        writable.copy(capabilityBits = 0b1111_1111).validate()
         assertThrows(IllegalArgumentException::class.java) {
-            writable.copy(capabilityBits = 0b10_0000).validate()
+            writable.copy(capabilityBits = 0b1_0000_0000).validate()
         }
+    }
+
+    /**
+     * A computer that grants watching or control must stay usable for everything else.
+     *
+     * The bits above the five session ones were rejected outright, so pairing with a computer
+     * that shared its screen wrote a record the app then called invalid — and every path that
+     * checks the record first (listing sessions, attaching a terminal, opening the screen) threw
+     * before it got as far as the capability it was looking for.
+     */
+    @Test
+    fun aComputerThatGrantsScreenAccessIsStillAValidRecord() {
+        val watching = host("host-screens").copy(
+            capabilityBits = ControllerConnection.OBSERVE_SCREENS_CAPABILITY or
+                ControllerConnection.OBSERVE_CAPABILITY,
+        )
+        watching.validate()
+        val controlling = host("host-control").copy(
+            capabilityBits = ControllerConnection.ALL_SUPPORTED_CAPABILITIES,
+        )
+        controlling.validate()
+        assertThrows(IllegalArgumentException::class.java) {
+            controlling.copy(capabilityBits = ControllerLimits.ALL_CAPABILITY_BITS + 1).validate()
+        }
+    }
+
+    /** The mask the records accept is the one the connection negotiates, not a second opinion. */
+    @Test
+    fun theRecordAndTheConnectionAgreeOnWhichBitsExist() {
+        assertEquals(
+            ControllerConnection.ALL_SUPPORTED_CAPABILITIES,
+            ControllerLimits.ALL_CAPABILITY_BITS,
+        )
     }
 
     @Test
