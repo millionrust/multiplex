@@ -292,29 +292,61 @@ struct ControllerRootView: View {
         } message: {
             Text("The current Controller connection will close before the selected route starts.")
         }
-        .fullScreenCover(isPresented: terminalPresented) {
-            if let terminal = viewModel.activeTerminal {
-                ControllerReadOnlyTerminalView(
-                    viewModel: terminal,
-                    onClose: viewModel.closeReadOnlyTerminal
-                )
+        // One presentation modifier, not two. SwiftUI supports a single sheet or cover per
+        // view — with more than one stacked it does not promise which wins, and the screen's
+        // cover was the one that lost: the session opened and nothing ever appeared.
+        .fullScreenCover(item: fullScreenRoute) { route in
+            switch route {
+            case .screen:
+                if let screen = screens.viewer {
+                    ControllerScreenViewerSheet(
+                        model: screen,
+                        screens: viewModel.screens,
+                        title: viewModel.selectedHost?.displayName ?? "Screen",
+                        routeName: viewModel.selectedRoute.map(ControllerPresentation.routeTitle),
+                        onClose: viewModel.closeScreen,
+                        terminals: ControllerPresentation.openTerminals(viewModel.state.sessions),
+                        attached: viewModel.activeTerminal,
+                        onSelectTerminal: viewModel.openReadOnlyTerminal,
+                        onCloseTerminal: viewModel.closeReadOnlyTerminal
+                    )
+                }
+            case .terminal:
+                if let terminal = viewModel.activeTerminal {
+                    ControllerReadOnlyTerminalView(
+                        viewModel: terminal,
+                        onClose: viewModel.closeReadOnlyTerminal
+                    )
+                }
             }
         }
-        .fullScreenCover(isPresented: screenPresented) {
-            if let screen = screens.viewer {
-                ControllerScreenViewerSheet(
-                    model: screen,
-                    screens: viewModel.screens,
-                    title: viewModel.selectedHost?.displayName ?? "Screen",
-                    routeName: viewModel.selectedRoute.map(ControllerPresentation.routeTitle),
-                    onClose: viewModel.closeScreen,
-                    terminals: ControllerPresentation.openTerminals(viewModel.state.sessions),
-                    attached: viewModel.activeTerminal,
-                    onSelectTerminal: viewModel.openReadOnlyTerminal,
-                    onCloseTerminal: viewModel.closeReadOnlyTerminal
-                )
+    }
+
+    /// What is covering the screen, if anything. The screen wins over a terminal, because when
+    /// both are live the viewer is the one holding the terminal underneath it.
+    private enum FullScreenRoute: Identifiable {
+        case screen
+        case terminal
+
+        var id: Self { self }
+    }
+
+    private var fullScreenRoute: Binding<FullScreenRoute?> {
+        Binding(
+            get: {
+                if screens.viewer != nil { return .screen }
+                if viewModel.activeTerminal != nil { return .terminal }
+                return nil
+            },
+            set: { next in
+                guard next == nil else { return }
+                if screens.viewer != nil {
+                    viewModel.closeScreen()
+                } else if viewModel.activeTerminal != nil {
+                    viewModel.closeReadOnlyTerminal()
+                }
             }
-        }
+        )
     }
 
     private var hostSelection: Binding<String?> {
@@ -324,21 +356,6 @@ struct ControllerRootView: View {
         )
     }
 
-    private var terminalPresented: Binding<Bool> {
-        // Not while the screen is being watched: there the terminal is drawn under the picture
-        // rather than over it.
-        Binding(
-            get: { viewModel.activeTerminal != nil && screens.viewer == nil },
-            set: { if !$0 { viewModel.closeReadOnlyTerminal() } }
-        )
-    }
-
-    private var screenPresented: Binding<Bool> {
-        Binding(
-            get: { screens.viewer != nil },
-            set: { if !$0 { viewModel.closeScreen() } }
-        )
-    }
 }
 
 /// Terminal tabs under a computer's screen.
