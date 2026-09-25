@@ -55,6 +55,14 @@ final class ControllerScreenCoordinator: ObservableObject {
 
     var isWatching: Bool { session != nil }
 
+    /// Which session is the current one.
+    ///
+    /// Replacing a session does not stop the old one at once: its read fails a moment later, and
+    /// its failure handler used to run against whatever was current by then — clearing the viewer
+    /// that had just opened. Every callback carries the token of the session it belongs to and is
+    /// ignored when that is no longer this one.
+    private var generation = 0
+
     /// Starts the one-picture-a-second preview for a computer's page.
     func startPreview(host: PairedHostRecord, connection: any ControllerConnecting) {
         start(host: host, connection: connection, preview: true)
@@ -108,7 +116,14 @@ final class ControllerScreenCoordinator: ObservableObject {
         reconnecting = false
         reconnectAttempt = 0
         watchingHost = host
-        run(host: host, connection: connection, preview: wantsPreview, surface: surface)
+        generation += 1
+        run(
+            host: host,
+            connection: connection,
+            preview: wantsPreview,
+            surface: surface,
+            token: generation
+        )
     }
 
     /// Opens the session, and opens it again from the last picture when it drops.
@@ -120,7 +135,8 @@ final class ControllerScreenCoordinator: ObservableObject {
         host: PairedHostRecord,
         connection: any ControllerConnecting,
         preview wantsPreview: Bool,
-        surface: UInt32? = nil
+        surface: UInt32? = nil,
+        token: Int
     ) {
         let hostID = host.id
         session = Task { [weak self] in
@@ -134,11 +150,12 @@ final class ControllerScreenCoordinator: ObservableObject {
                             await self?.opened(
                                 ticket: ticket,
                                 viewer: viewer,
-                                preview: wantsPreview
+                                preview: wantsPreview,
+                                token: token
                             )
                         },
                         onEvent: { [weak self] events in
-                            await self?.apply(events: events, hostID: hostID)
+                            await self?.apply(events: events, hostID: hostID, token: token)
                         }
                     )
                     return
@@ -146,7 +163,7 @@ final class ControllerScreenCoordinator: ObservableObject {
                     return
                 } catch {
                     guard let self else { return }
-                    let keepTrying = await self.dropped(error)
+                    let keepTrying = await self.dropped(error, token: token)
                     guard keepTrying else { return }
                 }
                 guard let self else { return }
@@ -169,7 +186,10 @@ final class ControllerScreenCoordinator: ObservableObject {
     static let sharingOffCode = "screen_sharing_off"
 
     /// Records a dropped session. Returns whether it is worth opening again.
-    private func dropped(_ error: Error) -> Bool {
+    private func dropped(_ error: Error, token: Int) -> Bool {
+        // A session that has already been replaced does not get to answer for the one that
+        // replaced it.
+        guard token == generation else { return false }
         // The computer answered by name: it is not sharing its screen. Nothing on this phone
         // changes that, and asking again gets the same answer, so it is said rather than
         // retried behind a spinner that never resolves.
@@ -205,8 +225,10 @@ final class ControllerScreenCoordinator: ObservableObject {
     private func opened(
         ticket: ControllerScreenTicket,
         viewer screenViewer: ScreenViewer,
-        preview wantsPreview: Bool
+        preview wantsPreview: Bool,
+        token: Int
     ) {
+        guard token == generation else { return }
         let model = RemoteScreenViewModel(
             viewer: screenViewer,
             surface: nil,
@@ -220,7 +242,8 @@ final class ControllerScreenCoordinator: ObservableObject {
         }
     }
 
-    private func apply(events: [ScreenEvent], hostID: String) {
+    private func apply(events: [ScreenEvent], hostID: String, token: Int) {
+        guard token == generation else { return }
         let model = viewer ?? preview
         model?.apply(events: events)
         if let picture = model?.image {
