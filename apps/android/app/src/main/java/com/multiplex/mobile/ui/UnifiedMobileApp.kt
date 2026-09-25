@@ -17,6 +17,7 @@ import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -79,7 +80,9 @@ fun UnifiedMobileApp(
         }
     }
 
-    MaterialTheme {
+    // The shell is themed here, so the navigation bar and rail are Slate too: they sat outside
+    // both halves' own themes and stayed Material's stock purple.
+    MultiplexMaterialTheme {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             if (maxWidth >= 840.dp && !controllerTerminalOpen) {
                 Row(Modifier.fillMaxSize()) {
@@ -139,13 +142,13 @@ private fun RouteBar(selected: MobileRootDestination, onSelect: (MobileRootDesti
             selected = selected == MobileRootDestination.CONNECTIONS,
             onClick = { onSelect(MobileRootDestination.CONNECTIONS) },
             icon = { Icon(Icons.Outlined.Terminal, contentDescription = null) },
-            label = { Text("Connections") },
+            label = { Text(stringResource(com.multiplex.mobile.R.string.destination_connections)) },
         )
         NavigationBarItem(
             selected = selected == MobileRootDestination.DEVICES,
             onClick = { onSelect(MobileRootDestination.DEVICES) },
             icon = { Icon(Icons.Outlined.Devices, contentDescription = null) },
-            label = { Text("Devices") },
+            label = { Text(stringResource(com.multiplex.mobile.R.string.destination_devices)) },
         )
     }
 }
@@ -157,13 +160,13 @@ private fun RouteRail(selected: MobileRootDestination, onSelect: (MobileRootDest
             selected = selected == MobileRootDestination.CONNECTIONS,
             onClick = { onSelect(MobileRootDestination.CONNECTIONS) },
             icon = { Icon(Icons.Outlined.Terminal, contentDescription = null) },
-            label = { Text("Connections") },
+            label = { Text(stringResource(com.multiplex.mobile.R.string.destination_connections)) },
         )
         NavigationRailItem(
             selected = selected == MobileRootDestination.DEVICES,
             onClick = { onSelect(MobileRootDestination.DEVICES) },
             icon = { Icon(Icons.Outlined.Devices, contentDescription = null) },
-            label = { Text("Devices") },
+            label = { Text(stringResource(com.multiplex.mobile.R.string.destination_devices)) },
         )
     }
 }

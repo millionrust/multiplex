@@ -7,10 +7,12 @@
     <string name="forget_host_explanation">This removes the local pairing key and cache. It does not revoke the device on the Host.</string>
     <string name="forget_on_device">Forget on This Device</string>
     <string name="cancel">Cancel</string>
-    <string name="no_paired_hosts">No Paired Hosts</string>
-    <string name="pair_private_network_hint">Pair with Multiplex Desktop on the same private network.</string>
+    <string name="no_paired_hosts">No computers yet</string>
+    <string name="pair_private_network_hint">Pair with Multiplex on a computer on the same private network. Its screen and its terminals then appear here.</string>
     <string name="paired_hosts">Paired Hosts</string>
     <string name="controller_computers">Computers</string>
+    <string name="destination_connections">Connections</string>
+    <string name="destination_devices">Devices</string>
     <string name="screen_displays">Displays</string>
     <string name="live_updated">Live · updated %1$s</string>
     <string name="screen_about_one_picture">About one picture a second.</string>
