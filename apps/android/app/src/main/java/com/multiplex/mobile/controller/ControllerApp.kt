@@ -1,6 +1,7 @@
 package com.multiplex.mobile.controller
 
 import android.content.res.Configuration
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -78,6 +80,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -262,6 +265,7 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                             state = state,
                             onSelect = { id -> viewModel.selectHost(id); openHostId = id },
                             modifier = Modifier.width(340.dp).fillMaxHeight(),
+                            lastPictures = viewModel.screens.lastPictures,
                         )
                         VerticalDivider(modifier = Modifier.fillMaxHeight())
                         FleetDetail(
@@ -282,6 +286,7 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                         state = state,
                         onSelect = { id -> viewModel.selectHost(id); openHostId = id },
                         modifier = Modifier.fillMaxSize(),
+                        lastPictures = viewModel.screens.lastPictures,
                     )
                 } else {
                     FleetDetail(
@@ -478,6 +483,7 @@ private fun HostList(
     state: ControllerUiState,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
+    lastPictures: Map<String, android.graphics.Bitmap> = emptyMap(),
 ) {
     LazyColumn(modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
@@ -494,13 +500,25 @@ private fun HostList(
             }
         }
         items(state.hosts, key = { it.id }) { host ->
-            HostRow(host, host.id == state.selectedHostId) { onSelect(host.id) }
+            HostRow(
+                host = host,
+                connected = host.id == state.selectedHostId &&
+                    state.connection == ControllerConnectionState.ReadyReadOnly,
+                glance = state.glances[host.id],
+                picture = lastPictures[host.id],
+            ) { onSelect(host.id) }
         }
     }
 }
 
 @Composable
-private fun HostRow(host: PairedHostRecord, selected: Boolean, onClick: () -> Unit) {
+private fun HostRow(
+    host: PairedHostRecord,
+    connected: Boolean,
+    glance: HostGlance?,
+    picture: android.graphics.Bitmap?,
+    onClick: () -> Unit,
+) {
     val hostDescription = stringResource(com.multiplex.mobile.R.string.host_accessibility, isolated(host.displayName))
     Card(
         modifier = Modifier
@@ -508,7 +526,7 @@ private fun HostRow(host: PairedHostRecord, selected: Boolean, onClick: () -> Un
             .clickable(onClick = onClick)
             .semantics { contentDescription = hostDescription },
         colors = CardDefaults.cardColors(
-            containerColor = if (selected) {
+            containerColor = if (connected) {
                 MaterialTheme.colorScheme.secondaryContainer
             } else {
                 MaterialTheme.colorScheme.surfaceVariant
@@ -520,13 +538,23 @@ private fun HostRow(host: PairedHostRecord, selected: Boolean, onClick: () -> Un
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Box(
-                Modifier.size(36.dp).background(
-                    MaterialTheme.colorScheme.primary,
-                    MaterialTheme.shapes.small,
-                ),
-                contentAlignment = Alignment.Center,
-            ) { Text(">", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold) }
+            // The last picture of that computer, when one has ever arrived; otherwise a plain
+            // square, because an empty frame says more honestly that nothing has been seen.
+            if (picture != null) {
+                Image(
+                    bitmap = picture.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.width(64.dp).height(40.dp),
+                )
+            } else {
+                Box(
+                    Modifier.size(36.dp).background(
+                        MaterialTheme.colorScheme.primary,
+                        MaterialTheme.shapes.small,
+                    ),
+                    contentAlignment = Alignment.Center,
+                ) { Text(">", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold) }
+            }
             Column(Modifier.weight(1f)) {
                 Text(isolated(host.displayName), fontWeight = FontWeight.SemiBold, maxLines = 2)
                 Text(
@@ -537,10 +565,37 @@ private fun HostRow(host: PairedHostRecord, selected: Boolean, onClick: () -> Un
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Text(
+                    hostGlanceLabel(glance),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-            if (selected) AssistChip(onClick = onClick, label = { Text(stringResource(com.multiplex.mobile.R.string.controller_selected)) })
+            if (connected) {
+                AssistChip(
+                    onClick = onClick,
+                    label = { Text(stringResource(com.multiplex.mobile.R.string.controller_host_connected)) },
+                )
+            }
         }
     }
+}
+
+/** How many terminals were open when the phone last looked, and when that was. */
+@Composable
+private fun hostGlanceLabel(glance: HostGlance?): String {
+    if (glance == null) return stringResource(com.multiplex.mobile.R.string.controller_host_never_looked)
+    val terminals = if (glance.openTerminals == 1) {
+        stringResource(com.multiplex.mobile.R.string.controller_host_one_terminal)
+    } else {
+        stringResource(com.multiplex.mobile.R.string.controller_host_terminals, glance.openTerminals)
+    }
+    return "$terminals · " + stringResource(
+        com.multiplex.mobile.R.string.controller_host_seen,
+        relativeTime(glance.updatedAtMillis),
+    )
 }
 
 @Composable

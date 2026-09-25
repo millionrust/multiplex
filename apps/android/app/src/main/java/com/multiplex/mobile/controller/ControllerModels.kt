@@ -199,6 +199,18 @@ sealed interface ControllerConnectionState {
     data class Failed(val code: String) : ControllerConnectionState
 }
 
+/**
+ * What the phone can honestly say about a computer it is not connected to.
+ *
+ * Only one computer has a connection at a time, so every other row in the list is answered from
+ * the cache: how many terminals were open when the phone last looked, and when that was. Nothing
+ * here is live, and the row says so.
+ */
+data class HostGlance(
+    val openTerminals: Int,
+    val updatedAtMillis: Long,
+)
+
 data class ControllerUiState(
     val hosts: List<PairedHostRecord> = emptyList(),
     val selectedHostId: String? = null,
@@ -212,6 +224,8 @@ data class ControllerUiState(
     val routeError: String? = null,
     /** How the last connection went, when the route planner has something to say about it. */
     val routeAdvice: String? = null,
+    /** What the cache remembers about each computer, keyed by host id. */
+    val glances: Map<String, HostGlance> = emptyMap(),
 )
 
 data class ControllerTerminalUiState(

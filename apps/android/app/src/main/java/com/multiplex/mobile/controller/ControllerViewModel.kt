@@ -741,6 +741,13 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
             routeProjections = routeCoordinator.projections,
             routeError = routeError,
             routeAdvice = routeAdvice,
+            glances = cache.hosts.mapValues { (_, fleet) ->
+                HostGlance(
+                    openTerminals = fleet.snapshot.sessions
+                        .count(ControllerSessionSummary::isOpenTerminal),
+                    updatedAtMillis = fleet.updatedAtMillis,
+                )
+            },
         )
     }
 

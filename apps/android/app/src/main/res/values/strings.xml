@@ -11,6 +11,11 @@
     <string name="pair_private_network_hint">Pair with Multiplex Desktop on the same private network.</string>
     <string name="paired_hosts">Paired Hosts</string>
     <string name="controller_computers">Computers</string>
+    <string name="controller_host_terminals">%1$d terminals</string>
+    <string name="controller_host_one_terminal">1 terminal</string>
+    <string name="controller_host_seen">Last looked %1$s</string>
+    <string name="controller_host_never_looked">Not opened yet</string>
+    <string name="controller_host_connected">Connected</string>
     <string name="capability_fleet">Sessions</string>
     <string name="capability_output">Output</string>
     <string name="capability_input">Input</string>
