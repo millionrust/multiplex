@@ -29,7 +29,9 @@ private struct UnifiedMobileRootView: View {
     @ObservedObject var connectionViewModel: HostListViewModel
     @ObservedObject var controllerViewModel: ControllerViewModel
     @Environment(\.scenePhase) private var scenePhase
-    @State private var destination = MobileRootDestination.connections
+    /// The phone opens on the computers it is paired with, which is what it is for: the SSH
+    /// connections it keeps itself are the other tab, not the front door.
+    @State private var destination = MobileRootDestination.devices
 
     var body: some View {
         TabView(selection: $destination) {

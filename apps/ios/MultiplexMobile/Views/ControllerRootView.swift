@@ -26,7 +26,7 @@ struct ControllerRootView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: hostSelection) {
-                Section("Computers") {
+                Section {
                     ForEach(viewModel.state.hosts) { host in
                         ControllerHostRow(
                             host: host,
@@ -41,9 +41,12 @@ struct ControllerRootView: View {
             .overlay {
                 if viewModel.state.hosts.isEmpty {
                     ContentUnavailableView {
-                        Label("No Paired Hosts", systemImage: "desktopcomputer")
+                        Label("No computers yet", systemImage: "desktopcomputer")
                     } description: {
-                        Text("Pair with Multiplex Desktop on the same private network.")
+                        Text(
+                            "Pair with Multiplex on a computer on the same private network. "
+                                + "Its screen and its terminals then appear here."
+                        )
                     } actions: {
                         Button("Pair a Computer") { showingPairing = true }
                             .buttonStyle(.borderedProminent)
