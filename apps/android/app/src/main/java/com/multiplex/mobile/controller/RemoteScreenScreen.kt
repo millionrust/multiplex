@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -40,6 +41,7 @@ import androidx.compose.material.icons.outlined.Mouse
 import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -67,6 +69,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
@@ -195,6 +198,18 @@ fun RemoteScreenView(
     reconnecting: Boolean,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    terminals: List<ControllerSessionSummary> = emptyList(),
+    attached: ControllerTerminalUiState? = null,
+    onSelectTerminal: (String) -> Unit = {},
+    onCloseTerminal: () -> Unit = {},
+    onRetryTerminal: () -> Unit = {},
+    onRequestControl: () -> Unit = {},
+    onReleaseControl: () -> Unit = {},
+    onBytes: (ByteArray) -> Unit = {},
+    onPaste: (String) -> Unit = {},
+    onConfirmPaste: () -> Unit = {},
+    onCancelPaste: () -> Unit = {},
+    onViewportChanged: (Int, Int, Boolean) -> Unit = { _, _, _ -> },
 ) {
     var viewWidth by remember { mutableStateOf(0f) }
     var viewHeight by remember { mutableStateOf(0f) }
@@ -234,10 +249,21 @@ fun RemoteScreenView(
         }
     }
 
-    Box(modifier.fillMaxSize().background(Color(0xFF07080A))) {
+    val showTerminals = !landscape && terminals.isNotEmpty()
+    Column(modifier.fillMaxSize().background(Color(0xFF07080A))) {
+    Box(if (showTerminals) Modifier.fillMaxWidth() else Modifier.fillMaxSize()) {
         Box(
-            Modifier
-                .fillMaxSize()
+            if (showTerminals) {
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(
+                        model.surfaceSize.let { (width, height) ->
+                            (width / height).takeIf { it.isFinite() && it > 0f } ?: (16f / 10f)
+                        },
+                    )
+            } else {
+                Modifier.fillMaxSize()
+            }
                 .background(Color.Black)
                 .onSizeChanged {
                     viewWidth = it.width.toFloat()
@@ -331,15 +357,45 @@ fun RemoteScreenView(
                 WeakConnectionBanner(onDetails = { showConnection = true })
             }
         }
-        // `.ftoolbar`: the bar floats, so the desktop behind it is never cut down to make room.
-        Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(horizontal = 12.dp, vertical = if (landscape) 8.dp else 24.dp)
-                .clip(RoundedCornerShape(28.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.94f)),
-        ) { controls() }
+        // `.ftoolbar`: the bar floats over the picture when the picture has the screen to itself.
+        // With terminals under it the picture is short, so the bar sits between the two instead
+        // of covering the desktop it is there to show.
+        if (!showTerminals) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = if (landscape) 8.dp else 24.dp)
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.94f)),
+            ) { controls() }
+        }
+    }
+        if (showTerminals) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow),
+                contentAlignment = Alignment.Center,
+            ) { controls() }
+        }
+        if (showTerminals) {
+            ScreenTerminals(
+                terminals = terminals,
+                attached = attached,
+                onSelect = onSelectTerminal,
+                onClose = onCloseTerminal,
+                onRetry = onRetryTerminal,
+                onRequestControl = onRequestControl,
+                onReleaseControl = onReleaseControl,
+                onBytes = onBytes,
+                onPaste = onPaste,
+                onConfirmPaste = onConfirmPaste,
+                onCancelPaste = onCancelPaste,
+                onViewportChanged = onViewportChanged,
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 
     if (showConnection) {
@@ -679,5 +735,93 @@ private fun RemoteScreenMinimap(
             ),
             style = Stroke(width = 2f),
         )
+    }
+}
+
+/**
+ * The computer's terminals, under its screen.
+ *
+ * A desktop is wider than it is tall, so a portrait phone has room left under the picture. The
+ * terminals live there: one horizontal tab each, titles on top, and the chosen one running below.
+ * It is a second connection, not a second turn — the screen keeps going while a terminal is used.
+ */
+@Composable
+private fun ScreenTerminals(
+    terminals: List<ControllerSessionSummary>,
+    attached: ControllerTerminalUiState?,
+    onSelect: (String) -> Unit,
+    onClose: () -> Unit,
+    onRetry: () -> Unit,
+    onRequestControl: () -> Unit,
+    onReleaseControl: () -> Unit,
+    onBytes: (ByteArray) -> Unit,
+    onPaste: (String) -> Unit,
+    onConfirmPaste: () -> Unit,
+    onCancelPaste: () -> Unit,
+    onViewportChanged: (Int, Int, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            terminals.forEach { session ->
+                val on = attached?.sessionId == session.id
+                Column(
+                    Modifier
+                        .clickable { if (!on) onSelect(session.id) }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        isolated(session.title),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (on) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.size(6.dp))
+                    Box(
+                        Modifier
+                            .height(2.dp)
+                            .width(if (on) 28.dp else 0.dp)
+                            .background(MaterialTheme.colorScheme.primary),
+                    )
+                }
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        if (attached != null) {
+            ControllerTerminalScreen(
+                terminal = attached,
+                onRetry = onRetry,
+                onRequestControl = onRequestControl,
+                onReleaseControl = onReleaseControl,
+                onBytes = onBytes,
+                onPaste = onPaste,
+                onConfirmPaste = onConfirmPaste,
+                onCancelPaste = onCancelPaste,
+                onViewportChanged = onViewportChanged,
+            )
+        } else {
+            Box(
+                Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    stringResource(com.multiplex.mobile.R.string.screen_pick_a_terminal),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }

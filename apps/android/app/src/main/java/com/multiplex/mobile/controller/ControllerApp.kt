@@ -165,6 +165,21 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
             reconnecting = viewModel.screens.reconnecting,
             onClose = viewModel::closeScreen,
             modifier = modifier,
+            // A computer's screen is wider than it is tall, so a portrait phone has room left
+            // under it. Its terminals go there, on a connection of their own, so watching and
+            // working are the same visit rather than two.
+            terminals = state.sessions.filter(ControllerSessionSummary::isOpenTerminal),
+            attached = activeTerminal,
+            onSelectTerminal = viewModel::attachSession,
+            onCloseTerminal = viewModel::detachTerminal,
+            onRetryTerminal = viewModel::retryTerminal,
+            onRequestControl = viewModel::requestTerminalControl,
+            onReleaseControl = viewModel::releaseTerminalControl,
+            onBytes = viewModel::sendTerminalBytes,
+            onPaste = viewModel::requestTerminalPaste,
+            onConfirmPaste = viewModel::confirmTerminalPaste,
+            onCancelPaste = viewModel::cancelTerminalPaste,
+            onViewportChanged = viewModel::updateTerminalViewport,
         )
         return
     }
@@ -1554,7 +1569,7 @@ private fun ConnectionBanner(state: ControllerUiState, onRetry: () -> Unit) {
 
 
 @Composable
-private fun ControllerTerminalScreen(
+internal fun ControllerTerminalScreen(
     terminal: ControllerTerminalUiState,
     onRetry: () -> Unit,
     onRequestControl: () -> Unit,
@@ -2841,7 +2856,7 @@ internal fun activityLabelResource(activity: String?): Int = when (activity) {
 private fun lifecycleLabel(lifecycle: String): String =
     stringResource(lifecycleLabelResource(lifecycle))
 
-private fun isolated(value: String): String = "\u2068$value\u2069"
+internal fun isolated(value: String): String = "\u2068$value\u2069"
 
 @Composable
 private fun relativeTime(millis: Long?): String {

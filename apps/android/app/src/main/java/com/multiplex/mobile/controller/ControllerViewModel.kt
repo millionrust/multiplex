@@ -41,6 +41,21 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         ssh = null,
         selfHostedRelay = null,
     )
+    /**
+     * A second connection to the private network, for terminals.
+     *
+     * Everything the phone does opens its own connection and the listener has no per-device cap,
+     * so "a connection carries one session at a time" was the phone serialising itself behind one
+     * mutex, not the wire's rule. On its own connection a terminal runs while the screen is being
+     * watched, which is what the screen's page needs to show them underneath it.
+     */
+    private val terminalConnection = ControllerConnection(
+        secureBlobs,
+        phoneNetwork = AndroidPhoneNetworkSource(
+            application,
+            application.getSharedPreferences("controller-routes-v1", 0),
+        ),
+    )
     private val routePreferences = application.getSharedPreferences("controller-routes-v1", 0)
     private val routeCoordinator = AndroidControllerRouteCoordinator(routeConnections.availability())
     private val discovery = ControllerHostDiscovery(application)
@@ -369,7 +384,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         operation?.cancel()
         operation = if (terminal != null) {
             viewModelScope.launch {
-                connectionFor(terminal.route).cancel()
+                terminalConnectionFor(terminal.route).cancel()
                 terminal.writer.setForeground(true)
                 runTerminal(terminal)
             }
@@ -396,7 +411,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
             publishTerminal(runtime, privacyCovered = decision.coverPrivacy)
             operation = viewModelScope.launch {
                 releaseWriterForLifecycle(runtime, decision.releaseWriter)
-                connectionFor(runtime.route).cancel()
+                terminalConnectionFor(runtime.route).cancel()
                 if (routeCoordinator.selected == runtime.route) {
                     runCatching { routeCoordinator.cancelSelected() }
                     publishRouteState()
@@ -435,7 +450,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         terminalRuntime = runtime
         publishTerminal(runtime)
         operation = viewModelScope.launch {
-            connectionFor(runtime.route).cancel()
+            terminalConnectionFor(runtime.route).cancel()
             runTerminal(runtime)
         }
     }
@@ -481,7 +496,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         val runtime = terminalRuntime ?: return
         if (operation?.isActive == true) return
         operation = viewModelScope.launch {
-            connectionFor(runtime.route).cancel()
+            terminalConnectionFor(runtime.route).cancel()
             runTerminal(runtime)
         }
     }
@@ -498,7 +513,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         runtime.interactive = true
         operation?.cancel()
         operation = viewModelScope.launch {
-            connectionFor(runtime.route).cancel()
+            terminalConnectionFor(runtime.route).cancel()
             runTerminal(runtime)
         }
     }
@@ -512,7 +527,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         syncRouteWriter(runtime)
         publishTerminal(runtime)
         viewModelScope.launch {
-            runCatching { connectionFor(runtime.route).releaseWriter(runtime.host, runtime.writer.identity, commandId) }
+            runCatching { terminalConnectionFor(runtime.route).releaseWriter(runtime.host, runtime.writer.identity, commandId) }
                 .onFailure { mutationSendFailed(runtime, commandId) }
         }
     }
@@ -568,7 +583,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         terminalRender = null
         operation = viewModelScope.launch {
             if (runtime != null) releaseWriterForLifecycle(runtime, held)
-            if (runtime != null) connectionFor(runtime.route).cancel()
+            if (runtime != null) terminalConnectionFor(runtime.route).cancel()
             refreshSelected(retry = false)
         }
         runtime?.writer?.releaseLocally()
@@ -825,9 +840,9 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
                 }
             }
             if (runtime.interactive) {
-                connectionFor(runtime.route).attachInteractive(runtime.host, runtime.reducer.cursor, runtime.viewport, consume)
+                terminalConnectionFor(runtime.route).attachInteractive(runtime.host, runtime.reducer.cursor, runtime.viewport, consume)
             } else {
-                connectionFor(runtime.route).attachReadOnly(runtime.host, runtime.reducer.cursor, runtime.viewport, consume)
+                terminalConnectionFor(runtime.route).attachReadOnly(runtime.host, runtime.reducer.cursor, runtime.viewport, consume)
             }
         } catch (error: CancellationException) {
             if (terminalRuntime === runtime && runtime.reducer.state != ReadOnlyAttachState.Detached) {
@@ -915,6 +930,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         _state.value = _state.value.copy(
             activeTerminal = ControllerTerminalUiState(
                 hostTitle = runtime.host.displayName,
+                sessionId = runtime.session.id,
                 sessionTitle = runtime.session.title,
                 attachState = runtime.reducer.state,
                 screen = runtime.terminal.snapshot(),
@@ -944,7 +960,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         runtime.writerViewportReady = false
         publishTerminal(runtime)
         viewModelScope.launch {
-            runCatching { connectionFor(runtime.route).requestWriter(runtime.host, runtime.writer.identity, commandId) }
+            runCatching { terminalConnectionFor(runtime.route).requestWriter(runtime.host, runtime.writer.identity, commandId) }
                 .onFailure { mutationSendFailed(runtime, commandId) }
         }
     }
@@ -976,7 +992,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         runtime.pendingMutations[pending.commandId] = TerminalMutation.INPUT
         viewModelScope.launch {
             runCatching {
-                connectionFor(runtime.route).sendInput(runtime.host, runtime.writer.identity, pending.commandId, pending.bytes)
+                terminalConnectionFor(runtime.route).sendInput(runtime.host, runtime.writer.identity, pending.commandId, pending.bytes)
             }.onFailure { mutationSendFailed(runtime, pending.commandId) }
         }
     }
@@ -992,7 +1008,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         runtime.pendingMutations[commandId] = TerminalMutation.Resize(viewport)
         viewModelScope.launch {
             runCatching {
-                connectionFor(runtime.route).sendResize(runtime.host, runtime.writer.identity, commandId, viewport)
+                terminalConnectionFor(runtime.route).sendResize(runtime.host, runtime.writer.identity, commandId, viewport)
             }.onFailure { mutationSendFailed(runtime, commandId) }
         }
     }
@@ -1082,7 +1098,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         val commandId = UUID.randomUUID()
         runtime.writer.releaseLocally()
         syncRouteWriter(runtime)
-        runCatching { connectionFor(runtime.route).releaseWriter(runtime.host, runtime.writer.identity, commandId) }
+        runCatching { terminalConnectionFor(runtime.route).releaseWriter(runtime.host, runtime.writer.identity, commandId) }
     }
 
     private fun selectedHost(): PairedHostRecord? =
@@ -1121,7 +1137,8 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     fun openScreen(surface: UInt? = null) {
         val host = selectedHost() ?: return
         val connection = runCatching { connectionFor(selectedRoute()) }.getOrNull() ?: return
-        operation?.cancel()
+        // `operation` is not cancelled: a terminal runs on its own connection, so watching the
+        // screen no longer ends it. The screen has its own job inside the coordinator.
         screens.openViewer(host, connection, surface)
     }
 
@@ -1214,6 +1231,18 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun connectionFor(route: ControllerRemoteRouteKind): ControllerConnecting =
         routeConnections.connection(route) ?: throw ControllerRouteUnavailableException(route)
+
+    /**
+     * The connection a terminal runs on. Over the private network that is one of its own, so the
+     * screen can be watched at the same time; the other routes keep the single connection and
+     * with it the one-at-a-time behaviour.
+     */
+    private fun terminalConnectionFor(route: ControllerRemoteRouteKind): ControllerConnecting =
+        if (route == ControllerRemoteRouteKind.PRIVATE_NETWORK) {
+            terminalConnection
+        } else {
+            connectionFor(route)
+        }
 
     private suspend fun cancelSelectedRoute() {
         val route = routeCoordinator.selected ?: return

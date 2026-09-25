@@ -33,6 +33,7 @@
     <string name="screen_open">Open screen</string>
     <string name="screen_preview_description">Preview of the computer\'s screen</string>
     <string name="screen_reconnecting">Reconnecting…</string>
+    <string name="screen_pick_a_terminal">Choose a terminal to watch it here.</string>
     <string name="screen_session_stopped">The screen session stopped.</string>
     <string name="screen_sharing_off">This computer is not sharing its screen. Turn it on there, in Devices.</string>
     <string name="screen_stop_controlling">Stop controlling</string>

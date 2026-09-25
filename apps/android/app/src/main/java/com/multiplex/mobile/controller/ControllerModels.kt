@@ -237,6 +237,8 @@ data class ControllerUiState(
 
 data class ControllerTerminalUiState(
     val hostTitle: String,
+    /** Which terminal this is, so a tab strip can tell two of the same name apart. */
+    val sessionId: String,
     val sessionTitle: String,
     val attachState: ReadOnlyAttachState,
     val screen: BoundedTerminalSnapshot,
