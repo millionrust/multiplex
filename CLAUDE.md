@@ -145,12 +145,18 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   relay, session host, mobile FFI, and contract crates.
 - `apps/ios` (Swift) and `apps/android` (Kotlin) are the native mobile applications. Both open on
   the computers paired with the phone; opening one gives a page that is **Screen or Terminals**,
-  never both, because the Controller connection carries one session at a time — the screen preview
-  runs only while Screen is showing. Screen lists the computer's displays once the preview knows
-  them and opens the one that is picked; Terminals lists what the computer is running. The
-  connection route and the eight granted capabilities live in Host Details. Where control was
+  and the screen preview runs only while Screen is showing. Screen lists the computer's displays
+  once the preview knows them and opens the one that is picked; Terminals lists what the computer
+  is running. Watching a screen in portrait puts the computer's terminals under the picture on
+  tabs, live at the same time: one phone may hold a screen session and a terminal session at once,
+  because each opens its own connection and the listener caps neither
+  (`one_device_can_watch_a_screen_and_use_a_terminal_at_the_same_time`). The page is one or the
+  other only because a phone has one screen's worth of room, never because the wire refuses.
+  The connection route and the eight granted capabilities live in Host Details. Where control was
   never granted, both say so rather than leaving the button out. `design/remote-screens/` holds
-  the prototypes these follow.
+  the prototypes these follow, and `multiplex-mobile-flow.html` the shape and palette both apps
+  draw themselves with: SwiftUI's `FlowUI.swift` and Compose's Slate-mapped theme, not the
+  platforms' own look.
   their FFI libraries are built by `scripts/build/` and copied in by `scripts/sync/`.
 - `tests/` is shared cross-crate test material only: `fixtures/`, the `support/`
   module included via `#[path]`, `ui/` audit inventories, and `swift/` runners.
