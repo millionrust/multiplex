@@ -2,6 +2,7 @@ package com.multiplex.mobile.controller
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -185,5 +186,46 @@ class ControllerLifecycleLabelTests {
             com.multiplex.mobile.R.string.lifecycle_provisioning,
             lifecycleLabelResource("provisioning"),
         )
+    }
+}
+
+/** The colours both halves of the app draw with. */
+class SlateColorSchemeTests {
+    @Test
+    fun bothHalvesDrawInSlateRatherThanMaterialsOwnPalette() {
+        for (dark in listOf(false, true)) {
+            val theme = if (dark) {
+                com.multiplex.mobile.ui.SlateTheme.Dark
+            } else {
+                com.multiplex.mobile.ui.SlateTheme.Light
+            }
+            val scheme = com.multiplex.mobile.ui.slateColorScheme(dark)
+            assertEquals(
+                androidx.compose.ui.graphics.Color(
+                    com.multiplex.mobile.ui.SlateTokens.colorActionPrimary(theme),
+                ),
+                scheme.primary,
+            )
+            assertEquals(
+                androidx.compose.ui.graphics.Color(
+                    com.multiplex.mobile.ui.SlateTokens.colorBgCanvas(theme),
+                ),
+                scheme.background,
+            )
+            assertEquals(
+                androidx.compose.ui.graphics.Color(
+                    com.multiplex.mobile.ui.SlateTokens.colorTextMuted(theme),
+                ),
+                scheme.onSurfaceVariant,
+            )
+            // Material's stock seed purple must not survive anywhere the app draws with it.
+            val stock = if (dark) {
+                androidx.compose.material3.darkColorScheme()
+            } else {
+                androidx.compose.material3.lightColorScheme()
+            }
+            assertNotEquals(stock.primary, scheme.primary)
+            assertNotEquals(stock.secondaryContainer, scheme.secondaryContainer)
+        }
     }
 }

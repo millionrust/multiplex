@@ -33,9 +33,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -192,21 +190,7 @@ fun MultiplexApp(
 ) {
     val dark = isSystemInDarkTheme()
     val mobileColors = if (dark) DarkMobileColors else LightMobileColors
-    MaterialTheme(
-        colorScheme = if (dark) {
-            darkColorScheme(
-                primary = mobileColors.accent,
-                background = mobileColors.appBackground,
-                surface = mobileColors.panelBackground,
-            )
-        } else {
-            lightColorScheme(
-                primary = mobileColors.accent,
-                background = mobileColors.appBackground,
-                surface = mobileColors.panelBackground,
-            )
-        },
-    ) {
+    MultiplexMaterialTheme(dark = dark) {
         var showVaultDialog by remember { mutableStateOf(false) }
         CompositionLocalProvider(LocalMultiplexMobileColors provides mobileColors) {
             Box(

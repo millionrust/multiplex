@@ -168,7 +168,7 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
     }
     DisposableEffect(Unit) { onDispose { viewModel.stopScreenPreview() } }
 
-    MaterialTheme {
+    com.multiplex.mobile.ui.MultiplexMaterialTheme {
         Scaffold(
             modifier = modifier.fillMaxSize(),
             topBar = {
