@@ -18,6 +18,8 @@ pub const MAX_SESSION_PAGE_BYTES: usize = MAX_CONTROL_PAYLOAD_BYTES - 256;
 pub const MAX_SNAPSHOT_CHUNK_BYTES: usize = 128 * 1024;
 /// A screen ticket is exactly one 32-byte proof.
 pub const SCREEN_TICKET_BYTES: usize = 32;
+/// The longest folder, shell or title a device may name when it starts a terminal.
+pub const MAX_CREATE_SESSION_FIELD_BYTES: usize = 1_024;
 
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -131,6 +133,23 @@ pub enum ControllerCommand {
     OpenScreen,
     /// Ends the screen session and invalidates its ticket.
     CloseScreen,
+    /// Starts a terminal on the computer and attaches to it.
+    ///
+    /// The device chooses where it runs and what runs there, which is why this is its own
+    /// capability rather than part of `SendInput`: typing into a terminal somebody opened is not
+    /// the same as opening one. Every field is optional; the computer's own defaults answer for
+    /// whatever is left out.
+    CreateSession {
+        /// Where the terminal starts. Absolute, on the computer's filesystem.
+        folder: Option<String>,
+        /// The program to run. The computer's default shell when absent.
+        shell: Option<String>,
+        /// What to call it in the session list.
+        title: Option<String>,
+        /// The size the device will draw it at.
+        columns: u32,
+        rows: u32,
+    },
     /// A command from a newer device than this build.
     ///
     /// Decoding it rather than failing is what lets the wire grow: an unknown command used to
@@ -154,6 +173,7 @@ impl ControllerCommand {
             Self::Detach { .. } => BridgeCommandKind::Detach,
             Self::OpenScreen => BridgeCommandKind::OpenScreen,
             Self::CloseScreen => BridgeCommandKind::CloseScreen,
+            Self::CreateSession { .. } => BridgeCommandKind::CreateSession,
             Self::Unsupported => BridgeCommandKind::Unsupported,
         }
     }
@@ -163,6 +183,7 @@ impl ControllerCommand {
             Self::ListSessions { .. }
             | Self::OpenScreen
             | Self::CloseScreen
+            | Self::CreateSession { .. }
             | Self::Unsupported => None,
             Self::Attach { session_id, .. }
             | Self::AcquireWriter { session_id, .. }
@@ -179,6 +200,7 @@ impl ControllerCommand {
             Self::ListSessions { .. }
             | Self::OpenScreen
             | Self::CloseScreen
+            | Self::CreateSession { .. }
             | Self::Unsupported => None,
             Self::Attach {
                 occupant_generation,
@@ -239,6 +261,28 @@ impl ControllerCommand {
             }
             Self::Input { bytes, .. } if bytes.is_empty() || bytes.len() > MAX_INPUT_BYTES => {
                 Err(ListenerError::new(ListenerErrorCode::FrameTooLarge))
+            }
+            Self::CreateSession {
+                folder,
+                shell,
+                title,
+                columns,
+                rows,
+            } if *columns == 0
+                || *rows == 0
+                || *columns > 1_000
+                || *rows > 1_000
+                || folder.as_ref().is_some_and(|value| {
+                    value.is_empty() || value.len() > MAX_CREATE_SESSION_FIELD_BYTES
+                })
+                || shell.as_ref().is_some_and(|value| {
+                    value.is_empty() || value.len() > MAX_CREATE_SESSION_FIELD_BYTES
+                })
+                || title.as_ref().is_some_and(|value| {
+                    value.is_empty() || value.len() > MAX_CREATE_SESSION_FIELD_BYTES
+                }) =>
+            {
+                Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
             }
             _ => Ok(()),
         }
@@ -302,6 +346,12 @@ pub enum ControllerResponse {
         command_id: CommandId,
         code: String,
         completion_unknown: bool,
+    },
+    /// A terminal the device asked for is running, and this is how to reach it.
+    SessionCreated {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        occupant_generation: OccupantGeneration,
     },
     /// A response from a newer computer than this build, which the reader skips.
     #[serde(other)]
@@ -512,6 +562,7 @@ fn response_kind(response: &ControllerResponse) -> &'static str {
         ControllerResponse::Completed { .. } => "completed",
         ControllerResponse::Detached { .. } => "detached",
         ControllerResponse::ScreenOpened { .. } => "screen_opened",
+        ControllerResponse::SessionCreated { .. } => "session_created",
         ControllerResponse::Unknown => "unknown",
         ControllerResponse::Error { .. } => "error",
     }
@@ -550,7 +601,7 @@ mod tests {
             "command_id": CommandId::new(),
             "session_generation": 1,
             "deadline_millis": 1_000,
-            "command": { "kind": "create_session", "folder": "/tmp" }
+            "command": { "kind": "conjure_a_pony", "colour": "roan" }
         });
         let decoded = decode_command(&serde_json::to_vec(&envelope).unwrap())
             .expect("an unknown command kind still decodes");

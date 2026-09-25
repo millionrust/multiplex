@@ -86,15 +86,16 @@ fn all_live_secret_wrappers_are_zeroize_on_drop() {
 
 #[test]
 fn unknown_capability_bits_fail_closed_when_this_build_made_them() {
-    // 0x0100 is the first bit no amendment has defined; 0x00e0 are the Remote Screens bits.
+    // 0x0200 is the first bit no amendment has defined; 0x00e0 are the Remote Screens bits and
+    // 0x0100 is Amendment 2's CreateSession.
     assert_eq!(
-        multiplex_controller_security::CapabilitySet::from_bits(0x0100)
+        multiplex_controller_security::CapabilitySet::from_bits(0x0200)
             .map_err(|error| error.code()),
         Err(ErrorCode::UnknownCapability)
     );
     assert_eq!(
-        multiplex_controller_security::CapabilitySet::from_bits(0x00e0).map(|set| set.bits()),
-        Ok(0x00e0)
+        multiplex_controller_security::CapabilitySet::from_bits(0x01e0).map(|set| set.bits()),
+        Ok(0x01e0)
     );
 }
 
@@ -106,8 +107,8 @@ fn unknown_capability_bits_fail_closed_when_this_build_made_them() {
 /// does understand.
 #[test]
 fn unknown_capability_bits_from_the_wire_are_dropped() {
-    let read = multiplex_controller_security::CapabilitySet::from_wire(0x01e3);
-    assert_eq!(read.bits(), 0x00e3);
+    let read = multiplex_controller_security::CapabilitySet::from_wire(0x03e3);
+    assert_eq!(read.bits(), 0x01e3);
     assert_eq!(
         multiplex_controller_security::CapabilitySet::from_wire(0xffff).bits(),
         multiplex_controller_security::CapabilitySet::KNOWN_MASK

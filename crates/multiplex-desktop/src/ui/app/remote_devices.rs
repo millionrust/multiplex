@@ -2269,6 +2269,9 @@ impl MultiplexApp {
             .capabilities
             .contains(ControllerCapability::ObserveScreens);
         let screen_control_allowed = controls_screens(device.capabilities);
+        let create_sessions_allowed = device
+            .capabilities
+            .contains(ControllerCapability::CreateSession);
         let status = remote_device_status(device.status);
         let last_seen = device
             .last_seen_at
@@ -2356,6 +2359,19 @@ impl MultiplexApp {
                                     .disabled(revoked)
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.toggle_remote_device_screen_control(device_id, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new(("remote-device-create-sessions", index))
+                                    .small()
+                                    .label(if create_sessions_allowed {
+                                        localization::remote_devices_restrict_session_creation_action()
+                                    } else {
+                                        localization::remote_devices_allow_session_creation_action()
+                                    })
+                                    .disabled(revoked)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.toggle_remote_device_session_creation(device_id, cx);
                                     })),
                             )
                             .child(
@@ -2763,6 +2779,17 @@ impl MultiplexApp {
     ) {
         self.change_device_capabilities(device_id, cx, |coordinator, repository, capabilities| {
             coordinator.toggle_screen_watching(repository, device_id, capabilities)
+        });
+    }
+
+    /// Lets one device start a terminal on this computer, or stops it.
+    fn toggle_remote_device_session_creation(
+        &mut self,
+        device_id: ControllerDeviceId,
+        cx: &mut Context<Self>,
+    ) {
+        self.change_device_capabilities(device_id, cx, |coordinator, repository, capabilities| {
+            coordinator.toggle_session_creation(repository, device_id, capabilities)
         });
     }
 

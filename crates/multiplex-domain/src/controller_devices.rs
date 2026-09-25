@@ -297,6 +297,8 @@ pub enum ControllerCapability {
     ObserveScreens,
     ControlPointer,
     ControlKeyboard,
+    /// Starting a terminal on this computer, rather than only using one it already has.
+    CreateSession,
 }
 
 impl ControllerCapability {
@@ -310,8 +312,9 @@ impl ControllerCapability {
 pub struct ControllerCapabilities(u16);
 
 impl ControllerCapabilities {
-    /// Bits 0 to 4 from Controller-v1, bits 5 to 7 from its Remote Screens amendment.
-    pub const KNOWN_MASK: u16 = 0xff;
+    /// Bits 0 to 4 from Controller-v1, bits 5 to 7 from its Remote Screens amendment, bit 8 from
+    /// the amendment that lets a device start a terminal.
+    pub const KNOWN_MASK: u16 = 0x1ff;
 
     pub fn from_bits(bits: u16) -> Result<Self, ControllerDeviceError> {
         if bits & !Self::KNOWN_MASK == 0 {

@@ -157,6 +157,8 @@ pub enum ControllerCapability {
     ObserveScreens = 5,
     ControlPointer = 6,
     ControlKeyboard = 7,
+    /// Starting a terminal on the computer, rather than only using one it already has.
+    CreateSession = 8,
 }
 
 impl ControllerCapability {
@@ -174,6 +176,7 @@ impl ControllerCapability {
             5 => Ok(Self::ObserveScreens),
             6 => Ok(Self::ControlPointer),
             7 => Ok(Self::ControlKeyboard),
+            8 => Ok(Self::CreateSession),
             _ => Err(ErrorCode::UnknownCapability.into()),
         }
     }
@@ -183,8 +186,9 @@ impl ControllerCapability {
 pub struct CapabilitySet(u16);
 
 impl CapabilitySet {
-    /// Bits 0 to 4 from Controller-v1, bits 5 to 7 from the Remote Screens amendment.
-    pub const KNOWN_MASK: u16 = 0x00ff;
+    /// Bits 0 to 4 from Controller-v1, bits 5 to 7 from the Remote Screens amendment, bit 8 for
+    /// starting a terminal.
+    pub const KNOWN_MASK: u16 = 0x01ff;
 
     /// A set this build put together itself, where an unknown bit is a mistake rather than news.
     pub fn from_bits(bits: u16) -> Result<Self> {

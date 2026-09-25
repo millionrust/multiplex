@@ -906,6 +906,14 @@ static_message!(
 static_message!(watched_computers_pairing, WatchedComputersPairingArgs);
 static_message!(watched_computers_none, WatchedComputersNoneArgs);
 static_message!(
+    remote_devices_allow_session_creation_action,
+    RemoteDevicesAllowSessionCreationActionArgs
+);
+static_message!(
+    remote_devices_restrict_session_creation_action,
+    RemoteDevicesRestrictSessionCreationActionArgs
+);
+static_message!(
     watched_computers_forget_action,
     WatchedComputersForgetActionArgs
 );

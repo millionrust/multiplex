@@ -286,6 +286,14 @@ impl ControllerConnectionBackend for HostConnectionBackend {
             self.live_attach = false;
         }
         match command.command {
+            // A Session Host serves terminals that already exist — a console session, a tmux
+            // session, a durable one. It has no window to open a new one in, so it says so
+            // rather than pretending: only the desktop app can answer this.
+            ControllerCommand::CreateSession { .. } => Ok(vec![ControllerResponse::Error {
+                command_id,
+                code: "create_session_unavailable".to_owned(),
+                completion_unknown: false,
+            }]),
             // A command from a newer device: refused by name, and the connection carries on.
             ControllerCommand::Unsupported => Ok(vec![ControllerResponse::Error {
                 command_id,

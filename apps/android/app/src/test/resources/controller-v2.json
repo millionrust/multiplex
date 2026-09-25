@@ -45,7 +45,7 @@
     "sas_display": "5FSW-YX9D"
   },
   "screen_amendment": {
-    "known_capability_mask": 255,
+    "known_capability_mask": 511,
     "capability_bits": {
       "observe_screens": 5,
       "control_pointer": 6,
@@ -57,11 +57,11 @@
     "screen_frame_payload": "controller-v2-screen",
     "screen_frame_hex": "5443463100020000030500000000000000000004000000000000000000000024b2cc36cb442fadd0b0300f83c3867598d7b05316e4d2efae109e61b2989529a9f767d1b6",
     "mutation_errors": {
-      "capability_value_8": "controller.security.unknown_capability",
+      "capability_value_9": "controller.security.unknown_capability",
       "frame_kind_4": "controller.security.invalid_encoding",
       "oversized_screen_frame": "controller.security.frame_too_large"
     }
   },
-  "adr_sha256": "f083c1981d8c38e787efc0a866e4f9465fc2a56520880f095870be669e8289b6",
+  "adr_sha256": "0c642c50ef6de29b718ce3d5a07187d66316ad20832d0edc5c19d843c69de723",
   "cargo_lock_sha256": "a8e4dc5eb5b655ff10fee3afcc37a0d6d9a146b027f462b143e81dd96de498f8"
 }

@@ -45,6 +45,8 @@ pub enum ControllerCapability {
     ObserveScreens,
     ControlPointer,
     ControlKeyboard,
+    /// Starting a terminal on the computer, rather than only using one it already has.
+    CreateSession,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, uniffi::Enum)]
@@ -1170,6 +1172,7 @@ impl From<ControllerCapability> for CoreCapability {
             ControllerCapability::ObserveScreens => Self::ObserveScreens,
             ControllerCapability::ControlPointer => Self::ControlPointer,
             ControllerCapability::ControlKeyboard => Self::ControlKeyboard,
+            ControllerCapability::CreateSession => Self::CreateSession,
         }
     }
 }
@@ -1185,6 +1188,7 @@ impl From<CoreCapability> for ControllerCapability {
             CoreCapability::ObserveScreens => Self::ObserveScreens,
             CoreCapability::ControlPointer => Self::ControlPointer,
             CoreCapability::ControlKeyboard => Self::ControlKeyboard,
+            CoreCapability::CreateSession => Self::CreateSession,
         }
     }
 }

@@ -5009,6 +5009,14 @@ id = "remote-screen-controlling-chip"
 context = "Remote screen state chip."
 description = "Controlling state chip"
 [[messages]]
+id = "remote-devices-allow-session-creation-action"
+context = "Remote device row button."
+description = "Allow a device to start terminals"
+[[messages]]
+id = "remote-devices-restrict-session-creation-action"
+context = "Remote device row button."
+description = "Stop a device starting terminals"
+[[messages]]
 id = "watched-computers-forget-action"
 context = "Action that forgets a computer this Mac paired with, deleting its device identity."
 description = "Forget computer action"

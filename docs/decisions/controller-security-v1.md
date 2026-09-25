@@ -367,6 +367,30 @@ transport, and the rejection of the first unused capability bit and frame kind.
 Acceptance of this amendment is the release gate "Capability ADR amendment accepted"; the
 implementation ships behind it.
 
+## Amendment 2: starting a terminal from a paired device (2026-09-25)
+
+A paired device can use the terminals a computer already has and cannot start one. Asking the
+person to walk to the computer to open a shell before the phone is useful is the last thing
+standing between the phone and the work, so starting one becomes a permission of its own.
+
+The amendment adds exactly one capability bit — `CreateSession` (8), widening the closed mask
+from `0x00ff` to `0x01ff` — and no frame kind. It is separate from `SendInput`: a device that may
+type into a terminal somebody else opened is not thereby allowed to open its own, because what a
+new terminal runs is chosen by the device rather than by the person at the computer. A computer
+that never grants it answers the command with `unsupported_command` and keeps the connection.
+
+The version stays `1.0`, and no field, offset, size, or previously defined value changes. Unlike
+Amendment 1, an implementation that predates this one does **not** meet the new bit as a fatal
+unknown: `docs/decisions/controller-wire-growth.md`, accepted the same day, makes a capability bit
+read off the wire mask to what the reader knows and an unknown command kind a refusal rather than
+a dropped connection. That record supersedes this ADR's "unknown capabilities fail closed"
+sentence **for values read from a peer**; a set an implementation assembles itself still fails
+closed, and unknown frame kinds, suites, flags and reserved bytes are unchanged.
+
+The immutable vectors move with it: the closed mask is `0x01ff`, and the mutation that proves the
+set is still closed now uses capability value 9, the first no amendment has defined. Every offer,
+handshake, SAS, key and frame vector is unchanged byte for byte.
+
 ### Lockfile note: Windows and Linux screen capture (2026-09-18)
 
 The M6 capture backends changed the workspace `Cargo.lock`, so the checksum below was repinned.

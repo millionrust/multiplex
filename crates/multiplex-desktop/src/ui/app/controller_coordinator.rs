@@ -232,6 +232,22 @@ impl ControllerCoordinator {
         })
     }
 
+    /// Lets one device start a terminal on this computer, or stops it.
+    pub fn toggle_session_creation(
+        &self,
+        repository: ControllerDeviceRepository,
+        device_id: ControllerDeviceId,
+        current: ControllerCapabilities,
+    ) -> Result<(), ControllerDeviceMutationError> {
+        self.device_mutator.mutate(ControllerDeviceMutationRequest {
+            repository,
+            mutation: ControllerDeviceMutation::SetCapabilities {
+                device_id,
+                capabilities: toggled_session_creation_capabilities(current),
+            },
+        })
+    }
+
     pub fn revoke_device(
         &self,
         repository: ControllerDeviceRepository,
@@ -438,6 +454,24 @@ fn toggled_watching_capabilities(current: ControllerCapabilities) -> ControllerC
             .fold(current, ControllerCapabilities::without)
     } else {
         current.with(ControllerCapability::ObserveScreens)
+    }
+}
+
+/// Turns starting a terminal on or off for one device.
+///
+/// Separate from input: typing into a terminal somebody opened is not the same as opening one,
+/// because what a new terminal runs is chosen by the device. Granting it implies being able to
+/// see and read the result, which is what makes the terminal any use.
+fn toggled_session_creation_capabilities(
+    current: ControllerCapabilities,
+) -> ControllerCapabilities {
+    if current.contains(ControllerCapability::CreateSession) {
+        current.without(ControllerCapability::CreateSession)
+    } else {
+        current
+            .with(ControllerCapability::CreateSession)
+            .with(ControllerCapability::ObserveSessions)
+            .with(ControllerCapability::AttachOutput)
     }
 }
 

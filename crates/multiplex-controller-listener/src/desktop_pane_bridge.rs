@@ -10,6 +10,7 @@ use multiplex_client::LocalEndpoint;
 use multiplex_client::UserOnlyUnixListener;
 use multiplex_domain::{HostedSessionId, OccupantGeneration, OutputSequence};
 use serde::{Deserialize, Serialize};
+use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 /// The bridge is a user-only Unix socket. Elsewhere starting and connecting report the host as
@@ -235,7 +236,55 @@ impl fmt::Debug for DesktopPaneRegistry {
 struct RegistryState {
     revision: u64,
     panes: HashMap<HostedSessionId, DesktopPaneRecord>,
+    /// Terminals a paired device has asked for and the app has not opened yet.
+    pane_requests: VecDeque<PendingPaneRequest>,
 }
+
+/// What a device asked for when it asked for a terminal.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PaneRequestSpec {
+    pub folder: Option<String>,
+    pub shell: Option<String>,
+    pub title: Option<String>,
+    pub columns: u32,
+    pub rows: u32,
+}
+
+/// One such ask, waiting for the app to answer it.
+///
+/// The bridge cannot open a pane itself: the registry is a view of the panes the app has, and
+/// only the app can start one. So the ask is queued, the app drains it on its own loop, and the
+/// answer comes back down this channel — or the wait times out and the device is told so.
+pub struct PendingPaneRequest {
+    spec: PaneRequestSpec,
+    responder: oneshot::Sender<Option<(HostedSessionId, OccupantGeneration)>>,
+}
+
+impl fmt::Debug for PendingPaneRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("PendingPaneRequest([REDACTED])")
+    }
+}
+
+impl PendingPaneRequest {
+    #[must_use]
+    pub fn spec(&self) -> &PaneRequestSpec {
+        &self.spec
+    }
+
+    /// The app opened it, and this is the session the device should attach to.
+    pub fn opened(self, session_id: HostedSessionId, generation: OccupantGeneration) {
+        let _ = self.responder.send(Some((session_id, generation)));
+    }
+
+    /// The app would not or could not open it.
+    pub fn refused(self) {
+        let _ = self.responder.send(None);
+    }
+}
+
+/// How many unanswered asks the registry holds before it refuses more.
+const MAX_PENDING_PANE_REQUESTS: usize = 4;
 
 struct DesktopPaneRecord {
     title: String,
@@ -269,6 +318,32 @@ impl DesktopPaneRegistry {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    /// Asks the app for a terminal. The receiver carries the app's answer, or nothing when the
+    /// queue is full.
+    pub(crate) fn request_pane(
+        &self,
+        spec: PaneRequestSpec,
+    ) -> Option<oneshot::Receiver<Option<(HostedSessionId, OccupantGeneration)>>> {
+        let mut state = self.inner.lock().ok()?;
+        if state.pane_requests.len() >= MAX_PENDING_PANE_REQUESTS {
+            return None;
+        }
+        let (responder, receiver) = oneshot::channel();
+        state
+            .pane_requests
+            .push_back(PendingPaneRequest { spec, responder });
+        Some(receiver)
+    }
+
+    /// Everything a device has asked for since the last look. The app calls this on its loop.
+    #[must_use]
+    pub fn take_pane_requests(&self) -> Vec<PendingPaneRequest> {
+        let Ok(mut state) = self.inner.lock() else {
+            return Vec::new();
+        };
+        state.pane_requests.drain(..).collect()
     }
 
     pub fn register(&self, registration: DesktopPaneRegistration) {
@@ -682,7 +757,10 @@ async fn serve_connection(
         let bytes = read_bounded_frame(&mut stream, MAX_BRIDGE_FRAME_BYTES).await?;
         let request = serde_json::from_slice::<BridgeRequest>(&bytes)
             .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))?;
-        let reply = handle_request(&registry, connection_id, &mut connection, request);
+        let reply = match create_session_spec(&request) {
+            Some(spec) => open_requested_pane(&registry, request_command_id(&request), spec).await,
+            None => handle_request(&registry, connection_id, &mut connection, request),
+        };
         let bytes = serde_json::to_vec(&reply)
             .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))?;
         if bytes.len() > MAX_BRIDGE_FRAME_BYTES {
@@ -691,6 +769,83 @@ async fn serve_connection(
         write_bounded_frame(&mut stream, &bytes, MAX_BRIDGE_FRAME_BYTES).await?;
     }
 }
+
+/// The terminal a request is asking for, when that is what it is asking for.
+fn create_session_spec(request: &BridgeRequest) -> Option<PaneRequestSpec> {
+    match request {
+        BridgeRequest::Execute {
+            command:
+                ControllerCommand::CreateSession {
+                    folder,
+                    shell,
+                    title,
+                    columns,
+                    rows,
+                },
+            ..
+        } => Some(PaneRequestSpec {
+            folder: folder.clone(),
+            shell: shell.clone(),
+            title: title.clone(),
+            columns: *columns,
+            rows: *rows,
+        }),
+        _ => None,
+    }
+}
+
+fn request_command_id(request: &BridgeRequest) -> multiplex_domain::CommandId {
+    match request {
+        BridgeRequest::Execute { command_id, .. } => *command_id,
+        _ => multiplex_domain::CommandId::new(),
+    }
+}
+
+/// Asks the app for a terminal and waits for it, or says why not.
+///
+/// The wait is bounded because the app may be busy, asleep behind a modal, or simply gone; a
+/// device left holding an open request would look like a hung phone rather than a refusal.
+async fn open_requested_pane(
+    registry: &DesktopPaneRegistry,
+    command_id: multiplex_domain::CommandId,
+    spec: PaneRequestSpec,
+) -> BridgeReply {
+    let Some(receiver) = registry.request_pane(spec) else {
+        return BridgeReply::Responses {
+            responses: vec![ControllerResponse::Error {
+                command_id,
+                code: "create_session_busy".to_owned(),
+                completion_unknown: false,
+            }],
+        };
+    };
+    let answer = tokio::time::timeout(PANE_REQUEST_TIMEOUT, receiver).await;
+    let responses = match answer {
+        Ok(Ok(Some((session_id, occupant_generation)))) => {
+            vec![ControllerResponse::SessionCreated {
+                command_id,
+                session_id,
+                occupant_generation,
+            }]
+        }
+        Ok(Ok(None)) | Ok(Err(_)) => vec![ControllerResponse::Error {
+            command_id,
+            code: "create_session_refused".to_owned(),
+            completion_unknown: false,
+        }],
+        // The app never answered. Whether it opened one is genuinely unknown here, and saying so
+        // is what stops a device from quietly opening two.
+        Err(_) => vec![ControllerResponse::Error {
+            command_id,
+            code: "completion_unknown".to_owned(),
+            completion_unknown: true,
+        }],
+    };
+    BridgeReply::Responses { responses }
+}
+
+/// How long a device waits for the app to open the terminal it asked for.
+const PANE_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 fn handle_request(
     registry: &DesktopPaneRegistry,
@@ -748,9 +903,12 @@ fn execute_desktop_command(
 ) -> Vec<ControllerResponse> {
     match command {
         // The listener answers screen commands itself, so a pane bridge never sees one.
+        // Screen commands are answered by the listener, and a creation is answered before this
+        // by `open_requested_pane`, which is the only thing that can wait for the app.
         ControllerCommand::ListSessions { .. }
         | ControllerCommand::OpenScreen
         | ControllerCommand::CloseScreen
+        | ControllerCommand::CreateSession { .. }
         | ControllerCommand::Unsupported => vec![error_response(command_id)],
         ControllerCommand::Attach {
             session_id,
@@ -1116,6 +1274,109 @@ mod tests {
         return builder.tempdir_in("/tmp").unwrap();
         #[cfg(not(unix))]
         return builder.tempdir().unwrap();
+    }
+
+    /// A device asking for a terminal waits for the app, and gets what the app did.
+    ///
+    /// The registry cannot open a pane itself, so the ask is queued and answered from the app's
+    /// own loop. This drives both endings without a desktop: the app opens one, and the app
+    /// refuses.
+    #[tokio::test]
+    async fn a_requested_terminal_is_answered_by_whatever_the_app_did() {
+        let registry = DesktopPaneRegistry::default();
+        let command_id = multiplex_domain::CommandId::new();
+        let spec = PaneRequestSpec {
+            folder: Some("/tmp/work".to_owned()),
+            shell: None,
+            title: Some("Deploy".to_owned()),
+            columns: 80,
+            rows: 24,
+        };
+
+        let opening = registry.clone();
+        let session_id = HostedSessionId::new();
+        let app = tokio::task::spawn_blocking(move || {
+            for _ in 0..200 {
+                let requests = opening.take_pane_requests();
+                if let Some(request) = requests.into_iter().next() {
+                    assert_eq!(request.spec().folder.as_deref(), Some("/tmp/work"));
+                    assert_eq!(request.spec().title.as_deref(), Some("Deploy"));
+                    request.opened(session_id, OccupantGeneration::new(1));
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            panic!("the app never saw the request");
+        });
+        let reply = open_requested_pane(&registry, command_id, spec.clone()).await;
+        app.await.unwrap();
+        match reply {
+            BridgeReply::Responses { responses } => match responses.as_slice() {
+                [
+                    ControllerResponse::SessionCreated {
+                        session_id: got, ..
+                    },
+                ] => {
+                    assert_eq!(*got, session_id);
+                }
+                _ => panic!("a terminal the app opened answers with the session it opened"),
+            },
+            _ => panic!("unexpected reply"),
+        }
+
+        // And when the app will not, the device is told so rather than left waiting.
+        let refusing = registry.clone();
+        let app = tokio::task::spawn_blocking(move || {
+            for _ in 0..200 {
+                if let Some(request) = refusing.take_pane_requests().into_iter().next() {
+                    request.refused();
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            panic!("the app never saw the request");
+        });
+        let reply = open_requested_pane(&registry, command_id, spec).await;
+        app.await.unwrap();
+        match reply {
+            BridgeReply::Responses { responses } => match responses.as_slice() {
+                [ControllerResponse::Error { code, .. }] => {
+                    assert_eq!(code, "create_session_refused");
+                }
+                _ => panic!("a refusal is an error the device can read"),
+            },
+            _ => panic!("unexpected reply"),
+        }
+    }
+
+    /// More asks than the registry holds are refused rather than queued without end.
+    #[tokio::test]
+    async fn a_flood_of_requests_is_refused_rather_than_queued() {
+        let registry = DesktopPaneRegistry::default();
+        let spec = PaneRequestSpec {
+            folder: None,
+            shell: None,
+            title: None,
+            columns: 80,
+            rows: 24,
+        };
+        for _ in 0..MAX_PENDING_PANE_REQUESTS {
+            assert!(registry.request_pane(spec.clone()).is_some());
+        }
+        assert!(
+            registry.request_pane(spec.clone()).is_none(),
+            "the queue is bounded"
+        );
+        let reply = open_requested_pane(&registry, multiplex_domain::CommandId::new(), spec).await;
+        match reply {
+            BridgeReply::Responses { responses } => match responses.as_slice() {
+                [ControllerResponse::Error { code, .. }] => {
+                    assert_eq!(code, "create_session_busy");
+                }
+                _ => panic!("a full queue is an error the device can read"),
+            },
+            _ => panic!("unexpected reply"),
+        }
     }
 
     /// Off Unix there is no socket only one user can open, so the bridge refuses to start rather

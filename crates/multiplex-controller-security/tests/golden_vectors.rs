@@ -59,7 +59,7 @@ struct ScreenCapabilityBits {
 
 #[derive(Deserialize)]
 struct ScreenMutationErrors {
-    capability_value_8: String,
+    capability_value_9: String,
     frame_kind_4: String,
     oversized_screen_frame: String,
 }
@@ -301,7 +301,7 @@ fn amendment_one_locks_the_screen_capabilities_and_the_screen_frame() {
 
     // The closed sets still fail on the first value each amendment did not define.
     for (offset, value, expected_error) in [
-        (9, 8, &expected.mutation_errors.capability_value_8),
+        (9, 9, &expected.mutation_errors.capability_value_9),
         (8, 4, &expected.mutation_errors.frame_kind_4),
     ] {
         let (mut device, mut host) = confirmed_screen_pairing();

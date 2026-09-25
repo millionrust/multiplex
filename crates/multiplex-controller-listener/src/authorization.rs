@@ -17,6 +17,8 @@ pub enum BridgeCommandKind {
     Detach,
     OpenScreen,
     CloseScreen,
+    /// Starting a terminal on this computer.
+    CreateSession,
     /// A command this build does not know, which is refused before it is authorized.
     Unsupported,
 }
@@ -34,6 +36,7 @@ impl BridgeCommandKind {
             // Watching is what opening a screen session needs; pointer and keyboard are
             // checked per screen frame, once the session carries input.
             Self::OpenScreen | Self::CloseScreen => ControllerCapability::ObserveScreens,
+            Self::CreateSession => ControllerCapability::CreateSession,
             // Never reached: the runtime refuses an unknown command before asking what it needs.
             // Naming the narrowest capability keeps a mistake here a refusal, not a grant.
             Self::Unsupported => ControllerCapability::ObserveSessions,
@@ -44,7 +47,11 @@ impl BridgeCommandKind {
     pub const fn addresses_a_session(self) -> bool {
         !matches!(
             self,
-            Self::ListSessions | Self::OpenScreen | Self::CloseScreen | Self::Unsupported
+            Self::ListSessions
+                | Self::OpenScreen
+                | Self::CloseScreen
+                | Self::CreateSession
+                | Self::Unsupported
         )
     }
 

@@ -768,6 +768,7 @@ fn security_capability(capability: DomainCapability) -> SecurityCapability {
         DomainCapability::ObserveScreens => SecurityCapability::ObserveScreens,
         DomainCapability::ControlPointer => SecurityCapability::ControlPointer,
         DomainCapability::ControlKeyboard => SecurityCapability::ControlKeyboard,
+        DomainCapability::CreateSession => SecurityCapability::CreateSession,
     }
 }
 
@@ -780,6 +781,11 @@ fn response_security(
         ControllerResponse::Unknown | ControllerResponse::Sessions { .. } => (
             ControllerFrameKind::Control,
             SecurityCapability::ObserveSessions,
+            control_payload_limit(),
+        ),
+        ControllerResponse::SessionCreated { .. } => (
+            ControllerFrameKind::Control,
+            SecurityCapability::CreateSession,
             control_payload_limit(),
         ),
         ControllerResponse::Snapshot { .. } | ControllerResponse::Output { .. } => (

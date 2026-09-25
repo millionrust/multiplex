@@ -292,7 +292,7 @@ fn write_golden_vectors() {
     "screen_frame_payload": "{screen_payload}",
     "screen_frame_hex": "{screen_frame_hex}",
     "mutation_errors": {{
-      "capability_value_8": "controller.security.unknown_capability",
+      "capability_value_9": "controller.security.unknown_capability",
       "frame_kind_4": "controller.security.invalid_encoding",
       "oversized_screen_frame": "controller.security.frame_too_large"
     }}

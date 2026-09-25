@@ -204,6 +204,11 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ControllerClientChannel<S> {
                 self.require_pending(*command_id, SecurityCapability::AttachOutput)?,
                 true,
             ),
+            ControllerResponse::SessionCreated { command_id, .. } => (
+                ControllerFrameKind::Control,
+                self.require_pending(*command_id, SecurityCapability::CreateSession)?,
+                true,
+            ),
             ControllerResponse::Snapshot { command_id, .. } => (
                 ControllerFrameKind::Terminal,
                 self.require_pending(*command_id, SecurityCapability::AttachOutput)?,
@@ -258,6 +263,7 @@ fn response_command_id(response: &ControllerResponse) -> Option<CommandId> {
         | ControllerResponse::Completed { command_id, .. }
         | ControllerResponse::Detached { command_id }
         | ControllerResponse::ScreenOpened { command_id, .. }
+        | ControllerResponse::SessionCreated { command_id, .. }
         | ControllerResponse::Error { command_id, .. } => Some(*command_id),
         ControllerResponse::Output { .. } | ControllerResponse::Unknown => None,
     }
@@ -273,5 +279,6 @@ fn security_capability(capability: DomainCapability) -> SecurityCapability {
         DomainCapability::ObserveScreens => SecurityCapability::ObserveScreens,
         DomainCapability::ControlPointer => SecurityCapability::ControlPointer,
         DomainCapability::ControlKeyboard => SecurityCapability::ControlKeyboard,
+        DomainCapability::CreateSession => SecurityCapability::CreateSession,
     }
 }

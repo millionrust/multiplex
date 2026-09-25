@@ -7486,6 +7486,16 @@ impl MultiplexApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> u64 {
+        self.spawn_pane_without_window(request, cx)
+    }
+
+    /// The same, for the paths that have no window in hand — the event loop, which opens the
+    /// terminals paired devices ask for.
+    fn spawn_pane_without_window(
+        &mut self,
+        request: ConnectRequest,
+        cx: &mut Context<Self>,
+    ) -> u64 {
         let mut request = request;
         self.give_a_duplicated_local_pane_its_own_session(&mut request);
         let request = request;
@@ -7802,6 +7812,56 @@ impl MultiplexApp {
         pane_id
     }
 
+    /// Opens the terminals paired devices have asked for since the last look.
+    ///
+    /// A phone cannot reach into this app, so the bridge queues the ask and this answers it on
+    /// the app's own loop: a local terminal in the folder it named, published to the bridge so
+    /// the phone can attach to it straight away. Returns whether anything was opened.
+    fn open_panes_paired_devices_asked_for(&mut self, cx: &mut Context<Self>) -> bool {
+        let requests = self.desktop_panes.take_pane_requests();
+        if requests.is_empty() {
+            return false;
+        }
+        let mut opened = false;
+        for request in requests {
+            let spec = request.spec().clone();
+            let mut shell = self.saved.settings.default_local_shell.clone();
+            if let Some(program) = spec.shell.as_ref().filter(|value| !value.trim().is_empty()) {
+                shell.program = program.clone();
+                shell.args.clear();
+            }
+            if let Some(folder) = spec
+                .folder
+                .as_ref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                shell.cwd = Some(folder.clone());
+            }
+            let mut connect =
+                ConnectRequest::local_shell_with_config(self.next_session_id(), shell);
+            if let Some(title) = spec.title.as_ref().filter(|value| !value.trim().is_empty()) {
+                connect.title = title.clone();
+            }
+            self.make_local_request_resumable(&mut connect);
+            let pane_id = connect.session_id;
+            let Some((_, pane_id)) =
+                self.open_request_workspace_without_window(connect, pane_id, cx)
+            else {
+                request.refused();
+                continue;
+            };
+            let Some(pane) = self.pane(pane_id) else {
+                request.refused();
+                continue;
+            };
+            let session_id = pane.controller_session_id;
+            self.publish_desktop_pane(pane_id);
+            request.opened(session_id, multiplex_domain::OccupantGeneration::new(1));
+            opened = true;
+        }
+        opened
+    }
+
     fn publish_desktop_pane(&self, pane_id: u64) {
         let Some(pane) = self.pane(pane_id) else {
             return;
@@ -7897,6 +7957,18 @@ impl MultiplexApp {
     ) -> Option<(u64, u64)> {
         request.session_id = self.next_session_id();
         let pane_id = self.spawn_pane(request.clone(), window, cx);
+        let workspace_id = self.open_spawned_pane_workspace(&request, pane_id);
+        Some((workspace_id, pane_id))
+    }
+
+    fn open_request_workspace_without_window(
+        &mut self,
+        mut request: ConnectRequest,
+        session_id: u64,
+        cx: &mut Context<Self>,
+    ) -> Option<(u64, u64)> {
+        request.session_id = session_id;
+        let pane_id = self.spawn_pane_without_window(request.clone(), cx);
         let workspace_id = self.open_spawned_pane_workspace(&request, pane_id);
         Some((workspace_id, pane_id))
     }
@@ -8676,6 +8748,7 @@ impl MultiplexApp {
         let structured_agents_changed = self.process_structured_agent_events();
         let connection_diagnostics_changed = self.process_connection_diagnostic_events();
         let project_undo_changed = self.process_project_undo_expiry();
+        let panes_requested = self.open_panes_paired_devices_asked_for(cx);
         #[cfg(test)]
         {
             if structured_agents_changed {
@@ -8689,8 +8762,10 @@ impl MultiplexApp {
                 self.event_root_notification_causes.push("project-undo");
             }
         }
-        let mut changed =
-            structured_agents_changed || connection_diagnostics_changed || project_undo_changed;
+        let mut changed = structured_agents_changed
+            || connection_diagnostics_changed
+            || project_undo_changed
+            || panes_requested;
         let mut panes_to_refresh = Vec::new();
         let mut sftp_directories_to_refresh = HashSet::new();
 
