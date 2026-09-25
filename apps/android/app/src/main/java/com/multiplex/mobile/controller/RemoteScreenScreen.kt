@@ -312,26 +312,22 @@ fun RemoteScreenView(
                     Modifier.align(Alignment.TopEnd).padding(12.dp),
                 )
             }
-            // `.vtop`: the way out and the zoom, floating over the picture's top-left corner.
+            // `.overlay-top` in multiplex-mobile-flow.html: the way back, and what this phone is
+            // doing with the computer right now.
             Row(
-                Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp),
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.95f))
-                        .clickable(onClick = onClose),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Outlined.ArrowBack,
-                        contentDescription = stringResource(com.multiplex.mobile.R.string.screen_done),
-                        tint = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
+                ScreenPill(
+                    text = stringResource(com.multiplex.mobile.R.string.back),
+                    leading = Icons.AutoMirrored.Outlined.ArrowBack,
+                    onClick = onClose,
+                )
                 Text(
                     model.zoomLabel,
                     color = Color(0xFFE6E8EB),
@@ -340,6 +336,17 @@ fun RemoteScreenView(
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color(0xCC111316))
                         .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+                Spacer(Modifier.weight(1f))
+                ScreenPill(
+                    text = stringResource(
+                        if (model.isDriving) {
+                            com.multiplex.mobile.R.string.screen_you_have_control
+                        } else {
+                            com.multiplex.mobile.R.string.screen_watching
+                        },
+                    ),
+                    on = model.isDriving,
                 )
             }
             if (reconnecting) {
@@ -568,30 +575,49 @@ private fun ScreenControls(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
         )
     }
-    // `.ftoolbar`: icon buttons, and taking control as its own `.ctl` pill beside them. As text
-    // buttons the five ran past the edge of the phone and Done fell off it.
+    // `.overlay-bottom` in multiplex-mobile-flow.html: taking control, giving it back, the
+    // keyboard, and the way to this computer's terminals.
     Row(
         Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (model.canControlKeyboard) {
-            ToolbarIcon(
-                icon = Icons.Outlined.Keyboard,
-                label = stringResource(com.multiplex.mobile.R.string.screen_keyboard),
-                on = showKeyboard,
-                enabled = model.isDriving,
-                onClick = onToggleKeyboard,
+        when {
+            !model.canControlPointer && !model.canControlKeyboard -> ScreenPill(
+                text = stringResource(
+                    com.multiplex.mobile.R.string.screen_watch_only_not_granted,
+                ),
+                enabled = false,
+            )
+            model.control == com.multiplex.screens.ScreenControlHolder.YOU -> {
+                ScreenPill(
+                    text = stringResource(com.multiplex.mobile.R.string.screen_give_back_control),
+                    onClick = { model.releaseControl() },
+                )
+                if (model.canControlKeyboard) {
+                    ScreenPill(
+                        text = stringResource(com.multiplex.mobile.R.string.screen_keyboard),
+                        leading = Icons.Outlined.Keyboard,
+                        on = showKeyboard,
+                        onClick = onToggleKeyboard,
+                    )
+                }
+            }
+            else -> ScreenPill(
+                text = stringResource(com.multiplex.mobile.R.string.screen_take_control),
+                primary = true,
+                enabled = model.control != com.multiplex.screens.ScreenControlHolder.ANOTHER_DEVICE,
+                onClick = { model.requestControl() },
             )
         }
         if (model.canControlPointer) {
-            ToolbarIcon(
-                icon = if (model.pointerMode == RemotePointerMode.TOUCH) {
+            ScreenPill(
+                text = model.pointerMode.title,
+                leading = if (model.pointerMode == RemotePointerMode.TOUCH) {
                     Icons.Outlined.TouchApp
                 } else {
                     Icons.Outlined.Mouse
                 },
-                label = model.pointerMode.title,
                 enabled = model.isDriving,
                 onClick = {
                     model.pointerMode = if (model.pointerMode == RemotePointerMode.TOUCH) {
@@ -604,9 +630,9 @@ private fun ScreenControls(
         }
         if (model.displays.size > 1) {
             Box {
-                ToolbarIcon(
-                    icon = Icons.Outlined.Monitor,
-                    label = stringResource(com.multiplex.mobile.R.string.screen_displays),
+                ScreenPill(
+                    text = stringResource(com.multiplex.mobile.R.string.screen_displays),
+                    leading = Icons.Outlined.Monitor,
                     onClick = { onShowDisplays(true) },
                 )
                 androidx.compose.material3.DropdownMenu(
@@ -625,77 +651,14 @@ private fun ScreenControls(
                 }
             }
         }
-        ToolbarIcon(
-            icon = Icons.Outlined.Info,
-            label = stringResource(com.multiplex.mobile.R.string.screen_connection),
+        ScreenPill(
+            text = stringResource(com.multiplex.mobile.R.string.screen_connection),
+            leading = Icons.Outlined.Info,
             onClick = onShowConnection,
         )
-        ToolbarIcon(
-            icon = Icons.Outlined.Close,
-            label = stringResource(com.multiplex.mobile.R.string.screen_done),
-            onClick = onClose,
-        )
-        if (model.canControlPointer || model.canControlKeyboard) {
-            Spacer(Modifier.size(6.dp))
-            Button(
-                onClick = {
-                    if (model.control == com.multiplex.screens.ScreenControlHolder.YOU) {
-                        model.releaseControl()
-                    } else {
-                        model.requestControl()
-                    }
-                },
-                enabled = model.control != com.multiplex.screens.ScreenControlHolder.ANOTHER_DEVICE,
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.height(48.dp),
-            ) {
-                Text(
-                    if (model.control == com.multiplex.screens.ScreenControlHolder.YOU) {
-                        stringResource(com.multiplex.mobile.R.string.screen_stop_controlling)
-                    } else {
-                        stringResource(com.multiplex.mobile.R.string.screen_take_control)
-                    },
-                )
-            }
-        } else {
-            Text(
-                stringResource(com.multiplex.mobile.R.string.screen_control_not_granted),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 8.dp),
-            )
-        }
     }
 }
 
-/** `.ftoolbar .tb`: a 48-unit icon button, lit when its mode is on. */
-@Composable
-private fun ToolbarIcon(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    on: Boolean = false,
-    enabled: Boolean = true,
-    onClick: () -> Unit,
-) {
-    Box(
-        Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .background(if (on) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            icon,
-            contentDescription = label,
-            tint = when {
-                !enabled -> com.multiplex.mobile.ui.SlateExtras.dimText
-                on -> MaterialTheme.colorScheme.onSecondaryContainer
-                else -> MaterialTheme.colorScheme.onSurface
-            },
-        )
-    }
-}
 
 @Composable
 private fun controlLabel(model: RemoteScreenModel): String =
@@ -823,5 +786,49 @@ private fun ScreenTerminals(
                 )
             }
         }
+    }
+}
+
+/** `.pillbtn` in multiplex-mobile-flow.html: a floating pill over the picture. */
+@Composable
+private fun ScreenPill(
+    text: String,
+    leading: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    on: Boolean = false,
+    primary: Boolean = false,
+    enabled: Boolean = true,
+    onClick: (() -> Unit)? = null,
+) {
+    val background = when {
+        primary -> MaterialTheme.colorScheme.primary
+        on -> MaterialTheme.colorScheme.secondaryContainer
+        else -> MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.95f)
+    }
+    val foreground = when {
+        primary -> MaterialTheme.colorScheme.onPrimary
+        on -> MaterialTheme.colorScheme.onSecondaryContainer
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(background)
+            .then(
+                if (onClick != null) Modifier.clickable(enabled = enabled, onClick = onClick)
+                else Modifier,
+            )
+            .heightIn(min = 40.dp)
+            .padding(horizontal = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (leading != null) {
+            Icon(leading, contentDescription = null, tint = foreground, modifier = Modifier.size(18.dp))
+        }
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (enabled) foreground else com.multiplex.mobile.ui.SlateExtras.dimText,
+        )
     }
 }

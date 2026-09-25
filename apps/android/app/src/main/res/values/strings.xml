@@ -12,6 +12,23 @@
     <string name="pair_private_network_hint">Pair with Multiplex on a computer on the same private network. Its screen and its terminals then appear here.</string>
     <string name="paired_hosts">Paired Hosts</string>
     <string name="controller_computers">Computers</string>
+    <!-- multiplex-mobile-flow.html's Computers screen. -->
+    <string name="computers_reachable_count">%1$d reachable</string>
+    <string name="computers_reachable_now">Reachable now</string>
+    <string name="computers_not_reachable">Not reachable</string>
+    <string name="computers_terminal_count">%1$d terminals</string>
+    <string name="computers_pairing_note">Pairing is per computer and asks for a six-digit code shown on its screen.</string>
+    <string name="computers_pair">Pair</string>
+    <string name="computer_recent">Recent on this computer</string>
+    <string name="computer_terminals_note">Terminals opened with the Multiplex profile and tmux sessions appear here, whoever started them.</string>
+    <string name="screen_main_display">Main display</string>
+    <string name="screen_watch_only">watch only</string>
+    <string name="screen_may_take_control">you may take control</string>
+    <string name="screen_watching">Watching</string>
+    <string name="screen_you_have_control">You have control</string>
+    <string name="screen_give_back_control">Give back control</string>
+    <string name="screen_asking_for_control">Asking %1$s for pointer and keyboard…</string>
+    <string name="screen_watch_only_not_granted">Watch only — this computer did not grant control</string>
     <string name="new_terminal">New terminal</string>
     <string name="new_terminal_title">Start a terminal</string>
     <string name="new_terminal_folder">Folder</string>

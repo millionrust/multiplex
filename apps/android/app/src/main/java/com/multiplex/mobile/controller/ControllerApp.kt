@@ -40,11 +40,13 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.KeyboardHide
+import androidx.compose.material.icons.outlined.Monitor
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.AlertDialog
@@ -125,6 +127,7 @@ import kotlin.math.roundToInt
 @Composable
 fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier) {
     var showEnrollment by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var hostMode by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(HostMode.Screen) }
     var showEnrollmentMenu by remember { mutableStateOf(false) }
     var showHostMenu by remember { mutableStateOf(false) }
     if (showEnrollment) {
@@ -186,8 +189,12 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
     // The connection carries one session at a time, so the preview runs only while a computer's
     // page is open and nothing else is using it: opening a terminal ends it, and coming back
     // starts it again.
-    LaunchedEffect(state.selectedHostId, state.connection, activeTerminal != null, openHostId) {
-        if (activeTerminal == null && openHostId != null && viewModel.canWatchSelectedHost()) {
+    LaunchedEffect(state.selectedHostId, state.connection, activeTerminal != null, openHostId, hostMode) {
+        // Only while Screen is showing: that is where the computer's displays are listed, and the
+        // preview is what knows them.
+        if (activeTerminal == null && openHostId != null && hostMode == HostMode.Screen &&
+            viewModel.canWatchSelectedHost()
+        ) {
             viewModel.startScreenPreview()
         } else {
             viewModel.stopScreenPreview()
@@ -220,10 +227,19 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                                 Text(connectionLabel(state.connection), style = MaterialTheme.typography.labelMedium)
                             }
                         } else {
-                            // One line, the name of what is below it, as design/remote-screens/
-                            // android.html has it. The app's own name and a second line of chrome
-                            // were repeating what the launcher and the tab bar already say.
-                            Text(stringResource(com.multiplex.mobile.R.string.controller_computers))
+                            // multiplex-mobile-flow.html's Computers nav: what the list is, and
+                            // how many of them this phone can reach right now.
+                            Column {
+                                Text(stringResource(com.multiplex.mobile.R.string.controller_computers))
+                                Text(
+                                    stringResource(
+                                        com.multiplex.mobile.R.string.computers_reachable_count,
+                                        state.glances.size,
+                                    ),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     },
                     navigationIcon = {
@@ -271,11 +287,8 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                                 }
                             }
                         } else {
-                            IconButton(onClick = { showPairing = true }) {
-                                Icon(
-                                    Icons.Outlined.Add,
-                                    stringResource(com.multiplex.mobile.R.string.pair_computer),
-                                )
+                            TextButton(onClick = { showPairing = true }) {
+                                Text(stringResource(com.multiplex.mobile.R.string.computers_pair))
                             }
                             Box {
                                 IconButton(onClick = { showEnrollmentMenu = true }) {
@@ -340,9 +353,10 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                             screens = viewModel.screens,
                             canWatch = viewModel.canWatchSelectedHost(),
                             onOpenScreen = viewModel::openScreen,
-                            onSelectRoute = { pendingRoute = it },
                             canCreateSession = viewModel.canCreateSessionOnSelectedHost(),
                             onNewTerminal = { showNewTerminal = true },
+                                                    mode = hostMode,
+                            onSelectMode = { hostMode = it },
                         )
                     }
                 } else if (openHostId == null) {
@@ -367,9 +381,10 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                         screens = viewModel.screens,
                         canWatch = viewModel.canWatchSelectedHost(),
                         onOpenScreen = viewModel::openScreen,
-                        onSelectRoute = { pendingRoute = it },
                         canCreateSession = viewModel.canCreateSessionOnSelectedHost(),
                         onNewTerminal = { showNewTerminal = true },
+                                            mode = hostMode,
+                        onSelectMode = { hostMode = it },
                     )
                 }
             }
@@ -731,121 +746,138 @@ private fun HostList(
     lastPictures: Map<String, android.graphics.Bitmap> = emptyMap(),
     onOpenScreen: (String) -> Unit = {},
 ) {
-    // The bar above says Computers, so the list goes straight to them, as
-    // design/remote-screens/android.html has it. A heading repeating the bar and a line telling
-    // the reader to tap a card were between them.
+    // multiplex-mobile-flow.html's Computers screen: the ones this phone can reach now, then the
+    // ones it cannot, each a row saying how it is reached and when it was last seen.
+    val reachable = state.hosts.filter { state.glances[it.id] != null }
+    val unreachable = state.hosts.filterNot { state.glances[it.id] != null }
     LazyColumn(
         modifier,
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
     ) {
-        items(state.hosts, key = { it.id }) { host ->
-            HostRow(
-                host = host,
-                connected = host.id == state.selectedHostId &&
-                    state.connection == ControllerConnectionState.ReadyReadOnly,
-                glance = state.glances[host.id],
-                picture = lastPictures[host.id],
-                onOpenScreen = { onOpenScreen(host.id) },
-                onClick = { onSelect(host.id) },
+        if (reachable.isNotEmpty()) {
+            item(key = "reachable-label") {
+                GroupLabel(stringResource(com.multiplex.mobile.R.string.computers_reachable_now))
+            }
+            item(key = "reachable") {
+                ItemGroup {
+                    reachable.forEachIndexed { index, host ->
+                        HostRow(
+                            host = host,
+                            reachable = true,
+                            glance = state.glances[host.id],
+                            divider = index > 0,
+                            onClick = { onSelect(host.id) },
+                        )
+                    }
+                }
+            }
+        }
+        if (unreachable.isNotEmpty()) {
+            item(key = "unreachable-label") {
+                GroupLabel(stringResource(com.multiplex.mobile.R.string.computers_not_reachable))
+            }
+            item(key = "unreachable") {
+                ItemGroup {
+                    unreachable.forEachIndexed { index, host ->
+                        HostRow(
+                            host = host,
+                            reachable = false,
+                            glance = null,
+                            divider = index > 0,
+                            onClick = { onSelect(host.id) },
+                        )
+                    }
+                }
+            }
+        }
+        item(key = "pairing-note") {
+            Text(
+                stringResource(com.multiplex.mobile.R.string.computers_pairing_note),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 14.dp),
             )
         }
     }
 }
 
+/** `.group-label`: the quiet heading over a group of rows. */
+@Composable
+private fun GroupLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 7.dp),
+    )
+}
+
+/** One computer, as the flow has it: how it is reached, when it was last seen, what it is running. */
 @Composable
 private fun HostRow(
     host: PairedHostRecord,
-    connected: Boolean,
+    reachable: Boolean,
     glance: HostGlance?,
-    picture: android.graphics.Bitmap?,
-    onOpenScreen: () -> Unit,
+    divider: Boolean,
     onClick: () -> Unit,
 ) {
-    val hostDescription = stringResource(com.multiplex.mobile.R.string.host_accessibility, isolated(host.displayName))
-    // `.card` in design/remote-screens/android.html: the computer's own screen across the top,
-    // what it is under that, and the two ways in along the bottom.
-    val shape = RoundedCornerShape(16.dp)
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-            .semantics { contentDescription = hostDescription },
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(3f / 1f)
-                .background(Color(0xFF0B0D10))
-                .clickable(onClick = onClick),
-        ) {
-            if (picture != null) {
-                Image(
-                    bitmap = picture.asImageBitmap(),
+    val hostDescription = stringResource(
+        com.multiplex.mobile.R.string.host_accessibility,
+        isolated(host.displayName),
+    )
+    GroupItem(
+        title = isolated(host.displayName),
+        // The address without its port: the flow's meta line is how it is reached and when it
+        // was last seen, and the port pushed the second half off the row.
+        subtitle = isolated(host.route.address) + " · " +
+            if (reachable) {
+                stringResource(com.multiplex.mobile.R.string.time_just_now)
+            } else {
+                relativeTime(glance?.updatedAtMillis)
+            },
+        divider = divider,
+        onClick = onClick,
+        lead = {
+            ItemLead {
+                Icon(
+                    Icons.Outlined.Monitor,
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            Row(
-                Modifier
-                    .padding(12.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xD9111316))
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                StatusDot(live = connected)
-                Text(
-                    if (connected) {
-                        stringResource(com.multiplex.mobile.R.string.state_live)
+                    tint = if (reachable) {
+                        MaterialTheme.colorScheme.primary
                     } else {
-                        stringResource(com.multiplex.mobile.R.string.state_host_offline)
+                        com.multiplex.mobile.ui.SlateExtras.dimText
                     },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color(0xFFE6E8EB),
                 )
             }
-        }
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                isolated(host.displayName),
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                listOf(isolated("${host.route.address}:${host.route.port}"), hostGlanceLabel(glance))
-                    .joinToString(" · "),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Button(
-                onClick = onOpenScreen,
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.height(40.dp),
-            ) { Text(stringResource(com.multiplex.mobile.R.string.screen_open)) }
-            TextButton(onClick = onClick, modifier = Modifier.height(40.dp)) {
-                Text(stringResource(com.multiplex.mobile.R.string.controller_tab_terminals))
+        },
+        trailing = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.semantics { contentDescription = hostDescription },
+            ) {
+                if (glance != null) {
+                    Text(
+                        stringResource(
+                            com.multiplex.mobile.R.string.computers_terminal_count,
+                            glance.openTerminals,
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                }
+                Icon(
+                    Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = com.multiplex.mobile.ui.SlateExtras.dimText,
+                )
             }
-        }
-    }
+        },
+    )
 }
 
 /** How many terminals were open when the phone last looked, and when that was. */
@@ -874,126 +906,236 @@ private fun FleetDetail(
     onOpenScreen: (UInt?) -> Unit = {},
     canCreateSession: Boolean = false,
     onNewTerminal: () -> Unit = {},
-    onSelectRoute: (ControllerRemoteRouteKind) -> Unit = {},
+    mode: HostMode = HostMode.Screen,
+    onSelectMode: (HostMode) -> Unit = {},
 ) {
     val openTerminals = state.sessions.filter(ControllerSessionSummary::isOpenTerminal)
-    val previousSessions = state.sessions.filterNot(ControllerSessionSummary::isOpenTerminal)
     val displays = screens?.preview?.displays.orEmpty()
-    // One scrolling page, as design/remote-screens/android.html has it: what the computer looks
-    // like, then what it is running, then how this phone is reaching it. The connection still
-    // carries one thing at a time — opening a terminal ends the preview and coming back starts
-    // it again — but that is the connection's business, not a choice to put in front of anyone.
+    // multiplex-mobile-flow.html's computer page: one segmented control decides what you are
+    // doing with this computer, and the page under it is that.
     Column(modifier.fillMaxSize()) {
         ConnectionBanner(state, onRetry)
+        HostModeSwitch(mode, onSelectMode)
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 24.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
         ) {
-            item(key = "screen") {
-                ControllerScreenPreviewCard(
-                    preview = screens?.preview,
-                    lastPicture = state.selectedHostId?.let { screens?.lastPictures?.get(it) },
-                    unavailable = if (canWatch && screens != null) {
-                        screens.unavailable
-                    } else {
-                        ControllerScreenUnavailable.NotGranted
-                    },
-                    onOpenScreen = { onOpenScreen(null) },
-                )
-            }
-            if (displays.size > 1) {
-                item(key = "displays-label") {
-                    LabelHeading(stringResource(com.multiplex.mobile.R.string.controller_displays))
-                }
-                item(key = "displays") {
-                    ItemGroup {
-                        displays.forEachIndexed { index, display ->
-                            GroupItem(
-                                title = display.name,
-                                divider = index > 0,
-                                onClick = { onOpenScreen(display.id) },
-                                lead = { ItemLead { StatusDot(live = true) } },
-                            )
+            when (mode) {
+                HostMode.Screen -> {
+                    if (!canWatch) {
+                        item(key = "no-screen") {
+                            ItemGroup {
+                                GroupItem(
+                                    title = stringResource(
+                                        com.multiplex.mobile.R.string.screen_not_granted,
+                                    ),
+                                    lead = { ItemLead { StatusDot(live = false) } },
+                                )
+                            }
                         }
-                    }
-                }
-            }
-            item(key = "terminals-label") {
-                LabelHeading(stringResource(com.multiplex.mobile.R.string.open_terminals))
-            }
-            item(key = "terminals") {
-                ItemGroup {
-                    if (canCreateSession) {
-                        GroupItem(
-                            title = stringResource(com.multiplex.mobile.R.string.new_terminal),
-                            onClick = onNewTerminal,
-                            lead = {
-                                ItemLead {
-                                    Icon(
-                                        Icons.Outlined.Add,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
+                    } else {
+                        item(key = "displays") {
+                            ItemGroup {
+                                if (displays.isEmpty()) {
+                                    GroupItem(
+                                        title = stringResource(
+                                            com.multiplex.mobile.R.string.screen_main_display,
+                                        ),
+                                        subtitle = controlNote(state),
+                                        onClick = { onOpenScreen(null) },
+                                        lead = {
+                                            ItemLead {
+                                                Icon(
+                                                    Icons.Outlined.Monitor,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                )
+                                            }
+                                        },
+                                        trailing = { Chevron() },
                                     )
                                 }
-                            },
-                        )
-                    }
-                    if (openTerminals.isEmpty()) {
-                        GroupItem(
-                            title = if (state.connection.isBusy()) {
-                                stringResource(com.multiplex.mobile.R.string.loading_sessions)
-                            } else {
-                                stringResource(com.multiplex.mobile.R.string.no_open_terminals)
-                            },
-                            subtitle = if (canCreateSession) {
-                                null
-                            } else {
-                                stringResource(com.multiplex.mobile.R.string.new_terminal_not_granted)
-                            },
-                            divider = canCreateSession,
-                            lead = { ItemLead { StatusDot(live = false) } },
-                        )
-                    }
-                    openTerminals.forEachIndexed { index, session ->
-                        TerminalItem(
-                            session = session,
-                            cached = state.cachedReadOnly,
-                            divider = canCreateSession || index > 0,
-                            onOpen = { onOpenSession(session.id) },
-                        )
-                    }
-                }
-            }
-            if (previousSessions.isNotEmpty()) {
-                item(key = "previous-label") {
-                    LabelHeading(stringResource(com.multiplex.mobile.R.string.previous_sessions))
-                }
-                item(key = "previous") {
-                    ItemGroup {
-                        previousSessions.forEachIndexed { index, session ->
-                            TerminalItem(
-                                session = session,
-                                cached = state.cachedReadOnly,
-                                divider = index > 0,
-                                onOpen = { onOpenSession(session.id) },
-                            )
+                                displays.forEachIndexed { index, display ->
+                                    GroupItem(
+                                        title = display.name,
+                                        subtitle = "${display.width} × ${display.height} · " +
+                                            controlNote(state),
+                                        divider = index > 0,
+                                        onClick = { onOpenScreen(display.id) },
+                                        lead = {
+                                            ItemLead {
+                                                Icon(
+                                                    Icons.Outlined.Monitor,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                )
+                                            }
+                                        },
+                                        trailing = { Chevron() },
+                                    )
+                                }
+                            }
+                        }
+                        if (openTerminals.isNotEmpty()) {
+                            item(key = "recent-label") {
+                                GroupLabel(
+                                    stringResource(com.multiplex.mobile.R.string.computer_recent),
+                                )
+                            }
+                            item(key = "recent") {
+                                ItemGroup {
+                                    openTerminals.take(2).forEachIndexed { index, session ->
+                                        TerminalItem(
+                                            session = session,
+                                            cached = state.cachedReadOnly,
+                                            divider = index > 0,
+                                            onOpen = { onOpenSession(session.id) },
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-            }
-            val routes = state.routeProjections.filter {
-                it.route != ControllerRemoteRouteKind.LOCAL_IPC
-            }
-            if (routes.isNotEmpty()) {
-                item(key = "route-label") {
-                    LabelHeading(stringResource(com.multiplex.mobile.R.string.controller_route_title))
-                }
-                item(key = "route") {
-                    RouteSegments(routes, state.selectedRoute, onSelectRoute)
+                HostMode.Terminals -> {
+                    item(key = "terminals") {
+                        ItemGroup {
+                            if (openTerminals.isEmpty()) {
+                                GroupItem(
+                                    title = if (state.connection.isBusy()) {
+                                        stringResource(com.multiplex.mobile.R.string.loading_sessions)
+                                    } else {
+                                        stringResource(com.multiplex.mobile.R.string.no_open_terminals)
+                                    },
+                                    lead = { ItemLead { StatusDot(live = false) } },
+                                )
+                            }
+                            openTerminals.forEachIndexed { index, session ->
+                                TerminalItem(
+                                    session = session,
+                                    cached = state.cachedReadOnly,
+                                    divider = index > 0,
+                                    onOpen = { onOpenSession(session.id) },
+                                )
+                            }
+                        }
+                    }
+                    item(key = "new-terminal") {
+                        if (canCreateSession) {
+                            Button(
+                                onClick = onNewTerminal,
+                                shape = RoundedCornerShape(20.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 12.dp)
+                                    .height(44.dp),
+                            ) {
+                                Icon(Icons.Outlined.Add, contentDescription = null)
+                                Spacer(Modifier.size(8.dp))
+                                Text(stringResource(com.multiplex.mobile.R.string.new_terminal))
+                            }
+                        } else {
+                            Text(
+                                stringResource(com.multiplex.mobile.R.string.new_terminal_not_granted),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 12.dp, start = 4.dp),
+                            )
+                        }
+                    }
+                    item(key = "terminals-note") {
+                        Text(
+                            stringResource(com.multiplex.mobile.R.string.computer_terminals_note),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 12.dp),
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+/** What this phone is doing with a computer. */
+internal enum class HostMode { Screen, Terminals }
+
+/** `.seg` in multiplex-mobile-flow.html: one control decides what the page below it is. */
+@Composable
+private fun HostModeSwitch(mode: HostMode, onSelect: (HostMode) -> Unit) {
+    val shape = RoundedCornerShape(20.dp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .height(40.dp)
+            .clip(shape)
+            .border(1.dp, MaterialTheme.colorScheme.outline, shape),
+    ) {
+        HostMode.entries.forEachIndexed { index, entry ->
+            if (index > 0) {
+                Box(
+                    Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.outline),
+                )
+            }
+            val on = entry == mode
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(
+                        if (on) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                    )
+                    .clickable(enabled = !on) { onSelect(entry) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    stringResource(
+                        when (entry) {
+                            HostMode.Screen -> com.multiplex.mobile.R.string.controller_tab_screen
+                            HostMode.Terminals -> com.multiplex.mobile.R.string.controller_tab_terminals
+                        },
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = if (on) {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    } else {
+                        com.multiplex.mobile.ui.SlateExtras.secondaryText
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** Whether this phone may drive the computer, in the flow's words. */
+@Composable
+private fun controlNote(state: ControllerUiState): String {
+    val host = state.hosts.firstOrNull { it.id == state.selectedHostId }
+    val granted = host != null &&
+        host.capabilityBits and (ControllerConnection.CONTROL_POINTER_CAPABILITY or
+            ControllerConnection.CONTROL_KEYBOARD_CAPABILITY) != 0
+    return stringResource(
+        if (granted) {
+            com.multiplex.mobile.R.string.screen_may_take_control
+        } else {
+            com.multiplex.mobile.R.string.screen_watch_only
+        },
+    )
+}
+
+/** The `›` a row ends with. */
+@Composable
+private fun Chevron() {
+    Icon(
+        Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+        contentDescription = null,
+        tint = com.multiplex.mobile.ui.SlateExtras.dimText,
+    )
 }
 
 /** One terminal, as a `.item`: what it is, what it is doing, and whether it is live. */
