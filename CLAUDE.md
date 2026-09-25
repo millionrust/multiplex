@@ -143,7 +143,14 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   for every crate. Shared version and `rust-version` live in `[workspace.package]`.
 - `crates/` holds every workspace member, including the desktop app, CLI, TUI, MCP,
   relay, session host, mobile FFI, and contract crates.
-- `apps/ios` (Swift) and `apps/android` (Kotlin) are the native mobile applications;
+- `apps/ios` (Swift) and `apps/android` (Kotlin) are the native mobile applications. Both open on
+  the computers paired with the phone; opening one gives a page that is **Screen or Terminals**,
+  never both, because the Controller connection carries one session at a time — the screen preview
+  runs only while Screen is showing. Screen lists the computer's displays once the preview knows
+  them and opens the one that is picked; Terminals lists what the computer is running. The
+  connection route and the eight granted capabilities live in Host Details. Where control was
+  never granted, both say so rather than leaving the button out. `design/remote-screens/` holds
+  the prototypes these follow.
   their FFI libraries are built by `scripts/build/` and copied in by `scripts/sync/`.
 - `tests/` is shared cross-crate test material only: `fixtures/`, the `support/`
   module included via `#[path]`, `ui/` audit inventories, and `swift/` runners.
