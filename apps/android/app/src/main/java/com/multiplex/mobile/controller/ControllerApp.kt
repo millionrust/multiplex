@@ -1,18 +1,22 @@
 package com.multiplex.mobile.controller
 
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,14 +30,14 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
@@ -42,6 +46,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.KeyboardHide
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -84,17 +89,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -109,9 +117,9 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlin.math.roundToInt
 import com.multiplex.mobile.ui.SlateTheme
 import com.multiplex.mobile.ui.SlateTokens
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -135,7 +143,6 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
     // Which computer's page is open, separate from which one the connection has selected: the
     // list is the launch surface, and it stays that until a computer is opened from it.
     var openHostId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
-    var hostTab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(HostPageTab.Terminals) }
     var showNewTerminal by remember { mutableStateOf(false) }
     val activeTerminal = state.activeTerminal
     val configuration = LocalConfiguration.current
@@ -162,10 +169,10 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
         return
     }
     // The connection carries one session at a time, so the preview runs only while a computer's
-    // page is on screen, and only once the fleet has finished loading.
-    LaunchedEffect(state.selectedHostId, state.connection, activeTerminal != null, hostTab, openHostId) {
-        val showingScreen = hostTab == HostPageTab.Screen
-        if (activeTerminal == null && showingScreen && viewModel.canWatchSelectedHost()) {
+    // page is open and nothing else is using it: opening a terminal ends it, and coming back
+    // starts it again.
+    LaunchedEffect(state.selectedHostId, state.connection, activeTerminal != null, openHostId) {
+        if (activeTerminal == null && openHostId != null && viewModel.canWatchSelectedHost()) {
             viewModel.startScreenPreview()
         } else {
             viewModel.stopScreenPreview()
@@ -318,8 +325,7 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                             screens = viewModel.screens,
                             canWatch = viewModel.canWatchSelectedHost(),
                             onOpenScreen = viewModel::openScreen,
-                            tab = hostTab,
-                            onSelectTab = { hostTab = it },
+                            onSelectRoute = { pendingRoute = it },
                             canCreateSession = viewModel.canCreateSessionOnSelectedHost(),
                             onNewTerminal = { showNewTerminal = true },
                         )
@@ -331,6 +337,11 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                         onSelect = { id -> viewModel.selectHost(id); openHostId = id },
                         modifier = Modifier.fillMaxSize(),
                         lastPictures = viewModel.screens.lastPictures,
+                        onOpenScreen = { id ->
+                            viewModel.selectHost(id)
+                            openHostId = id
+                            viewModel.openScreen()
+                        },
                     )
                 } else {
                     FleetDetail(
@@ -341,8 +352,7 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                         screens = viewModel.screens,
                         canWatch = viewModel.canWatchSelectedHost(),
                         onOpenScreen = viewModel::openScreen,
-                        tab = hostTab,
-                        onSelectTab = { hostTab = it },
+                        onSelectRoute = { pendingRoute = it },
                         canCreateSession = viewModel.canCreateSessionOnSelectedHost(),
                         onNewTerminal = { showNewTerminal = true },
                     )
@@ -510,7 +520,6 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
  * rather than two panes: the screen preview runs only while Screen is showing, and a terminal
  * attaches only from Terminals.
  */
-internal enum class HostPageTab { Screen, Terminals }
 
 /**
  * What to start, and where.
@@ -591,17 +600,130 @@ private fun EmptyFleet(onPair: () -> Unit) {
     }
 }
 
+
+/**
+ * `.label-h` in design/remote-screens/android.html: the accent heading that names a group.
+ */
+@Composable
+private fun LabelHeading(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
+    )
+}
+
+/** `.items`: one rounded group, its rows divided by a hairline. */
+@Composable
+private fun ItemGroup(content: @Composable ColumnScope.() -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
+        content = content,
+    )
+}
+
+/** `.item`: a 40-unit round lead, a title, and a small line under it. */
+@Composable
+private fun GroupItem(
+    title: String,
+    subtitle: String? = null,
+    subtitleAttention: Boolean = false,
+    divider: Boolean = false,
+    onClick: (() -> Unit)? = null,
+    trailing: @Composable (() -> Unit)? = null,
+    lead: @Composable () -> Unit,
+) {
+    if (divider) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .heightIn(min = 64.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        lead()
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (subtitleAttention) {
+                        com.multiplex.mobile.ui.SlateExtras.attention
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        trailing?.invoke()
+    }
+}
+
+/** The 40-unit circle a `.item` leads with. */
+@Composable
+private fun ItemLead(attention: Boolean = false, content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(
+                if (attention) {
+                    com.multiplex.mobile.ui.SlateExtras.attentionContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerHigh
+                },
+            ),
+        contentAlignment = Alignment.Center,
+    ) { content() }
+}
+
+/** `.dot`: live, or the ring of one that is not. */
+@Composable
+private fun StatusDot(live: Boolean) {
+    Box(
+        Modifier
+            .size(10.dp)
+            .clip(CircleShape)
+            .then(
+                if (live) {
+                    Modifier.background(com.multiplex.mobile.ui.SlateExtras.done)
+                } else {
+                    Modifier.border(2.dp, com.multiplex.mobile.ui.SlateExtras.dimText, CircleShape)
+                },
+            ),
+    )
+}
+
 @Composable
 private fun HostList(
     state: ControllerUiState,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
     lastPictures: Map<String, android.graphics.Bitmap> = emptyMap(),
+    onOpenScreen: (String) -> Unit = {},
 ) {
     // The bar above says Computers, so the list goes straight to them, as
     // design/remote-screens/android.html has it. A heading repeating the bar and a line telling
     // the reader to tap a card were between them.
-    LazyColumn(modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(
+        modifier,
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         items(state.hosts, key = { it.id }) { host ->
             HostRow(
                 host = host,
@@ -609,7 +731,9 @@ private fun HostList(
                     state.connection == ControllerConnectionState.ReadyReadOnly,
                 glance = state.glances[host.id],
                 picture = lastPictures[host.id],
-            ) { onSelect(host.id) }
+                onOpenScreen = { onOpenScreen(host.id) },
+                onClick = { onSelect(host.id) },
+            )
         }
     }
 }
@@ -620,67 +744,90 @@ private fun HostRow(
     connected: Boolean,
     glance: HostGlance?,
     picture: android.graphics.Bitmap?,
+    onOpenScreen: () -> Unit,
     onClick: () -> Unit,
 ) {
     val hostDescription = stringResource(com.multiplex.mobile.R.string.host_accessibility, isolated(host.displayName))
-    Card(
-        modifier = Modifier
+    // `.card` in design/remote-screens/android.html: the computer's own screen across the top,
+    // what it is under that, and the two ways in along the bottom.
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
             .semantics { contentDescription = hostDescription },
-        colors = CardDefaults.cardColors(
-            containerColor = if (connected) {
-                MaterialTheme.colorScheme.secondaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            },
-        ),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(3f / 1f)
+                .background(Color(0xFF0B0D10))
+                .clickable(onClick = onClick),
         ) {
-            // The last picture of that computer, when one has ever arrived; otherwise a plain
-            // square, because an empty frame says more honestly that nothing has been seen.
             if (picture != null) {
                 Image(
                     bitmap = picture.asImageBitmap(),
                     contentDescription = null,
-                    modifier = Modifier.width(64.dp).height(40.dp),
-                )
-            } else {
-                Box(
-                    Modifier.size(36.dp).background(
-                        MaterialTheme.colorScheme.primary,
-                        MaterialTheme.shapes.small,
-                    ),
-                    contentAlignment = Alignment.Center,
-                ) { Text(">", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold) }
-            }
-            Column(Modifier.weight(1f)) {
-                Text(isolated(host.displayName), fontWeight = FontWeight.SemiBold, maxLines = 2)
-                Text(
-                    isolated("${host.route.address}:${host.route.port}"),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    hostGlanceLabel(glance),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
-            if (connected) {
-                AssistChip(
-                    onClick = onClick,
-                    label = { Text(stringResource(com.multiplex.mobile.R.string.controller_host_connected)) },
+            Row(
+                Modifier
+                    .padding(12.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xD9111316))
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StatusDot(live = connected)
+                Text(
+                    if (connected) {
+                        stringResource(com.multiplex.mobile.R.string.state_live)
+                    } else {
+                        stringResource(com.multiplex.mobile.R.string.state_host_offline)
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color(0xFFE6E8EB),
                 )
+            }
+        }
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                isolated(host.displayName),
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                listOf(isolated("${host.route.address}:${host.route.port}"), hostGlanceLabel(glance))
+                    .joinToString(" · "),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(
+                onClick = onOpenScreen,
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.height(40.dp),
+            ) { Text(stringResource(com.multiplex.mobile.R.string.screen_open)) }
+            TextButton(onClick = onClick, modifier = Modifier.height(40.dp)) {
+                Text(stringResource(com.multiplex.mobile.R.string.controller_tab_terminals))
             }
         }
     }
@@ -710,201 +857,236 @@ private fun FleetDetail(
     screens: ControllerScreenCoordinator? = null,
     canWatch: Boolean = false,
     onOpenScreen: (UInt?) -> Unit = {},
-    tab: HostPageTab = HostPageTab.Terminals,
-    onSelectTab: (HostPageTab) -> Unit = {},
     canCreateSession: Boolean = false,
     onNewTerminal: () -> Unit = {},
+    onSelectRoute: (ControllerRemoteRouteKind) -> Unit = {},
 ) {
     val openTerminals = state.sessions.filter(ControllerSessionSummary::isOpenTerminal)
     val previousSessions = state.sessions.filterNot(ControllerSessionSummary::isOpenTerminal)
+    val displays = screens?.preview?.displays.orEmpty()
+    // One scrolling page, as design/remote-screens/android.html has it: what the computer looks
+    // like, then what it is running, then how this phone is reaching it. The connection still
+    // carries one thing at a time — opening a terminal ends the preview and coming back starts
+    // it again — but that is the connection's business, not a choice to put in front of anyone.
     Column(modifier.fillMaxSize()) {
         ConnectionBanner(state, onRetry)
-        HostPageTabs(tab, onSelectTab)
-        when (tab) {
-            HostPageTab.Screen -> ScreenTab(
-                state = state,
-                screens = screens,
-                canWatch = canWatch,
-                onOpenScreen = onOpenScreen,
-            )
-            HostPageTab.Terminals -> LazyColumn(
-                Modifier.fillMaxSize().padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                item(key = "new-terminal") {
-                    if (canCreateSession) {
-                        Button(
-                            onClick = onNewTerminal,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text(stringResource(com.multiplex.mobile.R.string.new_terminal)) }
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 24.dp),
+        ) {
+            item(key = "screen") {
+                ControllerScreenPreviewCard(
+                    preview = screens?.preview,
+                    lastPicture = state.selectedHostId?.let { screens?.lastPictures?.get(it) },
+                    unavailable = if (canWatch && screens != null) {
+                        screens.unavailable
                     } else {
-                        Text(
-                            stringResource(com.multiplex.mobile.R.string.new_terminal_not_granted),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                        ControllerScreenUnavailable.NotGranted
+                    },
+                    onOpenScreen = { onOpenScreen(null) },
+                )
+            }
+            if (displays.size > 1) {
+                item(key = "displays-label") {
+                    LabelHeading(stringResource(com.multiplex.mobile.R.string.controller_displays))
                 }
-                if (openTerminals.isEmpty()) {
-                    item(key = "no-open-terminals") {
-                        Box(
-                            Modifier.fillMaxWidth().heightIn(min = 140.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                if (state.connection.isBusy()) {
-                                    stringResource(com.multiplex.mobile.R.string.loading_sessions)
-                                } else {
-                                    stringResource(com.multiplex.mobile.R.string.no_open_terminals)
-                                },
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                item(key = "displays") {
+                    ItemGroup {
+                        displays.forEachIndexed { index, display ->
+                            GroupItem(
+                                title = display.name,
+                                divider = index > 0,
+                                onClick = { onOpenScreen(display.id) },
+                                lead = { ItemLead { StatusDot(live = true) } },
                             )
                         }
                     }
-                } else {
-                    item(key = "open-terminals-header") {
-                        SessionSectionHeader(stringResource(com.multiplex.mobile.R.string.open_terminals))
-                    }
-                    items(openTerminals, key = { it.id }) { session ->
-                        SessionRow(session, state.cachedReadOnly) { onOpenSession(session.id) }
-                    }
-                }
-                if (previousSessions.isNotEmpty()) {
-                    item(key = "previous-sessions-header") {
-                        SessionSectionHeader(stringResource(com.multiplex.mobile.R.string.previous_sessions))
-                    }
-                    items(previousSessions, key = { it.id }) { session ->
-                        SessionRow(session, state.cachedReadOnly) { onOpenSession(session.id) }
-                    }
                 }
             }
-        }
-    }
-}
-
-/** Screen or Terminals: which of the two a computer's page is showing. */
-@Composable
-private fun HostPageTabs(tab: HostPageTab, onSelectTab: (HostPageTab) -> Unit) {
-    // Tabs, not a segmented button. These two swap the whole page under them, which is what a tab
-    // does; a segmented button picks an option within a page, and reading as one made the page
-    // look like it was holding a setting.
-    TabRow(
-        selectedTabIndex = HostPageTab.entries.indexOf(tab),
-        containerColor = MaterialTheme.colorScheme.background,
-    ) {
-        HostPageTab.entries.forEach { entry ->
-            Tab(
-                selected = tab == entry,
-                onClick = { onSelectTab(entry) },
-                text = {
-                    Text(
-                        stringResource(
-                            when (entry) {
-                                HostPageTab.Screen -> com.multiplex.mobile.R.string.controller_tab_screen
-                                HostPageTab.Terminals ->
-                                    com.multiplex.mobile.R.string.controller_tab_terminals
+            item(key = "terminals-label") {
+                LabelHeading(stringResource(com.multiplex.mobile.R.string.open_terminals))
+            }
+            item(key = "terminals") {
+                ItemGroup {
+                    if (canCreateSession) {
+                        GroupItem(
+                            title = stringResource(com.multiplex.mobile.R.string.new_terminal),
+                            onClick = onNewTerminal,
+                            lead = {
+                                ItemLead {
+                                    Icon(
+                                        Icons.Outlined.Add,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
                             },
-                        ),
-                    )
-                },
-            )
+                        )
+                    }
+                    if (openTerminals.isEmpty()) {
+                        GroupItem(
+                            title = if (state.connection.isBusy()) {
+                                stringResource(com.multiplex.mobile.R.string.loading_sessions)
+                            } else {
+                                stringResource(com.multiplex.mobile.R.string.no_open_terminals)
+                            },
+                            subtitle = if (canCreateSession) {
+                                null
+                            } else {
+                                stringResource(com.multiplex.mobile.R.string.new_terminal_not_granted)
+                            },
+                            divider = canCreateSession,
+                            lead = { ItemLead { StatusDot(live = false) } },
+                        )
+                    }
+                    openTerminals.forEachIndexed { index, session ->
+                        TerminalItem(
+                            session = session,
+                            cached = state.cachedReadOnly,
+                            divider = canCreateSession || index > 0,
+                            onOpen = { onOpenSession(session.id) },
+                        )
+                    }
+                }
+            }
+            if (previousSessions.isNotEmpty()) {
+                item(key = "previous-label") {
+                    LabelHeading(stringResource(com.multiplex.mobile.R.string.previous_sessions))
+                }
+                item(key = "previous") {
+                    ItemGroup {
+                        previousSessions.forEachIndexed { index, session ->
+                            TerminalItem(
+                                session = session,
+                                cached = state.cachedReadOnly,
+                                divider = index > 0,
+                                onOpen = { onOpenSession(session.id) },
+                            )
+                        }
+                    }
+                }
+            }
+            val routes = state.routeProjections.filter {
+                it.route != ControllerRemoteRouteKind.LOCAL_IPC
+            }
+            if (routes.isNotEmpty()) {
+                item(key = "route-label") {
+                    LabelHeading(stringResource(com.multiplex.mobile.R.string.controller_route_title))
+                }
+                item(key = "route") {
+                    RouteSegments(routes, state.selectedRoute, onSelectRoute)
+                }
+            }
         }
     }
 }
 
-/**
- * The computer's screen: its last picture, and the displays it has.
- *
- * The displays come from the preview session, which is the only thing that knows them, so the
- * list fills in once the preview has connected. Before then, and on a computer that never shared
- * its screen, the page says so rather than offering a button that would fail.
- */
+/** One terminal, as a `.item`: what it is, what it is doing, and whether it is live. */
 @Composable
-private fun ScreenTab(
-    state: ControllerUiState,
-    screens: ControllerScreenCoordinator?,
-    canWatch: Boolean,
-    onOpenScreen: (UInt?) -> Unit,
+private fun TerminalItem(
+    session: ControllerSessionSummary,
+    cached: Boolean,
+    divider: Boolean,
+    onOpen: () -> Unit,
 ) {
-    if (!canWatch || screens == null) {
-        Box(
-            Modifier.fillMaxSize().padding(24.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                stringResource(com.multiplex.mobile.R.string.controller_screen_not_granted),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        return
-    }
-    val displays = screens.preview?.displays.orEmpty()
-    LazyColumn(
-        Modifier.fillMaxSize().padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        item(key = "this-computers-screen") {
-            ControllerScreenPreviewCard(
-                preview = screens.preview,
-                lastPicture = state.selectedHostId?.let { screens.lastPictures[it] },
-                unavailable = screens.unavailable,
-                onOpenScreen = { onOpenScreen(null) },
-            )
-        }
-        if (displays.size > 1) {
-            item(key = "displays-header") {
-                SessionSectionHeader(stringResource(com.multiplex.mobile.R.string.controller_displays))
-            }
-            items(displays, key = { it.id.toLong() }) { display ->
-                DisplayRow(display) { onOpenScreen(display.id) }
-            }
-        }
-        item(key = "one-at-a-time") {
-            Text(
-                stringResource(com.multiplex.mobile.R.string.controller_one_at_a_time),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun DisplayRow(display: com.multiplex.screens.ScreenSurface, onOpen: () -> Unit) {
-    Card(
-        Modifier.fillMaxWidth().clickable(onClick = onOpen),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(isolated(display.name), fontWeight = FontWeight.SemiBold, maxLines = 1)
-                Text(
-                    "${display.width} × ${display.height}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+    val canOpen = !cached && session.occupantGeneration != null &&
+        (session.capabilities.isEmpty() || ControllerSessionCapability.ATTACH_OUTPUT in session.capabilities)
+    val waiting = session.activity == "needs_input"
+    val detail = listOfNotNull(
+        session.runtime,
+        session.project,
+        stringResource(activityLabelResource(session.activity)),
+    ).joinToString(" · ")
+    GroupItem(
+        title = isolated(session.title),
+        subtitle = detail,
+        subtitleAttention = waiting,
+        divider = divider,
+        onClick = if (canOpen) onOpen else null,
+        lead = {
+            ItemLead(attention = waiting) {
+                Icon(
+                    Icons.Outlined.Terminal,
+                    contentDescription = null,
+                    tint = if (waiting) {
+                        com.multiplex.mobile.ui.SlateExtras.attention
+                    } else {
+                        com.multiplex.mobile.ui.SlateExtras.secondaryText
+                    },
                 )
             }
-            TextButton(onClick = onOpen) {
-                Text(stringResource(com.multiplex.mobile.R.string.controller_open_display))
+        },
+        trailing = {
+            Text(
+                if (cached) {
+                    stringResource(com.multiplex.mobile.R.string.cached)
+                } else {
+                    lifecycleLabel(session.lifecycle)
+                },
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+    )
+}
+
+/** `.segbtn`: the route this phone is reaching the computer on. */
+@Composable
+private fun RouteSegments(
+    routes: List<AndroidControllerRouteProjection>,
+    selected: ControllerRemoteRouteKind,
+    onSelect: (ControllerRemoteRouteKind) -> Unit,
+) {
+    val shape = RoundedCornerShape(20.dp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .clip(shape)
+            .border(1.dp, MaterialTheme.colorScheme.outline, shape),
+    ) {
+        routes.forEachIndexed { index, projection ->
+            val on = projection.route == selected
+            if (index > 0) {
+                Box(
+                    Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.outline),
+                )
+            }
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(
+                        if (on) {
+                            MaterialTheme.colorScheme.secondaryContainer
+                        } else {
+                            Color.Transparent
+                        },
+                    )
+                    .clickable(enabled = projection.available && !on) { onSelect(projection.route) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    controllerRouteShortTitle(projection.route),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = when {
+                        on -> MaterialTheme.colorScheme.onSecondaryContainer
+                        projection.available -> com.multiplex.mobile.ui.SlateExtras.secondaryText
+                        else -> com.multiplex.mobile.ui.SlateExtras.dimText
+                    },
+                )
             }
         }
     }
 }
 
-@Composable
-private fun SessionSectionHeader(title: String) {
-    Text(
-        title,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
-    )
-}
+
+
+
 
 @Composable
 private fun ControllerRouteSelector(
@@ -1283,6 +1465,17 @@ private fun SshControllerConfigurationDialog(
     }
 }
 
+/** One word each, for the segmented control the computer's page ends with. */
+@Composable
+private fun controllerRouteShortTitle(route: ControllerRemoteRouteKind): String = when (route) {
+    ControllerRemoteRouteKind.LOCAL_IPC,
+    ControllerRemoteRouteKind.PRIVATE_NETWORK,
+    -> stringResource(com.multiplex.mobile.R.string.route_short_private_network)
+    ControllerRemoteRouteKind.SSH -> stringResource(com.multiplex.mobile.R.string.route_short_ssh)
+    ControllerRemoteRouteKind.SELF_HOSTED_RELAY ->
+        stringResource(com.multiplex.mobile.R.string.route_short_relay)
+}
+
 @Composable
 private fun controllerRouteTitle(route: ControllerRemoteRouteKind): String = when (route) {
     ControllerRemoteRouteKind.LOCAL_IPC -> stringResource(com.multiplex.mobile.R.string.route_local_ipc)
@@ -1359,74 +1552,6 @@ private fun ConnectionBanner(state: ControllerUiState, onRetry: () -> Unit) {
     }
 }
 
-@Composable
-private fun SessionRow(session: ControllerSessionSummary, cached: Boolean, onOpen: () -> Unit) {
-    val canOpen = !cached && session.occupantGeneration != null &&
-        (session.capabilities.isEmpty() || ControllerSessionCapability.ATTACH_OUTPUT in session.capabilities)
-    val description = stringResource(com.multiplex.mobile.R.string.monitor_session, isolated(session.title))
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(if (canOpen) Modifier.clickable(onClick = onOpen) else Modifier)
-            .semantics { if (canOpen) contentDescription = description },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-    ) {
-        Column(
-            Modifier.fillMaxWidth().padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    isolated(session.title),
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                AssistChip(
-                    onClick = {},
-                    label = {
-                        Text(
-                            if (cached) {
-                                stringResource(com.multiplex.mobile.R.string.cached)
-                            } else {
-                                lifecycleLabel(session.lifecycle)
-                            },
-                        )
-                    },
-                )
-            }
-            val location = listOfNotNull(session.project, session.group).joinToString(" / ")
-            if (location.isNotEmpty()) {
-                Text(isolated(location), style = MaterialTheme.typography.bodySmall)
-            }
-            val origin = when (session.origin) {
-                ControllerSessionOrigin.TERMINAL -> stringResource(com.multiplex.mobile.R.string.session_origin_terminal)
-                ControllerSessionOrigin.MANAGED_AGENT -> stringResource(com.multiplex.mobile.R.string.session_origin_managed_agent)
-                ControllerSessionOrigin.OBSERVED_AGENT -> stringResource(com.multiplex.mobile.R.string.session_origin_observed_agent)
-                ControllerSessionOrigin.UNKNOWN -> stringResource(com.multiplex.mobile.R.string.session_origin_unknown)
-            }
-            val access = if (ControllerSessionCapability.SEND_INPUT in session.capabilities) {
-                stringResource(com.multiplex.mobile.R.string.session_control_available)
-            } else {
-                stringResource(com.multiplex.mobile.R.string.view_only)
-            }
-            Text(
-                listOfNotNull(origin, session.runtime, access).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    stringResource(activityLabelResource(session.activity)),
-                    style = MaterialTheme.typography.labelMedium,
-                )
-                if (session.unreadCount > 0) Text(stringResource(com.multiplex.mobile.R.string.unread), color = MaterialTheme.colorScheme.primary)
-                if (session.hasWriter) Text(stringResource(com.multiplex.mobile.R.string.writer_active), color = MaterialTheme.colorScheme.tertiary)
-            }
-        }
-    }
-}
 
 @Composable
 private fun ControllerTerminalScreen(

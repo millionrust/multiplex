@@ -2,4 +2,6 @@
 <resources>
     <!-- The flat layer behind the adaptive icon's foreground; the mid stop of the icon field. -->
     <color name="ic_launcher_background">#1B2230</color>
+    <!-- color.bg.canvas, dark, from design/tokens.toml. The window under Compose. -->
+    <color name="canvas">#17191D</color>
 </resources>

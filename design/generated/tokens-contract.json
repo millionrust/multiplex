@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "b4287e64065b613b5161e06cd48c8476ad07f4e44e225d42f8bec0fe5639e730",
+  "sourceSha256": "173664600dbad102c2d6f5f6e6d998e674f24c76ce3f9e94e90c4055fec87e78",
   "statuses": [
     {
       "color": "color.status.attention",
@@ -149,6 +149,34 @@
         "light": "#E9ECF0",
         "recording_friendly": "#1A1C20",
         "system": "#111316"
+      }
+    },
+    {
+      "allowedUse": "Phone cards, list groups, and the navigation bar.",
+      "category": "color",
+      "description": "Phone card and list ground, one step above elevated.",
+      "key": "color.bg.container",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#202328",
+        "high_contrast": "#141414",
+        "light": "#EBEEF2",
+        "recording_friendly": "#272B31",
+        "system": "#202328"
+      }
+    },
+    {
+      "allowedUse": "Leading avatars and controls inside a phone card.",
+      "category": "color",
+      "description": "The container a phone puts on top of another container.",
+      "key": "color.bg.container_high",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#262A30",
+        "high_contrast": "#1E1E1E",
+        "light": "#E3E7EC",
+        "recording_friendly": "#2D323A",
+        "system": "#262A30"
       }
     },
     {
@@ -432,6 +460,20 @@
       }
     },
     {
+      "allowedUse": "Selected segments, chips, and navigation pills.",
+      "category": "color",
+      "description": "Text shown on the selection color.",
+      "key": "color.selection_text",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#D6E4FB",
+        "high_contrast": "#FFFFFF",
+        "light": "#0F2C5E",
+        "recording_friendly": "#DCE7F8",
+        "system": "#D6E4FB"
+      }
+    },
+    {
       "allowedUse": "Attention state with icon and text.",
       "category": "color",
       "description": "Attention status color.",
@@ -443,6 +485,20 @@
         "light": "#8F5300",
         "recording_friendly": "#D6B47A",
         "system": "#E9B061"
+      }
+    },
+    {
+      "allowedUse": "Banners and leading marks for something waiting on a person.",
+      "category": "color",
+      "description": "Background behind the attention color.",
+      "key": "color.status.attention_container",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#3D3120",
+        "high_contrast": "#3A2E00",
+        "light": "#F6E6CF",
+        "recording_friendly": "#453827",
+        "system": "#3D3120"
       }
     },
     {
@@ -765,6 +821,20 @@
         "light": "#2A2E35",
         "recording_friendly": "#C9CDD3",
         "system": "#C9CDD4"
+      }
+    },
+    {
+      "allowedUse": "Disabled labels and the ring of a dot that is not live.",
+      "category": "color",
+      "description": "The dimmest text and the outline of an off mark.",
+      "key": "color.text.disabled",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#6F7580",
+        "high_contrast": "#C8C8C8",
+        "light": "#626974",
+        "recording_friendly": "#858B94",
+        "system": "#6F7580"
       }
     },
     {

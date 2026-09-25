@@ -3,24 +3,35 @@ package com.multiplex.mobile.controller
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Monitor
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -33,18 +44,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -61,49 +72,88 @@ fun ControllerScreenPreviewCard(
     onOpenScreen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // No heading: the tab above says Screen and the bar says which computer. "This Computer's
-    // Screen" also read, on a phone, as the phone's own.
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // `.card` in design/remote-screens/android.html: the picture fills the top of the card with
+    // the badge over it, and the one action sits under it.
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
+    ) {
         val picture = preview?.picture ?: lastPicture
-        if (picture != null) {
-            // The picture's own shape, so the card is as wide as the page. Without it the box
-            // took the bitmap's intrinsic height, and `Fit` then drew a postage stamp in the
-            // middle of a full-width row.
-            val shape = (picture.width.toFloat() / picture.height.toFloat())
-                .takeIf { it.isFinite() && it > 0f } ?: (16f / 10f)
-            Image(
-                bitmap = picture.asImageBitmap(),
-                contentDescription = stringResource(com.multiplex.mobile.R.string.screen_preview_description),
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(shape)
-                    .clip(RoundedCornerShape(8.dp)),
-            )
-        } else {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 10f)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center,
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(
+                    picture
+                        ?.let { it.width.toFloat() / it.height.toFloat() }
+                        ?.takeIf { it.isFinite() && it > 0f }
+                        ?: (16f / 10f),
+                )
+                .background(Color(0xFF0B0D10))
+                .then(if (unavailable == null) Modifier.clickable(onClick = onOpenScreen) else Modifier),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (picture != null) {
+                Image(
+                    bitmap = picture.asImageBitmap(),
+                    contentDescription = stringResource(com.multiplex.mobile.R.string.screen_preview_description),
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else if (unavailable == null) {
+                CircularProgressIndicator()
+            }
+            ScreenBadge(caption(preview, unavailable), live = unavailable == null && picture != null)
+        }
+        Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 12.dp)) {
+            Button(
+                onClick = onOpenScreen,
+                enabled = unavailable == null,
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth().height(40.dp),
             ) {
-                if (unavailable == null) CircularProgressIndicator()
+                Icon(Icons.Outlined.Monitor, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.size(8.dp))
+                Text(stringResource(com.multiplex.mobile.R.string.screen_open))
             }
         }
-        Text(
-            caption(preview, unavailable),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Button(
-            onClick = onOpenScreen,
-            enabled = unavailable == null,
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(stringResource(com.multiplex.mobile.R.string.screen_open)) }
     }
 }
+
+/** `.thumb .badge`: what the picture is, over its top-left corner. */
+@Composable
+private fun ScreenBadge(text: String, live: Boolean) {
+    Row(
+        Modifier
+            .fillMaxSize()
+            .padding(12.dp)
+            .wrapContentSize(Alignment.TopStart)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xD9111316))
+            .padding(horizontal = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (live) {
+            Box(
+                Modifier
+                    .size(7.dp)
+                    .clip(CircleShape)
+                    .background(com.multiplex.mobile.ui.SlateExtras.done),
+            )
+        }
+        Text(
+            text,
+            style = MaterialTheme.typography.labelMedium,
+            color = Color(0xFFE6E8EB),
+            modifier = Modifier.heightIn(min = 26.dp).wrapContentHeight(),
+        )
+    }
+}
+
 
 @Composable
 private fun caption(

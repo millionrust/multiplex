@@ -18,6 +18,20 @@ allowed_use = "Sidebar, inspector, tab and pane headers, and recessed fields."
 values = { system = "#14161A", light = "#F1F3F6", dark = "#14161A", high_contrast = "#000000", recording_friendly = "#1D2024" }
 
 [[tokens]]
+key = "color.bg.container"
+category = "color"
+description = "Phone card and list ground, one step above elevated."
+allowed_use = "Phone cards, list groups, and the navigation bar."
+values = { system = "#202328", light = "#EBEEF2", dark = "#202328", high_contrast = "#141414", recording_friendly = "#272B31" }
+
+[[tokens]]
+key = "color.bg.container_high"
+category = "color"
+description = "The container a phone puts on top of another container."
+allowed_use = "Leading avatars and controls inside a phone card."
+values = { system = "#262A30", light = "#E3E7EC", dark = "#262A30", high_contrast = "#1E1E1E", recording_friendly = "#2D323A" }
+
+[[tokens]]
 key = "color.bg.elevated"
 category = "color"
 description = "Floating object background."
@@ -149,6 +163,20 @@ category = "color"
 description = "Modal overlay scrim."
 allowed_use = "Behind the command palette and dialogs only."
 values = { system = "#08090B8C", light = "#1A1D2266", dark = "#08090B8C", high_contrast = "#000000E6", recording_friendly = "#000000B3" }
+
+[[tokens]]
+key = "color.selection_text"
+category = "color"
+description = "Text shown on the selection color."
+allowed_use = "Selected segments, chips, and navigation pills."
+values = { system = "#D6E4FB", light = "#0F2C5E", dark = "#D6E4FB", high_contrast = "#FFFFFF", recording_friendly = "#DCE7F8" }
+
+[[tokens]]
+key = "color.status.attention_container"
+category = "color"
+description = "Background behind the attention color."
+allowed_use = "Banners and leading marks for something waiting on a person."
+values = { system = "#3D3120", light = "#F6E6CF", dark = "#3D3120", high_contrast = "#3A2E00", recording_friendly = "#453827" }
 
 [[tokens]]
 key = "color.window.close"
@@ -1467,6 +1495,13 @@ category = "color"
 description = "Input border while the input holds focus."
 allowed_use = "Focused text inputs, paired with the focus ring."
 values = { system = "#4A5260", light = "#8F99A6", dark = "#4A5260", high_contrast = "#FFFF00", recording_friendly = "#6A7280" }
+
+[[tokens]]
+key = "color.text.disabled"
+category = "color"
+description = "The dimmest text and the outline of an off mark."
+allowed_use = "Disabled labels and the ring of a dot that is not live."
+values = { system = "#6F7580", light = "#626974", dark = "#6F7580", high_contrast = "#C8C8C8", recording_friendly = "#858B94" }
 
 [[tokens]]
 key = "color.text.faint"

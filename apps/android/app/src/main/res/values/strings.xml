@@ -104,8 +104,8 @@
     <string name="host_accessibility">Host %1$s</string>
     <string name="controller_selected">Selected</string>
     <string name="loading_sessions">Loading sessions…</string>
-    <string name="open_terminals">Open Terminals</string>
-    <string name="previous_sessions">Previous Sessions</string>
+    <string name="open_terminals">Open terminals</string>
+    <string name="previous_sessions">Previous sessions</string>
     <string name="no_open_terminals">Open a local or SSH terminal in Multiplex Desktop, then refresh.</string>
     <string name="cached_updated">Cached read-only data · updated %1$s</string>
     <string name="retry">Retry</string>
@@ -171,6 +171,7 @@
     <string name="state_not_paired">Not paired</string>
     <string name="state_pairing">Pairing</string>
     <string name="state_waiting_code">Waiting for code confirmation</string>
+    <string name="state_live">Live</string>
     <string name="state_host_offline">Host offline</string>
     <string name="state_connecting">Connecting</string>
     <string name="state_authenticating">Authenticating</string>
@@ -258,6 +259,10 @@
     <string name="controller_route_subtitle">Choose how this device reaches the paired Host. Routes never switch automatically.</string>
     <string name="route_local_ipc">Local IPC</string>
     <string name="route_private_network">Private network / VPN</string>
+    <!-- The segmented control has room for a word each, as the prototype has it. -->
+    <string name="route_short_private_network">Local</string>
+    <string name="route_short_ssh">SSH</string>
+    <string name="route_short_relay">Relay</string>
     <string name="route_ssh">Controller over SSH</string>
     <string name="route_self_hosted_relay">Self-hosted relay</string>
     <string name="route_local_ipc_description">Available only on the desktop Host.</string>

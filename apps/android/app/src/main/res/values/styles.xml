@@ -1,3 +1,12 @@
 <resources>
-    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar" />
+    <!--
+      The window under Compose. It was Material Light, so a white window showed through wherever
+      Compose had not painted yet: the gesture bar's strip, and the flash a cold start opens with.
+      The app is dark only, so the window is too, with colour.bg.canvas from design/tokens.toml.
+    -->
+    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/canvas</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+    </style>
 </resources>
