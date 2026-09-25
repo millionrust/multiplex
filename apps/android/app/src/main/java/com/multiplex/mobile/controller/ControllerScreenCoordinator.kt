@@ -66,9 +66,12 @@ class ControllerScreenCoordinator(
         start(host, connection, wantsPreview = true)
     }
 
-    /** Opens the full screen. The preview, if any, ends: there is one connection. */
-    fun openViewer(host: PairedHostRecord, connection: ControllerConnecting) {
-        start(host, connection, wantsPreview = false)
+    /**
+     * Opens the full screen, on `surface` when the person picked one from the computer's displays.
+     * The preview, if any, ends: there is one connection.
+     */
+    fun openViewer(host: PairedHostRecord, connection: ControllerConnecting, surface: UInt? = null) {
+        start(host, connection, wantsPreview = false, surface = surface)
     }
 
     /** Ends whatever session is running and keeps the last picture. */
@@ -86,6 +89,7 @@ class ControllerScreenCoordinator(
         host: PairedHostRecord,
         connection: ControllerConnecting,
         wantsPreview: Boolean,
+        surface: UInt? = null,
     ) {
         if (!mayWatch(host)) {
             unavailable = ControllerScreenUnavailable.NotGranted
@@ -108,12 +112,12 @@ class ControllerScreenCoordinator(
                 try {
                     connection.watchScreen(
                         host = host,
-                        surface = null,
+                        surface = surface,
                         preview = wantsPreview,
                         onOpened = { ticket, screenViewer ->
                             val model = RemoteScreenModel(
                                 viewer = screenViewer,
-                                surface = null,
+                                surface = surface,
                                 ticket = ticket,
                                 preview = wantsPreview,
                             )

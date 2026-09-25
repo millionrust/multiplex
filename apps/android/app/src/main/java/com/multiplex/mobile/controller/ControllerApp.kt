@@ -33,6 +33,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Keyboard
@@ -55,6 +56,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -120,6 +124,10 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
     var showSshConfiguration by remember { mutableStateOf(false) }
     var showRelayConfiguration by remember { mutableStateOf(false) }
     var pendingRoute by remember { mutableStateOf<ControllerRemoteRouteKind?>(null) }
+    // Which computer's page is open, separate from which one the connection has selected: the
+    // list is the launch surface, and it stays that until a computer is opened from it.
+    var openHostId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    var hostTab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(HostPageTab.Terminals) }
     val activeTerminal = state.activeTerminal
     val configuration = LocalConfiguration.current
     val windowDensity = LocalDensity.current
@@ -131,6 +139,7 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
         )
 
     BackHandler(enabled = activeTerminal != null) { viewModel.detachTerminal() }
+    BackHandler(enabled = activeTerminal == null && openHostId != null) { openHostId = null }
 
     val screenViewer = viewModel.screens.viewer
     BackHandler(enabled = screenViewer != null) { viewModel.closeScreen() }
@@ -145,8 +154,9 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
     }
     // The connection carries one session at a time, so the preview runs only while a computer's
     // page is on screen, and only once the fleet has finished loading.
-    LaunchedEffect(state.selectedHostId, state.connection, activeTerminal != null) {
-        if (activeTerminal == null && viewModel.canWatchSelectedHost()) {
+    LaunchedEffect(state.selectedHostId, state.connection, activeTerminal != null, hostTab, openHostId) {
+        val showingScreen = hostTab == HostPageTab.Screen
+        if (activeTerminal == null && showingScreen && viewModel.canWatchSelectedHost()) {
             viewModel.startScreenPreview()
         } else {
             viewModel.stopScreenPreview()
@@ -160,6 +170,7 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
             topBar = {
                 if (!focusedLandscapeTerminal) TopAppBar(
                     title = {
+                        val openHost = state.hosts.firstOrNull { it.id == openHostId }
                         if (activeTerminal != null) {
                             Text(
                                 isolated(activeTerminal.sessionTitle),
@@ -167,9 +178,31 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                        } else if (openHost != null) {
+                            Column {
+                                Text(
+                                    isolated(openHost.displayName),
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(connectionLabel(state.connection), style = MaterialTheme.typography.labelMedium)
+                            }
                         } else Column {
                             Text(stringResource(com.multiplex.mobile.R.string.app_name), fontWeight = FontWeight.Bold)
-                            Text(stringResource(com.multiplex.mobile.R.string.controller_fleet), style = MaterialTheme.typography.labelMedium)
+                            Text(stringResource(com.multiplex.mobile.R.string.controller_computers), style = MaterialTheme.typography.labelMedium)
+                        }
+                    },
+                    navigationIcon = {
+                        if (activeTerminal == null && openHostId != null) {
+                            IconButton(onClick = { openHostId = null }) {
+                                Icon(
+                                    Icons.AutoMirrored.Outlined.ArrowBack,
+                                    contentDescription = stringResource(
+                                        com.multiplex.mobile.R.string.controller_back_to_computers,
+                                    ),
+                                )
+                            }
                         }
                     },
                     actions = {
@@ -192,7 +225,7 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                             }
                             TextButton(onClick = { showPairing = true }) { Text(stringResource(com.multiplex.mobile.R.string.pair_computer)) }
                         }
-                        if (activeTerminal == null && state.selectedHostId != null) {
+                        if (activeTerminal == null && openHostId != null && state.selectedHostId != null) {
                             TextButton(onClick = { showHostDetails = true }) { Text(stringResource(com.multiplex.mobile.R.string.details)) }
                         }
                     },
@@ -227,7 +260,7 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                     Row(Modifier.fillMaxSize()) {
                         HostList(
                             state = state,
-                            onSelect = viewModel::selectHost,
+                            onSelect = { id -> viewModel.selectHost(id); openHostId = id },
                             modifier = Modifier.width(340.dp).fillMaxHeight(),
                         )
                         VerticalDivider(modifier = Modifier.fillMaxHeight())
@@ -235,32 +268,33 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                             state,
                             viewModel::retry,
                             viewModel::attachSession,
-                            onSelectRoute = { pendingRoute = it },
-                            onConfigureSsh = { showSshConfiguration = true },
-                            onConfigureRelay = { showRelayConfiguration = true },
                             modifier = Modifier.weight(1f),
                             screens = viewModel.screens,
                             canWatch = viewModel.canWatchSelectedHost(),
                             onOpenScreen = viewModel::openScreen,
+                            tab = hostTab,
+                            onSelectTab = { hostTab = it },
                         )
                     }
+                } else if (openHostId == null) {
+                    // The computers are the launch surface: nothing connects until one is opened.
+                    HostList(
+                        state = state,
+                        onSelect = { id -> viewModel.selectHost(id); openHostId = id },
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 } else {
-                    Column(Modifier.fillMaxSize()) {
-                        CompactHostStrip(state, viewModel::selectHost)
-                        HorizontalDivider()
-                        FleetDetail(
-                            state,
-                            viewModel::retry,
-                            viewModel::attachSession,
-                            onSelectRoute = { pendingRoute = it },
-                            onConfigureSsh = { showSshConfiguration = true },
-                            onConfigureRelay = { showRelayConfiguration = true },
-                            modifier = Modifier.weight(1f),
-                            screens = viewModel.screens,
-                            canWatch = viewModel.canWatchSelectedHost(),
-                            onOpenScreen = viewModel::openScreen,
-                        )
-                    }
+                    FleetDetail(
+                        state,
+                        viewModel::retry,
+                        viewModel::attachSession,
+                        modifier = Modifier.fillMaxSize(),
+                        screens = viewModel.screens,
+                        canWatch = viewModel.canWatchSelectedHost(),
+                        onOpenScreen = viewModel::openScreen,
+                        tab = hostTab,
+                        onSelectTab = { hostTab = it },
+                    )
                 }
             }
         }
@@ -310,6 +344,7 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
         if (selected != null) {
             HostDetailsDialog(
                 host = selected,
+                state = state,
                 onDismiss = { showHostDetails = false },
                 onReconnect = {
                     showHostDetails = false
@@ -319,6 +354,9 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                     showHostDetails = false
                     confirmForget = true
                 },
+                onSelectRoute = { pendingRoute = it },
+                onConfigureSsh = { showHostDetails = false; showSshConfiguration = true },
+                onConfigureRelay = { showHostDetails = false; showRelayConfiguration = true },
             )
         }
     }
@@ -405,6 +443,15 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
     }
 }
 
+/**
+ * What a computer's page is showing.
+ *
+ * The Controller connection carries one session at a time, so these are two states of the phone
+ * rather than two panes: the screen preview runs only while Screen is showing, and a terminal
+ * attaches only from Terminals.
+ */
+internal enum class HostPageTab { Screen, Terminals }
+
 @Composable
 private fun EmptyFleet(onPair: () -> Unit) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -434,61 +481,20 @@ private fun HostList(
 ) {
     LazyColumn(modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
-            Text(
-                stringResource(com.multiplex.mobile.R.string.paired_hosts),
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-            )
+            Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                Text(
+                    stringResource(com.multiplex.mobile.R.string.controller_computers),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    stringResource(com.multiplex.mobile.R.string.controller_computers_subtitle),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         items(state.hosts, key = { it.id }) { host ->
             HostRow(host, host.id == state.selectedHostId) { onSelect(host.id) }
-        }
-    }
-}
-
-@Composable
-private fun CompactHostStrip(state: ControllerUiState, onSelect: (String) -> Unit) {
-    LazyRow(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        items(state.hosts, key = { it.id }) { host ->
-            CompactHostChip(host, host.id == state.selectedHostId) { onSelect(host.id) }
-        }
-    }
-}
-
-@Composable
-private fun CompactHostChip(host: PairedHostRecord, selected: Boolean, onClick: () -> Unit) {
-    val hostDescription = stringResource(com.multiplex.mobile.R.string.host_accessibility, isolated(host.displayName))
-    Card(
-        modifier = Modifier
-            .width(220.dp)
-            .clickable(onClick = onClick)
-            .semantics { contentDescription = hostDescription },
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) {
-                MaterialTheme.colorScheme.secondaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            },
-        ),
-    ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-            Text(
-                isolated(host.displayName),
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                isolated("${host.route.address}:${host.route.port}"),
-                style = MaterialTheme.typography.labelSmall,
-                fontFamily = FontFamily.Monospace,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }
@@ -542,64 +548,170 @@ private fun FleetDetail(
     state: ControllerUiState,
     onRetry: () -> Unit,
     onOpenSession: (String) -> Unit,
-    onSelectRoute: (ControllerRemoteRouteKind) -> Unit,
-    onConfigureSsh: () -> Unit,
-    onConfigureRelay: () -> Unit,
     modifier: Modifier = Modifier,
     screens: ControllerScreenCoordinator? = null,
     canWatch: Boolean = false,
-    onOpenScreen: () -> Unit = {},
+    onOpenScreen: (UInt?) -> Unit = {},
+    tab: HostPageTab = HostPageTab.Terminals,
+    onSelectTab: (HostPageTab) -> Unit = {},
 ) {
     val openTerminals = state.sessions.filter(ControllerSessionSummary::isOpenTerminal)
     val previousSessions = state.sessions.filterNot(ControllerSessionSummary::isOpenTerminal)
     Column(modifier.fillMaxSize()) {
         ConnectionBanner(state, onRetry)
-        ControllerRouteSelector(state, onSelectRoute, onConfigureSsh, onConfigureRelay)
-        LazyColumn(
-            Modifier.fillMaxSize().padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (canWatch && screens != null) {
-                item(key = "this-computers-screen") {
-                    ControllerScreenPreviewCard(
-                        preview = screens.preview,
-                        lastPicture = state.selectedHostId?.let { screens.lastPictures[it] },
-                        unavailable = screens.unavailable,
-                        onOpenScreen = onOpenScreen,
-                    )
-                }
-            }
-            if (openTerminals.isEmpty()) {
-                item(key = "no-open-terminals") {
-                    Box(
-                        Modifier.fillMaxWidth().heightIn(min = 140.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            if (state.connection.isBusy()) {
-                                stringResource(com.multiplex.mobile.R.string.loading_sessions)
-                            } else {
-                                stringResource(com.multiplex.mobile.R.string.no_open_terminals)
-                            },
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+        HostPageTabs(tab, onSelectTab)
+        when (tab) {
+            HostPageTab.Screen -> ScreenTab(
+                state = state,
+                screens = screens,
+                canWatch = canWatch,
+                onOpenScreen = onOpenScreen,
+            )
+            HostPageTab.Terminals -> LazyColumn(
+                Modifier.fillMaxSize().padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (openTerminals.isEmpty()) {
+                    item(key = "no-open-terminals") {
+                        Box(
+                            Modifier.fillMaxWidth().heightIn(min = 140.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                if (state.connection.isBusy()) {
+                                    stringResource(com.multiplex.mobile.R.string.loading_sessions)
+                                } else {
+                                    stringResource(com.multiplex.mobile.R.string.no_open_terminals)
+                                },
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                } else {
+                    item(key = "open-terminals-header") {
+                        SessionSectionHeader(stringResource(com.multiplex.mobile.R.string.open_terminals))
+                    }
+                    items(openTerminals, key = { it.id }) { session ->
+                        SessionRow(session, state.cachedReadOnly) { onOpenSession(session.id) }
                     }
                 }
-            } else {
-                item(key = "open-terminals-header") {
-                    SessionSectionHeader(stringResource(com.multiplex.mobile.R.string.open_terminals))
-                }
-                items(openTerminals, key = { it.id }) { session ->
-                    SessionRow(session, state.cachedReadOnly) { onOpenSession(session.id) }
+                if (previousSessions.isNotEmpty()) {
+                    item(key = "previous-sessions-header") {
+                        SessionSectionHeader(stringResource(com.multiplex.mobile.R.string.previous_sessions))
+                    }
+                    items(previousSessions, key = { it.id }) { session ->
+                        SessionRow(session, state.cachedReadOnly) { onOpenSession(session.id) }
+                    }
                 }
             }
-            if (previousSessions.isNotEmpty()) {
-                item(key = "previous-sessions-header") {
-                    SessionSectionHeader(stringResource(com.multiplex.mobile.R.string.previous_sessions))
-                }
-                items(previousSessions, key = { it.id }) { session ->
-                    SessionRow(session, state.cachedReadOnly) { onOpenSession(session.id) }
-                }
+        }
+    }
+}
+
+/** Screen or Terminals: which of the two a computer's page is showing. */
+@Composable
+private fun HostPageTabs(tab: HostPageTab, onSelectTab: (HostPageTab) -> Unit) {
+    SingleChoiceSegmentedButtonRow(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        HostPageTab.entries.forEachIndexed { index, entry ->
+            SegmentedButton(
+                selected = tab == entry,
+                onClick = { onSelectTab(entry) },
+                shape = SegmentedButtonDefaults.itemShape(index, HostPageTab.entries.size),
+            ) {
+                Text(
+                    stringResource(
+                        when (entry) {
+                            HostPageTab.Screen -> com.multiplex.mobile.R.string.controller_tab_screen
+                            HostPageTab.Terminals -> com.multiplex.mobile.R.string.controller_tab_terminals
+                        },
+                    ),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The computer's screen: its last picture, and the displays it has.
+ *
+ * The displays come from the preview session, which is the only thing that knows them, so the
+ * list fills in once the preview has connected. Before then, and on a computer that never shared
+ * its screen, the page says so rather than offering a button that would fail.
+ */
+@Composable
+private fun ScreenTab(
+    state: ControllerUiState,
+    screens: ControllerScreenCoordinator?,
+    canWatch: Boolean,
+    onOpenScreen: (UInt?) -> Unit,
+) {
+    if (!canWatch || screens == null) {
+        Box(
+            Modifier.fillMaxSize().padding(24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                stringResource(com.multiplex.mobile.R.string.controller_screen_not_granted),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+    val displays = screens.preview?.displays.orEmpty()
+    LazyColumn(
+        Modifier.fillMaxSize().padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item(key = "this-computers-screen") {
+            ControllerScreenPreviewCard(
+                preview = screens.preview,
+                lastPicture = state.selectedHostId?.let { screens.lastPictures[it] },
+                unavailable = screens.unavailable,
+                onOpenScreen = { onOpenScreen(null) },
+            )
+        }
+        if (displays.size > 1) {
+            item(key = "displays-header") {
+                SessionSectionHeader(stringResource(com.multiplex.mobile.R.string.controller_displays))
+            }
+            items(displays, key = { it.id.toLong() }) { display ->
+                DisplayRow(display) { onOpenScreen(display.id) }
+            }
+        }
+        item(key = "one-at-a-time") {
+            Text(
+                stringResource(com.multiplex.mobile.R.string.controller_one_at_a_time),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DisplayRow(display: com.multiplex.screens.ScreenSurface, onOpen: () -> Unit) {
+    Card(
+        Modifier.fillMaxWidth().clickable(onClick = onOpen),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(isolated(display.name), fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text(
+                    "${display.width} × ${display.height}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            TextButton(onClick = onOpen) {
+                Text(stringResource(com.multiplex.mobile.R.string.controller_open_display))
             }
         }
     }
@@ -2196,15 +2308,25 @@ private fun PairHostDialog(
 @Composable
 private fun HostDetailsDialog(
     host: PairedHostRecord,
+    state: ControllerUiState,
     onDismiss: () -> Unit,
     onReconnect: () -> Unit,
     onForget: () -> Unit,
+    onSelectRoute: (ControllerRemoteRouteKind) -> Unit,
+    onConfigureSsh: () -> Unit,
+    onConfigureRelay: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(isolated(host.displayName)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+            ) {
+                // How this phone reaches the computer belongs with the rest of what is known
+                // about it, not across the top of the page it is used from.
+                ControllerRouteSelector(state, onSelectRoute, onConfigureSsh, onConfigureRelay)
                 host.routes.forEach { route ->
                     Text(stringResource(com.multiplex.mobile.R.string.route_value, isolated(route.address), route.port))
                 }
@@ -2244,12 +2366,28 @@ private fun connectionLabel(state: ControllerConnectionState): String = when (st
     is ControllerConnectionState.Failed -> stringResource(com.multiplex.mobile.R.string.state_connection_failed, state.code)
 }
 
-private fun capabilityLabels(bits: Int): List<String> = buildList {
-    if (bits and 1 != 0) add("Fleet")
-    if (bits and 2 != 0) add("Output")
-    if (bits and 4 != 0) add("Input")
-    if (bits and 8 != 0) add("Resize")
-    if (bits and 16 != 0) add("Approvals")
+/**
+ * What a computer has granted this phone, in its own words.
+ *
+ * All eight bits, not the first five: a computer that shares its screen says so here, which is
+ * the only place a person can see whether watching or control was granted.
+ */
+@Composable
+private fun capabilityLabels(bits: Int): List<String> {
+    val labels = listOf(
+        ControllerConnection.OBSERVE_CAPABILITY to com.multiplex.mobile.R.string.capability_fleet,
+        ControllerConnection.ATTACH_CAPABILITY to com.multiplex.mobile.R.string.capability_output,
+        ControllerConnection.INPUT_CAPABILITY to com.multiplex.mobile.R.string.capability_input,
+        ControllerConnection.RESIZE_CAPABILITY to com.multiplex.mobile.R.string.capability_resize,
+        ControllerConnection.APPROVAL_CAPABILITY to com.multiplex.mobile.R.string.capability_approvals,
+        ControllerConnection.OBSERVE_SCREENS_CAPABILITY to
+            com.multiplex.mobile.R.string.capability_watch_screen,
+        ControllerConnection.CONTROL_POINTER_CAPABILITY to
+            com.multiplex.mobile.R.string.capability_control_pointer,
+        ControllerConnection.CONTROL_KEYBOARD_CAPABILITY to
+            com.multiplex.mobile.R.string.capability_control_keyboard,
+    ).filter { (bit, _) -> bits and bit != 0 }.map { (_, label) -> stringResource(label) }
+    return labels.ifEmpty { listOf(stringResource(com.multiplex.mobile.R.string.capability_none)) }
 }
 
 private fun isolated(value: String): String = "\u2068$value\u2069"

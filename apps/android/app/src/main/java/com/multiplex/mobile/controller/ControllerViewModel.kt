@@ -1055,11 +1055,12 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         retry()
     }
 
-    fun openScreen() {
+    /** Opens the computer's screen, on the display the person picked when they picked one. */
+    fun openScreen(surface: UInt? = null) {
         val host = selectedHost() ?: return
         val connection = runCatching { connectionFor(selectedRoute()) }.getOrNull() ?: return
         operation?.cancel()
-        screens.openViewer(host, connection)
+        screens.openViewer(host, connection, surface)
     }
 
     fun closeScreen() {
