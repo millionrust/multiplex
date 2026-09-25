@@ -213,6 +213,15 @@ impl ControllerConnectionBackend for HostConnectionBackend {
         cancel: &CancellationToken,
     ) -> Result<HostCommandContext, ListenerError> {
         let Some(session_id) = command.command.session_id() else {
+            // Creating a terminal names no session, because there is none yet. Routing picks the
+            // desktop app by session id, so this one command was never picked, and the Session
+            // Host branch below answered `create_session_unavailable` to every phone that asked.
+            // Only the app has a window to open one in, so it is routed by what it is.
+            if matches!(command.command, ControllerCommand::CreateSession { .. })
+                && self.ensure_desktop_bridge().await
+            {
+                self.live_commands.insert(command.command_id);
+            }
             return Ok(HostCommandContext::default());
         };
         if self.ensure_desktop_bridge().await {
@@ -1355,5 +1364,95 @@ mod tests {
             }]
         );
         assert_eq!(*written.lock().unwrap(), b"from phone\n");
+    }
+
+    /// A phone asking for a terminal reaches the desktop app.
+    ///
+    /// Routing picks the app by the session a command names, and this is the one command that
+    /// names none — there is no session until the app makes one. So it was never routed there and
+    /// every phone that pressed New terminal got `create_session_unavailable`, which is what the
+    /// Session Host branch says truthfully about itself. Measured against the real listener: the
+    /// Android app showed that code and the iOS app showed "Host Unavailable".
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_phone_asking_for_a_terminal_reaches_the_app() {
+        let fixture = tempfile::tempdir().unwrap();
+        let project_root = fixture.path().join("projects");
+        let sessions =
+            SessionRepository::open(project_root.clone(), fixture.path().join("session-data"))
+                .unwrap();
+        let projects = ProjectRepository::open(project_root).unwrap();
+        let registry = DesktopPaneRegistry::default();
+        let server =
+            DesktopPaneBridgeServer::start(fixture.path().join("bridge"), registry.clone())
+                .unwrap();
+        let mut backend = HostConnectionBackend {
+            sessions,
+            projects,
+            runtime_parent: fixture.path().join("runtime"),
+            capabilities: ControllerCapabilities::default()
+                .with(ControllerCapability::ObserveSessions)
+                .with(ControllerCapability::CreateSession),
+            clients: HashMap::new(),
+            active_attach: None,
+            pending_output: VecDeque::new(),
+            desktop_pane_bridge_endpoint: Some(server.endpoint()),
+            desktop_pane_bridge: None,
+            live_commands: HashSet::new(),
+            live_attach: false,
+            console_root: fixture.path().join("console-sessions"),
+            tmux: TmuxConnectionState::new(None),
+        };
+
+        // The app, answering the request its event loop picks up.
+        let opened = HostedSessionId::new();
+        // Bounded, so a routing regression fails here rather than waiting for a request that
+        // is never coming.
+        let app = tokio::spawn({
+            let registry = registry.clone();
+            async move {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+                while std::time::Instant::now() < deadline {
+                    for request in registry.take_pane_requests() {
+                        assert_eq!(request.spec().folder.as_deref(), Some("/tmp"));
+                        assert_eq!(request.spec().title.as_deref(), Some("From the phone"));
+                        request.opened(opened, OccupantGeneration::new(1));
+                        return true;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+                false
+            }
+        });
+
+        let cancel = CancellationToken::new();
+        let command_id = CommandId::new();
+        let create = ControllerCommandEnvelope::new(
+            command_id,
+            1,
+            1,
+            ControllerCommand::CreateSession {
+                folder: Some("/tmp".to_owned()),
+                shell: None,
+                title: Some("From the phone".to_owned()),
+                columns: 80,
+                rows: 24,
+            },
+        );
+        backend.command_context(&create, &cancel).await.unwrap();
+        let responses = backend.execute(create, &cancel).await.unwrap();
+        assert!(
+            app.await.unwrap(),
+            "the app was never asked for a terminal: the command did not reach it"
+        );
+        assert_eq!(
+            responses,
+            vec![ControllerResponse::SessionCreated {
+                command_id,
+                session_id: opened,
+                occupant_generation: OccupantGeneration::new(1),
+            }],
+            "the request reached the app and its answer came back"
+        );
     }
 }
