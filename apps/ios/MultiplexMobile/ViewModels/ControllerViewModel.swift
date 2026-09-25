@@ -485,6 +485,43 @@ final class ControllerViewModel: ObservableObject {
         )
     }
 
+    /// Whether the selected computer has granted this phone the right to start a terminal.
+    var canCreateSessionOnSelectedHost: Bool {
+        guard let host = selectedHost else { return false }
+        return host.capabilityBits & (1 << 8) != 0
+    }
+
+    /// Asks the computer for a terminal and opens it here once it exists.
+    ///
+    /// The list is refreshed first so the new session is in it: attaching reads the summary the
+    /// computer published rather than trusting what this phone asked for.
+    func createSession(folder: String?, shell: String?, title: String?) {
+        guard let host = selectedHost, let connection = selectedConnection else { return }
+        operation?.cancel()
+        operation = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let created = try await connection.createSession(
+                    host: host,
+                    folder: folder,
+                    shell: shell,
+                    title: title,
+                    viewport: TerminalViewportState(columns: 120, rows: 40)
+                )
+                await self.refresh(host: host)
+                guard let session = self.state.sessions.first(where: {
+                    $0.id == created.sessionID
+                }) else { return }
+                self.openReadOnlyTerminal(session)
+            } catch {
+                self.state = self.replacing(
+                    connection: .failed(Self.failure(error)),
+                    sessions: self.state.sessions
+                )
+            }
+        }
+    }
+
     func closeReadOnlyTerminal() {
         activeTerminal?.detach()
         activeTerminal = nil

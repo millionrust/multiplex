@@ -140,6 +140,12 @@ private final class NWControllerDuplexConnection: ControllerDuplexConnection, @u
     }
 }
 
+/// The terminal a computer opened because a device asked it to.
+struct CreatedControllerSession: Equatable, Sendable {
+    let sessionID: UUID
+    let occupantGeneration: UInt64
+}
+
 protocol ControllerConnecting: Sendable {
     func beginPairing(
         offerText: String,
@@ -202,6 +208,17 @@ protocol ControllerConnecting: Sendable {
         onOpened: @escaping @Sendable (ControllerScreenTicket, ScreenViewer) async -> Void,
         onEvent: @escaping @Sendable ([ScreenEvent]) async throws -> Void
     ) async throws
+    /// Starts a terminal on the computer and says which session it is, so the phone can attach.
+    ///
+    /// Every field is the device's suggestion; the computer's own defaults answer for whatever is
+    /// left out.
+    func createSession(
+        host: PairedHostRecord,
+        folder: String?,
+        shell: String?,
+        title: String?,
+        viewport: TerminalViewportState
+    ) async throws -> CreatedControllerSession
     func forgetDeviceSecret(host: PairedHostRecord) async throws
     func cancel() async
     /// What the last attempt to reach `hostID` suggests telling the person, if anything.
@@ -279,6 +296,18 @@ extension ControllerConnecting {
     func lastRouteAdvice(hostID: String) async -> ControllerRouteAdvice? {
         _ = hostID
         return nil
+    }
+
+    /// A transport that cannot start terminals says so, rather than every caller knowing which can.
+    func createSession(
+        host: PairedHostRecord,
+        folder: String?,
+        shell: String?,
+        title: String?,
+        viewport: TerminalViewportState
+    ) async throws -> CreatedControllerSession {
+        _ = (host, folder, shell, title, viewport)
+        throw ControllerConnectionError.capabilityDenied
     }
 
     /// A transport that cannot carry screens says so, rather than every one of them having to.
@@ -576,9 +605,12 @@ actor ControllerConnectionActor: ControllerConnecting {
     private static let observeScreensCapability: UInt16 = 1 << 5
     private static let controlPointerCapability: UInt16 = 1 << 6
     private static let controlKeyboardCapability: UInt16 = 1 << 7
+    /// Starting a terminal, from amendment 2 of the Controller-v1 ADR.
+    private static let createSessionCapability: UInt16 = 1 << 8
     private static let supportedCapabilityBits = observeCapability
         | attachCapability | inputCapability | resizeCapability | approvalCapability
         | observeScreensCapability | controlPointerCapability | controlKeyboardCapability
+        | createSessionCapability
     /// The tile cache a phone keeps for one screen. The computer models the same budget.
     private static let screenCacheBytes: UInt64 = 32 * 1_024 * 1_024
     private static let maxOfferBytes = 4 * 1_024
@@ -1478,6 +1510,140 @@ actor ControllerConnectionActor: ControllerConnecting {
     }
 
     /// Asks for a screen session and reads the one-time ticket it answers with.
+    /// Starts a terminal on the computer and says which session it is.
+    ///
+    /// One command on a connection of its own: the computer opens the terminal, publishes it, and
+    /// answers with the session to attach to. What it runs is this device's suggestion and the
+    /// computer's decision, so a refusal is an answer rather than a failure.
+    func createSession(
+        host: PairedHostRecord,
+        folder: String?,
+        shell: String?,
+        title: String?,
+        viewport: TerminalViewportState
+    ) async throws -> CreatedControllerSession {
+        await cancel()
+        guard host.schemaVersion == PairedHostRecord.currentSchemaVersion,
+              host.capabilityBits & Self.createSessionCapability == Self.createSessionCapability
+        else {
+            throw ControllerConnectionError.capabilityDenied
+        }
+        let requested = host.capabilityBits & Self.supportedCapabilityBits
+        let (network, _) = try await openHostConnection(host)
+        connection = network
+        let request = ConnectionStartRequest(
+            staticKeyId: host.deviceStaticKeyId,
+            ephemeralPrivateKey: try Self.randomBytes(count: 32),
+            hostStaticPublicKey: host.hostStaticPublicKey,
+            identityGeneration: host.identityGeneration,
+            revocationEpoch: host.revocationEpoch,
+            requestedCapabilityBits: requested,
+            clientNonce: try Self.randomBytes(count: 32),
+            nowMillis: Self.uptimeMillis()
+        )
+        let authentication: AuthenticatedSessionResult = try await withTimeout(Self.handshakeTimeout) {
+            try await Self.send(Self.authenticationPreface, over: network)
+            let prelude = try self.securityEngine.connectionPrelude(request: request)
+            try await Self.send(prelude, over: network)
+            let challenge = try await Self.receiveExactly(36, over: network)
+            let session = try self.securityEngine.connectionStart(
+                request: request,
+                challengeBytes: challenge
+            )
+            let hello = try session.handshakeOutbound(nowMillis: Self.uptimeMillis())
+            try await Self.sendFrame(hello, maximum: Self.maxHandshakeFrameBytes, over: network)
+            let accept = try await Self.receiveFrame(
+                maximum: Self.maxHandshakeFrameBytes,
+                over: network
+            )
+            let result = try session.handshakeReceiveAccept(
+                message: accept,
+                nowMillis: Self.uptimeMillis()
+            )
+            return AuthenticatedSessionResult(publicResult: result, session: session)
+        }
+        let publicResult = authentication.publicResult
+        let authenticatedSession = authentication.session
+        defer {
+            try? authenticatedSession.finish()
+            network.cancel()
+            if connection === network { connection = nil }
+        }
+        guard publicResult.hostStaticPublicKey == host.hostStaticPublicKey,
+              publicResult.identityGeneration == host.identityGeneration,
+              publicResult.revocationEpoch == host.revocationEpoch,
+              publicResult.grantedCapabilityBits & Self.createSessionCapability
+                  == Self.createSessionCapability,
+              publicResult.grantedCapabilityBits & ~Self.supportedCapabilityBits == 0 else {
+            throw ControllerConnectionError.authenticationFailed
+        }
+
+        let commandID = UUID()
+        var command: [String: Any] = [
+            "kind": "create_session",
+            "columns": UInt32(viewport.columns),
+            "rows": UInt32(viewport.rows),
+        ]
+        command["folder"] = Self.suggestion(folder) ?? NSNull()
+        command["shell"] = Self.suggestion(shell) ?? NSNull()
+        command["title"] = Self.suggestion(title) ?? NSNull()
+        let envelope: [String: Any] = [
+            "version": 1,
+            "command_id": commandID.uuidString,
+            "session_generation": host.sessionGeneration,
+            "deadline_millis": Self.wallClockMillis().saturatingAdd(30_000),
+            "command": command,
+        ]
+        let payload = try JSONSerialization.data(withJSONObject: envelope)
+        let sealed = try authenticatedSession.sealFrame(
+            kind: .control,
+            capability: .createSession,
+            revocationEpoch: host.revocationEpoch,
+            payload: payload
+        )
+        try await Self.sendFrame(sealed, maximum: Self.maxSecureFrameBytes, over: network)
+        let response = try await Self.receiveFrame(
+            maximum: Self.maxSecureFrameBytes,
+            over: network
+        )
+        let opened = try authenticatedSession.openFrame(frame: response)
+        guard opened.kind == .control, opened.revocationEpoch == host.revocationEpoch else {
+            throw ControllerConnectionError.malformedResponse
+        }
+        return try Self.createdSession(from: opened.payload, commandID: commandID)
+    }
+
+    /// A field the person left empty is not a suggestion; the computer's own default answers.
+    private static func suggestion(_ value: String?) -> String? {
+        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return value
+    }
+
+    private static func createdSession(
+        from payload: Data,
+        commandID: UUID
+    ) throws -> CreatedControllerSession {
+        guard let object = try JSONSerialization.jsonObject(with: payload) as? [String: Any],
+              let kind = object["kind"] as? String else {
+            throw ControllerConnectionError.malformedResponse
+        }
+        if kind == "error" {
+            throw ControllerConnectionError.hostError((object["code"] as? String) ?? "unknown")
+        }
+        guard kind == "session_created",
+              let answered = object["command_id"] as? String,
+              UUID(uuidString: answered) == commandID,
+              let sessionText = object["session_id"] as? String,
+              let sessionID = UUID(uuidString: sessionText),
+              let generation = object["occupant_generation"] as? UInt64,
+              generation > 0 else {
+            throw ControllerConnectionError.malformedResponse
+        }
+        return CreatedControllerSession(sessionID: sessionID, occupantGeneration: generation)
+    }
+
     private func openScreenSession(
         host: PairedHostRecord,
         session: ControllerConnectionSession,

@@ -15,6 +15,7 @@ struct ControllerRootView: View {
     @ObservedObject var viewModel: ControllerViewModel
     @State private var hostTab: ControllerHostPageTab = .terminals
     @State private var showingPairing = false
+    @State private var showingNewTerminal = false
     @State private var showingEnrollment = false
     @State private var showingForgetConfirmation = false
     @State private var showingHostDetails = false
@@ -72,6 +73,8 @@ struct ControllerRootView: View {
                 onForget: { showingForgetConfirmation = true },
                 onShowDetails: { showingHostDetails = true },
                 onOpenSession: viewModel.openReadOnlyTerminal,
+                canCreateSession: viewModel.canCreateSessionOnSelectedHost,
+                onNewTerminal: { showingNewTerminal = true },
                 screens: viewModel.screens,
                 canWatch: viewModel.canWatchSelectedHost,
                 onStartPreview: viewModel.startScreenPreview,
@@ -81,6 +84,12 @@ struct ControllerRootView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .sheet(isPresented: $showingEnrollment) { EnrollmentView() }
+        .sheet(isPresented: $showingNewTerminal) {
+            NewTerminalSheet { folder, shell, name in
+                showingNewTerminal = false
+                viewModel.createSession(folder: folder, shell: shell, title: name)
+            }
+        }
         .sheet(isPresented: $showingPairing) {
             PairHostView(viewModel: viewModel, isPresented: $showingPairing)
         }
@@ -256,6 +265,53 @@ private struct ControllerScreenViewerSheet: View {
     }
 }
 
+/// What to start, and where.
+///
+/// Everything is optional: a person who wants "a terminal, here" says nothing and gets the
+/// computer's own defaults, which is what the computer would have opened itself.
+private struct NewTerminalSheet: View {
+    let onStart: (String?, String?, String?) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var folder = ""
+    @State private var shell = ""
+    @State private var name = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Folder", text: $folder)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                } footer: {
+                    Text("Where it starts. The computer's home folder when empty.")
+                }
+                Section {
+                    TextField("Shell", text: $shell)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                } footer: {
+                    Text("The computer's own default when empty.")
+                }
+                Section {
+                    TextField("Name", text: $name)
+                }
+            }
+            .navigationTitle("Start a terminal")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Start") { onStart(folder, shell, name) }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
 private struct ControllerHostRow: View {
     let host: HostSummary
     let selected: Bool
@@ -418,6 +474,8 @@ private struct ControllerSessionFleetView: View {
     let onForget: () -> Void
     let onShowDetails: () -> Void
     let onOpenSession: (ControllerSessionSummary) -> Void
+    let canCreateSession: Bool
+    let onNewTerminal: () -> Void
     @ObservedObject var screens: ControllerScreenCoordinator
     let canWatch: Bool
     let onStartPreview: () -> Void
@@ -534,6 +592,19 @@ private struct ControllerSessionFleetView: View {
     }
 
     @ViewBuilder private var terminalSections: some View {
+        Section {
+            if canCreateSession {
+                Button {
+                    onNewTerminal()
+                } label: {
+                    Label("New terminal", systemImage: "plus")
+                }
+            } else {
+                Text("This computer has not allowed this phone to start terminals.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
         if state.sessions.isEmpty {
             Section {
                 ContentUnavailableView {

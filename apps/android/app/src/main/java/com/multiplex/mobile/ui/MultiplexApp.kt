@@ -675,34 +675,45 @@ private fun SessionPanel(
                 modifier = Modifier.weight(1f),
                 edgeToEdge = !framed,
             )
-            TerminalToolbar(
-                terminalFontSize = terminalFontSize,
-                applicationCursor = screen.applicationCursor,
-                onDecreaseFont = { terminalFontSize = (terminalFontSize - 1).coerceAtLeast(10) },
-                onIncreaseFont = { terminalFontSize = (terminalFontSize + 1).coerceAtMost(24) },
-                controlModifierActive = controlModifierActive,
-                altModifierActive = altModifierActive,
-                onToggleControl = { controlModifierActive = !controlModifierActive },
-                onToggleAlt = { altModifierActive = !altModifierActive },
-                onSend = viewModel::sendTerminalBytes,
-            )
+            // The keys and the command line belong to a terminal that exists. With no host
+            // connected they were a row of controls that did nothing, above a prompt with
+            // nowhere to send what was typed.
+            if (state == TerminalConnectionState.Connected) {
+                TerminalToolbar(
+                    terminalFontSize = terminalFontSize,
+                    applicationCursor = screen.applicationCursor,
+                    onDecreaseFont = {
+                        terminalFontSize = (terminalFontSize - 1).coerceAtLeast(10)
+                    },
+                    onIncreaseFont = {
+                        terminalFontSize = (terminalFontSize + 1).coerceAtMost(24)
+                    },
+                    controlModifierActive = controlModifierActive,
+                    altModifierActive = altModifierActive,
+                    onToggleControl = { controlModifierActive = !controlModifierActive },
+                    onToggleAlt = { altModifierActive = !altModifierActive },
+                    onSend = viewModel::sendTerminalBytes,
+                )
+            }
             if (pendingMultilinePaste == command && command.isNotEmpty()) {
                 MultilinePasteWarning(
                     onConfirm = { sendCommandWithPasteGuard(force = true) },
                     onCancel = { pendingMultilinePaste = null },
                 )
             }
-            CommandInput(
-                command = command,
-                connected = state == TerminalConnectionState.Connected,
-                onCommandChange = {
-                    command = it
-                    if (pendingMultilinePaste != it) {
-                        pendingMultilinePaste = null
-                    }
-                },
-                onSend = { sendCommandWithPasteGuard() },
-            )
+            if (state == TerminalConnectionState.Connected) {
+                CommandInput(
+                    command = command,
+                    connected = true,
+                    onCommandChange = {
+                        command = it
+                        if (pendingMultilinePaste != it) {
+                            pendingMultilinePaste = null
+                        }
+                    },
+                    onSend = { sendCommandWithPasteGuard() },
+                )
+            }
             }
         }
     }

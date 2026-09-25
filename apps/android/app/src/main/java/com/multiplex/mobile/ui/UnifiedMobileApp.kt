@@ -41,7 +41,11 @@ fun UnifiedMobileApp(
     onImportVault: (String) -> Unit,
     onImportCredentialFile: () -> Unit,
 ) {
-    var destination by remember { mutableStateOf(MobileRootDestination.CONNECTIONS) }
+    // The phone opens on the computers it is paired with, which is what it is for: the SSH
+    // connections it keeps itself are the other tab, not the front door.
+    var destination by androidx.compose.runtime.saveable.rememberSaveable {
+        mutableStateOf(MobileRootDestination.DEVICES)
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     val controllerState by controller.state.collectAsState()
     val controllerTerminalOpen = destination == MobileRootDestination.DEVICES &&
