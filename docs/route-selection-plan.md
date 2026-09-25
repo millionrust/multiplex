@@ -40,7 +40,8 @@ Status: **phases 1–2 shipped; phase 4's policy is in the planner, its executor
   breaks hosts that predate it, and bumping the command version stops a new phone talking to any
   older host. Whatever the decision record settles on — an ignore-unknown response decoder shipped
   a release ahead, a capability bit, or a command whose refusal is survivable — has to ship before
-  the message does.
+  the message does. `docs/decisions/controller-wire-growth.md` proposes that answer and is waiting
+  on review.
 
 ## Goal
 
