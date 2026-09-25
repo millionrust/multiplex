@@ -1409,7 +1409,9 @@ async fn wait_for(
             | ControllerResponse::Detached { command_id: id }
             | ControllerResponse::ScreenOpened { command_id: id, .. }
             | ControllerResponse::Error { command_id: id, .. } => *id == command_id,
-            ControllerResponse::Output { .. } => false,
+            // A response from a newer computer answers nothing this CLI asked for; skipping it
+            // keeps the stream readable instead of ending the session over it.
+            ControllerResponse::Output { .. } | ControllerResponse::Unknown => false,
         };
         if matches && !matches!(response, ControllerResponse::Snapshot { .. }) {
             return Ok(response);

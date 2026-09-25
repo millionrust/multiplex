@@ -85,7 +85,7 @@ fn all_live_secret_wrappers_are_zeroize_on_drop() {
 }
 
 #[test]
-fn unknown_capability_bits_fail_closed() {
+fn unknown_capability_bits_fail_closed_when_this_build_made_them() {
     // 0x0100 is the first bit no amendment has defined; 0x00e0 are the Remote Screens bits.
     assert_eq!(
         multiplex_controller_security::CapabilitySet::from_bits(0x0100)
@@ -95,5 +95,29 @@ fn unknown_capability_bits_fail_closed() {
     assert_eq!(
         multiplex_controller_security::CapabilitySet::from_bits(0x00e0).map(|set| set.bits()),
         Ok(0x00e0)
+    );
+}
+
+/// A bit off the wire that this build does not know is dropped, not a reason to hang up.
+///
+/// `docs/decisions/controller-wire-growth.md`: refusing the whole connection over one unknown
+/// bit is what stopped the protocol growing. Nothing is gained by asking — the computer decides
+/// what it grants — so the only effect is that a newer device keeps the capabilities this build
+/// does understand.
+#[test]
+fn unknown_capability_bits_from_the_wire_are_dropped() {
+    let read = multiplex_controller_security::CapabilitySet::from_wire(0x01e3);
+    assert_eq!(read.bits(), 0x00e3);
+    assert_eq!(
+        multiplex_controller_security::CapabilitySet::from_wire(0xffff).bits(),
+        multiplex_controller_security::CapabilitySet::KNOWN_MASK
+    );
+    // Everything this build knows still survives the read unchanged.
+    assert_eq!(
+        multiplex_controller_security::CapabilitySet::from_wire(
+            multiplex_controller_security::CapabilitySet::KNOWN_MASK
+        )
+        .bits(),
+        multiplex_controller_security::CapabilitySet::KNOWN_MASK
     );
 }

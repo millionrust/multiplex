@@ -776,7 +776,8 @@ fn response_security(
     command_capability: SecurityCapability,
 ) -> (ControllerFrameKind, SecurityCapability, usize) {
     match response {
-        ControllerResponse::Sessions { .. } => (
+        // Never sent by this build; a reader that met one skipped it before reaching here.
+        ControllerResponse::Unknown | ControllerResponse::Sessions { .. } => (
             ControllerFrameKind::Control,
             SecurityCapability::ObserveSessions,
             control_payload_limit(),

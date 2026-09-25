@@ -189,6 +189,11 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ControllerClientChannel<S> {
         response: &ControllerResponse,
     ) -> Result<(ControllerFrameKind, SecurityCapability, bool), ListenerError> {
         let value = match response {
+            // Sent by a newer computer than this build. Nothing was asked for it, so there is
+            // nothing to match it against; the reader skips it.
+            ControllerResponse::Unknown => {
+                return Err(ListenerError::new(ListenerErrorCode::MalformedFrame));
+            }
             ControllerResponse::Sessions { command_id, .. } => (
                 ControllerFrameKind::Control,
                 self.require_pending(*command_id, SecurityCapability::ObserveSessions)?,
@@ -254,7 +259,7 @@ fn response_command_id(response: &ControllerResponse) -> Option<CommandId> {
         | ControllerResponse::Detached { command_id }
         | ControllerResponse::ScreenOpened { command_id, .. }
         | ControllerResponse::Error { command_id, .. } => Some(*command_id),
-        ControllerResponse::Output { .. } => None,
+        ControllerResponse::Output { .. } | ControllerResponse::Unknown => None,
     }
 }
 

@@ -286,6 +286,12 @@ impl ControllerConnectionBackend for HostConnectionBackend {
             self.live_attach = false;
         }
         match command.command {
+            // A command from a newer device: refused by name, and the connection carries on.
+            ControllerCommand::Unsupported => Ok(vec![ControllerResponse::Error {
+                command_id,
+                code: "unsupported_command".to_owned(),
+                completion_unknown: false,
+            }]),
             ControllerCommand::ListSessions {
                 offset,
                 limit,

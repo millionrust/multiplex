@@ -45,8 +45,17 @@ impl ControllerCommandEnvelope {
         }
     }
 
+    /// A command is read when this build is at least as new as the device that sent it.
+    ///
+    /// The rule used to be equality, which meant a version could never be raised: the first
+    /// device to send version 2 would be turned away by every computer already shipped. A
+    /// command from an older device still reads, and one from a newer device is refused rather
+    /// than guessed at. See `docs/decisions/controller-wire-growth.md`.
     pub fn validate(&self) -> Result<(), ListenerError> {
-        if self.version != CONTROLLER_COMMAND_VERSION || self.deadline_millis == 0 {
+        if self.version == 0
+            || self.version > CONTROLLER_COMMAND_VERSION
+            || self.deadline_millis == 0
+        {
             return Err(ListenerError::new(ListenerErrorCode::MalformedFrame));
         }
         self.command.validate()
@@ -122,6 +131,14 @@ pub enum ControllerCommand {
     OpenScreen,
     /// Ends the screen session and invalidates its ticket.
     CloseScreen,
+    /// A command from a newer device than this build.
+    ///
+    /// Decoding it rather than failing is what lets the wire grow: an unknown command used to
+    /// end the connection, taking the terminal the person was reading with it, so a phone could
+    /// never try something a computer might not have. It is refused, once, and the connection
+    /// carries on. See `docs/decisions/controller-wire-growth.md`.
+    #[serde(other)]
+    Unsupported,
 }
 
 impl ControllerCommand {
@@ -137,12 +154,16 @@ impl ControllerCommand {
             Self::Detach { .. } => BridgeCommandKind::Detach,
             Self::OpenScreen => BridgeCommandKind::OpenScreen,
             Self::CloseScreen => BridgeCommandKind::CloseScreen,
+            Self::Unsupported => BridgeCommandKind::Unsupported,
         }
     }
 
     pub const fn session_id(&self) -> Option<HostedSessionId> {
         match self {
-            Self::ListSessions { .. } | Self::OpenScreen | Self::CloseScreen => None,
+            Self::ListSessions { .. }
+            | Self::OpenScreen
+            | Self::CloseScreen
+            | Self::Unsupported => None,
             Self::Attach { session_id, .. }
             | Self::AcquireWriter { session_id, .. }
             | Self::ReleaseWriter { session_id, .. }
@@ -155,7 +176,10 @@ impl ControllerCommand {
 
     pub const fn occupant_generation(&self) -> Option<OccupantGeneration> {
         match self {
-            Self::ListSessions { .. } | Self::OpenScreen | Self::CloseScreen => None,
+            Self::ListSessions { .. }
+            | Self::OpenScreen
+            | Self::CloseScreen
+            | Self::Unsupported => None,
             Self::Attach {
                 occupant_generation,
                 ..
@@ -206,7 +230,8 @@ impl ControllerCommand {
             | Self::AcquireWriter { .. }
             | Self::ReleaseWriter { .. }
             | Self::OpenScreen
-            | Self::CloseScreen => Ok(()),
+            | Self::CloseScreen
+            | Self::Unsupported => Ok(()),
             Self::Attach { columns, rows, .. } | Self::Resize { columns, rows, .. }
                 if *columns == 0 || *rows == 0 || *columns > 1_000 || *rows > 1_000 =>
             {
@@ -278,6 +303,9 @@ pub enum ControllerResponse {
         code: String,
         completion_unknown: bool,
     },
+    /// A response from a newer computer than this build, which the reader skips.
+    #[serde(other)]
+    Unknown,
 }
 
 impl fmt::Debug for ControllerResponse {
@@ -484,6 +512,7 @@ fn response_kind(response: &ControllerResponse) -> &'static str {
         ControllerResponse::Completed { .. } => "completed",
         ControllerResponse::Detached { .. } => "detached",
         ControllerResponse::ScreenOpened { .. } => "screen_opened",
+        ControllerResponse::Unknown => "unknown",
         ControllerResponse::Error { .. } => "error",
     }
 }
@@ -507,6 +536,57 @@ mod tests {
         let encoded = encode_command(&command).unwrap();
         assert_eq!(decode_command(&encoded).unwrap(), command);
         assert!(!format!("{command:?}").contains("TOP-SECRET"));
+    }
+
+    /// A command this build has never heard of is read, refused, and survivable.
+    ///
+    /// `docs/decisions/controller-wire-growth.md`: it used to fail to decode, and a decode
+    /// failure ends the connection, so a phone could never try something a computer might not
+    /// have without risking the terminal the person was reading.
+    #[test]
+    fn a_command_from_a_newer_device_is_refused_rather_than_fatal() {
+        let envelope = serde_json::json!({
+            "version": 1,
+            "command_id": CommandId::new(),
+            "session_generation": 1,
+            "deadline_millis": 1_000,
+            "command": { "kind": "create_session", "folder": "/tmp" }
+        });
+        let decoded = decode_command(&serde_json::to_vec(&envelope).unwrap())
+            .expect("an unknown command kind still decodes");
+        assert!(decoded.command == ControllerCommand::Unsupported);
+        // Garbage is still fatal: tolerance is for kinds, not for malformed frames.
+        assert!(decode_command(br#"{"version":1,"command":"#).is_err());
+    }
+
+    /// A response this build has never heard of is skipped, not a broken stream.
+    #[test]
+    fn a_response_from_a_newer_computer_is_skipped() {
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "kind": "host_addresses",
+            "addresses": ["192.168.1.10:7420"]
+        }))
+        .unwrap();
+        assert!(
+            decode_response(&bytes, MAX_CONTROL_PAYLOAD_BYTES).unwrap()
+                == ControllerResponse::Unknown
+        );
+    }
+
+    /// The version rule allows a raise: older devices still read, newer ones are refused.
+    #[test]
+    fn a_command_version_may_be_older_but_never_newer() {
+        let mut envelope = ControllerCommandEnvelope::new(
+            CommandId::new(),
+            1,
+            1_000,
+            ControllerCommand::OpenScreen,
+        );
+        assert!(envelope.validate().is_ok());
+        envelope.version = CONTROLLER_COMMAND_VERSION + 1;
+        assert!(envelope.validate().is_err());
+        envelope.version = 0;
+        assert!(envelope.validate().is_err());
     }
 
     #[test]

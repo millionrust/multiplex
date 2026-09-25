@@ -501,7 +501,9 @@ fn decode_connection_payload(
     {
         return Err(ErrorCode::AuthenticationFailed.into());
     }
-    CapabilitySet::from_bits(u16::from_be_bytes([bytes[25], bytes[26]]))
+    Ok(CapabilitySet::from_wire(u16::from_be_bytes([
+        bytes[25], bytes[26],
+    ])))
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -1,6 +1,6 @@
 # Growing the Controller wire
 
-Status: proposed
+Status: accepted
 
 Reviewed: 2026-09-25
 
@@ -88,6 +88,6 @@ and console sources.
 
 ## Status note
 
-Nothing in this record is implemented. It exists because the work it unblocks was stopped at
-exactly this question, twice, and the answer should be written down once rather than rediscovered
-by whoever picks either task up.
+Approved 2026-09-25. The tolerant decoders land first, in their own commit, and only then the
+messages that need them. The window this record relies on — an installed base of one author's
+devices — closes at the first published release, so nothing here is worth deferring.

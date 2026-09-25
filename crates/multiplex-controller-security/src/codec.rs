@@ -61,7 +61,7 @@ pub fn decode_offer(bytes: &[u8]) -> Result<PairingOfferCore> {
         expires_at_unix_seconds: read_u64(bytes, 10)?,
         nonce: PairingNonce(read_array(bytes, 18)?),
         host_static_public_key: HostStaticPublicKey(read_array(bytes, 50)?),
-        capabilities: CapabilitySet::from_bits(read_u16(bytes, 82)?)?,
+        capabilities: CapabilitySet::from_wire(read_u16(bytes, 82)?),
     })
 }
 
@@ -126,7 +126,7 @@ pub(crate) fn decode_pairing_payload(bytes: &[u8]) -> Result<PairingPayload> {
         nonce: PairingNonce(read_array(bytes, 12)?),
         host_key: HostStaticPublicKey(read_array(bytes, 44)?),
         device_key: DeviceStaticPublicKey(read_array(bytes, 76)?),
-        capabilities: CapabilitySet::from_bits(read_u16(bytes, 108)?)?,
+        capabilities: CapabilitySet::from_wire(read_u16(bytes, 108)?),
     })
 }
 

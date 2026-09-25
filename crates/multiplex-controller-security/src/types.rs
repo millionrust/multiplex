@@ -186,12 +186,24 @@ impl CapabilitySet {
     /// Bits 0 to 4 from Controller-v1, bits 5 to 7 from the Remote Screens amendment.
     pub const KNOWN_MASK: u16 = 0x00ff;
 
+    /// A set this build put together itself, where an unknown bit is a mistake rather than news.
     pub fn from_bits(bits: u16) -> Result<Self> {
         if bits & !Self::KNOWN_MASK == 0 {
             Ok(Self(bits))
         } else {
             Err(ErrorCode::UnknownCapability.into())
         }
+    }
+
+    /// A set read off the wire, where a bit this build does not know means the peer is newer.
+    ///
+    /// Those bits are dropped rather than refused. A device cannot gain anything by asking for
+    /// one — what it is granted is decided by the computer from its own record — and refusing
+    /// the whole connection over a bit nobody here understands is how a protocol stops growing.
+    /// `multiplex-screen-protocol`'s `FeatureSet` has always read its bits this way.
+    #[must_use]
+    pub const fn from_wire(bits: u16) -> Self {
+        Self(bits & Self::KNOWN_MASK)
     }
 
     #[must_use]
