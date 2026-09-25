@@ -5,7 +5,9 @@ import Foundation
 enum ControllerScreenUnavailable: Equatable, Sendable {
     /// The computer never gave this device screen access.
     case notGranted
-    /// The computer is sharing nothing, or the session ended.
+    /// The computer is not sharing its screen at all; no grant makes a picture appear.
+    case sharingOff
+    /// The session ended and reopening it did not help.
     case failed(String)
 }
 
@@ -163,8 +165,22 @@ final class ControllerScreenCoordinator: ObservableObject {
     /// battery against a computer that is not coming back.
     static let maximumReconnectAttempts = 5
 
+    /// What the listener answers `OpenScreen` with when a computer shares no screen.
+    static let sharingOffCode = "screen_sharing_off"
+
     /// Records a dropped session. Returns whether it is worth opening again.
     private func dropped(_ error: Error) -> Bool {
+        // The computer answered by name: it is not sharing its screen. Nothing on this phone
+        // changes that, and asking again gets the same answer, so it is said rather than
+        // retried behind a spinner that never resolves.
+        if let error = error as? ControllerConnectionError,
+           case .hostError(let code) = error, code == Self.sharingOffCode {
+            unavailable = .sharingOff
+            reconnecting = false
+            preview = nil
+            viewer = nil
+            return false
+        }
         if let error = error as? ControllerConnectionError, error == .capabilityDenied {
             // The computer took screen access away; trying again would only be refused.
             unavailable = .notGranted

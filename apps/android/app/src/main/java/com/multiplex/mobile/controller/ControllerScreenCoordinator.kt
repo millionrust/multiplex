@@ -17,7 +17,11 @@ sealed class ControllerScreenUnavailable {
     object NotGranted : ControllerScreenUnavailable()
 
     /** The computer is sharing nothing, or the session ended. */
-    data class Failed(val reason: String) : ControllerScreenUnavailable()
+    /** The computer is not sharing its screen at all; no grant makes a picture appear. */
+    object SharingOff : ControllerScreenUnavailable()
+
+    /** Watching stopped and reopening it did not help. */
+    object Stopped : ControllerScreenUnavailable()
 }
 
 /**
@@ -158,6 +162,16 @@ class ControllerScreenCoordinator(
 
     /** Records a dropped session. Returns whether it is worth opening again. */
     private fun dropped(error: Throwable): Boolean {
+        // The computer answered by name: it is not sharing its screen. Nothing on this phone can
+        // change that, and opening it again only asks the same question, so this says so instead
+        // of retrying behind a spinner that never resolves.
+        if (error is ControllerConnectionException.HostError && error.code == SHARING_OFF) {
+            unavailable = ControllerScreenUnavailable.SharingOff
+            reconnecting = false
+            preview = null
+            viewer = null
+            return false
+        }
         if (error is ControllerConnectionException.CapabilityDenied) {
             // The computer took screen access away; trying again would only be refused.
             unavailable = ControllerScreenUnavailable.NotGranted
@@ -168,7 +182,7 @@ class ControllerScreenCoordinator(
         }
         reconnectAttempt += 1
         if (reconnectAttempt > MAXIMUM_RECONNECT_ATTEMPTS) {
-            unavailable = ControllerScreenUnavailable.Failed("The screen session stopped.")
+            unavailable = ControllerScreenUnavailable.Stopped
             reconnecting = false
             preview = null
             viewer = null
@@ -188,6 +202,9 @@ class ControllerScreenCoordinator(
          * the battery against a computer that is not coming back.
          */
         const val MAXIMUM_RECONNECT_ATTEMPTS = 5
+
+        /** What the listener answers `OpenScreen` with when this computer shares no screen. */
+        const val SHARING_OFF = "screen_sharing_off"
 
         /** Whether [host] has given this phone screen access. */
         fun mayWatch(host: PairedHostRecord): Boolean =

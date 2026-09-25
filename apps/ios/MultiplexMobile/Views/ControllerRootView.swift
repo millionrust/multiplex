@@ -399,6 +399,8 @@ private struct ControllerScreenPreviewCard: View {
         switch unavailable {
         case .notGranted:
             return "This computer has not given this phone screen access."
+        case .sharingOff:
+            return "This computer is not sharing its screen. Turn it on there, in Devices."
         case let .failed(reason):
             return reason
         case nil:

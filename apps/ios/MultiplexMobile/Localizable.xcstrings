@@ -73,6 +73,7 @@
     "The computer would not start a terminal." : {},
     "This computer cannot start terminals from here." : {},
     "This computer has not allowed this phone to start terminals." : {},
+    "This computer is not sharing its screen. Turn it on there, in Devices." : {},
     "This computer's Multiplex does not know this yet." : {},
     "This phone is not on the computer's network, and no Tailscale, SSH, or relay route is set up." : {},
     "Away from the computer's network. Set up Tailscale, SSH, or a relay to connect from here." : {},

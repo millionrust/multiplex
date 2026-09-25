@@ -617,6 +617,16 @@ async fn serve_authenticated_stream<S: AsyncRead + AsyncWrite + Unpin>(
                 let mut outbound = BoundedFrameQueue::new(ConnectionBudget::default())?;
                 // Screen sessions live on this connection, so the listener answers for them.
                 let responses = match command.command {
+                    // A ticket used to be issued whether or not this computer had a screen to
+                    // serve. With sharing switched off no frame ever followed, so a device sat
+                    // on a spinner for ever rather than being told.
+                    crate::ControllerCommand::OpenScreen if screens.is_none() => {
+                        vec![ControllerResponse::Error {
+                            command_id: command.command_id,
+                            code: "screen_sharing_off".to_owned(),
+                            completion_unknown: false,
+                        }]
+                    }
                     crate::ControllerCommand::OpenScreen => {
                         let grants = ScreenGrants::from_capabilities(peer.device_id, peer.capabilities);
                         let ticket = screen_tickets.issue(grants, &mut screen_entropy)?;
@@ -1258,6 +1268,68 @@ mod tests {
         fn close(&mut self) {}
     }
 
+    /// A computer with screen sharing switched off says so.
+    ///
+    /// A ticket used to be issued whether or not there was a screen behind it, and then no frame
+    /// ever came: the phone showed an enabled Open screen and a spinner that never resolved.
+    #[tokio::test]
+    async fn a_computer_that_shares_no_screen_says_so_rather_than_sending_nothing() {
+        let host_private = StaticPrivateKey::from_fixture_bytes([43; 32]);
+        let device_private = StaticPrivateKey::from_fixture_bytes([44; 32]);
+        let authority = Arc::new(Authority {
+            value: Mutex::new(authority_with_screens(&host_private, &device_private)),
+            host_private: host_private.clone(),
+        });
+        let provider: Arc<dyn ControllerAuthorityProvider> = authority.clone();
+        // The screen source a computer that is not sharing has: none.
+        let backends = Arc::new(Backends {
+            screens: false,
+            ..Backends::default()
+        });
+        let (client, mut server) = tokio::io::duplex(8 * 1024);
+        let server_task = tokio::spawn(async move {
+            serve_authenticated_stdio_stream(
+                &mut server,
+                provider,
+                backends,
+                CancellationToken::new(),
+            )
+            .await
+        });
+        let mut channel = crate::ControllerClientChannel::connect(
+            client,
+            1,
+            2,
+            9,
+            HostStaticPublicKey(host_public_key_from_private(&host_private).0),
+            device_private,
+            CapabilitySet::default().with(SecurityCapability::ObserveScreens),
+            &mut crate::SystemHandshakeEntropy,
+        )
+        .await
+        .unwrap();
+
+        let deadline = unix_millis().saturating_add(10_000);
+        let command_id = channel
+            .send(crate::ControllerCommand::OpenScreen, deadline)
+            .await
+            .unwrap();
+        match channel.read_response().await.unwrap() {
+            ControllerResponse::Error {
+                command_id: answered,
+                code,
+                completion_unknown,
+            } => {
+                assert_eq!(answered, command_id);
+                assert_eq!(code, "screen_sharing_off");
+                assert!(!completion_unknown);
+            }
+            other => panic!("a ticket was issued for a screen that is not shared: {other:?}"),
+        }
+        drop(channel);
+        let _ = server_task.await;
+    }
+
     #[tokio::test]
     async fn screen_frames_carry_the_session_and_stop_when_a_capability_is_withdrawn() {
         let host_private = StaticPrivateKey::from_fixture_bytes([41; 32]);
@@ -1388,11 +1460,17 @@ mod tests {
         });
         let provider: Arc<dyn ControllerAuthorityProvider> = authority.clone();
         let (client, mut server) = tokio::io::duplex(8 * 1024);
+        // A computer that shares its screen: this is about what happens to the ticket, and a
+        // computer with nothing to show is now refused before a ticket is ever issued.
+        let backends = Arc::new(Backends {
+            screens: true,
+            ..Backends::default()
+        });
         let server_task = tokio::spawn(async move {
             serve_authenticated_stdio_stream(
                 &mut server,
                 provider,
-                Arc::new(Backends::default()),
+                backends,
                 CancellationToken::new(),
             )
             .await

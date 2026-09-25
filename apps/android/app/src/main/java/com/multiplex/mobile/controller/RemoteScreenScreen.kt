@@ -1,5 +1,6 @@
 package com.multiplex.mobile.controller
 
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -38,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -110,7 +112,10 @@ private fun caption(
 ): String = when (unavailable) {
     ControllerScreenUnavailable.NotGranted ->
         stringResource(com.multiplex.mobile.R.string.screen_not_granted)
-    is ControllerScreenUnavailable.Failed -> unavailable.reason
+    ControllerScreenUnavailable.SharingOff ->
+        stringResource(com.multiplex.mobile.R.string.screen_sharing_off)
+    ControllerScreenUnavailable.Stopped ->
+        stringResource(com.multiplex.mobile.R.string.screen_session_stopped)
     null -> {
         val name = preview?.displayName
         when {
@@ -149,6 +154,34 @@ fun RemoteScreenView(
     val quietFor = model.lastPictureAtMillis?.let { now - it }
     val weak = model.state is RemoteScreenState.Watching && !reconnecting &&
         quietFor != null && quietFor > WEAK_AFTER_MILLIS
+
+    // A computer's screen is wider than it is tall, so landscape is where it is worth looking at,
+    // and there the bar is drawn over the picture rather than taking a slice out of a screen that
+    // is already short. The terminal sheds its chrome in landscape for the same reason.
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val controls: @Composable () -> Unit = {
+        Column(
+            if (landscape) {
+                Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+            } else {
+                Modifier.fillMaxWidth()
+            },
+        ) {
+            ScreenControls(
+                model = model,
+                showKeyboard = showKeyboard,
+                typed = typed,
+                onTyped = { typed = it },
+                onToggleKeyboard = { showKeyboard = !showKeyboard },
+                showDisplays = showDisplays,
+                onShowDisplays = { showDisplays = it },
+                onShowConnection = { showConnection = true },
+                onClose = onClose,
+            )
+        }
+    }
 
     Column(modifier.fillMaxSize()) {
         if (weak) {
@@ -221,118 +254,12 @@ fun RemoteScreenView(
                     Text(stringResource(com.multiplex.mobile.R.string.screen_reconnecting), color = Color.White)
                 }
             }
+            if (landscape) {
+                Box(Modifier.align(Alignment.BottomCenter)) { controls() }
+            }
         }
-        if (showKeyboard && model.canControlKeyboard) {
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                RemoteScreenKey.ACCESSORY.forEach { key ->
-                    OutlinedButton(onClick = { model.sendKey(key) }) { Text(key.label) }
-                }
-            }
-            TextField(
-                value = typed,
-                onValueChange = { text ->
-                    if (text.isNotEmpty()) {
-                        model.sendText(text)
-                        typed = ""
-                    }
-                },
-                label = { Text(stringResource(com.multiplex.mobile.R.string.screen_type_here)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-            )
-        }
-        // The bar used to be one Row: the buttons took their own widths, the status label had
-        // `weight(1f)` and so got none, and it wrapped into a column of single words that made
-        // the bar taller than the picture and pushed Done off the end — leaving no way out but
-        // the back gesture. The status gets its own line and the buttons scroll.
-        Text(
-            controlLabel(model),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-        )
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (model.canControlKeyboard) {
-                TextButton(onClick = { showKeyboard = !showKeyboard }, enabled = model.isDriving) {
-                    Text(stringResource(com.multiplex.mobile.R.string.screen_keyboard))
-                }
-            }
-            if (model.canControlPointer) {
-                TextButton(
-                    onClick = {
-                        model.pointerMode = if (model.pointerMode == RemotePointerMode.TOUCH) {
-                            RemotePointerMode.TRACKPAD
-                        } else {
-                            RemotePointerMode.TOUCH
-                        }
-                    },
-                    enabled = model.isDriving,
-                ) { Text(model.pointerMode.title) }
-            }
-            if (model.canControlPointer || model.canControlKeyboard) {
-                TextButton(
-                    onClick = {
-                        if (model.control == com.multiplex.screens.ScreenControlHolder.YOU) {
-                            model.releaseControl()
-                        } else {
-                            model.requestControl()
-                        }
-                    },
-                    enabled = model.control != com.multiplex.screens.ScreenControlHolder.ANOTHER_DEVICE,
-                ) {
-                    Text(
-                        if (model.control == com.multiplex.screens.ScreenControlHolder.YOU) {
-                            stringResource(com.multiplex.mobile.R.string.screen_stop_controlling)
-                        } else {
-                            stringResource(com.multiplex.mobile.R.string.screen_take_control)
-                        },
-                    )
-                }
-            }
-            else {
-                // The absence of a button was the only sign that this computer never granted
-                // pointer or keyboard.
-                Text(
-                    stringResource(com.multiplex.mobile.R.string.screen_control_not_granted),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (model.displays.size > 1) {
-                Box {
-                    TextButton(onClick = { showDisplays = true }) {
-                        Text(stringResource(com.multiplex.mobile.R.string.screen_displays))
-                    }
-                    androidx.compose.material3.DropdownMenu(
-                        expanded = showDisplays,
-                        onDismissRequest = { showDisplays = false },
-                    ) {
-                        model.displays.forEach { display ->
-                            androidx.compose.material3.DropdownMenuItem(
-                                text = { Text(display.name) },
-                                onClick = {
-                                    showDisplays = false
-                                    model.watch(display)
-                                },
-                            )
-                        }
-                    }
-                }
-            }
-            TextButton(onClick = { showConnection = true }) {
-                Text(stringResource(com.multiplex.mobile.R.string.screen_connection))
-            }
-            TextButton(onClick = onClose) { Text(stringResource(com.multiplex.mobile.R.string.screen_done)) }
+        if (!landscape) {
+            controls()
         }
     }
 
@@ -467,6 +394,134 @@ private fun lastPictureLabel(lastAtMillis: Long?, now: Long): String {
         stringResource(com.multiplex.mobile.R.string.screen_last_picture_now)
     } else {
         stringResource(com.multiplex.mobile.R.string.screen_last_picture_seconds, seconds)
+    }
+}
+
+
+/** The bar under a computer's screen: what may be typed, who is driving, and the way out. */
+@Composable
+private fun ScreenControls(
+    model: RemoteScreenModel,
+    showKeyboard: Boolean,
+    typed: String,
+    onTyped: (String) -> Unit,
+    onToggleKeyboard: () -> Unit,
+    showDisplays: Boolean,
+    onShowDisplays: (Boolean) -> Unit,
+    onShowConnection: () -> Unit,
+    onClose: () -> Unit,
+) {
+    if (showKeyboard && model.canControlKeyboard) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            RemoteScreenKey.ACCESSORY.forEach { key ->
+                OutlinedButton(onClick = { model.sendKey(key) }) { Text(key.label) }
+            }
+        }
+        TextField(
+            value = typed,
+            onValueChange = { text ->
+                if (text.isNotEmpty()) {
+                    model.sendText(text)
+                    onTyped("")
+                }
+            },
+            label = { Text(stringResource(com.multiplex.mobile.R.string.screen_type_here)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        )
+    }
+    // The bar used to be one Row: the buttons took their own widths, the status label had
+    // `weight(1f)` and so got none, and it wrapped into a column of single words that made
+    // the bar taller than the picture and pushed Done off the end — leaving no way out but
+    // the back gesture. The status gets its own line and the buttons scroll.
+    Text(
+        controlLabel(model),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+    )
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (model.canControlKeyboard) {
+            TextButton(onClick = { onToggleKeyboard() }, enabled = model.isDriving) {
+                Text(stringResource(com.multiplex.mobile.R.string.screen_keyboard))
+            }
+        }
+        if (model.canControlPointer) {
+            TextButton(
+                onClick = {
+                    model.pointerMode = if (model.pointerMode == RemotePointerMode.TOUCH) {
+                        RemotePointerMode.TRACKPAD
+                    } else {
+                        RemotePointerMode.TOUCH
+                    }
+                },
+                enabled = model.isDriving,
+            ) { Text(model.pointerMode.title) }
+        }
+        if (model.canControlPointer || model.canControlKeyboard) {
+            TextButton(
+                onClick = {
+                    if (model.control == com.multiplex.screens.ScreenControlHolder.YOU) {
+                        model.releaseControl()
+                    } else {
+                        model.requestControl()
+                    }
+                },
+                enabled = model.control != com.multiplex.screens.ScreenControlHolder.ANOTHER_DEVICE,
+            ) {
+                Text(
+                    if (model.control == com.multiplex.screens.ScreenControlHolder.YOU) {
+                        stringResource(com.multiplex.mobile.R.string.screen_stop_controlling)
+                    } else {
+                        stringResource(com.multiplex.mobile.R.string.screen_take_control)
+                    },
+                )
+            }
+        }
+        else {
+            // The absence of a button was the only sign that this computer never granted
+            // pointer or keyboard.
+            Text(
+                stringResource(com.multiplex.mobile.R.string.screen_control_not_granted),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (model.displays.size > 1) {
+            Box {
+                TextButton(onClick = { onShowDisplays(true) }) {
+                    Text(stringResource(com.multiplex.mobile.R.string.screen_displays))
+                }
+                androidx.compose.material3.DropdownMenu(
+                    expanded = showDisplays,
+                    onDismissRequest = { onShowDisplays(false) },
+                ) {
+                    model.displays.forEach { display ->
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text(display.name) },
+                            onClick = {
+                                onShowDisplays(false)
+                                model.watch(display)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        TextButton(onClick = { onShowConnection() }) {
+            Text(stringResource(com.multiplex.mobile.R.string.screen_connection))
+        }
+        TextButton(onClick = onClose) { Text(stringResource(com.multiplex.mobile.R.string.screen_done)) }
     }
 }
 
