@@ -13,9 +13,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -33,11 +36,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.AdsClick
+import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Monitor
 import androidx.compose.material.icons.outlined.Mouse
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -250,7 +256,14 @@ fun RemoteScreenView(
     }
 
     val showTerminals = !landscape && terminals.isNotEmpty()
-    Column(modifier.fillMaxSize().background(Color(0xFF07080A))) {
+    // The picture starts under the status bar rather than behind it: a desktop drawn through the
+    // clock and the battery is not a desktop anyone can read.
+    Column(
+        modifier
+            .fillMaxSize()
+            .background(Color(0xFF07080A))
+            .statusBarsPadding(),
+    ) {
     Box(if (showTerminals) Modifier.fillMaxWidth() else Modifier.fillMaxSize()) {
         Box(
             if (showTerminals) {
@@ -312,43 +325,19 @@ fun RemoteScreenView(
                     Modifier.align(Alignment.TopEnd).padding(12.dp),
                 )
             }
-            // `.overlay-top` in multiplex-mobile-flow.html: the way back, and what this phone is
-            // doing with the computer right now.
-            Row(
-                Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ScreenPill(
-                    text = stringResource(com.multiplex.mobile.R.string.back),
-                    leading = Icons.AutoMirrored.Outlined.ArrowBack,
-                    onClick = onClose,
-                )
-                Text(
-                    model.zoomLabel,
-                    color = Color(0xFFE6E8EB),
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xCC111316))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                )
-                Spacer(Modifier.weight(1f))
-                ScreenPill(
-                    text = stringResource(
-                        if (model.isDriving) {
-                            com.multiplex.mobile.R.string.screen_you_have_control
-                        } else {
-                            com.multiplex.mobile.R.string.screen_watching
-                        },
-                    ),
-                    on = model.isDriving,
-                )
-            }
+            // Only the zoom floats on the picture. Back moved down beside the other controls,
+            // and the status label was one more thing between the reader and the desktop.
+            Text(
+                model.zoomLabel,
+                color = Color(0xFFE6E8EB),
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(12.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xCC111316))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
             if (reconnecting) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -575,49 +564,60 @@ private fun ScreenControls(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
         )
     }
-    // `.overlay-bottom` in multiplex-mobile-flow.html: taking control, giving it back, the
-    // keyboard, and the way to this computer's terminals.
+    // `.overlay-bottom` in multiplex-mobile-flow.html, as icons: the words made a row of
+    // buttons that read as a paragraph, and what each one does is one glyph.
     Row(
         Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        when {
-            !model.canControlPointer && !model.canControlKeyboard -> ScreenPill(
-                text = stringResource(
+        ScreenPill(
+            leading = Icons.AutoMirrored.Outlined.ArrowBack,
+            label = stringResource(com.multiplex.mobile.R.string.back),
+            onClick = onClose,
+        )
+        val driving = model.control == com.multiplex.screens.ScreenControlHolder.YOU
+        if (model.canControlPointer || model.canControlKeyboard) {
+            ScreenPill(
+                leading = Icons.Outlined.AdsClick,
+                label = stringResource(
+                    if (driving) {
+                        com.multiplex.mobile.R.string.screen_give_back_control
+                    } else {
+                        com.multiplex.mobile.R.string.screen_take_control
+                    },
+                ),
+                primary = !driving,
+                on = driving,
+                enabled = model.control != com.multiplex.screens.ScreenControlHolder.ANOTHER_DEVICE,
+                onClick = { if (driving) model.releaseControl() else model.requestControl() },
+            )
+        } else {
+            ScreenPill(
+                leading = Icons.Outlined.Block,
+                label = stringResource(
                     com.multiplex.mobile.R.string.screen_watch_only_not_granted,
                 ),
                 enabled = false,
             )
-            model.control == com.multiplex.screens.ScreenControlHolder.YOU -> {
-                ScreenPill(
-                    text = stringResource(com.multiplex.mobile.R.string.screen_give_back_control),
-                    onClick = { model.releaseControl() },
-                )
-                if (model.canControlKeyboard) {
-                    ScreenPill(
-                        text = stringResource(com.multiplex.mobile.R.string.screen_keyboard),
-                        leading = Icons.Outlined.Keyboard,
-                        on = showKeyboard,
-                        onClick = onToggleKeyboard,
-                    )
-                }
-            }
-            else -> ScreenPill(
-                text = stringResource(com.multiplex.mobile.R.string.screen_take_control),
-                primary = true,
-                enabled = model.control != com.multiplex.screens.ScreenControlHolder.ANOTHER_DEVICE,
-                onClick = { model.requestControl() },
+        }
+        if (model.canControlKeyboard) {
+            ScreenPill(
+                leading = Icons.Outlined.Keyboard,
+                label = stringResource(com.multiplex.mobile.R.string.screen_keyboard),
+                on = showKeyboard,
+                enabled = model.isDriving,
+                onClick = onToggleKeyboard,
             )
         }
         if (model.canControlPointer) {
             ScreenPill(
-                text = model.pointerMode.title,
                 leading = if (model.pointerMode == RemotePointerMode.TOUCH) {
                     Icons.Outlined.TouchApp
                 } else {
                     Icons.Outlined.Mouse
                 },
+                label = model.pointerMode.title,
                 enabled = model.isDriving,
                 onClick = {
                     model.pointerMode = if (model.pointerMode == RemotePointerMode.TOUCH) {
@@ -631,8 +631,8 @@ private fun ScreenControls(
         if (model.displays.size > 1) {
             Box {
                 ScreenPill(
-                    text = stringResource(com.multiplex.mobile.R.string.screen_displays),
                     leading = Icons.Outlined.Monitor,
+                    label = stringResource(com.multiplex.mobile.R.string.screen_displays),
                     onClick = { onShowDisplays(true) },
                 )
                 androidx.compose.material3.DropdownMenu(
@@ -652,8 +652,8 @@ private fun ScreenControls(
             }
         }
         ScreenPill(
-            text = stringResource(com.multiplex.mobile.R.string.screen_connection),
             leading = Icons.Outlined.Info,
+            label = stringResource(com.multiplex.mobile.R.string.screen_connection),
             onClick = onShowConnection,
         )
     }
@@ -725,43 +725,76 @@ private fun ScreenTerminals(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
+        // Terminal tabs: the chosen one is cut out of the strip in the terminal's own ground and
+        // carries the way to close it; the rest sit behind, divided by a hairline.
         Row(
             Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                .horizontalScroll(rememberScrollState()),
+                .background(MaterialTheme.colorScheme.surfaceContainer)
+                .horizontalScroll(rememberScrollState())
+                .height(IntrinsicSize.Max),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            terminals.forEach { session ->
+            terminals.forEachIndexed { index, session ->
                 val on = attached?.sessionId == session.id
-                Column(
+                if (index > 0 && !on) {
+                    Box(
+                        Modifier
+                            .width(1.dp)
+                            .fillMaxHeight()
+                            .padding(vertical = 8.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant),
+                    )
+                }
+                Row(
                     Modifier
+                        .background(
+                            if (on) {
+                                MaterialTheme.colorScheme.background
+                            } else {
+                                Color.Transparent
+                            },
+                        )
                         .clickable { if (!on) onSelect(session.id) }
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                        .padding(start = 14.dp, end = if (on) 8.dp else 14.dp)
+                        .heightIn(min = 44.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    Icon(
+                        Icons.Outlined.Terminal,
+                        contentDescription = null,
+                        tint = com.multiplex.mobile.ui.SlateExtras.secondaryText,
+                        modifier = Modifier.size(16.dp),
+                    )
                     Text(
                         isolated(session.title),
-                        style = MaterialTheme.typography.labelLarge,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = if (on) {
-                            MaterialTheme.colorScheme.primary
+                            MaterialTheme.colorScheme.onSurface
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(Modifier.size(6.dp))
-                    Box(
-                        Modifier
-                            .height(2.dp)
-                            .width(if (on) 28.dp else 0.dp)
-                            .background(MaterialTheme.colorScheme.primary),
-                    )
+                    if (on) {
+                        Icon(
+                            Icons.Outlined.Close,
+                            contentDescription = stringResource(
+                                com.multiplex.mobile.R.string.detach,
+                            ),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .clickable(onClick = onClose)
+                                .padding(6.dp),
+                        )
+                    }
                 }
             }
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         if (attached != null) {
             ControllerTerminalScreen(
                 terminal = attached,
@@ -792,8 +825,9 @@ private fun ScreenTerminals(
 /** `.pillbtn` in multiplex-mobile-flow.html: a floating pill over the picture. */
 @Composable
 private fun ScreenPill(
-    text: String,
+    text: String? = null,
     leading: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    label: String? = null,
     on: Boolean = false,
     primary: Boolean = false,
     enabled: Boolean = true,
@@ -818,17 +852,25 @@ private fun ScreenPill(
                 else Modifier,
             )
             .heightIn(min = 40.dp)
-            .padding(horizontal = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .widthIn(min = if (text == null) 40.dp else 0.dp)
+            .padding(horizontal = if (text == null) 0.dp else 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (leading != null) {
-            Icon(leading, contentDescription = null, tint = foreground, modifier = Modifier.size(18.dp))
+            Icon(
+                leading,
+                contentDescription = label ?: text,
+                tint = if (enabled) foreground else com.multiplex.mobile.ui.SlateExtras.dimText,
+                modifier = Modifier.size(20.dp),
+            )
         }
-        Text(
-            text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (enabled) foreground else com.multiplex.mobile.ui.SlateExtras.dimText,
-        )
+        if (text != null) {
+            Text(
+                text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (enabled) foreground else com.multiplex.mobile.ui.SlateExtras.dimText,
+            )
+        }
     }
 }
