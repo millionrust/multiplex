@@ -50,6 +50,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -1252,7 +1253,18 @@ private fun SessionRow(session: ControllerSessionSummary, cached: Boolean, onOpe
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                AssistChip(onClick = {}, label = { Text(if (cached) stringResource(com.multiplex.mobile.R.string.cached) else session.lifecycle) })
+                AssistChip(
+                    onClick = {},
+                    label = {
+                        Text(
+                            if (cached) {
+                                stringResource(com.multiplex.mobile.R.string.cached)
+                            } else {
+                                lifecycleLabel(session.lifecycle)
+                            },
+                        )
+                    },
+                )
             }
             val location = listOfNotNull(session.project, session.group).joinToString(" / ")
             if (location.isNotEmpty()) {
@@ -1474,17 +1486,11 @@ private fun ControllerTerminalScreen(
                             },
                             maxLines = 1,
                         )
-                        when {
-                            terminal.writerLease == WriterLeaseState.Held ->
-                                TextButton(onClick = onReleaseControl) {
-                                    Text(stringResource(com.multiplex.mobile.R.string.release_control))
-                                }
-                            terminal.supportsWriter && terminal.attachState == ReadOnlyAttachState.Live &&
-                                terminal.writerLease !is WriterLeaseState.Requesting ->
-                                TextButton(onClick = onRequestControl) {
-                                    Text(stringResource(com.multiplex.mobile.R.string.control))
-                                }
-                        }
+                        TerminalControlAffordance(
+                            terminal = terminal,
+                            onRequestControl = onRequestControl,
+                            onReleaseControl = onReleaseControl,
+                        )
                         if (terminal.attachState is ReadOnlyAttachState.Offline ||
                             terminal.attachState is ReadOnlyAttachState.Gap ||
                             terminal.attachState is ReadOnlyAttachState.Failed
@@ -1868,6 +1874,47 @@ private fun TerminalKey(
             modifier = modifier,
             contentPadding = PaddingValues(0.dp),
         ) { Text(label) }
+    }
+}
+
+/**
+ * The one control the person acts on, and the one place it says why they cannot.
+ *
+ * A terminal the computer never granted input for used to show nothing at all here, so the
+ * absence of a button was the only explanation on offer. It now says View only and, held down,
+ * says what would have to change.
+ */
+@Composable
+private fun TerminalControlAffordance(
+    terminal: ControllerTerminalUiState,
+    onRequestControl: () -> Unit,
+    onReleaseControl: () -> Unit,
+) {
+    when {
+        terminal.writerLease == WriterLeaseState.Held ->
+            FilledTonalButton(onClick = onReleaseControl) {
+                Text(stringResource(com.multiplex.mobile.R.string.release_control))
+            }
+        terminal.writerLease is WriterLeaseState.Requesting ->
+            TextButton(onClick = {}, enabled = false) {
+                Text(stringResource(com.multiplex.mobile.R.string.asking_for_control))
+            }
+        terminal.supportsWriter ->
+            TextButton(
+                onClick = onRequestControl,
+                enabled = terminal.attachState == ReadOnlyAttachState.Live,
+            ) {
+                Text(stringResource(com.multiplex.mobile.R.string.take_control))
+            }
+        else -> {
+            val why = stringResource(com.multiplex.mobile.R.string.control_not_granted_why)
+            Text(
+                stringResource(com.multiplex.mobile.R.string.control_not_granted),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.semantics { contentDescription = why },
+            )
+        }
     }
 }
 
@@ -2444,6 +2491,38 @@ private fun capabilityLabels(bits: Int): List<String> {
     ).filter { (bit, _) -> bits and bit != 0 }.map { (_, label) -> stringResource(label) }
     return labels.ifEmpty { listOf(stringResource(com.multiplex.mobile.R.string.capability_none)) }
 }
+
+/**
+ * What a session's state is called, rather than the name it has on the wire.
+ *
+ * The chip showed the raw value, so a phone said `running_app_attached` at a person. Anything
+ * this build does not know reads as Unknown instead of leaking a protocol string. Kept apart
+ * from the drawing so the mapping can be checked without a device.
+ */
+internal fun lifecycleLabelResource(lifecycle: String): Int = when (lifecycle) {
+    "draft" -> com.multiplex.mobile.R.string.lifecycle_draft
+    "validating" -> com.multiplex.mobile.R.string.lifecycle_validating
+    "starting" -> com.multiplex.mobile.R.string.lifecycle_starting
+    "provisioning" -> com.multiplex.mobile.R.string.lifecycle_provisioning
+    "attaching" -> com.multiplex.mobile.R.string.lifecycle_attaching
+    "replaying" -> com.multiplex.mobile.R.string.lifecycle_replaying
+    "live", "running", "running_app_attached" -> com.multiplex.mobile.R.string.lifecycle_live
+    "recording_paused" -> com.multiplex.mobile.R.string.lifecycle_recording_paused
+    "stopping" -> com.multiplex.mobile.R.string.lifecycle_stopping
+    "offline" -> com.multiplex.mobile.R.string.lifecycle_offline
+    "orphaned" -> com.multiplex.mobile.R.string.lifecycle_orphaned
+    "gap" -> com.multiplex.mobile.R.string.lifecycle_gap
+    "permission_denied" -> com.multiplex.mobile.R.string.lifecycle_permission_denied
+    "incompatible" -> com.multiplex.mobile.R.string.lifecycle_incompatible
+    "failed" -> com.multiplex.mobile.R.string.lifecycle_failed
+    "cancelled" -> com.multiplex.mobile.R.string.lifecycle_cancelled
+    "exited", "stopped" -> com.multiplex.mobile.R.string.lifecycle_exited
+    else -> com.multiplex.mobile.R.string.lifecycle_unknown
+}
+
+@Composable
+private fun lifecycleLabel(lifecycle: String): String =
+    stringResource(lifecycleLabelResource(lifecycle))
 
 private fun isolated(value: String): String = "\u2068$value\u2069"
 

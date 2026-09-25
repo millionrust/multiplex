@@ -279,6 +279,16 @@ struct RemoteScreenView: View {
                 }
                 .font(.footnote)
                 .disabled(model.control == .anotherDevice)
+            } else {
+                // Nothing here at all used to be the only sign that this computer never granted
+                // pointer or keyboard, which reads as a missing button rather than an answer.
+                Text("Control not granted")
+                    .font(.footnote)
+                    .foregroundStyle(Color.terminalMuted)
+                    .lineLimit(1)
+                    .accessibilityLabel(
+                        "This computer has not granted pointer or keyboard control to this phone."
+                    )
             }
         }
         .padding(.horizontal, 16)

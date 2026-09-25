@@ -117,27 +117,43 @@ struct ControllerReadOnlyTerminalView: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 2)
-            // The control status is the toggle: tap to take control, tap again to give it back.
-            Button(action: viewModel.toggleControl) {
+            // The state, and then the action on it — the state used to be the button, so the
+            // only hint that a view-only terminal could be taken over was that the words were
+            // tappable, and on a terminal the computer never granted input for they did nothing.
+            Group {
                 if compact {
-                    Label(writerLabel, systemImage: writerIcon)
-                        .labelStyle(.iconOnly)
+                    Label(writerLabel, systemImage: writerIcon).labelStyle(.iconOnly)
                 } else {
-                    Label(writerLabel, systemImage: writerIcon)
-                        .lineLimit(1)
+                    Label(writerLabel, systemImage: writerIcon).labelStyle(.titleAndIcon)
                 }
             }
-            .buttonStyle(.plain)
             .font(.caption.weight(.semibold))
             .foregroundStyle(writerColor)
-            .frame(minWidth: 44, minHeight: TerminalAcceptance.minimumTouchTarget)
-            .contentShape(Rectangle())
-            .accessibilityLabel("Terminal control status: \(writerLabel)")
-            .accessibilityHint(
-                viewModel.writerLease == .held
-                    ? "Returns this terminal to view-only mode"
-                    : "Requests control of this terminal"
-            )
+            .lineLimit(1)
+            .accessibilityLabel("Terminal control: \(writerLabel)")
+            if viewModel.supportsWriterControl {
+                Button(action: viewModel.toggleControl) {
+                    Text(viewModel.writerLease == .held ? "Release" : "Take control")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .font(.caption.weight(.semibold))
+                .frame(minWidth: 44, minHeight: TerminalAcceptance.minimumTouchTarget)
+                .disabled(controlActionIsBusy)
+                .accessibilityHint(
+                    viewModel.writerLease == .held
+                        ? "Returns this terminal to view-only mode"
+                        : "Requests control of this terminal"
+                )
+            } else {
+                Text("Input not granted")
+                    .font(.caption)
+                    .foregroundStyle(Color.terminalMuted)
+                    .lineLimit(1)
+                    .accessibilityLabel(
+                        "This phone is view-only. In Multiplex on your Mac, open Devices and allow input for this phone."
+                    )
+            }
             controlAction(compact: compact)
         }
         .padding(.horizontal, 10)
@@ -553,6 +569,12 @@ struct ControllerReadOnlyTerminalView: View {
         }
         let gray = Double(8 + max(0, min(23, index - 232)) * 10) / 255
         return Color(red: gray, green: gray, blue: gray)
+    }
+
+    /// While a request is on the wire, or another device holds the lease, the button does nothing.
+    private var controlActionIsBusy: Bool {
+        if case .requesting = viewModel.writerLease { return true }
+        return viewModel.writerLease == .busy
     }
 
     private var writerLabel: String {

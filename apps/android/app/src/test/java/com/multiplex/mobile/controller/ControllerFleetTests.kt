@@ -163,3 +163,27 @@ class ControllerFleetTests {
         unreadCount = 0,
     )
 }
+
+/** What a session's state is called on screen. */
+class ControllerLifecycleLabelTests {
+    @Test
+    fun everyWireStateHasAWordAndUnknownOnesDoNotLeak() {
+        // The three the host uses for a terminal that is running all read the same way.
+        val live = lifecycleLabelResource("live")
+        assertEquals(live, lifecycleLabelResource("running"))
+        assertEquals(live, lifecycleLabelResource("running_app_attached"))
+        assertEquals(
+            lifecycleLabelResource("exited"),
+            lifecycleLabelResource("stopped"),
+        )
+        // A state this build has never heard of reads as Unknown rather than as itself.
+        assertEquals(
+            com.multiplex.mobile.R.string.lifecycle_unknown,
+            lifecycleLabelResource("something_the_host_added_later"),
+        )
+        assertEquals(
+            com.multiplex.mobile.R.string.lifecycle_provisioning,
+            lifecycleLabelResource("provisioning"),
+        )
+    }
+}
