@@ -1268,6 +1268,127 @@ mod tests {
         fn close(&mut self) {}
     }
 
+    /// A phone can watch a computer's screen and use one of its terminals at the same time.
+    ///
+    /// Each thing the phone does opens its own connection, so "one session at a time" was never
+    /// the wire's rule — it was the phone serialising itself. The listener serves both at once:
+    /// a screen session on one connection and a command on another, for the same device.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn one_device_can_watch_a_screen_and_use_a_terminal_at_the_same_time() {
+        let host_private = StaticPrivateKey::from_fixture_bytes([45; 32]);
+        let device_private = StaticPrivateKey::from_fixture_bytes([46; 32]);
+        let authority = Arc::new(Authority {
+            value: Mutex::new(authority_with_screens(&host_private, &device_private)),
+            host_private: host_private.clone(),
+        });
+        let backends = Arc::new(Backends {
+            screens: true,
+            ..Backends::default()
+        });
+        let host_public = HostStaticPublicKey(host_public_key_from_private(&host_private).0);
+
+        // The connection the screen runs on.
+        let (watch_client, mut watch_server) = tokio::io::duplex(8 * 1024);
+        let watching = tokio::spawn({
+            let provider: Arc<dyn ControllerAuthorityProvider> = authority.clone();
+            let backends = backends.clone();
+            async move {
+                serve_authenticated_stdio_stream(
+                    &mut watch_server,
+                    provider,
+                    backends,
+                    CancellationToken::new(),
+                )
+                .await
+            }
+        });
+        let mut watch = crate::ControllerClientChannel::connect(
+            watch_client,
+            1,
+            2,
+            9,
+            host_public,
+            StaticPrivateKey::from_fixture_bytes([46; 32]),
+            CapabilitySet::default()
+                .with(SecurityCapability::ObserveScreens)
+                .with(SecurityCapability::ObserveSessions),
+            &mut crate::SystemHandshakeEntropy,
+        )
+        .await
+        .unwrap();
+        let deadline = unix_millis().saturating_add(10_000);
+        watch
+            .send(crate::ControllerCommand::OpenScreen, deadline)
+            .await
+            .unwrap();
+        let ControllerResponse::ScreenOpened { ticket, .. } = watch.read_response().await.unwrap()
+        else {
+            panic!("the screen did not open");
+        };
+
+        // A second connection for the same device, while the first is still watching.
+        let (work_client, mut work_server) = tokio::io::duplex(8 * 1024);
+        let working = tokio::spawn({
+            let provider: Arc<dyn ControllerAuthorityProvider> = authority.clone();
+            let backends = backends.clone();
+            async move {
+                serve_authenticated_stdio_stream(
+                    &mut work_server,
+                    provider,
+                    backends,
+                    CancellationToken::new(),
+                )
+                .await
+            }
+        });
+        let mut work = crate::ControllerClientChannel::connect(
+            work_client,
+            1,
+            2,
+            9,
+            host_public,
+            StaticPrivateKey::from_fixture_bytes([46; 32]),
+            CapabilitySet::default().with(SecurityCapability::ObserveSessions),
+            &mut crate::SystemHandshakeEntropy,
+        )
+        .await
+        .unwrap();
+        let listed = work
+            .send(
+                crate::ControllerCommand::ListSessions {
+                    offset: 0,
+                    limit: 10,
+                    expected_revision: None,
+                },
+                deadline,
+            )
+            .await
+            .unwrap();
+        match work.read_response().await.unwrap() {
+            ControllerResponse::Sessions { command_id, .. } => assert_eq!(command_id, listed),
+            other => panic!("the second connection was not served: {other:?}"),
+        }
+
+        // And the screen is still the first connection's to drive.
+        watch
+            .send_screen(ScreenFrameCapability::Observe, &ticket)
+            .await
+            .unwrap();
+        let frame = tokio::time::timeout(Duration::from_secs(2), watch.read_incoming())
+            .await
+            .expect("the screen stopped when the second connection opened")
+            .unwrap();
+        assert!(
+            matches!(frame, crate::ControllerIncoming::Screen(_)),
+            "the watching connection stopped carrying screen frames",
+        );
+
+        drop(watch);
+        drop(work);
+        let _ = watching.await;
+        let _ = working.await;
+    }
+
     /// A computer with screen sharing switched off says so.
     ///
     /// A ticket used to be issued whether or not there was a screen behind it, and then no frame
