@@ -123,6 +123,8 @@ struct ControllerRootView: View {
                                 .font(.system(size: 15))
                                 .foregroundStyle(Flow.accent)
                         }
+                        .accessibilityLabel("Device actions")
+                        .accessibilityIdentifier("Device actions")
                     }
                 }
                 computersList
@@ -142,21 +144,6 @@ struct ControllerRootView: View {
                     } actions: {
                         Button("Pair a Computer") { showingPairing = true }
                             .buttonStyle(.borderedProminent)
-                    }
-                }
-            }
-            // Pairing first, the overflow at the trailing edge, the same order as the Android bar.
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { showingPairing = true } label: {
-                        Label("Pair a Computer", systemImage: "plus")
-                    }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button("Enrollment") { showingEnrollment = true }
-                    } label: {
-                        Label("More", systemImage: "ellipsis.circle")
                     }
                 }
             }
@@ -463,7 +450,6 @@ private struct ControllerScreenViewerSheet: View {
             }
         }
         .background(Flow.canvas)
-        .ignoresSafeArea(.container, edges: .bottom)
     }
 }
 

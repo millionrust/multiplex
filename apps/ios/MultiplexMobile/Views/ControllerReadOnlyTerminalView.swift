@@ -13,6 +13,8 @@ struct ControllerReadOnlyTerminalView: View {
     @AppStorage("controllerTerminalDesktopWidth") private var usesDesktopWidth = true
     @State private var followsOutput = true
     @State private var keyboardPresented = false
+    /// Ctrl, held for the next key from either the row below or the keyboard.
+    @State private var controlLatched = false
     @State private var displayedTerminalFontSize = 14.0
     @State private var displayedTerminalColumns = 40
 
@@ -81,9 +83,128 @@ struct ControllerReadOnlyTerminalView: View {
             terminalSurface
             if viewModel.canSendInput, usesFocusedLandscapeLayout {
                 focusedLandscapeInputBar
+            } else if viewModel.canSendInput {
+                keyRow
+            } else {
+                watchbar
             }
         }
         .background(Color.black)
+    }
+
+    /// `.watchbar` in multiplex-mobile-flow.html. Watching is the default, so a stray tap cannot
+    /// run anything; the one button says what taking over would mean before it is pressed.
+    private var watchbar: some View {
+        HStack(spacing: 10) {
+            Text(watchbarText)
+                .font(.system(size: 12.5))
+                .foregroundStyle(Flow.text2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if viewModel.supportsWriterControl {
+                Button(action: viewModel.toggleControl) {
+                    Text("Enter")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Flow.accentInk)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 9)
+                        .background(Flow.accent)
+                        .clipShape(RoundedRectangle(cornerRadius: Flow.radiusSmall))
+                }
+                .buttonStyle(.plain)
+                .disabled(controlActionIsBusy)
+                .frame(minHeight: TerminalAcceptance.minimumTouchTarget)
+                .accessibilityLabel("Type in this terminal")
+                .accessibilityHint("Takes control of this terminal")
+            }
+        }
+        .padding(.horizontal, 13)
+        .padding(.vertical, 10)
+        .background(Color(hex: 0x1A1F28))
+        .overlay(alignment: .top) { Rectangle().fill(Flow.border).frame(height: 1) }
+    }
+
+    private var watchbarText: String {
+        guard viewModel.supportsWriterControl else {
+            return "This phone is view-only. In Multiplex on your Mac, open Devices and allow "
+                + "input for this phone."
+        }
+        if viewModel.hasWriterElsewhere {
+            return "Another device is typing here. Taking over asks it to let go."
+        }
+        return "Watching. Nothing you press reaches this terminal yet."
+    }
+
+    /// `.keys` in the prototype: what a phone keyboard has no room for. It is here whenever this
+    /// phone holds the lease, not only while the keyboard is up, because these are the keys a
+    /// person reaches for without wanting to type anything.
+    private var keyRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                keyCap("esc") { send(.escape) }
+                keyCap("tab") { send(.tab) }
+                keyCap("ctrl", on: controlLatched) { controlLatched.toggle() }
+                keyCap("⌃C", label: "Control C") {
+                    controlLatched = false
+                    viewModel.sendKeyboardBytes(Data([0x03]))
+                }
+                keyCap("↑", label: "Up arrow") { send(.up) }
+                keyCap("↓", label: "Down arrow") { send(.down) }
+                keyCap("←", label: "Left arrow") { send(.left) }
+                keyCap("→", label: "Right arrow") { send(.right) }
+                keyCap("|", label: "Pipe") { send(text: "|") }
+                keyCap("~", label: "Tilde") { send(text: "~") }
+                keyCap("/", label: "Slash") { send(text: "/") }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+        }
+        .background(Flow.surface)
+        .overlay(alignment: .top) { Rectangle().fill(Flow.border).frame(height: 1) }
+    }
+
+    private func keyCap(
+        _ title: String,
+        label: String? = nil,
+        on: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(on ? Flow.accent : Flow.text2)
+                .padding(.horizontal, 11)
+                .frame(minWidth: 44, minHeight: TerminalAcceptance.minimumTouchTarget)
+                .background(on ? Flow.selection : Flow.raised)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(on ? Color.clear : Flow.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label ?? title)
+    }
+
+    /// Sends one key, spending the Ctrl the row is holding.
+    private func send(_ key: TerminalInputKey) {
+        let modifiers = TerminalInputModifiers(control: controlLatched)
+        controlLatched = false
+        guard let bytes = TerminalInteraction.encode(
+            key,
+            text: nil,
+            modifiers: modifiers,
+            applicationCursor: viewModel.screen.applicationCursor
+        ) else { return }
+        viewModel.sendKeyboardBytes(bytes)
+    }
+
+    private func send(text: String) {
+        let modifiers = TerminalInputModifiers(control: controlLatched)
+        controlLatched = false
+        let bytes = TerminalInteraction.encodeCommittedText(text, modifiers: modifiers)
+        guard !bytes.isEmpty else { return }
+        viewModel.sendKeyboardBytes(bytes)
     }
 
     private var statusBar: some View {
@@ -268,6 +389,7 @@ struct ControllerReadOnlyTerminalView: View {
                             enabled: viewModel.canSendInput,
                             isFocused: $keyboardPresented,
                             applicationCursor: viewModel.screen.applicationCursor,
+                            controlLatched: $controlLatched,
                             onBytes: viewModel.sendKeyboardBytes,
                             onPaste: viewModel.requestPaste
                         )

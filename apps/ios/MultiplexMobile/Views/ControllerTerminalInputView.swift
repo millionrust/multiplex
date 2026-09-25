@@ -5,6 +5,9 @@ struct ControllerTerminalInputView: UIViewRepresentable {
     let enabled: Bool
     @Binding var isFocused: Bool
     let applicationCursor: Bool
+    /// Ctrl, held for one key. The key row under the terminal and the keyboard's own accessory
+    /// both set it, so a Ctrl taken on one reaches a letter typed on the other.
+    @Binding var controlLatched: Bool
     let onBytes: (Data) -> Void
     let onPaste: (String) -> Void
 
@@ -12,7 +15,8 @@ struct ControllerTerminalInputView: UIViewRepresentable {
         Coordinator(
             onBytes: onBytes,
             onPaste: onPaste,
-            onFocusChange: { isFocused = $0 }
+            onFocusChange: { isFocused = $0 },
+            onControlLatchChange: { controlLatched = $0 }
         )
     }
 
@@ -42,6 +46,8 @@ struct ControllerTerminalInputView: UIViewRepresentable {
         context.coordinator.onPaste = onPaste
         context.coordinator.onFocusChange = { isFocused = $0 }
         context.coordinator.applicationCursor = applicationCursor
+        context.coordinator.onControlLatchChange = { controlLatched = $0 }
+        context.coordinator.setControlLatched(controlLatched)
         view.isEditable = enabled
         view.isUserInteractionEnabled = enabled
         if enabled, isFocused, !view.isFirstResponder {
@@ -57,6 +63,7 @@ struct ControllerTerminalInputView: UIViewRepresentable {
         var onPaste: (String) -> Void
         var onFocusChange: (Bool) -> Void
         var applicationCursor = false
+        var onControlLatchChange: (Bool) -> Void = { _ in }
         private var controlLatched = false
         private var optionLatched = false
         private var ime = TerminalIMEState()
@@ -66,11 +73,13 @@ struct ControllerTerminalInputView: UIViewRepresentable {
         init(
             onBytes: @escaping (Data) -> Void,
             onPaste: @escaping (String) -> Void,
-            onFocusChange: @escaping (Bool) -> Void
+            onFocusChange: @escaping (Bool) -> Void,
+            onControlLatchChange: @escaping (Bool) -> Void = { _ in }
         ) {
             self.onBytes = onBytes
             self.onPaste = onPaste
             self.onFocusChange = onFocusChange
+            self.onControlLatchChange = onControlLatchChange
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
@@ -102,8 +111,8 @@ struct ControllerTerminalInputView: UIViewRepresentable {
             case .paste(let text):
                 onPaste(text)
             case .toggleControl:
-                controlLatched.toggle()
-                updateModifierButtons()
+                setControlLatched(!controlLatched)
+                onControlLatchChange(controlLatched)
             case .toggleOption:
                 optionLatched.toggle()
                 updateModifierButtons()
@@ -136,10 +145,20 @@ struct ControllerTerminalInputView: UIViewRepresentable {
                 control: controlLatched,
                 alt: optionLatched
             )
-            controlLatched = false
+            if controlLatched {
+                controlLatched = false
+                onControlLatchChange(false)
+            }
             optionLatched = false
             updateModifierButtons()
             return modifiers
+        }
+
+        /// Sets the latch without announcing it back, for the binding's own changes.
+        func setControlLatched(_ latched: Bool) {
+            guard controlLatched != latched else { return }
+            controlLatched = latched
+            updateModifierButtons()
         }
 
         func makeAccessory(for textView: TerminalInputTextView) -> UIView {

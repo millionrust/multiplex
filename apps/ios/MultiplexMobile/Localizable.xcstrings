@@ -1,6 +1,7 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Device actions" : {},
     "Enrollment" : {},
     "Local request only. Synchronization is unavailable here." : {},
     "Copy request" : {},
