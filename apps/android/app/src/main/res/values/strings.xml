@@ -249,6 +249,9 @@
     <string name="take_control">Take control</string>
     <string name="asking_for_control">Asking…</string>
     <string name="control_not_granted">View only</string>
+    <string name="terminal_take_writer">Enter</string>
+    <string name="terminal_watchbar_watching">Watching. Nothing you press reaches this terminal yet.</string>
+    <string name="terminal_watchbar_elsewhere">Another device is typing here. Taking over asks it to let go.</string>
     <string name="control_not_granted_why">This computer has not granted typing. Turn on input for this phone in Multiplex on that computer.</string>
     <string name="release_control">Release</string>
     <string name="you_control">You control</string>

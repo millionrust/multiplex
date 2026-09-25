@@ -1801,6 +1801,16 @@ internal fun ControllerTerminalScreen(
         controlModifier = false
         altModifier = false
     }
+    // The prototype's key row carries pipe, tilde and slash, which a phone keyboard buries behind
+    // two taps and a shell needs constantly.
+    val submitText: (String) -> Unit = { text ->
+        TerminalInteraction.encodeCommittedText(
+            text,
+            modifiers = TerminalInputModifiers(control = controlModifier, alt = altModifier),
+        ).takeIf { it.isNotEmpty() }?.let(onBytes)
+        controlModifier = false
+        altModifier = false
+    }
     LaunchedEffect(
         terminal.outputSequence,
         followOutput,
@@ -2117,10 +2127,18 @@ internal fun ControllerTerminalScreen(
                     TerminalKey("Ctrl", selected = controlModifier) { controlModifier = !controlModifier }
                     TerminalKey("Alt", selected = altModifier) { altModifier = !altModifier }
                     TerminalKey("Tab") { submitKey(TerminalInputKey.TAB) }
+                    TerminalKey("⌃C", accessibilityLabel = "Control C") {
+                        controlModifier = false
+                        altModifier = false
+                        onBytes(byteArrayOf(0x03))
+                    }
                     TerminalKey("←") { submitKey(TerminalInputKey.LEFT) }
                     TerminalKey("↑") { submitKey(TerminalInputKey.UP) }
                     TerminalKey("↓") { submitKey(TerminalInputKey.DOWN) }
                     TerminalKey("→") { submitKey(TerminalInputKey.RIGHT) }
+                    TerminalKey("|", accessibilityLabel = "Pipe") { submitText("|") }
+                    TerminalKey("~", accessibilityLabel = "Tilde") { submitText("~") }
+                    TerminalKey("/", accessibilityLabel = "Slash") { submitText("/") }
                     TextButton(onClick = { clipboard.getText()?.text?.let(onPaste) }) {
                         Text(stringResource(com.multiplex.mobile.R.string.paste))
                     }
@@ -2136,6 +2154,35 @@ internal fun ControllerTerminalScreen(
                                 else com.multiplex.mobile.R.string.show_keyboard,
                             ),
                         )
+                    }
+                }
+            }
+        } else {
+            // `.watchbar` in multiplex-mobile-flow.html. Watching is the default, so nothing typed
+            // reaches the computer by accident; this says so, and carries the one button that
+            // changes it, rather than leaving a missing button to explain itself.
+            Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 13.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        watchbarText(terminal),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (terminal.supportsWriter) {
+                        Button(
+                            onClick = onRequestControl,
+                            enabled = terminal.attachState == ReadOnlyAttachState.Live &&
+                                terminal.writerLease !is WriterLeaseState.Requesting,
+                        ) {
+                            Text(stringResource(com.multiplex.mobile.R.string.terminal_take_writer))
+                        }
                     }
                 }
             }
@@ -2331,6 +2378,16 @@ private fun TerminalControlAffordance(
             )
         }
     }
+}
+
+/** What the watchbar says about why nothing typed here arrives. */
+@Composable
+private fun watchbarText(terminal: ControllerTerminalUiState): String = when {
+    !terminal.supportsWriter ->
+        stringResource(com.multiplex.mobile.R.string.control_not_granted_why)
+    terminal.hasWriterElsewhere ->
+        stringResource(com.multiplex.mobile.R.string.terminal_watchbar_elsewhere)
+    else -> stringResource(com.multiplex.mobile.R.string.terminal_watchbar_watching)
 }
 
 @Composable
