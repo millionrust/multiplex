@@ -10870,6 +10870,91 @@ context = "Tooltip on the canvas toolbar button that arranges every node neatly 
 description = "Tidy the canvas"
 
 [[messages]]
+id = "canvas-tool-terminal"
+context = "Label on the floating canvas tools bar for adding a local terminal."
+description = "Canvas tool: terminal"
+
+[[messages]]
+id = "canvas-tool-terminal-tooltip"
+context = "Tooltip on the canvas tools bar button that adds a local terminal."
+description = "Canvas tool tooltip: terminal"
+
+[[messages]]
+id = "canvas-tool-agent"
+context = "Label on the floating canvas tools bar for adding a coding agent."
+description = "Canvas tool: agent"
+
+[[messages]]
+id = "canvas-tool-agent-tooltip"
+context = "Tooltip on the canvas tools bar button that adds a Claude Code agent."
+description = "Canvas tool tooltip: agent"
+
+[[messages]]
+id = "canvas-tool-note"
+context = "Label on the floating canvas tools bar for adding a sticky note."
+description = "Canvas tool: note"
+
+[[messages]]
+id = "canvas-tool-note-tooltip"
+context = "Tooltip on the canvas tools bar button that adds a sticky note."
+description = "Canvas tool tooltip: note"
+
+[[messages]]
+id = "canvas-tool-group"
+context = "Label on the floating canvas tools bar for framing the selection in a group."
+description = "Canvas tool: group"
+
+[[messages]]
+id = "canvas-tool-group-tooltip"
+context = "Tooltip on the canvas tools bar button that frames the selected nodes in a group."
+description = "Canvas tool tooltip: group"
+
+[[messages]]
+id = "canvas-tool-zoom-reset-tooltip"
+context = "Tooltip on the canvas zoom level, which returns the zoom to 100 percent."
+description = "Canvas tool tooltip: actual size"
+
+[[messages]]
+id = "canvas-tool-fit"
+context = "Label on the canvas tools bar button that fits every node in view."
+description = "Canvas tool: fit"
+
+[[messages]]
+id = "canvas-tool-fit-tooltip"
+context = "Tooltip on the canvas tools bar button that fits every node in view."
+description = "Canvas tool tooltip: fit"
+
+[[messages]]
+id = "canvas-tool-tidy"
+context = "Label on the canvas tools bar button that arranges nodes by group."
+description = "Canvas tool: tidy"
+
+[[messages]]
+id = "canvas-tool-snap"
+context = "Label on the canvas tools bar toggle for snapping to the grid and other nodes."
+description = "Canvas tool: snap"
+
+[[messages]]
+id = "canvas-tool-more-tooltip"
+context = "Tooltip on the canvas tools bar button that opens the rest of the canvas actions."
+description = "Canvas tool tooltip: more"
+
+[[messages]]
+id = "canvas-tool-add-anything"
+context = "More menu item that opens the full list of things to add to the canvas."
+description = "Canvas more: add"
+
+[[messages]]
+id = "canvas-tool-undo"
+context = "More menu item that undoes the last canvas move, resize, rename, or collapse."
+description = "Canvas more: undo"
+
+[[messages]]
+id = "canvas-tool-redo"
+context = "More menu item that redoes the last undone canvas layout change."
+description = "Canvas more: redo"
+
+[[messages]]
 id = "canvas-port-tooltip"
 context = "Tooltip on the dot at a canvas node's right edge, which is dragged onto another node to link them."
 description = "Drag to link context"

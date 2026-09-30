@@ -56,9 +56,9 @@ pub(crate) use types::{
 
 use activity_center::ActivityCenterState;
 use canvas::{
-    AgentCreationState, CANVAS_NODE_HEADER_HEIGHT, CANVAS_TOOLBAR_HEIGHT, CanvasInteraction,
-    CanvasWorkspaceState, ContextHandoffReview, PendingCanvasNodeDelete, PendingCanvasPaneClose,
-    PendingTmuxClose, SplitPaneChooser,
+    AgentCreationState, CANVAS_NODE_HEADER_HEIGHT, CanvasInteraction, CanvasWorkspaceState,
+    ContextHandoffReview, PendingCanvasNodeDelete, PendingCanvasPaneClose, PendingTmuxClose,
+    SplitPaneChooser,
 };
 use canvas_agent_runtime::StructuredAgentRuntime;
 use canvas_coordinator::CanvasCoordinator;
@@ -1346,6 +1346,7 @@ pub struct MultiplexApp {
     split_layout_bar_revealed: bool,
     canvas_interaction: Option<CanvasInteraction>,
     canvas_add_menu_open: bool,
+    canvas_more_menu_open: bool,
     canvas_links_open: bool,
     canvas_activity_open: bool,
     canvas_accessible_list_open: bool,
@@ -1811,6 +1812,7 @@ impl MultiplexApp {
             split_layout_bar_revealed: false,
             canvas_interaction: None,
             canvas_add_menu_open: false,
+            canvas_more_menu_open: false,
             canvas_links_open: false,
             canvas_activity_open: false,
             canvas_accessible_list_open: false,
@@ -9594,7 +9596,6 @@ impl MultiplexApp {
                         cell_x: rect.x + self.workspace_rail_width() + TERMINAL_INNER_PADDING_X,
                         cell_y: rect.y
                             + theme::CHROME_HEIGHT
-                            + CANVAS_TOOLBAR_HEIGHT
                             + CANVAS_NODE_HEADER_HEIGHT
                             + TERMINAL_INNER_PADDING_Y,
                         cell_width: (rect.width - TERMINAL_INNER_PADDING_X * 2.0).max(1.0),
@@ -15642,6 +15643,23 @@ mod tests {
             .center()
     }
 
+    /// Opens the canvas tools bar's More menu, where the canvas actions the bar leaves out
+    /// live, unless it is already open.
+    fn open_canvas_more(
+        app: &Entity<MultiplexApp>,
+        window: WindowHandle<Root>,
+        cx: &mut TestAppContext,
+    ) {
+        if app.read_with(cx, |app, _| app.canvas_more_menu_open) {
+            return;
+        }
+        let more = selector_click_center(window, cx, "canvas-more");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(more, gpui::Modifiers::none());
+        visual.run_until_parked();
+        assert!(app.read_with(cx, |app, _| app.canvas_more_menu_open));
+    }
+
     fn wait_for_selector_click_center(
         window: WindowHandle<Root>,
         cx: &mut TestAppContext,
@@ -17512,6 +17530,7 @@ mod tests {
             })
             .expect("canvas setup should succeed");
 
+        open_canvas_more(&app, window, cx);
         let add = wait_for_selector_click_center(
             window,
             cx,
@@ -17598,6 +17617,7 @@ mod tests {
             assert_eq!(*color, crate::models::CanvasNoteColor::Blue);
         });
 
+        open_canvas_more(&app, window, cx);
         let add = wait_for_selector_click_center(
             window,
             cx,
@@ -17816,6 +17836,7 @@ mod tests {
             .expect("canvas setup should succeed");
         cx.simulate_window_resize(*window, size(px(640.0), px(520.0)));
         cx.run_until_parked();
+        open_canvas_more(&app, window, cx);
         let add = wait_for_selector_click_center(
             window,
             cx,
@@ -17897,7 +17918,7 @@ mod tests {
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.run_until_parked();
         assert!(visual.debug_bounds("canvas-fleet-panel").is_some());
-        assert!(visual.debug_bounds("canvas-fleet").is_some());
+        assert!(visual.debug_bounds("canvas-tools").is_some());
         assert!(visual.debug_bounds("canvas-fleet-row-1").is_some());
         assert!(visual.debug_bounds("canvas-fleet-row-2").is_some());
 
@@ -17988,6 +18009,7 @@ mod tests {
             .expect("canvas should open");
         cx.run_until_parked();
 
+        open_canvas_more(&app, window, cx);
         let add = selector_click_center(window, cx, "canvas-add-terminal");
         VisualTestContext::from_window(window.into(), cx)
             .simulate_click(add, gpui::Modifiers::none());
@@ -18016,6 +18038,7 @@ mod tests {
             );
         });
 
+        open_canvas_more(&app, window, cx);
         let add = selector_click_center(window, cx, "canvas-add-terminal");
         VisualTestContext::from_window(window.into(), cx)
             .simulate_click(add, gpui::Modifiers::none());
@@ -18556,6 +18579,7 @@ mod tests {
                 })
             })
             .expect("canvas should open");
+        open_canvas_more(&app, window, cx);
         let folder_button = wait_for_selector_click_center(
             window,
             cx,
@@ -18565,6 +18589,7 @@ mod tests {
         VisualTestContext::from_window(window.into(), cx)
             .simulate_click(folder_button, gpui::Modifiers::none());
 
+        open_canvas_more(&app, window, cx);
         let files_button = wait_for_selector_click_center(
             window,
             cx,
@@ -19193,6 +19218,7 @@ sleep 1
                 });
             })
             .expect("off-screen agent state should update");
+        open_canvas_more(&app, window, cx);
         let activity_click =
             wait_for_selector_click_center(window, cx, "canvas-activity", Duration::from_secs(2));
         visual.simulate_click(activity_click, gpui::Modifiers::none());
@@ -30873,6 +30899,7 @@ sleep 1
             assert!(!app.should_show_onboarding());
             assert!(app.error_message.is_empty());
         });
+        open_canvas_more(&app, window, cx);
         let _add_button = selector_click_center(window, cx, "canvas-add-terminal");
     }
 
@@ -30890,6 +30917,7 @@ sleep 1
             })
             .expect("canvas workspace should open");
         let initial_pane_count = app.read_with(cx, |app, _| app.panes.len());
+        open_canvas_more(&app, window, cx);
         let add = wait_for_selector_click_center(
             window,
             cx,
@@ -31011,6 +31039,7 @@ sleep 1
         });
 
         let mut visual = VisualTestContext::from_window(window.into(), cx);
+        open_canvas_more(&app, window, cx);
         let add_click = selector_click_center(window, cx, "canvas-add-terminal");
         visual.simulate_click(add_click, gpui::Modifiers::none());
         let codex_click = selector_click_center(window, cx, "canvas-add-agent-0");

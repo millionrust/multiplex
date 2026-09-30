@@ -8,17 +8,20 @@ SSH, restore, and tmux runtimes; changing layout does not reconnect a pane.
 
 1. Open a local terminal or connect to a saved host.
 2. In the workspace header, choose `Canvas` instead of `Split`.
-3. Select `Add` to add a local terminal, saved SSH host, Codex, Claude Code,
-   Gemini CLI, a custom executable, a sticky note, or a group frame.
-4. Select the folder button in the toolbar to choose the working directory for new
+3. The tools bar floating at the bottom of the canvas adds a local terminal, a
+   Claude Code agent, a sticky note, or a group frame around the selection.
+   Double-click empty canvas, or choose `More` → `Add a host, agent, or
+   terminal…`, for everything else: a saved SSH host or host group, Codex,
+   Gemini CLI, a custom executable, or a persistent local terminal.
+4. Choose `More` → the folder item to set the working directory for new
    local terminals and coding agents. Existing running terminals are not restarted or
    moved when the folder changes.
 5. Drag a node by its header. Double-click the header to rename it. Drag its
    lower-right handle to resize it.
-6. Pan empty space and use the zoom and fit buttons in the canvas toolbar. The
-   bottom-right overview shows every node and the visible viewport; select a
+6. Pan empty space and use the zoom, `Fit`, `Tidy`, and `Snap` controls on the
+   tools bar. The top-right overview shows every node and the visible viewport; select a
    point in it to jump there.
-7. Use the toolbar undo and redo actions for node moves, resizes, renames, and
+7. Use the undo and redo actions under `More` for node moves, resizes, renames, and
    collapse changes. These actions only restore layout metadata; they never
    close running terminals, remove nodes, or roll back agent work.
 
@@ -38,7 +41,7 @@ To add a fleet to an existing Canvas, select `Add` and choose the group under
 `Host Groups`. Hosts already present with the same username, address, and port
 are skipped so repeating the action does not create duplicates.
 
-The `Fleet connected/total` toolbar action opens the fleet panel. It shows each
+The `Fleet connected/total` item under `More` opens the fleet panel. It shows each
 SSH endpoint, live connection state, and persistent tmux session name. From the
 panel the user can:
 
@@ -141,7 +144,7 @@ Write-capable local agents default to `Isolated worktree`. Multiplex creates a
 linked Git worktree and a unique `termirust/agent/...` branch under its app data
 directory. `Shared directory` and `Read only` require an explicit selection.
 
-The `Worktrees` toolbar action lists every app-managed worktree, including one
+The `Worktrees` item under `More` lists every app-managed worktree, including one
 whose agent node has been closed. Its actions can:
 
 - inspect dirty/committed state, changed-path count, and a Git diff summary;

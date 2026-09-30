@@ -13,9 +13,7 @@ use gpui::{
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::{
-    Disableable as _, Icon, IconName, Selectable as _, Sizable, StyledExt as _, h_flex, v_flex,
-};
+use gpui_component::{Disableable as _, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 use multiplex_ui_contract::{
     AgentCanvasAccessibilityCommand, AgentCanvasPresentationMode, AgentCanvasSemanticSnapshot,
     AgentCanvasSurfaceState, CanvasAlternativeEdge, CanvasAlternativeEdgeKind,
@@ -69,7 +67,6 @@ use super::folder_panel::{
     read_folder_file as read_canvas_folder_file, write_folder_file as write_canvas_folder_file,
 };
 
-pub(super) const CANVAS_TOOLBAR_HEIGHT: f32 = theme::CANVAS_TOOLBAR_HEIGHT;
 const CANVAS_RENDER_OVERSCAN: f32 = 96.0;
 const CANVAS_KEYBOARD_REVEAL_PADDING: f32 = theme::CANVAS_KEYBOARD_REVEAL_PADDING;
 pub(super) const CANVAS_NODE_HEADER_HEIGHT: f32 = theme::CANVAS_NODE_HEADER_HEIGHT;
@@ -2314,6 +2311,7 @@ impl MultiplexApp {
             if connected {
                 self.pending_canvas_pane_close = Some(PendingCanvasPaneClose { pane_id, title });
                 self.canvas_add_menu_open = false;
+                self.canvas_more_menu_open = false;
                 self.canvas_links_open = false;
                 self.canvas_activity_open = false;
                 self.worktree_manager_open = false;
@@ -2332,6 +2330,7 @@ impl MultiplexApp {
             confirm_kill: false,
         });
         self.canvas_add_menu_open = false;
+        self.canvas_more_menu_open = false;
         self.canvas_links_open = false;
         self.canvas_activity_open = false;
         self.canvas_node_menu_id = None;
@@ -2565,9 +2564,7 @@ impl MultiplexApp {
         if let Some(selected) = selected.as_ref() {
             let viewport = window.viewport_size();
             let viewport_width = f32::from(viewport.width) - self.workspace_rail_width();
-            let viewport_height =
-                (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT)
-                    .max(1.0);
+            let viewport_height = (f32::from(viewport.height) - theme::CHROME_HEIGHT).max(1.0);
             if let Some(workspace) = self.active_workspace_mut()
                 && let Some(node) = workspace.canvas.node(selected)
             {
@@ -2633,6 +2630,7 @@ impl MultiplexApp {
             selected_pane_ids,
         });
         self.canvas_add_menu_open = false;
+        self.canvas_more_menu_open = false;
         self.canvas_links_open = false;
         self.canvas_activity_open = false;
         self.worktree_manager_open = false;
@@ -2754,7 +2752,7 @@ impl MultiplexApp {
         let viewport_height: f32 = viewport.height.into();
         let screen_center = CanvasPoint::new(
             viewport_width / 2.0,
-            (viewport_height - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0) / 2.0,
+            (viewport_height - theme::CHROME_HEIGHT).max(1.0) / 2.0,
         );
         let canvas_coordinator = self.canvas_coordinator.clone();
         // Each pane glides from where this layout drew it to its place in the other.
@@ -2807,7 +2805,7 @@ impl MultiplexApp {
         let point = point_from_pixels(position);
         CanvasPoint::new(
             point.x - self.workspace_rail_width(),
-            point.y - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT,
+            point.y - theme::CHROME_HEIGHT,
         )
     }
 
@@ -2815,6 +2813,7 @@ impl MultiplexApp {
         self.interrupt_canvas_camera();
         self.canvas_add_anchor = None;
         self.canvas_add_menu_open = false;
+        self.canvas_more_menu_open = false;
         let Some(workspace) = self.active_workspace() else {
             return;
         };
@@ -2969,8 +2968,7 @@ impl MultiplexApp {
         };
         let viewport = window.viewport_size();
         let viewport_width = f32::from(viewport.width) - self.workspace_rail_width();
-        let viewport_height =
-            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
+        let viewport_height = (f32::from(viewport.height) - theme::CHROME_HEIGHT).max(1.0);
         let pane_id = self
             .workspace(workspace_id)
             .and_then(|workspace| workspace.canvas.node(&node_id))
@@ -3361,7 +3359,7 @@ impl MultiplexApp {
         let viewport = window.viewport_size();
         let center = CanvasPoint::new(
             (f32::from(viewport.width) - self.workspace_rail_width()) / 2.0,
-            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT) / 2.0,
         );
         let origin = self.canvas_camera_origin();
         if let Some(workspace) = self.active_workspace_mut() {
@@ -3498,7 +3496,7 @@ impl MultiplexApp {
         let viewport = window.viewport_size();
         let center = CanvasPoint::new(
             (f32::from(viewport.width) - self.workspace_rail_width()) / 2.0,
-            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT) / 2.0,
         );
         let origin = self.canvas_camera_origin();
         if let Some(workspace) = self.active_workspace_mut() {
@@ -3518,8 +3516,7 @@ impl MultiplexApp {
         if let Some(workspace) = self.active_workspace_mut() {
             workspace.canvas.fit_to_content(
                 body_width,
-                (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT)
-                    .max(1.0),
+                (f32::from(viewport.height) - theme::CHROME_HEIGHT).max(1.0),
                 &canvas_coordinator,
             );
         }
@@ -3549,7 +3546,7 @@ impl MultiplexApp {
         let viewport = window.viewport_size();
         let screen_center = CanvasPoint::new(
             (f32::from(viewport.width) - self.workspace_rail_width()) / 2.0,
-            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT) / 2.0,
         );
         let placement = self.canvas_add_anchor.map(|(_, world)| world);
         let canvas_coordinator = self.canvas_coordinator.clone();
@@ -3602,6 +3599,7 @@ impl MultiplexApp {
             return;
         }
         self.canvas_add_menu_open = false;
+        self.canvas_more_menu_open = false;
         self.status_message = localization::static_message(
             multiplex_ui_contract::MessageId::AgentCanvasCopyOpenedALocalTerminalOnTheCanvas,
         )
@@ -3649,7 +3647,7 @@ impl MultiplexApp {
         let viewport = window.viewport_size();
         let screen_center = CanvasPoint::new(
             (f32::from(viewport.width) - self.workspace_rail_width()) / 2.0,
-            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT) / 2.0,
         );
         self.active_workspace()
             .map(|workspace| workspace.canvas.transform.screen_to_world(screen_center))
@@ -3689,6 +3687,7 @@ impl MultiplexApp {
         Self::set_input_value(&self.canvas_note_editor_input, text, window, cx);
         self.canvas_note_editor_input.focus_handle(cx).focus(window);
         self.canvas_add_menu_open = false;
+        self.canvas_more_menu_open = false;
         self.canvas_node_menu_id = None;
         cx.notify();
     }
@@ -3780,6 +3779,7 @@ impl MultiplexApp {
         }
         workspace.canvas.select_and_raise(&node_id);
         self.canvas_add_menu_open = false;
+        self.canvas_more_menu_open = false;
         self.persist_runtime_state();
         self.status_message =
             localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyGroupFrameAddedDragNodesIntoItThenMoveTheFrameToMoveThemTo)
@@ -3831,6 +3831,7 @@ impl MultiplexApp {
             return;
         }
         self.canvas_add_menu_open = false;
+        self.canvas_more_menu_open = false;
         self.status_message =
             localization::dynamic_user_data_message(multiplex_ui_contract::MessageId::AgentCanvasDynamicAttachedPersistentLocalTmuxSessionSessionN, vec![(session_name).to_string(), (version).to_string()]);
         self.error_message.clear();
@@ -3915,6 +3916,7 @@ impl MultiplexApp {
             return;
         }
         self.canvas_add_menu_open = false;
+        self.canvas_more_menu_open = false;
         self.status_message = localization::dynamic_user_data_message(
             multiplex_ui_contract::MessageId::AgentCanvasDynamicConnectingToOnTheCanvas,
             vec![(profile.display_name()).to_string()],
@@ -3995,6 +3997,7 @@ impl MultiplexApp {
         self.fit_canvas(window, cx);
         self.show_editor_panel = false;
         self.canvas_add_menu_open = false;
+        self.canvas_more_menu_open = false;
         self.canvas_fleet_open = true;
         self.canvas_fleet_workspace_id = Some(workspace_id);
         self.pending_canvas_fleet_disconnect = false;
@@ -4026,6 +4029,7 @@ impl MultiplexApp {
             .collect::<Vec<_>>();
         if profiles.is_empty() {
             self.canvas_add_menu_open = false;
+            self.canvas_more_menu_open = false;
             self.status_message = localization::dynamic_user_data_message(multiplex_ui_contract::MessageId::AgentCanvasDynamicEveryHostInIsAlreadyOnThisCanvas, vec![(group_label.trim()).to_string()]);
             self.error_message.clear();
             cx.notify();
@@ -4049,6 +4053,7 @@ impl MultiplexApp {
         }
         self.fit_canvas(window, cx);
         self.canvas_add_menu_open = false;
+        self.canvas_more_menu_open = false;
         self.canvas_fleet_open = true;
         self.canvas_fleet_workspace_id = self.active_workspace_id;
         self.pending_canvas_fleet_disconnect = false;
@@ -4453,6 +4458,7 @@ impl MultiplexApp {
             executable_status,
         });
         self.canvas_add_menu_open = false;
+        self.canvas_more_menu_open = false;
         self.canvas_links_open = false;
         self.canvas_activity_open = false;
         self.worktree_manager_open = false;
@@ -4835,6 +4841,7 @@ impl MultiplexApp {
             return;
         }
         self.canvas_add_menu_open = false;
+        self.canvas_more_menu_open = false;
         self.status_message = localization::dynamic_user_data_message(
             multiplex_ui_contract::MessageId::AgentCanvasDynamicLaunching,
             vec![(definition.provider.label()).to_string()],
@@ -4931,7 +4938,7 @@ impl MultiplexApp {
         let viewport = window.viewport_size();
         let screen_center = CanvasPoint::new(
             (f32::from(viewport.width) - self.workspace_rail_width()) / 2.0,
-            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT) / 2.0,
         );
         let canvas_coordinator = self.canvas_coordinator.clone();
         let placement = self.canvas_add_anchor.map(|(_, world)| world);
@@ -4957,6 +4964,7 @@ impl MultiplexApp {
             ),
         );
         self.canvas_add_menu_open = false;
+        self.canvas_more_menu_open = false;
         self.status_message = localization::dynamic_user_data_message(multiplex_ui_contract::MessageId::AgentCanvasDynamicStartingStructuredProviderLabelSession, vec![(provider_label).to_string()]);
         self.error_message.clear();
         self.persist_runtime_state();
@@ -6162,9 +6170,11 @@ impl MultiplexApp {
             .map(|menu| match self.canvas_add_anchor {
                 // Opened by double-clicking the canvas: the menu appears at the pointer.
                 Some((screen, _)) => menu.top(px(screen.y)).left(px(screen.x)),
+                // Opened from More: just above the tools bar, in the middle.
                 None => menu
-                    .top(px(theme::TYPE_NANO_SIZE))
-                    .left(px(theme::TYPE_CAPTION_SIZE)),
+                    .bottom(px(theme::SPACE_4 + theme::SPLIT_LAYOUT_BUTTON_SIZE + theme::SPACE_4))
+                    .left(relative(0.5))
+                    .ml(px(-theme::CANVAS_COMPACT_PANEL_WIDTH / 2.0)),
             })
             .w(px(theme::CANVAS_COMPACT_PANEL_WIDTH))
             .max_w(relative(0.9))
@@ -6804,6 +6814,7 @@ impl MultiplexApp {
         self.worktree_manager_open = !self.worktree_manager_open;
         if self.worktree_manager_open {
             self.canvas_add_menu_open = false;
+            self.canvas_more_menu_open = false;
             self.canvas_links_open = false;
             self.canvas_activity_open = false;
             self.canvas_fleet_open = false;
@@ -6822,6 +6833,7 @@ impl MultiplexApp {
         self.canvas_links_open = !self.canvas_links_open;
         if self.canvas_links_open {
             self.canvas_add_menu_open = false;
+            self.canvas_more_menu_open = false;
             self.canvas_activity_open = false;
             self.canvas_fleet_open = false;
             self.pending_canvas_fleet_disconnect = false;
@@ -6850,6 +6862,7 @@ impl MultiplexApp {
         if self.canvas_activity_open {
             self.canvas_folder_panel = None;
             self.canvas_add_menu_open = false;
+            self.canvas_more_menu_open = false;
             self.canvas_links_open = false;
             self.canvas_fleet_open = false;
             self.pending_canvas_fleet_disconnect = false;
@@ -6931,6 +6944,7 @@ impl MultiplexApp {
         if self.canvas_fleet_open {
             self.canvas_folder_panel = None;
             self.canvas_add_menu_open = false;
+            self.canvas_more_menu_open = false;
             self.canvas_links_open = false;
             self.canvas_activity_open = false;
             self.canvas_node_menu_id = None;
@@ -7056,6 +7070,7 @@ impl MultiplexApp {
         } else {
             self.canvas_node_menu_id = Some(node_id);
             self.canvas_add_menu_open = false;
+            self.canvas_more_menu_open = false;
             self.canvas_links_open = false;
             self.canvas_activity_open = false;
             self.worktree_manager_open = false;
@@ -8546,25 +8561,12 @@ impl MultiplexApp {
             .into_any_element()
     }
 
-    fn render_canvas_toolbar(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
-        let compact_toolbar =
-            (f32::from(window.viewport_size().width) - self.workspace_rail_width()) < 1280.0;
-        let zoom_percent = self
-            .active_workspace()
-            .map(|workspace| (workspace.canvas.transform.zoom * 100.0).round() as i32)
-            .unwrap_or(100);
+    /// Everything the floating tools bar leaves out, one click behind More.
+    fn render_canvas_more_menu(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let folder = self
             .active_workspace()
             .and_then(|workspace| workspace.folder.clone());
-        let folder_label = if compact_toolbar {
-            if folder.is_some() {
-                "Folder".to_string()
-            } else {
-                "Choose Folder".to_string()
-            }
-        } else {
-            canvas_folder_directory_label(folder.as_deref())
-        };
+        let folder_label = canvas_folder_directory_label(folder.as_deref());
         let folder_tooltip = folder
             .as_deref()
             .map(|directory| {
@@ -8627,11 +8629,7 @@ impl MultiplexApp {
             activity_summary.unread,
         );
         let fleet_summary = self.active_canvas_fleet_summary();
-        let fleet_label = if compact_toolbar {
-            format!("{}/{}", fleet_summary.connected, fleet_summary.total)
-        } else {
-            format!("Fleet {}/{}", fleet_summary.connected, fleet_summary.total)
-        };
+        let fleet_label = format!("Fleet {}/{}", fleet_summary.connected, fleet_summary.total);
         let fleet_tooltip = format!(
             "{} SSH hosts: {} connected, {} connecting, {} offline, {} errors, {} persistent tmux",
             fleet_summary.total,
@@ -8645,309 +8643,443 @@ impl MultiplexApp {
             .canvas_folder_panel
             .as_ref()
             .is_some_and(|panel| self.active_workspace_id == Some(panel.workspace_id));
+        let links_label = localization::dynamic_user_data_message(
+            multiplex_ui_contract::MessageId::AgentCanvasDynamicLinks,
+            vec![
+                self.active_workspace()
+                    .map(|workspace| workspace.canvas.edges.len())
+                    .unwrap_or_default()
+                    .to_string(),
+            ],
+        );
+        let worktrees_label = localization::dynamic_user_data_message(
+            multiplex_ui_contract::MessageId::AgentCanvasDynamicWorktrees,
+            vec![self.saved.managed_agent_worktrees.len().to_string()],
+        );
+        let list_view_label = localization::static_message(if self.canvas_accessible_list_open {
+            multiplex_ui_contract::MessageId::AgentCanvasGraphView
+        } else {
+            multiplex_ui_contract::MessageId::AgentCanvasListView
+        });
+        let copy = |id| localization::static_message(id);
+        use multiplex_ui_contract::MessageId as M;
+        let mut menu = v_flex()
+            .id("canvas-more-menu")
+            .debug_selector(|| "canvas-more-menu".to_string())
+            .w(px(theme::CANVAS_COMPACT_PANEL_WIDTH))
+            .p(px(theme::SPACE_1))
+            .rounded(px(theme::SPACE_3))
+            .bg(theme::with_alpha(theme::terminal_panel(), 0.97))
+            .border_1()
+            .border_color(theme::border_strong())
+            .shadow_lg()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(self.canvas_more_item(
+                "canvas-add-terminal",
+                IconName::Plus,
+                localization::static_message(M::CanvasToolAddAnything),
+                None,
+                false,
+                |this, _, cx| this.toggle_canvas_add_menu(cx),
+                cx,
+            ))
+            .child(self.canvas_more_item(
+                "canvas-accessible-view",
+                if self.canvas_accessible_list_open {
+                    IconName::Map
+                } else {
+                    IconName::Inspector
+                },
+                list_view_label,
+                None,
+                false,
+                |this, _, cx| {
+                    this.canvas_accessible_list_open = !this.canvas_accessible_list_open;
+                    cx.notify();
+                },
+                cx,
+            ))
+            .child(canvas_more_separator());
+        if fleet_summary.total > 1 {
+            menu = menu.child(self.canvas_more_item(
+                "canvas-fleet",
+                IconName::Globe,
+                fleet_label,
+                Some(fleet_tooltip),
+                false,
+                |this, _, cx| this.toggle_canvas_fleet(cx),
+                cx,
+            ));
+        }
+        menu = menu
+            .child(self.canvas_more_item(
+                "canvas-folder-directory",
+                IconName::FolderOpen,
+                folder_label,
+                Some(folder_tooltip),
+                false,
+                |this, _, cx| this.pick_canvas_folder_directory(cx),
+                cx,
+            ))
+            .child(self.canvas_more_item(
+                "canvas-folder-files",
+                if folder_panel_open {
+                    IconName::PanelRightClose
+                } else {
+                    IconName::PanelRightOpen
+                },
+                copy(M::SessionLibraryRemoveFiles),
+                Some(copy(
+                    M::AgentCanvasCopyBrowseEditAndInspectGitChangesInTheFolder,
+                )),
+                false,
+                |this, window, cx| this.toggle_canvas_folder_panel(window, cx),
+                cx,
+            ))
+            .child(canvas_more_separator())
+            .child(self.canvas_more_item(
+                "canvas-activity",
+                if activity_summary.actionable > 0 {
+                    IconName::Bell
+                } else {
+                    IconName::Inbox
+                },
+                activity_label,
+                Some(activity_tooltip),
+                false,
+                |this, _, cx| this.toggle_canvas_activity(cx),
+                cx,
+            ))
+            .child(self.canvas_more_item(
+                "canvas-review-context",
+                IconName::ArrowRight,
+                copy(M::AgentCanvasCopyReviewContext),
+                Some(copy(
+                    M::AgentCanvasCopyReviewAnIncomingContextLinkBeforeSending,
+                )),
+                !can_review_context,
+                |this, window, cx| this.open_context_review_for_selected(window, cx),
+                cx,
+            ))
+            .child(self.canvas_more_item(
+                "canvas-run-workflow",
+                IconName::Building2,
+                copy(M::AgentCanvasCopyRunWorkflow),
+                Some(copy(
+                    M::AgentCanvasCopyRunQueuedTasksWhenDependenciesAreSatisfied,
+                )),
+                !can_run_workflow,
+                |this, _, cx| this.start_dependency_orchestration(cx),
+                cx,
+            ))
+            .child(self.canvas_more_item(
+                "canvas-links",
+                IconName::ArrowRight,
+                links_label,
+                Some(copy(
+                    M::AgentCanvasCopyInspectEnableDisableOrDeleteCanvasLinks,
+                )),
+                false,
+                |this, _, cx| this.toggle_canvas_links(cx),
+                cx,
+            ))
+            .child(self.canvas_more_item(
+                "canvas-worktrees",
+                IconName::GitHub,
+                worktrees_label,
+                Some(copy(
+                    M::AgentCanvasCopyInspectAndCleanUpIsolatedAgentWorktrees,
+                )),
+                false,
+                |this, _, cx| this.toggle_worktree_manager(cx),
+                cx,
+            ))
+            .child(canvas_more_separator())
+            .child(self.canvas_more_item(
+                "canvas-layout-undo",
+                IconName::Undo2,
+                copy(M::CanvasToolUndo),
+                None,
+                !can_undo_layout,
+                |this, window, cx| this.undo_canvas_layout(window, cx),
+                cx,
+            ))
+            .child(self.canvas_more_item(
+                "canvas-layout-redo",
+                IconName::Redo2,
+                copy(M::CanvasToolRedo),
+                None,
+                !can_redo_layout,
+                |this, window, cx| this.redo_canvas_layout(window, cx),
+                cx,
+            ));
+        let _ = window;
+        menu.into_any_element()
+    }
+
+    /// One row of the More menu. It closes the menu before it acts.
+    #[allow(clippy::too_many_arguments)]
+    fn canvas_more_item(
+        &self,
+        id: &'static str,
+        icon: IconName,
+        label: String,
+        tooltip: Option<String>,
+        disabled: bool,
+        action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         h_flex()
-            .h(px(CANVAS_TOOLBAR_HEIGHT))
-            .w_full()
-            .px_3()
-            .gap_2()
+            .id(id)
+            .debug_selector(move || id.to_string())
+            .h(px(theme::SPLIT_LAYOUT_BUTTON_SIZE))
+            .px(px(theme::SPACE_2))
+            .gap(px(theme::SPACE_2))
             .items_center()
-            .justify_between()
-            .bg(theme::terminal_panel())
-            .border_b_1()
-            .border_color(theme::border_dark())
-            .child(
-                h_flex()
-                    .gap_1()
-                    .items_center()
-                    .child(
-                        Button::new("canvas-add-terminal")
-                            .debug_selector(|| "canvas-add-terminal".to_string())
-                            .small()
-                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                            .icon(IconName::Plus)
-                            .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyAdd))
-                            .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyAddATerminalAgentNoteOrGroup))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.toggle_canvas_add_menu(cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("canvas-accessible-view")
-                            .debug_selector(|| "canvas-accessible-view".to_string())
-                            .small()
-                            .ghost()
-                            .icon(if self.canvas_accessible_list_open {
-                                IconName::Map
-                            } else {
-                                IconName::Inspector
-                            })
-                            .label(localization::static_message(
-                                if self.canvas_accessible_list_open {
-                                    multiplex_ui_contract::MessageId::AgentCanvasGraphView
-                                } else {
-                                    multiplex_ui_contract::MessageId::AgentCanvasListView
-                                },
-                            ))
-                            .tooltip(localization::static_message(
-                                if self.canvas_accessible_list_open {
-                                    multiplex_ui_contract::MessageId::AgentCanvasGraphView
-                                } else {
-                                    multiplex_ui_contract::MessageId::AgentCanvasListView
-                                },
-                            ))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.canvas_accessible_list_open =
-                                    !this.canvas_accessible_list_open;
-                                cx.notify();
-                            })),
-                    )
-                    .when(fleet_summary.total > 1, |toolbar| {
-                        toolbar.child(
-                            Button::new("canvas-fleet")
-                                .debug_selector(|| "canvas-fleet".to_string())
-                                .small()
-                                .custom(Self::action_button_style(
-                                    if fleet_summary.errors > 0 {
-                                        theme::ActionTone::Danger
-                                    } else if fleet_summary.connected == fleet_summary.total {
-                                        theme::ActionTone::AccentSoft
-                                    } else {
-                                        theme::ActionTone::Neutral
-                                    },
-                                    cx,
-                                ))
-                                .icon(IconName::Globe)
-                                .label(fleet_label)
-                                .tooltip(fleet_tooltip)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.toggle_canvas_fleet(cx);
-                                })),
-                        )
-                    })
-                    .child(
-                        Button::new("canvas-folder-directory")
-                            .debug_selector(|| "canvas-folder-directory".to_string())
-                            .small()
-                            .ghost()
-                            .icon(IconName::FolderOpen)
-                            .label(folder_label)
-                            .tooltip(folder_tooltip)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.pick_canvas_folder_directory(cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("canvas-folder-files")
-                            .debug_selector(|| "canvas-folder-files".to_string())
-                            .small()
-                            .ghost()
-                            .icon(if folder_panel_open {
-                                IconName::PanelRightClose
-                            } else {
-                                IconName::PanelRightOpen
-                            })
-                            .label(localization::static_message(multiplex_ui_contract::MessageId::SessionLibraryRemoveFiles))
-                            .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyBrowseEditAndInspectGitChangesInTheFolder))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.toggle_canvas_folder_panel(window, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("canvas-review-context")
-                            .debug_selector(|| "canvas-review-context".to_string())
-                            .small()
-                            .ghost()
-                            .icon(IconName::ArrowRight)
-                            .when(!compact_toolbar, |button| button.label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyReviewContext)))
-                            .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyReviewAnIncomingContextLinkBeforeSending))
-                            .disabled(!can_review_context)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_context_review_for_selected(window, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("canvas-run-workflow")
-                            .debug_selector(|| "canvas-run-workflow".to_string())
-                            .small()
-                            .ghost()
-                            .icon(IconName::Building2)
-                            .when(!compact_toolbar, |button| button.label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyRunWorkflow)))
-                            .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyRunQueuedTasksWhenDependenciesAreSatisfied))
-                            .disabled(!can_run_workflow)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.start_dependency_orchestration(cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("canvas-activity")
-                            .debug_selector(|| "canvas-activity".to_string())
-                            .small()
-                            .ghost()
-                            .icon(if activity_summary.actionable > 0 {
-                                IconName::Bell
-                            } else {
-                                IconName::Inbox
-                            })
-                            .when(!compact_toolbar, |button| button.label(activity_label))
-                            .when(
-                                compact_toolbar && activity_summary.actionable > 0,
-                                |button| button.label(activity_summary.actionable.to_string()),
-                            )
-                            .tooltip(activity_tooltip)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.toggle_canvas_activity(cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("canvas-links")
-                            .small()
-                            .ghost()
-                            .icon(IconName::ArrowRight)
-                            .when(!compact_toolbar, |button| {
-                                button.label(localization::dynamic_user_data_message(multiplex_ui_contract::MessageId::AgentCanvasDynamicLinks, vec![(self.active_workspace()
-                                        .map(|workspace| workspace.canvas.edges.len())
-                                        .unwrap_or_default()).to_string()]))
-                            })
-                            .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyInspectEnableDisableOrDeleteCanvasLinks))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.toggle_canvas_links(cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("canvas-worktrees")
-                            .small()
-                            .ghost()
-                            .icon(IconName::GitHub)
-                            .when(!compact_toolbar, |button| {
-                                button.label(localization::dynamic_user_data_message(multiplex_ui_contract::MessageId::AgentCanvasDynamicWorktrees, vec![(self.saved.managed_agent_worktrees.len()).to_string()]))
-                            })
-                            .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyInspectAndCleanUpIsolatedAgentWorktrees))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.toggle_worktree_manager(cx);
-                            })),
-                    )
-                    .when(self.pending_context_source.is_some(), |toolbar| {
-                        toolbar.child(
-                            div()
-                                .text_size(px(theme::TYPE_NANO_SIZE))
-                                .text_color(theme::warning())
-                                .child(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyChooseLinkTarget)),
-                        )
-                    })
-                    .when(self.pending_dependency_source.is_some(), |toolbar| {
-                        toolbar.child(
-                            div()
-                                .text_size(px(theme::TYPE_NANO_SIZE))
-                                .text_color(theme::warning())
-                                .child(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyChooseDependencyTarget)),
-                        )
-                    }),
-            )
-            .child(
-                h_flex()
-                    .gap_1()
-                    .items_center()
-                    .child(
-                        Button::new("canvas-layout-undo")
-                            .debug_selector(|| "canvas-layout-undo".to_string())
-                            .xsmall()
-                            .ghost()
-                            .icon(IconName::Undo2)
-                            .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyUndoTheLastMoveResizeRenameOrCollapse))
-                            .disabled(!can_undo_layout)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.undo_canvas_layout(window, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("canvas-layout-redo")
-                            .debug_selector(|| "canvas-layout-redo".to_string())
-                            .xsmall()
-                            .ghost()
-                            .icon(IconName::Redo2)
-                            .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyRedoTheLastCanvasLayoutChange))
-                            .disabled(!can_redo_layout)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.redo_canvas_layout(window, cx);
-                            })),
-                    )
-                    .child(
-                        div()
-                            .h(px(theme::CANVAS_METADATA_LINE_HEIGHT))
-                            .w(px(theme::BORDER_HAIRLINE))
-                            .mx_1()
-                            .bg(theme::border_dark()),
-                    )
-                    .child(
-                        Button::new("canvas-zoom-out")
-                            .xsmall()
-                            .ghost()
-                            .icon(IconName::Minus)
-                            .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyZoomOut))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.zoom_canvas(0.85, window, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("canvas-zoom-reset")
-                            .xsmall()
-                            .ghost()
-                            .label(localization::dynamic_user_data_message(multiplex_ui_contract::MessageId::AgentCanvasDynamicZoomPercent, vec![(zoom_percent).to_string()]))
-                            .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyResetZoom))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.reset_canvas_zoom(window, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("canvas-zoom-in")
-                            .xsmall()
-                            .ghost()
-                            .icon(IconName::Plus)
-                            .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyZoomIn))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.zoom_canvas(1.15, window, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("canvas-fit")
-                            .xsmall()
-                            .ghost()
-                            .icon(IconName::Maximize)
-                            .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyFitAllNodes))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.fit_canvas(window, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("canvas-tidy")
-                            .xsmall()
-                            .ghost()
-                            .icon(super::app_icon(super::ICON_GRID))
-                            .tooltip(localization::static_message(
-                                multiplex_ui_contract::MessageId::CanvasTidyTooltip,
-                            ))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.tidy_canvas(window, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("canvas-snap")
-                            .xsmall()
-                            .ghost()
-                            .selected(self.canvas_snap_enabled)
-                            .icon(super::app_icon(super::ICON_MAGNET))
-                            .tooltip(localization::static_message(
-                                multiplex_ui_contract::MessageId::CanvasSnapTooltip,
-                            ))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.toggle_canvas_snap(cx);
-                            })),
-                    ),
-            )
-            .map(|toolbar| {
-                let _ = window;
-                toolbar
+            .rounded(px(theme::SPACE_2))
+            .text_size(px(theme::TYPE_CAPTION_SIZE))
+            .map(|row| {
+                if disabled {
+                    row.text_color(theme::with_alpha(theme::text_muted_dark(), 0.45))
+                } else {
+                    row.text_color(theme::text_on_dark())
+                        .cursor_pointer()
+                        .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.5)))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.canvas_more_menu_open = false;
+                            action(this, window, cx);
+                            cx.notify();
+                        }))
+                }
             })
+            .when_some(tooltip, |row, tooltip| {
+                row.tooltip(move |window, cx| {
+                    gpui_component::tooltip::Tooltip::new(tooltip.clone()).build(window, cx)
+                })
+            })
+            .child(Icon::new(icon).size(px(theme::ICON_SIZE_DEFAULT)))
+            .child(label)
+    }
+
+    /// The floating tools bar at the bottom of the canvas, after
+    /// `design/split-canvas-concept.html`: what to add, the zoom, Fit, Tidy and Snap. The
+    /// rest of the canvas's actions are behind More, and all of them are in Cmd+K.
+    fn render_canvas_tools(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        use multiplex_ui_contract::MessageId as M;
+        // The concept drops the labels below 980 points wide and keeps the icons.
+        let labels =
+            (f32::from(window.viewport_size().width) - self.workspace_rail_width()) >= 980.0;
+        let zoom_percent = self
+            .active_workspace()
+            .map(|workspace| (workspace.canvas.transform.zoom * 100.0).round() as i32)
+            .unwrap_or(100);
+        let hint = if self.pending_context_source.is_some() {
+            Some(localization::static_message(
+                M::AgentCanvasCopyChooseLinkTarget,
+            ))
+        } else if self.pending_dependency_source.is_some() {
+            Some(localization::static_message(
+                M::AgentCanvasCopyChooseDependencyTarget,
+            ))
+        } else {
+            None
+        };
+        let separator = || {
+            div()
+                .w(px(theme::BORDER_HAIRLINE))
+                .h(px(theme::SPLIT_LAYOUT_BUTTON_SIZE * 0.6))
+                .mx(px(theme::SPACE_1))
+                .bg(theme::border_strong())
+        };
+        let bar = h_flex()
+            .id("canvas-tools")
+            .debug_selector(|| "canvas-tools".to_string())
+            .items_center()
+            .gap(px(theme::BORDER_HAIRLINE * 2.0))
+            .p(px(theme::SPACE_1))
+            .rounded(px(theme::SPACE_3))
+            .bg(theme::with_alpha(theme::terminal_panel(), 0.94))
+            .border_1()
+            .border_color(theme::border_strong())
+            .shadow_lg()
+            // Clicks on the bar must not reach the canvas underneath.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .when_some(hint, |bar, hint| {
+                bar.child(
+                    div()
+                        .px(px(theme::SPACE_2))
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                        .text_color(theme::warning())
+                        .child(hint),
+                )
+                .child(separator())
+            })
+            .child(self.canvas_tool_button(
+                "canvas-tool-terminal",
+                Some(Icon::new(IconName::SquareTerminal)),
+                labels.then(|| localization::static_message(M::CanvasToolTerminal)),
+                localization::static_message(M::CanvasToolTerminalTooltip),
+                false,
+                |this, window, cx| this.add_local_terminal_to_canvas(window, cx),
+                cx,
+            ))
+            .child(self.canvas_tool_button(
+                "canvas-tool-agent",
+                Some(Icon::new(IconName::Bot)),
+                labels.then(|| localization::static_message(M::CanvasToolAgent)),
+                localization::static_message(M::CanvasToolAgentTooltip),
+                false,
+                |this, window, cx| this.open_agent_creation(AgentProvider::ClaudeCode, window, cx),
+                cx,
+            ))
+            .child(self.canvas_tool_button(
+                "canvas-tool-note",
+                Some(Icon::new(IconName::File)),
+                labels.then(|| localization::static_message(M::CanvasToolNote)),
+                localization::static_message(M::CanvasToolNoteTooltip),
+                false,
+                |this, window, cx| this.add_note_to_canvas(window, cx),
+                cx,
+            ))
+            .child(self.canvas_tool_button(
+                "canvas-tool-group",
+                Some(Icon::new(IconName::Frame)),
+                labels.then(|| localization::static_message(M::CanvasToolGroup)),
+                localization::static_message(M::CanvasToolGroupTooltip),
+                false,
+                |this, window, cx| this.add_group_to_canvas(window, cx),
+                cx,
+            ))
+            .child(separator())
+            .child(self.canvas_tool_button(
+                "canvas-zoom-out",
+                Some(Icon::new(IconName::Minus)),
+                None,
+                localization::static_message(M::AgentCanvasCopyZoomOut),
+                false,
+                |this, window, cx| this.zoom_canvas(0.85, window, cx),
+                cx,
+            ))
+            .child(self.canvas_tool_button(
+                "canvas-zoom-reset",
+                None,
+                Some(format!("{zoom_percent}%")),
+                localization::static_message(M::CanvasToolZoomResetTooltip),
+                false,
+                |this, window, cx| this.reset_canvas_zoom(window, cx),
+                cx,
+            ))
+            .child(self.canvas_tool_button(
+                "canvas-zoom-in",
+                Some(Icon::new(IconName::Plus)),
+                None,
+                localization::static_message(M::AgentCanvasCopyZoomIn),
+                false,
+                |this, window, cx| this.zoom_canvas(1.15, window, cx),
+                cx,
+            ))
+            .child(self.canvas_tool_button(
+                "canvas-fit",
+                Some(Icon::new(IconName::Maximize)),
+                labels.then(|| localization::static_message(M::CanvasToolFit)),
+                localization::static_message(M::CanvasToolFitTooltip),
+                false,
+                |this, window, cx| this.fit_canvas(window, cx),
+                cx,
+            ))
+            .child(self.canvas_tool_button(
+                "canvas-tidy",
+                Some(super::app_icon(super::ICON_GRID)),
+                labels.then(|| localization::static_message(M::CanvasToolTidy)),
+                localization::static_message(M::CanvasTidyTooltip),
+                false,
+                |this, window, cx| this.tidy_canvas(window, cx),
+                cx,
+            ))
+            .child(self.canvas_tool_button(
+                "canvas-snap",
+                Some(super::app_icon(super::ICON_MAGNET)),
+                labels.then(|| localization::static_message(M::CanvasToolSnap)),
+                localization::static_message(M::CanvasSnapTooltip),
+                self.canvas_snap_enabled,
+                |this, _, cx| this.toggle_canvas_snap(cx),
+                cx,
+            ))
+            .child(separator())
+            .child(self.canvas_tool_button(
+                "canvas-more",
+                Some(Icon::new(IconName::Ellipsis)),
+                None,
+                localization::static_message(M::CanvasToolMoreTooltip),
+                self.canvas_more_menu_open,
+                |this, _, cx| {
+                    this.canvas_more_menu_open = !this.canvas_more_menu_open;
+                    if this.canvas_more_menu_open {
+                        this.canvas_add_menu_open = false;
+                    }
+                    cx.notify();
+                },
+                cx,
+            ));
+        v_flex()
+            .absolute()
+            .bottom(px(theme::SPACE_4))
+            .left_0()
+            .right_0()
+            .items_center()
+            .gap(px(theme::SPACE_2))
+            .when(self.canvas_more_menu_open, |column| {
+                column.child(self.render_canvas_more_menu(window, cx))
+            })
+            .child(bar)
+            .into_any_element()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn canvas_tool_button(
+        &self,
+        id: &'static str,
+        icon: Option<Icon>,
+        label: Option<String>,
+        tooltip: String,
+        on: bool,
+        action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        h_flex()
+            .id(id)
+            .debug_selector(move || id.to_string())
+            .h(px(theme::SPLIT_LAYOUT_BUTTON_SIZE))
+            .min_w(px(theme::SPLIT_LAYOUT_BUTTON_SIZE))
+            .px(px(theme::SPACE_2))
+            .gap(px(theme::SPACE_2))
+            .items_center()
+            .justify_center()
+            .rounded(px(theme::SPACE_2))
+            .text_size(px(theme::TYPE_CAPTION_SIZE))
+            .map(|button| {
+                if on {
+                    button
+                        .text_color(theme::accent())
+                        .bg(theme::with_alpha(theme::accent(), 0.14))
+                } else {
+                    button.text_color(theme::text_muted_dark())
+                }
+            })
+            .cursor_pointer()
+            .hover(|style| {
+                style
+                    .bg(theme::with_alpha(theme::hover(), 0.5))
+                    .text_color(theme::text_on_dark())
+            })
+            .tooltip(move |window, cx| {
+                gpui_component::tooltip::Tooltip::new(tooltip.clone()).build(window, cx)
+            })
+            .when_some(icon, |button, icon| {
+                button.child(icon.size(px(theme::ICON_SIZE_DEFAULT)))
+            })
+            .when_some(label, |button, label| button.child(label))
+            .on_click(cx.listener(move |this, _, window, cx| action(this, window, cx)))
     }
 
     fn render_canvas_folder_panel(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
@@ -9329,8 +9461,7 @@ impl MultiplexApp {
         self.interrupt_canvas_camera();
         let viewport = window.viewport_size();
         let viewport_width = f32::from(viewport.width) - self.workspace_rail_width();
-        let viewport_height =
-            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
+        let viewport_height = (f32::from(viewport.height) - theme::CHROME_HEIGHT).max(1.0);
         let local = self.canvas_local_point(position);
         let map_point = CanvasPoint::new(
             local.x - (viewport_width - CANVAS_MINIMAP_WIDTH - CANVAS_MINIMAP_MARGIN),
@@ -9372,8 +9503,7 @@ impl MultiplexApp {
         };
         let viewport = window.viewport_size();
         let viewport_width = f32::from(viewport.width) - self.workspace_rail_width();
-        let viewport_height =
-            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
+        let viewport_height = (f32::from(viewport.height) - theme::CHROME_HEIGHT).max(1.0);
         let transform = self.displayed_canvas_transform(workspace);
         let Some(geometry) = canvas_minimap_geometry(
             &workspace.canvas.nodes,
@@ -9397,7 +9527,7 @@ impl MultiplexApp {
             .debug_selector(|| "canvas-minimap".to_string())
             .absolute()
             .right(px(CANVAS_MINIMAP_MARGIN))
-            .bottom(px(CANVAS_MINIMAP_MARGIN))
+            .top(px(CANVAS_MINIMAP_MARGIN))
             .w(px(CANVAS_MINIMAP_WIDTH))
             .h(px(CANVAS_MINIMAP_HEIGHT))
             .overflow_hidden()
@@ -10093,8 +10223,7 @@ impl MultiplexApp {
     ) {
         let viewport = window.viewport_size();
         let width = f32::from(viewport.width) - self.workspace_rail_width();
-        let height =
-            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
+        let height = (f32::from(viewport.height) - theme::CHROME_HEIGHT).max(1.0);
         let origin = self.canvas_camera_origin();
         let Some(workspace) = self.active_workspace_mut() else {
             return;
@@ -12104,23 +12233,23 @@ impl MultiplexApp {
             return v_flex()
                 .flex_1()
                 .min_h_0()
+                .relative()
                 .bg(theme::library_bg())
-                .child(self.render_canvas_toolbar(window, cx))
-                .child(self.render_canvas_accessible_list(window, cx));
+                .child(self.render_canvas_accessible_list(window, cx))
+                .child(self.render_canvas_tools(window, cx));
         }
         let workspace_id = workspace.id;
         let viewport = window.viewport_size();
         let viewport_width = f32::from(viewport.width) - self.workspace_rail_width();
-        let viewport_height =
-            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
+        let viewport_height = (f32::from(viewport.height) - theme::CHROME_HEIGHT).max(1.0);
         let transform = self.displayed_canvas_transform(workspace);
         let now = Instant::now();
         let transition = self.layout_transition.as_ref().filter(|transition| {
             transition.workspace_id == workspace_id && !transition.is_finished(now)
         });
         // Motion is tracked in window coordinates; the canvas body starts below
-        // the chrome and the canvas toolbar.
-        let body_top = theme::CHROME_HEIGHT + CANVAS_TOOLBAR_HEIGHT;
+        // the chrome.
+        let body_top = theme::CHROME_HEIGHT;
         let body_left = self.workspace_rail_width();
         let mut node_indices: Vec<_> = (0..workspace.canvas.nodes.len()).collect();
         node_indices.sort_by_key(|index| {
@@ -12288,7 +12417,9 @@ impl MultiplexApp {
             });
         }
 
-        body = body.child(self.render_canvas_minimap(window, cx));
+        body = body
+            .child(self.render_canvas_minimap(window, cx))
+            .child(self.render_canvas_tools(window, cx));
         if let Some(pill) = self.render_attention_pill(cx) {
             body = body.child(pill);
         }
@@ -12472,9 +12603,16 @@ impl MultiplexApp {
             .flex_1()
             .min_h_0()
             .bg(theme::terminal_bg())
-            .child(self.render_canvas_toolbar(window, cx))
             .child(body)
     }
+}
+
+fn canvas_more_separator() -> Div {
+    div()
+        .h(px(theme::BORDER_HAIRLINE))
+        .my(px(theme::SPACE_1))
+        .mx(px(theme::SPACE_2))
+        .bg(theme::border_strong())
 }
 
 fn canvas_alternative_kind_message(
