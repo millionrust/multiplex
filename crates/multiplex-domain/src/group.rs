@@ -2,9 +2,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{GroupId, PositionKey, ProjectId, Revision};
+use crate::{GroupId, PositionKey, Revision};
 
-pub const MAX_GROUPS_PER_PROJECT: usize = 256;
+pub const MAX_GROUPS: usize = 256;
 pub const MAX_GROUP_NAME_SCALARS: usize = 256;
 
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
@@ -50,7 +50,6 @@ impl fmt::Display for GroupName {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Group {
     pub id: GroupId,
-    pub project_id: ProjectId,
     pub name: GroupName,
     pub position: PositionKey,
     pub collapsed: bool,
@@ -61,14 +60,14 @@ pub struct Group {
 #[serde(tag = "kind", content = "group_id", rename_all = "snake_case")]
 pub enum GroupDestination {
     #[default]
-    ProjectRoot,
+    Ungrouped,
     Group(GroupId),
 }
 
 impl GroupDestination {
     pub const fn group_id(self) -> Option<GroupId> {
         match self {
-            Self::ProjectRoot => None,
+            Self::Ungrouped => None,
             Self::Group(id) => Some(id),
         }
     }
@@ -110,11 +109,9 @@ pub enum GroupError {
     NameTooLong,
     DuplicateName,
     NotFound,
-    ProjectNotFound,
     DestinationNotFound,
     DestinationIsSource,
     NonEmptyDestinationRequired,
-    WrongProject,
     ResourceLimit {
         limit: usize,
     },
@@ -137,13 +134,11 @@ impl fmt::Display for GroupError {
             Self::NameTooLong => formatter.write_str("group name exceeds 256 characters"),
             Self::DuplicateName => formatter.write_str("a group with this name already exists"),
             Self::NotFound => formatter.write_str("group no longer exists"),
-            Self::ProjectNotFound => formatter.write_str("project no longer exists"),
             Self::DestinationNotFound => formatter.write_str("destination group no longer exists"),
             Self::DestinationIsSource => formatter.write_str("a group cannot move into itself"),
             Self::NonEmptyDestinationRequired => {
                 formatter.write_str("choose where this group's sessions should move")
             }
-            Self::WrongProject => formatter.write_str("group belongs to another project"),
             Self::ResourceLimit { limit } => write!(formatter, "group limit of {limit} reached"),
             Self::StaleRevision { .. } => {
                 formatter.write_str("group organization changed; reload required")
@@ -157,32 +152,23 @@ impl fmt::Display for GroupError {
 
 impl std::error::Error for GroupError {}
 
-pub fn validate_group_set(groups: &[Group], projects: &[ProjectId]) -> Result<(), GroupError> {
-    use std::collections::{HashMap, HashSet};
+pub fn validate_group_set(groups: &[Group]) -> Result<(), GroupError> {
+    use std::collections::HashSet;
 
-    let project_ids = projects.iter().copied().collect::<HashSet<_>>();
     let mut ids = HashSet::with_capacity(groups.len());
-    let mut counts = HashMap::<ProjectId, usize>::new();
-    let mut names = HashSet::<(ProjectId, String)>::new();
+    let mut names = HashSet::<String>::new();
     for group in groups {
-        if !project_ids.contains(&group.project_id) {
-            return Err(GroupError::ProjectNotFound);
-        }
         if !ids.insert(group.id) {
             return Err(GroupError::Store {
                 code: "duplicate-group-id",
             });
         }
-        if !names.insert((group.project_id, group.name.comparison_key())) {
+        if !names.insert(group.name.comparison_key()) {
             return Err(GroupError::DuplicateName);
         }
-        let count = counts.entry(group.project_id).or_default();
-        *count += 1;
-        if *count > MAX_GROUPS_PER_PROJECT {
-            return Err(GroupError::ResourceLimit {
-                limit: MAX_GROUPS_PER_PROJECT,
-            });
-        }
+    }
+    if groups.len() > MAX_GROUPS {
+        return Err(GroupError::ResourceLimit { limit: MAX_GROUPS });
     }
     Ok(())
 }
@@ -191,10 +177,9 @@ pub fn validate_group_set(groups: &[Group], projects: &[ProjectId]) -> Result<()
 mod tests {
     use super::*;
 
-    fn group(project_id: ProjectId, name: &str, index: usize) -> Group {
+    fn group(name: &str, index: usize) -> Group {
         Group {
             id: GroupId::new(),
-            project_id,
             name: GroupName::new(name).unwrap(),
             position: PositionKey::rebalanced(index).unwrap(),
             collapsed: false,
@@ -215,22 +200,15 @@ mod tests {
     }
 
     #[test]
-    fn group_names_are_unique_case_insensitively_per_project() {
-        let project_id = ProjectId::new();
-        let groups = vec![
-            group(project_id, "Review", 0),
-            group(project_id, "review", 1),
-        ];
-        assert_eq!(
-            validate_group_set(&groups, &[project_id]),
-            Err(GroupError::DuplicateName)
-        );
+    fn group_names_are_unique_case_insensitively() {
+        let groups = vec![group("Review", 0), group("review", 1)];
+        assert_eq!(validate_group_set(&groups), Err(GroupError::DuplicateName));
     }
 
     #[test]
     fn destination_exposes_only_organization_identity() {
         let id = GroupId::new();
-        assert_eq!(GroupDestination::ProjectRoot.group_id(), None);
+        assert_eq!(GroupDestination::Ungrouped.group_id(), None);
         assert_eq!(GroupDestination::Group(id).group_id(), Some(id));
     }
 }

@@ -676,7 +676,6 @@ fn category_icon(category: PaletteCategory) -> IconName {
         PaletteCategory::Sessions | PaletteCategory::Presets | PaletteCategory::Commands => {
             IconName::SquareTerminal
         }
-        PaletteCategory::Projects => IconName::FolderOpen,
         PaletteCategory::Groups => IconName::Folder,
         PaletteCategory::Actions => IconName::Plus,
         PaletteCategory::Archive => IconName::Inbox,

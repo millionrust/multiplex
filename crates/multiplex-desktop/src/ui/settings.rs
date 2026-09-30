@@ -257,9 +257,6 @@ pub fn health_view_model(report: Option<&HealthReport>, busy: bool) -> HealthVie
         .map(|finding| HealthFindingView {
             kind: finding.kind,
             label: match finding.kind {
-                HealthCheckKind::ProjectSessionIndex => {
-                    localization::health_project_session_label()
-                }
                 HealthCheckKind::PaletteIndex => localization::health_palette_label(),
                 HealthCheckKind::StoreReadable => localization::health_store_readable_label(),
                 HealthCheckKind::StoreVersion => localization::health_store_version_label(),
@@ -268,10 +265,7 @@ pub fn health_view_model(report: Option<&HealthReport>, busy: bool) -> HealthVie
             state: health_state_label(finding.state),
             can_rebuild: source_healthy
                 && !busy
-                && matches!(
-                    finding.kind,
-                    HealthCheckKind::ProjectSessionIndex | HealthCheckKind::PaletteIndex
-                )
+                && matches!(finding.kind, HealthCheckKind::PaletteIndex)
                 && matches!(
                     finding.state,
                     HealthFindingState::Partial | HealthFindingState::Corrupt
@@ -452,7 +446,7 @@ mod health {
             finding(HealthCheckKind::StoreReadable, HealthFindingState::Healthy),
             finding(HealthCheckKind::StoreVersion, HealthFindingState::Healthy),
             finding(HealthCheckKind::RecordHashes, HealthFindingState::Healthy),
-            finding(HealthCheckKind::ProjectSessionIndex, index_state),
+            finding(HealthCheckKind::PaletteIndex, index_state),
             finding(HealthCheckKind::PaletteIndex, HealthFindingState::Healthy),
         ];
         report
@@ -480,7 +474,7 @@ mod health {
             1
         );
         assert!(model.findings.iter().any(|finding| {
-            finding.kind == HealthCheckKind::ProjectSessionIndex && finding.can_rebuild
+            finding.kind == HealthCheckKind::PaletteIndex && finding.can_rebuild
         }));
     }
 

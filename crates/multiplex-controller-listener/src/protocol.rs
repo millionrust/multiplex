@@ -380,7 +380,6 @@ pub struct ControllerSessionSummary {
     #[serde(default)]
     pub capabilities: Vec<ControllerSessionCapability>,
     pub title: String,
-    pub project: Option<String>,
     pub group: Option<String>,
     pub lifecycle: String,
     pub activity: String,
@@ -420,7 +419,6 @@ impl fmt::Debug for ControllerSessionSummary {
             .field("runtime", &self.runtime)
             .field("capabilities", &self.capabilities)
             .field("title", &"[REDACTED]")
-            .field("project", &self.project.as_ref().map(|_| "[REDACTED]"))
             .field("group", &self.group.as_ref().map(|_| "[REDACTED]"))
             .field("lifecycle", &self.lifecycle)
             .field("activity", &self.activity)
@@ -494,10 +492,6 @@ fn validate_response(response: &ControllerResponse) -> Result<(), ListenerError>
                         .capabilities
                         .windows(2)
                         .any(|pair| pair[0] >= pair[1])
-                    || session
-                        .project
-                        .as_ref()
-                        .is_some_and(|name| name.chars().count() > MAX_SESSION_TITLE_SCALARS)
                     || session
                         .group
                         .as_ref()
@@ -646,7 +640,6 @@ mod tests {
         let legacy = serde_json::json!({
             "session_id": session_id,
             "title": "Legacy",
-            "project": null,
             "group": null,
             "lifecycle": "live",
             "activity": "idle",
@@ -765,7 +758,6 @@ mod tests {
                 ControllerSessionCapability::AttachOutput,
             ],
             title: "Deploy".into(),
-            project: Some("Console".into()),
             group: Some("Release".into()),
             lifecycle: "live".into(),
             activity: "needs_input".into(),

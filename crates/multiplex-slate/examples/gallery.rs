@@ -122,10 +122,9 @@ const TABS: [(&str, StatusKind); 3] = [
     ("gpu-lab-01", StatusKind::Error),
 ];
 
-const NAV: [(IconName, &str, Option<&str>); 7] = [
+const NAV: [(IconName, &str, Option<&str>); 6] = [
     (IconName::Home, "Home", None),
     (IconName::Activity, "Activity", None),
-    (IconName::Projects, "Projects", None),
     (IconName::Sessions, "Sessions", Some("3")),
     (IconName::Sftp, "SFTP", None),
     (IconName::Devices, "Devices", None),
@@ -312,7 +311,7 @@ impl Gallery {
             PaletteItem::new("Snippet", "Service status").hint("systemctl status orders-api"),
         );
         items.push(PaletteItem::new("Snippet", "Tail access log").hint("tail -f access.log"));
-        items.push(PaletteItem::new("Go to", "Projects"));
+        items.push(PaletteItem::new("Go to", "Sessions"));
         items.push(PaletteItem::new("Go to", "Known hosts"));
         items.push(PaletteItem::new("Task", "New local terminal").hint("⌘T"));
         items

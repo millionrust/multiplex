@@ -338,7 +338,6 @@ struct ControllerSessionSummary: Codable, Identifiable, Hashable, Sendable {
     let runtime: String?
     let capabilities: [ControllerSessionCapability]
     let title: String
-    let project: String?
     let group: String?
     let lifecycle: String
     let activity: String?
@@ -354,7 +353,6 @@ struct ControllerSessionSummary: Codable, Identifiable, Hashable, Sendable {
         runtime: String? = nil,
         capabilities: [ControllerSessionCapability] = [],
         title: String,
-        project: String?,
         group: String?,
         lifecycle: String,
         activity: String?,
@@ -369,7 +367,6 @@ struct ControllerSessionSummary: Codable, Identifiable, Hashable, Sendable {
         self.runtime = runtime
         self.capabilities = capabilities
         self.title = title
-        self.project = project
         self.group = group
         self.lifecycle = lifecycle
         self.activity = activity
@@ -386,7 +383,6 @@ struct ControllerSessionSummary: Codable, Identifiable, Hashable, Sendable {
         case runtime
         case capabilities
         case title
-        case project
         case group
         case lifecycle
         case activity
@@ -405,7 +401,6 @@ struct ControllerSessionSummary: Codable, Identifiable, Hashable, Sendable {
             runtime: try values.decodeIfPresent(String.self, forKey: .runtime),
             capabilities: try values.decodeIfPresent([ControllerSessionCapability].self, forKey: .capabilities) ?? [],
             title: try values.decode(String.self, forKey: .title),
-            project: try values.decodeIfPresent(String.self, forKey: .project),
             group: try values.decodeIfPresent(String.self, forKey: .group),
             lifecycle: try values.decode(String.self, forKey: .lifecycle),
             activity: try values.decodeIfPresent(String.self, forKey: .activity),
@@ -424,7 +419,6 @@ struct ControllerSessionSummary: Codable, Identifiable, Hashable, Sendable {
               capabilities.count <= 5,
               Set(capabilities).count == capabilities.count,
               activity?.utf8.count ?? 0 <= 64,
-              project?.unicodeScalars.count ?? 0 <= ControllerCacheLimits.maxTitleScalars,
               group?.unicodeScalars.count ?? 0 <= ControllerCacheLimits.maxTitleScalars else {
             throw ControllerModelError.invalidSession
         }

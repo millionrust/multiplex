@@ -1,6 +1,6 @@
 # Read-only MCP
 
-`termirust-mcp` gives a local MCP host bounded access to Multiplex's typed Projects, connection
+`termirust-mcp` gives a local MCP host bounded access to Multiplex's connection
 presets, Sessions, runtime state, semantic transcripts, artifact metadata, and explicitly approved
 actions. Its default surface is inspect-only. It uses the MCP `2025-11-25` stdio transport and does
 not listen on a network socket.
@@ -21,7 +21,7 @@ uses the executable's installed absolute path:
     "termirust": {
       "command": "/absolute/path/to/termirust-mcp",
       "env": {
-        "MULTIPLEX_MCP_CAPABILITIES": "status.read,projects.read,connections.read,sessions.read,runtime.read"
+        "MULTIPLEX_MCP_CAPABILITIES": "status.read,connections.read,sessions.read,runtime.read"
       }
     }
   }
@@ -36,7 +36,6 @@ non-default configuration directory. Do not point it at a copied or untrusted da
 The default capability set is metadata-only:
 
 - `status.read`
-- `projects.read`
 - `connections.read`
 - `sessions.read`
 - `runtime.read`
@@ -50,14 +49,15 @@ Artifact names and transcript bodies require explicit opt-in:
 
 Use a comma-separated exact allowlist. `all` enables every current read-only capability and
 deliberately never enables action capabilities; `none` exposes no tools. Unknown values fail
-startup instead of silently widening access.
+startup instead of silently widening access. `projects.read`, from before Projects were removed,
+is accepted and grants nothing.
 
 ## Approved Actions
 
 Action tools are disabled by default and need both controls below:
 
 1. Add each exact action capability to `MULTIPLEX_MCP_CAPABILITIES` in the MCP client config.
-2. Create a short-lived local approval for exact Project and Session IDs.
+2. Create a short-lived local approval for exact folders and Session IDs.
 
 Available action capabilities are `sessions.launch`, `sessions.wait`, `sessions.attach`,
 `sessions.cancel`, `sessions.input`, `sessions.resume.review`, `sessions.resume`, and
@@ -74,7 +74,7 @@ termirust-mcp-authorize grant \
 
 termirust-mcp-authorize grant \
   --actions launch \
-  --projects 22222222-2222-2222-2222-222222222222 \
+  --folders ~/src/payments \
   --minutes 10
 ```
 

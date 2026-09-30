@@ -8,7 +8,7 @@ use multiplex_domain::{
     ActivityState, AuthenticatedPeer, ControllerCapabilities, ControllerCapability,
     HostedSessionId, HostedSessionState, OccupantGeneration, OccupantOwnership,
 };
-use multiplex_store::{ProjectRepository, SessionRepository, read_host_metadata};
+use multiplex_store::{LibraryRepository, SessionRepository, read_host_metadata};
 use rand::RngCore as _;
 use tokio_util::sync::CancellationToken;
 
@@ -26,7 +26,7 @@ use crate::{
 #[derive(Clone)]
 pub struct HostBackendFactory {
     sessions: SessionRepository,
-    projects: ProjectRepository,
+    library: LibraryRepository,
     runtime_parent: PathBuf,
     desktop_pane_bridge: Option<DesktopPaneBridgeEndpoint>,
     tmux_sessions: Option<TmuxSessionSource>,
@@ -38,7 +38,7 @@ impl std::fmt::Debug for HostBackendFactory {
         formatter
             .debug_struct("HostBackendFactory")
             .field("sessions", &"[REDACTED]")
-            .field("projects", &"[REDACTED]")
+            .field("library", &"[REDACTED]")
             .field("runtime_parent", &"[REDACTED]")
             .field("desktop_pane_bridge", &self.desktop_pane_bridge.is_some())
             .field("tmux_sessions", &self.tmux_sessions.is_some())
@@ -49,12 +49,12 @@ impl std::fmt::Debug for HostBackendFactory {
 impl HostBackendFactory {
     pub fn new(
         sessions: SessionRepository,
-        projects: ProjectRepository,
+        library: LibraryRepository,
         runtime_parent: impl Into<PathBuf>,
     ) -> Self {
         Self {
             sessions,
-            projects,
+            library,
             runtime_parent: runtime_parent.into(),
             desktop_pane_bridge: None,
             tmux_sessions: None,
@@ -87,7 +87,7 @@ impl ControllerBackendFactory for HostBackendFactory {
     ) -> Result<Box<dyn ControllerConnectionBackend>, ListenerError> {
         Ok(Box::new(HostConnectionBackend {
             sessions: self.sessions.clone(),
-            projects: self.projects.clone(),
+            library: self.library.clone(),
             runtime_parent: self.runtime_parent.clone(),
             capabilities: peer.capabilities,
             clients: HashMap::new(),
@@ -179,7 +179,7 @@ impl Drop for TmuxConnectionState {
 
 struct HostConnectionBackend {
     sessions: SessionRepository,
-    projects: ProjectRepository,
+    library: LibraryRepository,
     runtime_parent: PathBuf,
     capabilities: ControllerCapabilities,
     clients: HashMap<HostedSessionId, HostClient>,
@@ -787,7 +787,6 @@ impl HostConnectionBackend {
             runtime: Some(TMUX_RUNTIME_ID.to_owned()),
             capabilities: capabilities.to_vec(),
             title: session.title(),
-            project: None,
             group: None,
             lifecycle: lifecycle_code(HostedSessionState::Live).to_owned(),
             activity: activity_code(ActivityState::Unknown).to_owned(),
@@ -805,26 +804,16 @@ impl HostConnectionBackend {
             .sessions
             .load()
             .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
-        let project_snapshot = self
-            .projects
+        let library_snapshot = self
+            .library
             .load()
             .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
         let revision = session_snapshot
             .revision
             .get()
-            .saturating_add(project_snapshot.revision.get())
+            .saturating_add(library_snapshot.revision.get())
             .saturating_add(1);
-        let project_names = project_snapshot
-            .projects
-            .iter()
-            .map(|summary| {
-                (
-                    summary.project.id,
-                    summary.project.display_name.as_str().to_owned(),
-                )
-            })
-            .collect::<HashMap<_, _>>();
-        let group_names = project_snapshot
+        let group_names = library_snapshot
             .groups
             .iter()
             .map(|group| (group.id, group.name.to_string()))
@@ -850,7 +839,6 @@ impl HostConnectionBackend {
                 runtime: occupant.map(|occupant| occupant.runtime_id.as_str().to_owned()),
                 capabilities: controller_session_capabilities(self.capabilities),
                 title: session.title.to_string(),
-                project: project_names.get(&session.project_id).cloned(),
                 group: session
                     .group_id
                     .and_then(|group_id| group_names.get(&group_id).cloned()),
@@ -906,7 +894,6 @@ fn console_session_summary(
         runtime: Some(CONSOLE_RUNTIME_ID.to_owned()),
         capabilities: capabilities.to_vec(),
         title: session.record.title(),
-        project: None,
         group: None,
         lifecycle: lifecycle_code(HostedSessionState::Live).to_owned(),
         activity: activity_code(ActivityState::Unknown).to_owned(),
@@ -1035,10 +1022,10 @@ mod tests {
             .unwrap();
         #[cfg(not(unix))]
         let runtime = tempfile::tempdir().unwrap();
-        let project_root = fixture.path().join("projects");
+        let library_root = fixture.path().join("library");
         let data_root = fixture.path().join("durable-sessions");
-        let sessions = SessionRepository::open(project_root.clone(), data_root.clone()).unwrap();
-        let projects = ProjectRepository::open(project_root).unwrap();
+        let sessions = SessionRepository::open(library_root.clone(), data_root.clone()).unwrap();
+        let library = LibraryRepository::open(library_root).unwrap();
         let console_root = multiplex_store::console_sessions_root(&data_root);
         let session_id = HostedSessionId::new();
         let session_dir = console_root.join(session_id.to_string());
@@ -1100,7 +1087,7 @@ mod tests {
 
         let mut backend = HostConnectionBackend {
             sessions,
-            projects,
+            library,
             runtime_parent: runtime.path().to_path_buf(),
             capabilities: ControllerCapabilities::default()
                 .with(ControllerCapability::ObserveSessions)
@@ -1181,11 +1168,11 @@ mod tests {
     #[tokio::test]
     async fn session_list_puts_live_desktop_panes_before_durable_history() {
         let fixture = tempfile::tempdir().unwrap();
-        let project_root = fixture.path().join("projects");
+        let library_root = fixture.path().join("library");
         let sessions =
-            SessionRepository::open(project_root.clone(), fixture.path().join("session-data"))
+            SessionRepository::open(library_root.clone(), fixture.path().join("session-data"))
                 .unwrap();
-        let projects = ProjectRepository::open(project_root).unwrap();
+        let library = LibraryRepository::open(library_root).unwrap();
         let registry = DesktopPaneRegistry::default();
         let session_id = HostedSessionId::new();
         let writes = Arc::new(AtomicUsize::new(0));
@@ -1209,7 +1196,7 @@ mod tests {
             .with(ControllerCapability::Resize);
         let mut backend = HostConnectionBackend {
             sessions,
-            projects,
+            library,
             runtime_parent: fixture.path().join("runtime"),
             capabilities,
             clients: HashMap::new(),
@@ -1253,11 +1240,11 @@ mod tests {
     #[tokio::test]
     async fn live_desktop_pane_attach_replays_output_and_accepts_input() {
         let fixture = tempfile::tempdir().unwrap();
-        let project_root = fixture.path().join("projects");
+        let library_root = fixture.path().join("library");
         let sessions =
-            SessionRepository::open(project_root.clone(), fixture.path().join("session-data"))
+            SessionRepository::open(library_root.clone(), fixture.path().join("session-data"))
                 .unwrap();
-        let projects = ProjectRepository::open(project_root).unwrap();
+        let library = LibraryRepository::open(library_root).unwrap();
         let registry = DesktopPaneRegistry::default();
         let session_id = HostedSessionId::new();
         let written = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -1282,7 +1269,7 @@ mod tests {
             .with(ControllerCapability::SendInput);
         let mut backend = HostConnectionBackend {
             sessions,
-            projects,
+            library,
             runtime_parent: fixture.path().join("runtime"),
             capabilities,
             clients: HashMap::new(),
@@ -1377,18 +1364,18 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_phone_asking_for_a_terminal_reaches_the_app() {
         let fixture = tempfile::tempdir().unwrap();
-        let project_root = fixture.path().join("projects");
+        let library_root = fixture.path().join("library");
         let sessions =
-            SessionRepository::open(project_root.clone(), fixture.path().join("session-data"))
+            SessionRepository::open(library_root.clone(), fixture.path().join("session-data"))
                 .unwrap();
-        let projects = ProjectRepository::open(project_root).unwrap();
+        let library = LibraryRepository::open(library_root).unwrap();
         let registry = DesktopPaneRegistry::default();
         let server =
             DesktopPaneBridgeServer::start(fixture.path().join("bridge"), registry.clone())
                 .unwrap();
         let mut backend = HostConnectionBackend {
             sessions,
-            projects,
+            library,
             runtime_parent: fixture.path().join("runtime"),
             capabilities: ControllerCapabilities::default()
                 .with(ControllerCapability::ObserveSessions)

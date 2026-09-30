@@ -24,7 +24,7 @@ const NODE_MASK: u64 = (1_u64 << 60) - 1;
 pub enum SettingsSectionId {
     Appearance,
     Terminal,
-    ProjectsSessions,
+    Sessions,
     PresetsRuntimes,
     Notifications,
     Keyboard,
@@ -37,7 +37,7 @@ impl SettingsSectionId {
     pub const ALL: [Self; 9] = [
         Self::Appearance,
         Self::Terminal,
-        Self::ProjectsSessions,
+        Self::Sessions,
         Self::PresetsRuntimes,
         Self::Notifications,
         Self::Keyboard,
@@ -50,7 +50,7 @@ impl SettingsSectionId {
         match self {
             Self::Appearance => MessageId::SettingsSectionAppearance,
             Self::Terminal => MessageId::SettingsSectionTerminal,
-            Self::ProjectsSessions => MessageId::SettingsSectionProjectsSessions,
+            Self::Sessions => MessageId::SettingsSectionSessions,
             Self::PresetsRuntimes => MessageId::SettingsSectionPresetsRuntimes,
             Self::Notifications => MessageId::SettingsSectionNotifications,
             Self::Keyboard => MessageId::SettingsSectionKeyboard,
@@ -64,7 +64,7 @@ impl SettingsSectionId {
         match self {
             Self::Appearance => MessageId::SettingsSectionAppearanceDescription,
             Self::Terminal => MessageId::SettingsSectionTerminalDescription,
-            Self::ProjectsSessions => MessageId::SettingsSectionProjectsSessionsDescription,
+            Self::Sessions => MessageId::SettingsSectionSessionsDescription,
             Self::PresetsRuntimes => MessageId::SettingsSectionPresetsRuntimesDescription,
             Self::Notifications => MessageId::SettingsSectionNotificationsDescription,
             Self::Keyboard => MessageId::SettingsSectionKeyboardDescription,
@@ -166,7 +166,7 @@ impl SettingId {
             | Self::PersistentLocalSessions
             | Self::AutoReconnectAttempts
             | Self::SshKeepalive
-            | Self::ReconnectDelay => SettingsSectionId::ProjectsSessions,
+            | Self::ReconnectDelay => SettingsSectionId::Sessions,
             Self::LocalShellProgram | Self::LocalShellWorkingDirectory | Self::CliStatus => {
                 SettingsSectionId::PresetsRuntimes
             }

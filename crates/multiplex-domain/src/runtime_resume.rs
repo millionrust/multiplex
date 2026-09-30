@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 use crate::{
     CommandId, ExecutableFingerprint, HostedSession, HostedSessionId, HostedSessionState,
-    OccupantGeneration, OccupantOwnership, PermissionPolicy, ProjectId, RecognitionConfidence,
-    Revision, RuntimeCapability, RuntimeId, RuntimeRecognition, RuntimeVersion,
+    OccupantGeneration, OccupantOwnership, PermissionPolicy, RecognitionConfidence, Revision,
+    RuntimeCapability, RuntimeId, RuntimeRecognition, RuntimeVersion,
 };
 
 pub const CODEX_RESUME_VERSION: RuntimeVersion = RuntimeVersion::new(0, 150, 1);
@@ -65,7 +65,6 @@ pub struct ResumeCandidate {
 pub struct ResumePlan {
     pub candidate: ResumeCandidate,
     pub replacement_session_id: HostedSessionId,
-    pub canonical_project: ProjectId,
     pub working_directory: PathBuf,
     pub permission_policy: PermissionPolicy,
     pub executable: PathBuf,
@@ -89,7 +88,6 @@ impl fmt::Debug for ResumePlan {
             .debug_struct("ResumePlan")
             .field("candidate", &self.candidate)
             .field("replacement_session_id", &self.replacement_session_id)
-            .field("canonical_project", &self.canonical_project)
             .field("working_directory", &"<redacted>")
             .field("permission_policy", &self.permission_policy)
             .field("executable", &"<redacted>")
@@ -228,7 +226,7 @@ mod tests {
     fn session(lifecycle: HostedSessionState) -> HostedSession {
         HostedSession {
             id: HostedSessionId::new(),
-            project_id: ProjectId::new(),
+            folder: crate::CanonicalPath::resolve(std::env::temp_dir().as_path()).unwrap(),
             group_id: None,
             preset_id: Some(PresetId::new()),
             title: SessionTitle::new("Resume fixture").unwrap(),

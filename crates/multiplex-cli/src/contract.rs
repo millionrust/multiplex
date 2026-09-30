@@ -2,7 +2,7 @@ use std::fmt;
 
 use multiplex_domain::{
     ControllerCapability, HostedSession, HostedSessionState, LaunchPreset, PairedDeviceRecord,
-    PairedDeviceStatus, PermissionPolicy, PresetRisk, ProjectStatus, ProjectSummary, Revision,
+    PairedDeviceStatus, PermissionPolicy, PresetRisk, Revision,
 };
 use serde::Serialize;
 
@@ -126,14 +126,6 @@ pub struct StatusData {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct ProjectView {
-    pub id: String,
-    pub name: String,
-    pub status: String,
-    pub revision: u64,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct DeviceView {
     pub id: String,
     pub name: String,
@@ -212,22 +204,6 @@ pub struct DeviceRevocationData {
     pub active_access_revoked: bool,
 }
 
-impl From<&ProjectSummary> for ProjectView {
-    fn from(value: &ProjectSummary) -> Self {
-        Self {
-            id: value.project.id.to_string(),
-            name: value.project.display_name.as_str().to_string(),
-            status: match value.status {
-                ProjectStatus::Available => "available",
-                ProjectStatus::Unavailable => "unavailable",
-                ProjectStatus::PermissionDenied => "permission_denied",
-            }
-            .to_string(),
-            revision: value.project.revision.get(),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PresetView {
     pub id: String,
@@ -261,7 +237,6 @@ impl From<&LaunchPreset> for PresetView {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct SessionView {
     pub id: String,
-    pub project_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -278,7 +253,6 @@ impl From<&HostedSession> for SessionView {
     fn from(value: &HostedSession) -> Self {
         Self {
             id: value.id.to_string(),
-            project_id: value.project_id.to_string(),
             group_id: value.group_id.map(|id| id.to_string()),
             preset_id: value.preset_id.map(|id| id.to_string()),
             title: value.title.as_str().to_string(),
@@ -292,13 +266,7 @@ impl From<&HostedSession> for SessionView {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct ProjectListData {
-    pub projects: Vec<ProjectView>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PresetListData {
-    pub project_id: String,
     pub presets: Vec<PresetView>,
 }
 
@@ -462,7 +430,6 @@ pub struct ControllerRemoteSessionView {
 #[serde(untagged)]
 pub enum CliData {
     Status(StatusData),
-    Projects(ProjectListData),
     Devices(DeviceListData),
     Device(DeviceData),
     DeviceRevocationPreview(DeviceRevocationPreviewData),

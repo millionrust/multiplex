@@ -6,12 +6,11 @@ use std::time::Duration;
 
 use multiplex_client::LocalEndpoint;
 use multiplex_domain::{
-    ActivityAggregate, AddProject, CommandId, HostInstanceId, HostedSession, HostedSessionId,
-    HostedSessionState, OutputSequence, PositionKey, ProjectId, Revision, SessionTitle,
-    TitleSource,
+    ActivityAggregate, CanonicalPath, CommandId, HostInstanceId, HostedSession, HostedSessionId,
+    HostedSessionState, OutputSequence, PositionKey, Revision, SessionTitle, TitleSource,
 };
 use multiplex_session_host::{LaunchDescriptor, StopDeadlines, start};
-use multiplex_store::{JournalLimits, ProjectRepository, SessionRepository};
+use multiplex_store::{JournalLimits, SessionRepository};
 use multiplex_tui::{LocalManagementExecutor, ManagementCommand, ManagementExecutor};
 
 struct ChildGuard(Child);
@@ -29,25 +28,15 @@ async fn management_stop_targets_only_the_owned_host_and_preserves_sentinel() {
     let config_root = fixture.path().join("config");
     let metadata_root = config_root.join("agent-workspace");
     let session_data_root = config_root.join("durable-sessions");
-    let project_root = fixture.path().join("project");
-    std::fs::create_dir_all(&project_root).unwrap();
-    let project_id = ProjectId::new();
+    let session_folder = fixture.path().join("folder");
+    std::fs::create_dir_all(&session_folder).unwrap();
     let session_id = HostedSessionId::new();
-    ProjectRepository::open(&metadata_root)
-        .unwrap()
-        .add_project(AddProject {
-            id: project_id,
-            root: project_root.clone(),
-            display_name: Some("Stop fixture".into()),
-            expected: Revision::ZERO,
-        })
-        .unwrap();
     let sessions = SessionRepository::open(&metadata_root, &session_data_root).unwrap();
     let session = sessions
         .create_session(
             HostedSession {
                 id: session_id,
-                project_id,
+                folder: CanonicalPath::resolve(&session_folder).unwrap(),
                 group_id: None,
                 preset_id: None,
                 title: SessionTitle::new("Owned Host").unwrap(),
@@ -83,7 +72,7 @@ async fn management_stop_targets_only_the_owned_host_and_preserves_sentinel() {
             "printf 'MANAGED-HOST-READY\\n'; while IFS= read -r line; do printf '%s\\n' \"$line\"; done".into(),
         ],
         environment: BTreeMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
-        cwd: Some(project_root),
+        cwd: Some(session_folder),
         columns: 80,
         rows: 24,
         journal_limits: JournalLimits::default(),

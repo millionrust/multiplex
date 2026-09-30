@@ -9,7 +9,7 @@ use crate::localization::{TextId, TuiLocale, localize, text};
 use crate::management::{
     CommandProgress, ConfirmationKind, ManagementDraft, ManagementIntent, ManagementModel,
 };
-use crate::model::{FleetHealth, LoadState, PaneFocus, ProjectAvailability, ScopeId, TuiModel};
+use crate::model::{FleetHealth, LoadState, PaneFocus, ScopeId, TuiModel};
 use crate::resume::{ResumeModel, ResumeProgress};
 use crate::status;
 use crate::{
@@ -820,15 +820,15 @@ fn render_management_draft(
             )));
         }
         Some(ManagementDraft::Launch {
-            project_name,
+            folder,
             choices,
             selected,
             ..
         }) => {
-            let project = display_user(project_name, "project", options);
+            let folder = display_user(folder, "folder", options);
             lines.push(Line::from(format!(
-                "{} {project}",
-                localize(options.locale, "Project:")
+                "{} {folder}",
+                localize(options.locale, "Folder:")
             )));
             lines.push(Line::from(localize(
                 options.locale,
@@ -1024,20 +1024,20 @@ fn render_filter(frame: &mut Frame<'_>, area: Rect, model: &TuiModel, options: R
 
 fn render_content(frame: &mut Frame<'_>, area: Rect, model: &TuiModel, options: RenderOptions) {
     if area.width >= WIDE_WIDTH && model.inspector_visible() {
-        let [projects, sessions, inspector] = Layout::horizontal([
+        let [scopes, sessions, inspector] = Layout::horizontal([
             Constraint::Percentage(28),
             Constraint::Percentage(44),
             Constraint::Percentage(28),
         ])
         .areas(area);
-        render_projects(frame, projects, model, options);
+        render_scopes(frame, scopes, model, options);
         render_sessions(frame, sessions, model, options);
         render_inspector(frame, inspector, model, options);
     } else {
-        let [projects, primary] =
+        let [scopes, primary] =
             Layout::horizontal([Constraint::Percentage(34), Constraint::Percentage(66)])
                 .areas(area);
-        render_projects(frame, projects, model, options);
+        render_scopes(frame, scopes, model, options);
         if model.inspector_visible() && model.focus() == PaneFocus::Inspector {
             render_inspector(frame, primary, model, options);
         } else {
@@ -1046,7 +1046,7 @@ fn render_content(frame: &mut Frame<'_>, area: Rect, model: &TuiModel, options: 
     }
 }
 
-fn render_projects(frame: &mut Frame<'_>, area: Rect, model: &TuiModel, options: RenderOptions) {
+fn render_scopes(frame: &mut Frame<'_>, area: Rect, model: &TuiModel, options: RenderOptions) {
     let selected = model.selected_scope_index();
     let visible = usize::from(area.height.saturating_sub(2));
     let start = scroll_start(selected, visible, model.scope_rows().len());
@@ -1060,15 +1060,15 @@ fn render_projects(frame: &mut Frame<'_>, area: Rect, model: &TuiModel, options:
             let label = scope_label(model, scope, options);
             ListItem::new(label).style(row_style(
                 index == selected,
-                model.focus() == PaneFocus::Projects,
+                model.focus() == PaneFocus::Scopes,
                 options,
             ))
         })
         .collect::<Vec<_>>();
     frame.render_widget(
         List::new(items).block(panel(
-            text(options.locale, TextId::Projects),
-            model.focus() == PaneFocus::Projects,
+            text(options.locale, TextId::Scopes),
+            model.focus() == PaneFocus::Scopes,
             options,
         )),
         area,
@@ -1173,10 +1173,10 @@ fn render_status(frame: &mut Frame<'_>, area: Rect, model: &TuiModel, options: R
             FleetHealth::Partial => format!("partial; {} skipped", snapshot.skipped_records),
         };
         format!(
-            "{} projects  {} sessions  {health}  revisions {}/{}",
-            snapshot.projects.len(),
+            "{} groups  {} sessions  {health}  revisions {}/{}",
+            snapshot.groups.len(),
             snapshot.sessions.len(),
-            snapshot.revision.projects,
+            snapshot.revision.library,
             snapshot.revision.sessions
         )
     } else {
@@ -1201,7 +1201,7 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, options: RenderOptions) {
         Paragraph::new(vec![
             Line::from(text(options.locale, TextId::HelpKeys)),
             Line::from(
-                "Left/Right collapse or expand Projects. Enter attaches the selected Session.",
+                "Left returns to every Session. Enter attaches the selected Session.",
             ),
             Line::from("Terminal: Ctrl+Space then Esc detaches without stopping the Host."),
             Line::from(
@@ -1259,35 +1259,9 @@ fn render_attached_small(frame: &mut Frame<'_>, area: Rect, options: RenderOptio
 fn scope_label(model: &TuiModel, scope: &ScopeId, options: RenderOptions) -> String {
     match scope {
         ScopeId::All => text(options.locale, TextId::AllSessions),
-        ScopeId::Project(id) => model
-            .snapshot()
-            .and_then(|snapshot| snapshot.projects.iter().find(|project| &project.id == id))
-            .map(|project| {
-                let marker = if model.is_project_expanded(id) {
-                    "v"
-                } else {
-                    ">"
-                };
-                let state = match project.availability {
-                    ProjectAvailability::Available => "",
-                    ProjectAvailability::Unavailable => " [unavailable]",
-                    ProjectAvailability::PermissionDenied => " [permission denied]",
-                };
-                format!(
-                    "{marker} {}{state}",
-                    display_user(&project.name, "project", options)
-                )
-            })
-            .unwrap_or_else(|| "[missing project]".into()),
         ScopeId::Group(id) => model
             .snapshot()
-            .and_then(|snapshot| {
-                snapshot
-                    .projects
-                    .iter()
-                    .flat_map(|project| project.groups.iter())
-                    .find(|group| &group.id == id)
-            })
+            .and_then(|snapshot| snapshot.groups.iter().find(|group| &group.id == id))
             .map(|group| format!("  - {}", display_user(&group.name, "group", options)))
             .unwrap_or_else(|| "  - [missing group]".into()),
     }
@@ -1409,9 +1383,7 @@ mod tests {
     use ratatui::backend::TestBackend;
 
     use super::*;
-    use crate::model::{
-        FleetProject, FleetRevision, FleetSession, FleetSnapshot, ModelAction, ProjectAvailability,
-    };
+    use crate::model::{FleetGroup, FleetRevision, FleetSession, FleetSnapshot, ModelAction};
     use crate::{
         AttachBatch, AttachEvent, AttachedTerminal, HostAttachState, HostLifecycle, Viewport,
     };
@@ -1423,19 +1395,16 @@ mod tests {
             generation: 1,
             snapshot: FleetSnapshot {
                 revision: FleetRevision {
-                    projects: 1,
+                    library: 1,
                     sessions: 2,
                 },
-                projects: vec![FleetProject {
-                    id: "p1".into(),
+                groups: vec![FleetGroup {
+                    id: "g1".into(),
                     name: "Alpha".into(),
-                    availability: ProjectAvailability::Available,
-                    groups: Vec::new(),
                 }],
                 sessions: vec![FleetSession {
                     id: "s1".into(),
-                    project_id: "p1".into(),
-                    group_id: None,
+                    group_id: Some("g1".into()),
                     title: "Build".into(),
                     state: "live".into(),
                     activity: "busy".into(),
@@ -1514,13 +1483,13 @@ mod tests {
     fn wide_compact_small_and_recording_friendly_layouts_are_readable() {
         let model = ready_model();
         let wide = rendered(140, 32, &model, RenderOptions::default());
-        assert!(wide.contains("Projects"));
+        assert!(wide.contains("Scopes"));
         assert!(wide.contains("Sessions"));
         assert!(wide.contains("Inspector"));
         assert!(wide.contains("Build"));
 
         let compact = rendered(90, 24, &model, RenderOptions::default());
-        assert!(compact.contains("Projects"));
+        assert!(compact.contains("Scopes"));
         assert!(compact.contains("Sessions"));
 
         let small = rendered(60, 10, &model, RenderOptions::default());
@@ -1536,7 +1505,7 @@ mod tests {
                 ..RenderOptions::default()
             },
         );
-        assert!(recording.contains("[project hidden]"));
+        assert!(recording.contains("[group hidden]"));
         assert!(recording.contains("[session hidden]"));
         assert!(!recording.contains("Alpha"));
         assert!(!recording.contains("Build"));
@@ -1801,7 +1770,6 @@ mod tests {
     fn reviewed_resume_model() -> ResumeModel {
         let session = FleetSession {
             id: "00000000-0000-0000-0000-000000000007".into(),
-            project_id: "00000000-0000-0000-0000-000000000001".into(),
             group_id: None,
             title: "PRIVATE CODEX SESSION".into(),
             state: "exited".into(),

@@ -561,7 +561,7 @@ mod tests {
     #[derive(Clone, Debug, Eq, PartialEq)]
     struct ListenerStartCall {
         controller_root: PathBuf,
-        project_root: PathBuf,
+        library_root: PathBuf,
         session_data_root: PathBuf,
         runtime_parent: PathBuf,
         network_revision: ControllerNetworkRevision,
@@ -580,7 +580,7 @@ mod tests {
         ) -> Result<ControllerListenerProcess, ListenerProcessError> {
             self.calls.lock().unwrap().push(ListenerStartCall {
                 controller_root: descriptor.controller_root.clone(),
-                project_root: descriptor.project_root.clone(),
+                library_root: descriptor.library_root.clone(),
                 session_data_root: descriptor.session_data_root.clone(),
                 runtime_parent: descriptor.runtime_parent.clone(),
                 network_revision: descriptor.network_revision,
@@ -799,7 +799,7 @@ mod tests {
         };
         let descriptor = ListenerLaunchDescriptor::new(
             fixture.path().join("controller"),
-            fixture.path().join("projects"),
+            fixture.path().join("library"),
             fixture.path().join("sessions"),
             fixture.path().join("runtime"),
             ControllerNetworkRevision::ZERO,
@@ -827,7 +827,7 @@ mod tests {
             calls.lock().unwrap().as_slice(),
             [ListenerStartCall {
                 controller_root: fixture.path().join("controller"),
-                project_root: fixture.path().join("projects"),
+                library_root: fixture.path().join("library"),
                 session_data_root: fixture.path().join("sessions"),
                 runtime_parent: fixture.path().join("runtime"),
                 network_revision: ControllerNetworkRevision::ZERO,

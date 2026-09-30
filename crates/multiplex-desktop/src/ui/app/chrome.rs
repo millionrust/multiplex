@@ -1087,7 +1087,6 @@ impl MultiplexApp {
                 v_flex().gap(px(theme::SPACE_1)).children(
                     [
                         NavSection::Activity,
-                        NavSection::Projects,
                         NavSection::Hosts,
                         NavSection::Sessions,
                         NavSection::Sftp,

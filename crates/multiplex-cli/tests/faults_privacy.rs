@@ -37,7 +37,10 @@ fn missing_and_newer_stores_have_stable_safe_errors() {
         Arc::new(Mutex::new(FakeControllerState::default())),
     );
     let newer_error = newer_service
-        .execute(CliCommand::ProjectList, &Cancellation::default())
+        .execute(
+            CliCommand::SessionList(Default::default()),
+            &Cancellation::default(),
+        )
         .unwrap_err();
     assert_eq!(newer_error.code, ErrorCode::Incompatible);
     assert!(!newer_error.message.contains("format.json"));
@@ -63,7 +66,10 @@ fn metadata_lock_contention_times_out_without_hanging() {
     );
     let started = Instant::now();
     let error = service
-        .execute(CliCommand::ProjectList, &Cancellation::default())
+        .execute(
+            CliCommand::SessionList(Default::default()),
+            &Cancellation::default(),
+        )
         .unwrap_err();
     let elapsed = started.elapsed();
     assert_eq!(error.code, ErrorCode::Timeout);
@@ -77,7 +83,7 @@ fn debug_views_do_not_expose_local_paths_or_launch_arguments() {
     let seed = seed_store();
     let path_debug = format!("{:?}", seed.paths());
     assert!(path_debug.contains("<redacted>"));
-    assert!(!path_debug.contains(&seed.project_root.display().to_string()));
+    assert!(!path_debug.contains(&seed.folder.display().to_string()));
 
     let launcher = Arc::new(Mutex::new(FakeLauncherState::default()));
     let mut service = service(
@@ -88,7 +94,7 @@ fn debug_views_do_not_expose_local_paths_or_launch_arguments() {
     service
         .execute(
             CliCommand::SessionLaunch {
-                project_id: PROJECT_ID,
+                folder: seed.folder.clone(),
                 preset_id: PRESET_ID,
                 group_id: None,
             },

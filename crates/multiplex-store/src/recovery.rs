@@ -14,8 +14,8 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::health::MetadataLock;
+use crate::library::{read_regular_bounded, validate_library_metadata_bytes};
 use crate::presets::validate_preset_metadata_bytes;
-use crate::projects::{read_regular_bounded, validate_project_metadata_bytes};
 use crate::sessions::validate_session_metadata_bytes;
 use crate::{
     AtomicWriter, HealthRepository, IndexRepairKind, RepairCancellation, StoreError,
@@ -80,17 +80,20 @@ pub enum RecoveryStep {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MetadataFileKind {
-    Projects,
+    /// Groups and worktrees. A recovery journal written before Projects were removed calls it
+    /// `projects`.
+    #[serde(alias = "projects")]
+    Library,
     Sessions,
     Presets,
 }
 
 impl MetadataFileKind {
-    const ALL: [Self; 3] = [Self::Projects, Self::Sessions, Self::Presets];
+    const ALL: [Self; 3] = [Self::Library, Self::Sessions, Self::Presets];
 
     fn primary_name(self) -> &'static str {
         match self {
-            Self::Projects => "projects.json",
+            Self::Library => "library.json",
             Self::Sessions => "sessions.json",
             Self::Presets => "presets.json",
         }
@@ -98,7 +101,7 @@ impl MetadataFileKind {
 
     fn last_good_name(self) -> &'static str {
         match self {
-            Self::Projects => "projects.last-good.json",
+            Self::Library => "library.last-good.json",
             Self::Sessions => "sessions.last-good.json",
             Self::Presets => "presets.last-good.json",
         }
@@ -106,7 +109,7 @@ impl MetadataFileKind {
 
     fn backup_name(self) -> &'static str {
         match self {
-            Self::Projects => "projects.current.json",
+            Self::Library => "library.current.json",
             Self::Sessions => "sessions.current.json",
             Self::Presets => "presets.current.json",
         }
@@ -542,15 +545,12 @@ impl MetadataRecoveryService {
 
     fn rebuild_indexes(&self) -> Result<(), RecoveryError> {
         let health = HealthRepository::open(&self.root).map_err(map_health)?;
-        for kind in [
-            IndexRepairKind::ProjectSessionIndex,
-            IndexRepairKind::PaletteIndex,
-        ] {
-            let plan = health.plan_repair(kind).map_err(map_health)?;
-            health
-                .repair(plan, &RepairCancellation::default())
-                .map_err(map_health)?;
-        }
+        let plan = health
+            .plan_repair(IndexRepairKind::PaletteIndex)
+            .map_err(map_health)?;
+        health
+            .repair(plan, &RepairCancellation::default())
+            .map_err(map_health)?;
         Ok(())
     }
 
@@ -713,7 +713,7 @@ fn validate_format(root: &Path) -> Result<(), RecoveryError> {
 
 fn validate_kind(kind: MetadataFileKind, bytes: &[u8]) -> Result<Revision, StoreError> {
     match kind {
-        MetadataFileKind::Projects => validate_project_metadata_bytes(bytes),
+        MetadataFileKind::Library => validate_library_metadata_bytes(bytes),
         MetadataFileKind::Sessions => validate_session_metadata_bytes(bytes),
         MetadataFileKind::Presets => validate_preset_metadata_bytes(bytes),
     }
@@ -798,6 +798,8 @@ fn map_store(value: StoreError) -> RecoveryError {
         | StoreError::PresetDomain(_)
         | StoreError::SessionDomain(_)
         | StoreError::WorktreeDomain(_)
+        | StoreError::StaleRevision { .. }
+        | StoreError::RevisionOverflow
         | StoreError::InvalidInstanceId => error(RecoveryErrorCode::VerificationFailed),
         StoreError::Io { kind, .. } => map_io(io::Error::from(kind)),
     }

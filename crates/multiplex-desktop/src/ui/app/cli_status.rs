@@ -13,12 +13,12 @@ use crate::ui::theme;
 
 const CLI_EXAMPLES: [&str; 3] = [
     "multiplex-cli status --json",
-    "multiplex-cli project list --json",
+    "multiplex-cli preset list --json",
     "multiplex-cli session list --json",
 ];
 const CLI_EXAMPLE_SELECTORS: [&str; 3] = [
     "settings-cli-copy-example-status",
-    "settings-cli-copy-example-projects",
+    "settings-cli-copy-example-presets",
     "settings-cli-copy-example-sessions",
 ];
 

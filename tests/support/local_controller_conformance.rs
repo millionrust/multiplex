@@ -1,6 +1,6 @@
 use multiplex_domain::{
-    ActivityAggregate, HostedSession, HostedSessionId, HostedSessionState, OutputSequence,
-    PositionKey, PresetId, ProjectId, Revision, SessionMutation, SessionTitle, TitleSource,
+    ActivityAggregate, CanonicalPath, HostedSession, HostedSessionId, HostedSessionState,
+    OutputSequence, PositionKey, PresetId, Revision, SessionMutation, SessionTitle, TitleSource,
 };
 use multiplex_store::SessionSnapshot;
 use serde_json::{Value, json};
@@ -46,7 +46,6 @@ pub fn load_fixture() -> ConformanceFixture {
     assert_eq!(document["schema_version"], 1);
     let initial = &document["initial"];
     let session_id = parse_id::<HostedSessionId>(&initial["session_id"]);
-    let project_id = parse_id::<ProjectId>(&initial["project_id"]);
     let preset_id = parse_id::<PresetId>(&initial["preset_id"]);
     let last_output_sequence = number(&initial["last_output_sequence"]);
     let read_through_sequence = number(&initial["read_through_sequence"]);
@@ -70,7 +69,8 @@ pub fn load_fixture() -> ConformanceFixture {
     ConformanceFixture {
         initial: HostedSession {
             id: session_id,
-            project_id,
+            // Where it runs is not part of what this fixture holds implementations to.
+            folder: CanonicalPath::resolve(&std::env::temp_dir()).expect("temp folder"),
             group_id: None,
             preset_id: Some(preset_id),
             title: SessionTitle::new(string(&initial["title"])).expect("fixture title is valid"),
@@ -119,7 +119,6 @@ pub fn normalized_snapshot(snapshot: &SessionSnapshot) -> Value {
         "repository_revision": snapshot.revision.get(),
         "session": {
             "id": session.id.to_string(),
-            "project_id": session.project_id.to_string(),
             "preset_id": session.preset_id.map(|id| id.to_string()),
             "title": session.title.as_str(),
             "title_source": serde_json::to_value(session.title_source).unwrap(),

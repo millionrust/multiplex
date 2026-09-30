@@ -4,10 +4,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use multiplex_browser::ApprovedOrigin;
 use multiplex_cli::CliPaths;
-use multiplex_domain::{CommandId, HostedSessionId, ProjectId};
+use multiplex_domain::{CommandId, HostedSessionId};
 use multiplex_mcp::{ActionPolicy, ActionPolicyStore, ApprovedAction};
 
-const USAGE: &str = "usage:\n  termirust-mcp-authorize grant --actions ACTION,... [--projects UUID,...] [--sessions UUID,...] [--browser-origins ORIGIN,...] --minutes 1..1440\n  termirust-mcp-authorize revoke";
+const USAGE: &str = "usage:\n  termirust-mcp-authorize grant --actions ACTION,... [--folders PATH,...] [--sessions UUID,...] [--browser-origins ORIGIN,...] --minutes 1..1440\n  termirust-mcp-authorize revoke";
 
 fn main() -> ExitCode {
     match run(std::env::args().skip(1).collect()) {
@@ -39,7 +39,7 @@ fn run(arguments: Vec<String>) -> Result<String, &'static str> {
 
 fn grant(store: &ActionPolicyStore, arguments: &[String]) -> Result<String, &'static str> {
     let mut actions = None;
-    let mut projects = Vec::new();
+    let mut folders = Vec::new();
     let mut sessions = Vec::new();
     let mut browser_origins = Vec::new();
     let mut minutes = None;
@@ -51,7 +51,7 @@ fn grant(store: &ActionPolicyStore, arguments: &[String]) -> Result<String, &'st
             .ok_or("authorization option is missing a value")?;
         match flag {
             "--actions" if actions.is_none() => actions = Some(parse_actions(value)?),
-            "--projects" if projects.is_empty() => projects = parse_ids::<ProjectId>(value)?,
+            "--folders" if folders.is_empty() => folders = parse_folders(value)?,
             "--sessions" if sessions.is_empty() => sessions = parse_ids::<HostedSessionId>(value)?,
             "--browser-origins" if browser_origins.is_empty() => {
                 browser_origins = parse_browser_origins(value)?
@@ -71,11 +71,11 @@ fn grant(store: &ActionPolicyStore, arguments: &[String]) -> Result<String, &'st
     }
     let actions = actions.ok_or("--actions is required")?;
     let minutes = minutes.ok_or("--minutes is required")?;
-    if projects.is_empty() && sessions.is_empty() {
-        return Err("at least one Project or Session scope is required");
+    if folders.is_empty() && sessions.is_empty() {
+        return Err("at least one folder or Session scope is required");
     }
-    if actions.contains(&ApprovedAction::Launch) && projects.is_empty() {
-        return Err("launch approval requires a Project scope");
+    if actions.contains(&ApprovedAction::Launch) && folders.is_empty() {
+        return Err("launch approval requires a folder scope");
     }
     if actions
         .iter()
@@ -103,7 +103,7 @@ fn grant(store: &ActionPolicyStore, arguments: &[String]) -> Result<String, &'st
         grant_id: CommandId::new().to_string(),
         expires_at_unix_ms,
         actions: actions.into_iter().collect(),
-        project_ids: projects,
+        folders,
         session_ids: sessions,
         browser_origins,
     };
@@ -171,4 +171,20 @@ fn now_millis() -> u64 {
         .as_millis()
         .try_into()
         .unwrap_or(u64::MAX)
+}
+
+/// A grant's folders, each resolved so the record holds the one true form of the path.
+fn parse_folders(value: &str) -> Result<Vec<String>, &'static str> {
+    let folders = value
+        .split(',')
+        .map(|value| {
+            multiplex_domain::CanonicalPath::resolve(std::path::Path::new(value.trim()))
+                .map(|path| path.as_path().display().to_string())
+                .map_err(|_| "folder scope must be a readable directory")
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if folders.is_empty() {
+        return Err("folder scope is empty");
+    }
+    Ok(folders)
 }

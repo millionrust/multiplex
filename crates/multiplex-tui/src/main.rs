@@ -70,7 +70,7 @@ fn parse_options(arguments: impl Iterator<Item = String>) -> io::Result<ParseOut
 fn print_help() {
     println!("multiplex-tui [--inline] [--no-color] [--recording-friendly] [--locale LOCALE]");
     println!();
-    println!("Project, Session and paired Device control with durable terminal attachment.");
+    println!("Session and paired Device control with durable terminal attachment.");
     println!("Locales: en-US, en-XA, ar-XB");
     println!("Fleet keys: arrows/j/k, Left/Right, Tab/Shift+Tab, Enter, /, Esc, i, r, c, d, ?, q");
     println!("Sessions: c reviews exact read-only Codex resume; Enter confirms; Esc cancels");

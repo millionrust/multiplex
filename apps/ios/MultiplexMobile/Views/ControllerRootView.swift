@@ -948,9 +948,7 @@ private struct ControllerSessionFleetView: View {
         let waiting = session.activity == "needs_input"
         return FlowRow(
             name: ControllerPresentation.isolated(session.title),
-            meta: [session.runtime, session.project]
-                .compactMap { $0 }
-                .joined(separator: " · "),
+            meta: session.runtime,
             glyph: "terminal",
             glyphOn: waiting,
             divider: !last,
@@ -1510,7 +1508,7 @@ private struct ControllerSessionRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                if session.project != nil || session.group != nil {
+                if session.group != nil {
                     Text(metadata)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -1578,10 +1576,7 @@ private struct ControllerSessionRow: View {
     }
 
     private var metadata: String {
-        [session.project, session.group]
-            .compactMap { $0 }
-            .map(ControllerPresentation.isolated)
-            .joined(separator: " · ")
+        session.group.map(ControllerPresentation.isolated) ?? ""
     }
 
     private var lifecycleIcon: String {

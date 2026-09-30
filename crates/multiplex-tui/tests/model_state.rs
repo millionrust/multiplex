@@ -2,23 +2,16 @@ use std::time::{Duration, Instant};
 
 use multiplex_tui::render::{RenderOptions, render};
 use multiplex_tui::{
-    FleetHealth, FleetProject, FleetRevision, FleetSession, FleetSnapshot, LoadState,
-    MAX_VISIBLE_SESSIONS, ModelAction, ModelEffect, ProjectAvailability, TuiDiagnostic, TuiModel,
+    FleetHealth, FleetRevision, FleetSession, FleetSnapshot, LoadState, MAX_VISIBLE_SESSIONS,
+    ModelAction, ModelEffect, TuiDiagnostic, TuiModel,
 };
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
 fn large_snapshot() -> FleetSnapshot {
-    let project = FleetProject {
-        id: "project".into(),
-        name: "Large project".into(),
-        availability: ProjectAvailability::Available,
-        groups: Vec::new(),
-    };
     let sessions = (0..MAX_VISIBLE_SESSIONS)
         .map(|index| FleetSession {
             id: format!("session-{index:05}"),
-            project_id: project.id.clone(),
             group_id: None,
             title: format!("Session {index:05}"),
             state: if index % 2 == 0 { "live" } else { "offline" }.into(),
@@ -31,10 +24,10 @@ fn large_snapshot() -> FleetSnapshot {
         .collect();
     FleetSnapshot {
         revision: FleetRevision {
-            projects: 1,
+            library: 1,
             sessions: MAX_VISIBLE_SESSIONS as u64,
         },
-        projects: vec![project],
+        groups: Vec::new(),
         sessions,
         health: FleetHealth::Healthy,
         skipped_records: 0,

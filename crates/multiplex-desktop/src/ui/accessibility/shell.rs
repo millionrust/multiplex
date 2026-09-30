@@ -247,22 +247,22 @@ mod tests {
     fn product_snapshot(control_disabled: bool, confirm_enabled: bool) -> ShellSemanticSnapshot {
         ShellSemanticSnapshot {
             product_session: Some(ProductSessionSemanticSnapshot {
-                screen: ProductSessionScreen::Projects,
+                screen: ProductSessionScreen::Sessions,
                 state: ProductSessionSurfaceState::Ready,
                 rows: Vec::new(),
                 controls: vec![ProductSessionControl {
-                    action: ProductSessionAction::AddProject,
+                    action: ProductSessionAction::AddGroup,
                     parent: None,
                     role: ProductControlRole::Button,
-                    name: MessageId::ProjectsAddAction,
+                    name: MessageId::CommonOpen,
                     value: None,
                     selected: false,
                     disabled: control_disabled,
                     in_dialog: false,
                 }],
                 dialog: Some(DestructiveActionPresentation {
-                    kind: DestructiveActionKind::RemoveProject,
-                    target: AccessibleRowId::project(7),
+                    kind: DestructiveActionKind::RemoveGroup,
+                    target: AccessibleRowId::group(7),
                     revision: 3,
                     confirm_enabled,
                 }),

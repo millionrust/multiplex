@@ -710,7 +710,7 @@ impl MultiplexApp {
         };
         match command {
             HostConnectionAccessibilityCommand::FocusRow(_) => {
-                self.project_list_focus.focus(window);
+                self.session_list_focus.focus(window);
             }
             HostConnectionAccessibilityCommand::ActivateRow(row_id) => {
                 if snapshot
@@ -814,7 +814,7 @@ impl MultiplexApp {
         if let Some(input) = input {
             input.read(cx).focus_handle(cx).focus(window);
         } else {
-            self.project_list_focus.focus(window);
+            self.session_list_focus.focus(window);
         }
     }
 

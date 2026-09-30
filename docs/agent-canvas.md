@@ -10,9 +10,9 @@ SSH, restore, and tmux runtimes; changing layout does not reconnect a pane.
 2. In the workspace header, choose `Canvas` instead of `Split`.
 3. Select `Add` to add a local terminal, saved SSH host, Codex, Claude Code,
    Gemini CLI, a custom executable, a sticky note, or a group frame.
-4. Select `Project: <folder>` to choose the working directory for new local
-   terminals and coding agents. Existing running terminals are not restarted or
-   moved when the project folder changes.
+4. Select the folder button in the toolbar to choose the working directory for new
+   local terminals and coding agents. Existing running terminals are not restarted or
+   moved when the folder changes.
 5. Drag a node by its header. Double-click the header to rename it. Drag its
    lower-right handle to resize it.
 6. Pan empty space and use the zoom and fit buttons in the canvas toolbar. The
@@ -75,10 +75,10 @@ Multiplex does not open a broken node; it shows platform-specific installation
 guidance instead. Ordinary `Local Terminal` remains the default and does not
 require tmux.
 
-`Files` opens a local project panel for the selected project folder. It provides
+`Files` opens a local files panel for the selected folder. It provides
 folder navigation, UTF-8 text viewing and editing, explicit Save/Revert actions,
 Git status, and the unstaged diff for the selected file. The panel refuses files
-outside the selected project root (including escaping symlinks), binary files,
+outside the selected folder (including escaping symlinks), binary files,
 and files larger than 1 MB. Save also refuses to overwrite a file that changed
 on disk after it was opened, which protects concurrent agent edits. Git controls
 are inspect/copy-only; they never stage, discard, commit, or execute a shell
@@ -103,7 +103,7 @@ Closing any other connected terminal asks for confirmation before ending its
 active local process or SSH connection.
 
 Node positions, sizes, collapsed state, links, and viewport are persisted with
-the workspace. The selected project folder is persisted too, and restored local
+the workspace. The selected folder is persisted too, and restored local
 terminals and newly created agents continue to use it. A restored structured node
 does not silently launch a process; select `Restart` inside that node.
 

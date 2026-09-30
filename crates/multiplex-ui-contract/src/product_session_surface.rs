@@ -26,7 +26,6 @@ const PRODUCT_CONTROL_NODE_MASK: u64 = (1_u64 << 61) - 1;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum AccessibleRowKind {
-    Project,
     Group,
     Session,
 }
@@ -38,13 +37,6 @@ pub struct AccessibleRowId {
 }
 
 impl AccessibleRowId {
-    pub const fn project(value: u128) -> Self {
-        Self {
-            kind: AccessibleRowKind::Project,
-            value,
-        }
-    }
-
     pub const fn group(value: u128) -> Self {
         Self {
             kind: AccessibleRowKind::Group,
@@ -62,7 +54,6 @@ impl AccessibleRowId {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HierarchyLevel {
-    Project,
     Group,
     Session,
 }
@@ -70,9 +61,8 @@ pub enum HierarchyLevel {
 impl HierarchyLevel {
     pub const fn depth(self) -> u8 {
         match self {
-            Self::Project => 1,
-            Self::Group => 2,
-            Self::Session => 3,
+            Self::Group => 1,
+            Self::Session => 2,
         }
     }
 }
@@ -103,7 +93,6 @@ impl AccessibleCollectionRow {
             return Err(SemanticError::new(SemanticErrorCode::InvalidValue, None));
         }
         let expected_kind = match self.level {
-            HierarchyLevel::Project => AccessibleRowKind::Project,
             HierarchyLevel::Group => AccessibleRowKind::Group,
             HierarchyLevel::Session => AccessibleRowKind::Session,
         };
@@ -112,11 +101,10 @@ impl AccessibleCollectionRow {
         }
         let valid_parent = matches!(
             (self.level, self.parent.map(|parent| parent.kind)),
-            (HierarchyLevel::Project, None)
-                | (HierarchyLevel::Group, Some(AccessibleRowKind::Project))
+            (HierarchyLevel::Group, None)
                 | (
                     HierarchyLevel::Session,
-                    Some(AccessibleRowKind::Project | AccessibleRowKind::Group)
+                    None | Some(AccessibleRowKind::Group)
                 )
         );
         if !valid_parent {
@@ -128,14 +116,12 @@ impl AccessibleCollectionRow {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ProductSessionScreen {
-    Projects,
     Sessions,
 }
 
 impl ProductSessionScreen {
     const fn title(self) -> MessageId {
         match self {
-            Self::Projects => MessageId::ProjectsTitle,
             Self::Sessions => MessageId::SessionSidebarTitle,
         }
     }
@@ -211,7 +197,6 @@ impl ProductSessionSurfaceState {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum DestructiveActionKind {
-    RemoveProject,
     RemoveGroup,
     StopAndArchive,
     RemoveSessionData,
@@ -220,7 +205,6 @@ pub enum DestructiveActionKind {
 impl DestructiveActionKind {
     const fn title(self) -> MessageId {
         match self {
-            Self::RemoveProject => MessageId::ProjectRemoveAction,
             Self::RemoveGroup => MessageId::GroupRemoveTitle,
             Self::StopAndArchive => MessageId::SessionLibraryStopArchiveAction,
             Self::RemoveSessionData => MessageId::SessionLibraryRemoveTitle,
@@ -244,14 +228,8 @@ pub enum ProductMoveDirection {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ProductSessionAction {
-    RetryProjects,
-    AddProject,
-    SetProjectName,
-    ConfirmProjectAdd,
-    CancelProjectAdd,
-    RemoveProject(AccessibleRowId),
-    UndoProjectRemoval,
-    AddGroup(AccessibleRowId),
+    RetryLibrary,
+    AddGroup,
     RenameGroup(AccessibleRowId),
     SetGroupName,
     SaveGroup,
@@ -731,7 +709,6 @@ pub fn product_dialog_confirm_semantic_node() -> SemanticNodeId {
 fn product_row_semantic_node(id: AccessibleRowId) -> SemanticNodeId {
     let folded = (id.value as u64) ^ ((id.value >> 64) as u64);
     let kind = match id.kind {
-        AccessibleRowKind::Project => 0_u64,
         AccessibleRowKind::Group => 1_u64,
         AccessibleRowKind::Session => 2_u64,
     };
@@ -767,7 +744,6 @@ impl Hasher for StableActionHasher {
 
 fn private_row_message(kind: AccessibleRowKind) -> MessageId {
     match kind {
-        AccessibleRowKind::Project => MessageId::ProductPrivateProjectRow,
         AccessibleRowKind::Group => MessageId::ProductPrivateGroupRow,
         AccessibleRowKind::Session => MessageId::ProductPrivateSessionRow,
     }
@@ -775,7 +751,6 @@ fn private_row_message(kind: AccessibleRowKind) -> MessageId {
 
 fn private_control_value_message(action: ProductSessionAction) -> MessageId {
     match action {
-        ProductSessionAction::SetProjectName => MessageId::ProductPrivateProjectRow,
         ProductSessionAction::SetGroupName | ProductSessionAction::RemoveGroupTo(_, _) => {
             MessageId::ProductPrivateGroupRow
         }
@@ -833,21 +808,18 @@ mod tests {
 
     #[test]
     fn hierarchy_semantics_preserve_names_state_position_and_actions() {
-        let project_id = AccessibleRowId::project(1);
         let group_id = AccessibleRowId::group(2);
         let session_id = AccessibleRowId::session(3);
-        let project = row(project_id, HierarchyLevel::Project, "Project Alpha");
         let mut group = row(group_id, HierarchyLevel::Group, "Review");
-        group.parent = Some(project_id);
         group.expanded = Some(true);
         let mut session = row(session_id, HierarchyLevel::Session, "Agent one");
         session.parent = Some(group_id);
         session.selected = true;
         session.unread = true;
         let snapshot = ProductSessionSemanticSnapshot {
-            screen: ProductSessionScreen::Projects,
+            screen: ProductSessionScreen::Sessions,
             state: ProductSessionSurfaceState::Ready,
-            rows: vec![project, group, session],
+            rows: vec![group, session],
             controls: Vec::new(),
             dialog: None,
             recording_friendly: false,
@@ -865,18 +837,18 @@ mod tests {
 
     #[test]
     fn recording_friendly_semantics_mask_all_user_titles() {
-        let project_id = AccessibleRowId::project(8);
+        let group_id = AccessibleRowId::group(8);
         let mut session = row(
             AccessibleRowId::session(9),
             HierarchyLevel::Session,
             "secret/customer/path",
         );
-        session.parent = Some(project_id);
+        session.parent = Some(group_id);
         let snapshot = ProductSessionSemanticSnapshot {
             screen: ProductSessionScreen::Sessions,
             state: ProductSessionSurfaceState::Ready,
             rows: vec![
-                row(project_id, HierarchyLevel::Project, "Private project"),
+                row(group_id, HierarchyLevel::Group, "Private group"),
                 session,
             ],
             controls: Vec::new(),
@@ -897,14 +869,14 @@ mod tests {
 
     #[test]
     fn destructive_dialog_exposes_only_safe_default_until_reviewed() {
-        let project = AccessibleRowId::project(4);
+        let group = AccessibleRowId::group(4);
         let target = AccessibleRowId::session(5);
         let mut session = row(target, HierarchyLevel::Session, "Build");
-        session.parent = Some(project);
+        session.parent = Some(group);
         let snapshot = ProductSessionSemanticSnapshot {
             screen: ProductSessionScreen::Sessions,
             state: ProductSessionSurfaceState::Ready,
-            rows: vec![row(project, HierarchyLevel::Project, "Project"), session],
+            rows: vec![row(group, HierarchyLevel::Group, "Group"), session],
             controls: Vec::new(),
             dialog: Some(DestructiveActionPresentation {
                 kind: DestructiveActionKind::RemoveSessionData,
@@ -958,13 +930,13 @@ mod tests {
     #[test]
     fn editable_controls_route_values_and_mask_private_content() {
         let mut field = control(
-            ProductSessionAction::SetProjectName,
+            ProductSessionAction::SetGroupName,
             ProductControlRole::TextField,
         );
-        field.name = MessageId::ProjectLabelField;
+        field.name = MessageId::GroupNameField;
         field.value = Some("customer-secret".to_string());
         let snapshot = ProductSessionSemanticSnapshot {
-            screen: ProductSessionScreen::Projects,
+            screen: ProductSessionScreen::Sessions,
             state: ProductSessionSurfaceState::Ready,
             rows: Vec::new(),
             controls: vec![field],
@@ -976,7 +948,7 @@ mod tests {
             .unwrap()
             .into_iter()
             .find(|node| {
-                node.id == product_control_semantic_node(ProductSessionAction::SetProjectName)
+                node.id == product_control_semantic_node(ProductSessionAction::SetGroupName)
             })
             .unwrap();
         assert!(node.actions.contains(&SemanticAction::SetValue));
@@ -988,7 +960,7 @@ mod tests {
         assert!(snapshot.routes().iter().any(|(_, command)| {
             *command
                 == ProductSessionAccessibilityCommand::SetControlValue(
-                    ProductSessionAction::SetProjectName,
+                    ProductSessionAction::SetGroupName,
                 )
         }));
 
@@ -1001,37 +973,31 @@ mod tests {
             .unwrap()
             .into_iter()
             .find(|node| {
-                node.id == product_control_semantic_node(ProductSessionAction::SetProjectName)
+                node.id == product_control_semantic_node(ProductSessionAction::SetGroupName)
             })
             .unwrap();
         assert_eq!(
             node.value,
             Some(SemanticValue::PublicText(SemanticText::Message(
-                MessageId::ProductPrivateProjectRow,
+                MessageId::ProductPrivateGroupRow,
             )))
         );
     }
 
     #[test]
     fn modal_controls_hide_background_actions_and_keep_review_choices_available() {
-        let project = AccessibleRowId::project(21);
         let group = AccessibleRowId::group(22);
-        let mut group_row = row(group, HierarchyLevel::Group, "Source");
-        group_row.parent = Some(project);
-        let mut background = control(
-            ProductSessionAction::AddGroup(project),
-            ProductControlRole::Button,
-        );
-        background.parent = Some(project);
+        let group_row = row(group, HierarchyLevel::Group, "Source");
+        let background = control(ProductSessionAction::AddGroup, ProductControlRole::Button);
         let mut review = control(
             ProductSessionAction::RemoveGroupTo(group, None),
             ProductControlRole::Button,
         );
         review.in_dialog = true;
         let snapshot = ProductSessionSemanticSnapshot {
-            screen: ProductSessionScreen::Projects,
+            screen: ProductSessionScreen::Sessions,
             state: ProductSessionSurfaceState::Ready,
-            rows: vec![row(project, HierarchyLevel::Project, "Project"), group_row],
+            rows: vec![group_row],
             controls: vec![background, review],
             dialog: Some(DestructiveActionPresentation {
                 kind: DestructiveActionKind::RemoveGroup,
@@ -1044,9 +1010,7 @@ mod tests {
         let nodes = snapshot.try_nodes(semantic_id(1)).unwrap();
         let background = nodes
             .iter()
-            .find(|node| {
-                node.id == product_control_semantic_node(ProductSessionAction::AddGroup(project))
-            })
+            .find(|node| node.id == product_control_semantic_node(ProductSessionAction::AddGroup))
             .unwrap();
         assert!(background.state.hidden);
         assert!(background.actions.is_empty());
@@ -1065,9 +1029,9 @@ mod tests {
 
     #[test]
     fn selection_reconciliation_preserves_identity_then_chooses_neighbor_or_heading() {
-        let a = AccessibleRowId::project(1);
-        let b = AccessibleRowId::project(2);
-        let c = AccessibleRowId::project(3);
+        let a = AccessibleRowId::group(1);
+        let b = AccessibleRowId::group(2);
+        let c = AccessibleRowId::group(3);
         assert_eq!(
             reconcile_collection_selection(&[a, b, c], &[c, b, a], Some(b)).selected,
             Some(b)
@@ -1135,15 +1099,11 @@ mod tests {
             SemanticErrorCode::MissingParent
         );
 
-        let project = row(
-            AccessibleRowId::project(1),
-            HierarchyLevel::Project,
-            "Project",
-        );
+        let group = row(AccessibleRowId::group(1), HierarchyLevel::Group, "Group");
         let overflow = ProductSessionSemanticSnapshot {
-            screen: ProductSessionScreen::Projects,
+            screen: ProductSessionScreen::Sessions,
             state: ProductSessionSurfaceState::Ready,
-            rows: vec![project; MAX_PRODUCT_SESSION_ROWS + 1],
+            rows: vec![group; MAX_PRODUCT_SESSION_ROWS + 1],
             controls: Vec::new(),
             dialog: None,
             recording_friendly: false,
@@ -1153,9 +1113,9 @@ mod tests {
             SemanticErrorCode::ResourceLimit
         );
 
-        let duplicate = control(ProductSessionAction::AddProject, ProductControlRole::Button);
+        let duplicate = control(ProductSessionAction::AddGroup, ProductControlRole::Button);
         let duplicate_controls = ProductSessionSemanticSnapshot {
-            screen: ProductSessionScreen::Projects,
+            screen: ProductSessionScreen::Sessions,
             state: ProductSessionSurfaceState::Ready,
             rows: Vec::new(),
             controls: vec![duplicate.clone(), duplicate.clone()],
@@ -1171,7 +1131,7 @@ mod tests {
         );
 
         let control_overflow = ProductSessionSemanticSnapshot {
-            screen: ProductSessionScreen::Projects,
+            screen: ProductSessionScreen::Sessions,
             state: ProductSessionSurfaceState::Ready,
             rows: Vec::new(),
             controls: vec![duplicate; MAX_PRODUCT_SESSION_CONTROLS + 1],

@@ -88,7 +88,6 @@ final class ControllerWriterTests: XCTestCase {
         let session = ControllerSessionSummary(
             id: UUID(),
             title: "Build",
-            project: nil,
             group: nil,
             lifecycle: "live",
             activity: nil,

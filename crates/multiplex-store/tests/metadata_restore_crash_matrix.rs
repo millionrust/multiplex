@@ -4,33 +4,33 @@ use std::fs;
 use std::os::unix::fs::{PermissionsExt as _, symlink};
 
 use multiplex_store::{
-    MetadataFileKind, MetadataRecoveryService, PresetRepository, ProjectRepository,
+    LibraryRepository, MetadataFileKind, MetadataRecoveryService, PresetRepository,
     RecoveryCancellation, RecoveryErrorCode, RecoveryFaultPoint, RecoveryResult, SessionRepository,
 };
 
 fn initialized_store() -> tempfile::TempDir {
     let fixture = tempfile::tempdir().unwrap();
-    ProjectRepository::open(fixture.path()).unwrap();
+    LibraryRepository::open(fixture.path()).unwrap();
     SessionRepository::open(fixture.path(), fixture.path().join("session-data")).unwrap();
     PresetRepository::open(fixture.path()).unwrap();
     fixture
 }
 
-fn corrupt_projects(fixture: &tempfile::TempDir) -> Vec<u8> {
+fn corrupt_library(fixture: &tempfile::TempDir) -> Vec<u8> {
     let corrupt = b"{corrupt-current".to_vec();
-    fs::write(fixture.path().join("projects.json"), &corrupt).unwrap();
+    fs::write(fixture.path().join("library.json"), &corrupt).unwrap();
     corrupt
 }
 
 #[test]
 fn restores_only_invalid_metadata_and_retains_verified_private_backup() {
     let fixture = initialized_store();
-    let corrupt = corrupt_projects(&fixture);
-    let last_good = fs::read(fixture.path().join("projects.last-good.json")).unwrap();
+    let corrupt = corrupt_library(&fixture);
+    let last_good = fs::read(fixture.path().join("library.last-good.json")).unwrap();
     let service = MetadataRecoveryService::open(fixture.path()).unwrap();
     let plan = service.plan_restore_last_good().unwrap();
     assert_eq!(plan.files.len(), 1);
-    assert_eq!(plan.files[0].kind, MetadataFileKind::Projects);
+    assert_eq!(plan.files[0].kind, MetadataFileKind::Library);
     assert_eq!(plan.unchanged_files.len(), 2);
     let backup_path = plan.files[0].current_backup_path.clone();
 
@@ -39,18 +39,18 @@ fn restores_only_invalid_metadata_and_retains_verified_private_backup() {
         .unwrap();
     assert_eq!(receipt.result, RecoveryResult::Restored);
     assert_eq!(
-        fs::read(fixture.path().join("projects.json")).unwrap(),
+        fs::read(fixture.path().join("library.json")).unwrap(),
         last_good
     );
     assert_eq!(fs::read(&backup_path).unwrap(), corrupt);
     assert_eq!(
-        fs::read(fixture.path().join("projects.last-good.json")).unwrap(),
+        fs::read(fixture.path().join("library.last-good.json")).unwrap(),
         last_good
     );
     assert!(
         fixture
             .path()
-            .join("derived-indexes/project-session-v1.json")
+            .join("derived-indexes/palette-v1.json")
             .is_file()
     );
     assert!(
@@ -82,7 +82,7 @@ fn healthy_store_is_a_no_change_operation() {
 #[test]
 fn cancellation_and_stale_hash_fail_before_activation() {
     let fixture = initialized_store();
-    let corrupt = corrupt_projects(&fixture);
+    let corrupt = corrupt_library(&fixture);
     let service = MetadataRecoveryService::open(fixture.path()).unwrap();
     let plan = service.plan_restore_last_good().unwrap();
     let cancellation = RecoveryCancellation::default();
@@ -92,13 +92,13 @@ fn cancellation_and_stale_hash_fail_before_activation() {
         RecoveryErrorCode::Cancelled
     );
     assert_eq!(
-        fs::read(fixture.path().join("projects.json")).unwrap(),
+        fs::read(fixture.path().join("library.json")).unwrap(),
         corrupt
     );
 
     let plan = service.plan_restore_last_good().unwrap();
     fs::write(
-        fixture.path().join("projects.json"),
+        fixture.path().join("library.json"),
         b"{different-corruption",
     )
     .unwrap();
@@ -115,15 +115,15 @@ fn cancellation_and_stale_hash_fail_before_activation() {
 #[test]
 fn missing_corrupt_and_future_sources_fail_closed() {
     let fixture = initialized_store();
-    corrupt_projects(&fixture);
-    fs::remove_file(fixture.path().join("projects.last-good.json")).unwrap();
+    corrupt_library(&fixture);
+    fs::remove_file(fixture.path().join("library.last-good.json")).unwrap();
     let service = MetadataRecoveryService::open(fixture.path()).unwrap();
     assert_eq!(
         service.plan_restore_last_good().unwrap_err().code,
         RecoveryErrorCode::NoLastGood
     );
 
-    fs::write(fixture.path().join("projects.last-good.json"), b"invalid").unwrap();
+    fs::write(fixture.path().join("library.last-good.json"), b"invalid").unwrap();
     assert_eq!(
         service.plan_restore_last_good().unwrap_err().code,
         RecoveryErrorCode::CorruptLastGood
@@ -149,7 +149,7 @@ fn every_journaled_crash_rolls_back_exact_current_bytes_on_restart() {
         RecoveryFaultPoint::AfterVerification,
     ] {
         let fixture = initialized_store();
-        let corrupt = corrupt_projects(&fixture);
+        let corrupt = corrupt_library(&fixture);
         let service = MetadataRecoveryService::open(fixture.path()).unwrap();
         let plan = service.plan_restore_last_good().unwrap();
         assert_eq!(
@@ -163,7 +163,7 @@ fn every_journaled_crash_rolls_back_exact_current_bytes_on_restart() {
         let receipt = restarted.recover_interrupted_restore().unwrap().unwrap();
         assert_eq!(receipt.result, RecoveryResult::RolledBack);
         assert_eq!(
-            fs::read(fixture.path().join("projects.json")).unwrap(),
+            fs::read(fixture.path().join("library.json")).unwrap(),
             corrupt
         );
         assert!(restarted.recover_interrupted_restore().unwrap().is_none());
@@ -173,7 +173,7 @@ fn every_journaled_crash_rolls_back_exact_current_bytes_on_restart() {
 #[test]
 fn pre_journal_crash_never_changes_authoritative_metadata() {
     let fixture = initialized_store();
-    let corrupt = corrupt_projects(&fixture);
+    let corrupt = corrupt_library(&fixture);
     let service = MetadataRecoveryService::open(fixture.path()).unwrap();
     let plan = service.plan_restore_last_good().unwrap();
     assert_eq!(
@@ -188,7 +188,7 @@ fn pre_journal_crash_never_changes_authoritative_metadata() {
         RecoveryErrorCode::InjectedCrash
     );
     assert_eq!(
-        fs::read(fixture.path().join("projects.json")).unwrap(),
+        fs::read(fixture.path().join("library.json")).unwrap(),
         corrupt
     );
     assert!(service.recover_interrupted_restore().unwrap().is_none());
@@ -198,7 +198,7 @@ fn pre_journal_crash_never_changes_authoritative_metadata() {
 #[test]
 fn recovery_rejects_symlinked_backup_and_marker_roots() {
     let fixture = initialized_store();
-    corrupt_projects(&fixture);
+    corrupt_library(&fixture);
     let outside = fixture.path().join("outside");
     fs::create_dir(&outside).unwrap();
     symlink(&outside, fixture.path().join("recovery")).unwrap();

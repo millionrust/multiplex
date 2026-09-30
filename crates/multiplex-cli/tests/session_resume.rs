@@ -87,7 +87,7 @@ fn preview_is_non_mutating_bounded_and_content_free() {
     .unwrap();
     assert!(!json.contains(HANDLE));
     assert!(!json.contains(PROVIDER_CANARY));
-    assert!(!json.contains(fixture.seed.project_root.to_string_lossy().as_ref()));
+    assert!(!json.contains(fixture.seed.folder.to_string_lossy().as_ref()));
 }
 
 #[test]
@@ -127,7 +127,7 @@ fn confirmed_resume_launches_one_read_only_successor_and_commits_continuity() {
         vec![
             "resume".to_string(),
             "--cd".to_string(),
-            fs::canonicalize(&fixture.seed.project_root)
+            fs::canonicalize(&fixture.seed.folder)
                 .unwrap()
                 .to_string_lossy()
                 .into_owned(),
@@ -311,7 +311,7 @@ async fn real_host_resume_survives_cli_service_return_and_packaged_preview_is_pr
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(!stdout.contains(HANDLE));
     assert!(!stdout.contains(PROVIDER_CANARY));
-    assert!(!stdout.contains(fixture.seed.project_root.to_string_lossy().as_ref()));
+    assert!(!stdout.contains(fixture.seed.folder.to_string_lossy().as_ref()));
 
     let data = service
         .execute(
@@ -426,7 +426,7 @@ fn resume_fixture(version: &str) -> ResumeFixture {
                 label: "Codex".into(),
                 executable: executable.to_string_lossy().into_owned(),
                 args: Vec::new(),
-                working_directory: WorkingDirectoryRule::ProjectRoot,
+                working_directory: WorkingDirectoryRule::SessionFolder,
                 runtime: Some("codex".into()),
                 enabled: true,
                 favorite: true,
@@ -484,7 +484,7 @@ fn resume_fixture(version: &str) -> ResumeFixture {
     drop(lease);
     let codex_home = seed.temp.path().join("codex-home");
     let codex_sessions = codex_home.join("sessions");
-    let provider_metadata_path = write_codex_metadata(&codex_sessions, &seed.project_root, version);
+    let provider_metadata_path = write_codex_metadata(&codex_sessions, &seed.folder, version);
     ResumeFixture {
         source_host_path: source_dir.join("host.json"),
         seed,

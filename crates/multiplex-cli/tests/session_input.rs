@@ -395,7 +395,7 @@ fn descriptor(seed: &SeededStore, session_dir: std::path::PathBuf) -> LaunchDesc
                 .into(),
         ],
         environment: BTreeMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
-        cwd: Some(seed.project_root.clone()),
+        cwd: Some(seed.folder.clone()),
         columns: 80,
         rows: 24,
         journal_limits: JournalLimits::default(),

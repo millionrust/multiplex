@@ -174,7 +174,7 @@ pub(crate) fn managed_agent_worktree_dir() -> Result<PathBuf> {
     Ok(app_dir()?.join("agent-worktrees"))
 }
 
-pub(crate) fn project_store_dir() -> Result<PathBuf> {
+pub(crate) fn library_store_dir() -> Result<PathBuf> {
     Ok(app_dir()?.join("agent-workspace"))
 }
 

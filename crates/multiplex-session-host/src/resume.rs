@@ -9,8 +9,7 @@ use std::time::{Duration, Instant};
 
 use crate::process_observation::fingerprint_executable;
 use multiplex_domain::{
-    ConversationHandle, HostedSessionId, PermissionPolicy, ProjectId, ResumeCandidate, ResumeError,
-    ResumePlan,
+    ConversationHandle, HostedSessionId, PermissionPolicy, ResumeCandidate, ResumeError, ResumePlan,
 };
 use serde::Deserialize;
 
@@ -66,7 +65,6 @@ impl Default for CodexResumeLimits {
 pub struct CodexResumePlanInput<'a> {
     pub candidate: ResumeCandidate,
     pub conversation_root: &'a Path,
-    pub canonical_project: ProjectId,
     pub expected_working_directory: &'a Path,
     pub permission_policy: PermissionPolicy,
     pub executable: &'a Path,
@@ -152,7 +150,6 @@ fn build_codex_resume_plan_with_limits(
     let CodexResumePlanInput {
         candidate,
         conversation_root,
-        canonical_project,
         expected_working_directory,
         permission_policy,
         executable,
@@ -207,7 +204,6 @@ fn build_codex_resume_plan_with_limits(
     Ok(ResumePlan {
         candidate,
         replacement_session_id,
-        canonical_project,
         working_directory,
         permission_policy,
         executable,
@@ -484,7 +480,6 @@ mod tests {
         CodexResumePlanInput {
             candidate,
             conversation_root,
-            canonical_project: ProjectId::new(),
             expected_working_directory,
             permission_policy,
             executable,
@@ -538,7 +533,7 @@ mod tests {
     }
 
     #[test]
-    fn discovery_requires_one_recent_exact_version_canonical_project_match() {
+    fn discovery_requires_one_recent_exact_version_working_directory_match() {
         let fixture = tempfile::tempdir().unwrap();
         let root = fixture.path().join("sessions");
         let cwd = fixture.path().join("project");

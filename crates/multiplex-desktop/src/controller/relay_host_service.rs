@@ -146,7 +146,7 @@ fn run_foreground(installed_path: PathBuf) -> Result<(), RelayHostServiceError> 
             .static_private_key()
             .ok_or(RelayHostServiceError("relay.host.identity_unavailable"))?;
         let runtime_parent = crate::controller_runtime_parent(&app_root);
-        let project_root = crate::storage::project_store_dir()
+        let library_root = crate::storage::library_store_dir()
             .map_err(|_| RelayHostServiceError("relay.host.storage_unavailable"))?;
         let owner = RelayHostRouteOwner::new(endpoint, Arc::new(OsRelaySecretStore));
         let cancel = CancellationToken::new();
@@ -161,7 +161,7 @@ fn run_foreground(installed_path: PathBuf) -> Result<(), RelayHostServiceError> 
             let result = owner
                 .serve_repository(
                     controller_root.clone(),
-                    project_root.clone(),
+                    library_root.clone(),
                     app_root.join("durable-sessions"),
                     runtime_parent.clone(),
                     runtime_parent.join("controller-pairing.sock"),

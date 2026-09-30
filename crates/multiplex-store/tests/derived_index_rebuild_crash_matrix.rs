@@ -11,10 +11,7 @@ use common::{StoreFixture, assert_no_repair_debris};
 
 #[test]
 fn crash_matrix_recovers_owned_temps_and_preserves_authoritative_bytes() {
-    for kind in [
-        IndexRepairKind::ProjectSessionIndex,
-        IndexRepairKind::PaletteIndex,
-    ] {
+    for kind in [IndexRepairKind::PaletteIndex] {
         for fault in [
             RepairFaultPoint::AfterTempCreated,
             RepairFaultPoint::AfterTempWrite,
@@ -38,7 +35,6 @@ fn crash_matrix_recovers_owned_temps_and_preserves_authoritative_bytes() {
             let finding = recovered
                 .scan()
                 .finding(match kind {
-                    IndexRepairKind::ProjectSessionIndex => HealthCheckKind::ProjectSessionIndex,
                     IndexRepairKind::PaletteIndex => HealthCheckKind::PaletteIndex,
                 })
                 .unwrap()
@@ -57,16 +53,16 @@ fn cancellation_and_stale_revision_never_publish() {
     let cancelled = StoreFixture::new();
     let repository = HealthRepository::open(&cancelled.metadata).unwrap();
     let plan = repository
-        .plan_repair(IndexRepairKind::ProjectSessionIndex)
+        .plan_repair(IndexRepairKind::PaletteIndex)
         .unwrap();
     let cancellation = RepairCancellation::default();
     cancellation.cancel();
     let error = repository.repair(plan, &cancellation).unwrap_err();
     assert_eq!(error.code, HealthErrorCode::Cancelled);
-    assert!(!cancelled.derived_path("project-session-v1.json").exists());
+    assert!(!cancelled.derived_path("palette-v1.json").exists());
 
     let stale = StoreFixture::new();
-    let before_projects = fs::read(stale.metadata.join("projects.json")).unwrap();
+    let before_library = fs::read(stale.metadata.join("library.json")).unwrap();
     let repository = HealthRepository::open(&stale.metadata).unwrap();
     let plan = repository
         .plan_repair(IndexRepairKind::PaletteIndex)
@@ -86,8 +82,8 @@ fn cancellation_and_stale_revision_never_publish() {
     assert_eq!(error.code, HealthErrorCode::StaleSource);
     assert!(!stale.derived_path("palette-v1.json").exists());
     assert_eq!(
-        fs::read(stale.metadata.join("projects.json")).unwrap(),
-        before_projects
+        fs::read(stale.metadata.join("library.json")).unwrap(),
+        before_library
     );
     assert_no_repair_debris(&stale.metadata);
 }
@@ -96,22 +92,22 @@ fn cancellation_and_stale_revision_never_publish() {
 fn malformed_existing_index_is_replaced_only_by_its_named_repair() {
     let fixture = StoreFixture::new();
     let repository = HealthRepository::open(&fixture.metadata).unwrap();
-    let project_plan = repository
-        .plan_repair(IndexRepairKind::ProjectSessionIndex)
+    let first_plan = repository
+        .plan_repair(IndexRepairKind::PaletteIndex)
         .unwrap();
     repository
-        .repair(project_plan, &RepairCancellation::default())
+        .repair(first_plan, &RepairCancellation::default())
         .unwrap();
-    fs::write(fixture.derived_path("project-session-v1.json"), b"corrupt").unwrap();
+    fs::write(fixture.derived_path("palette-v1.json"), b"corrupt").unwrap();
     let before = fixture.authoritative_bytes();
     let finding = repository
         .scan()
-        .finding(HealthCheckKind::ProjectSessionIndex)
+        .finding(HealthCheckKind::PaletteIndex)
         .unwrap()
         .clone();
     assert_eq!(finding.state, HealthFindingState::Corrupt);
     let plan = repository
-        .plan_repair(IndexRepairKind::ProjectSessionIndex)
+        .plan_repair(IndexRepairKind::PaletteIndex)
         .unwrap();
     repository
         .repair(plan, &RepairCancellation::default())
@@ -120,7 +116,7 @@ fn malformed_existing_index_is_replaced_only_by_its_named_repair() {
     assert_eq!(
         repository
             .scan()
-            .finding(HealthCheckKind::ProjectSessionIndex)
+            .finding(HealthCheckKind::PaletteIndex)
             .unwrap()
             .state,
         HealthFindingState::Healthy

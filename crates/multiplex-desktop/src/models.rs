@@ -1,8 +1,8 @@
 use anyhow::{Context, Result, bail};
 use multiplex_domain::{
     GroupDestination, GroupId, HostedSession, HostedSessionId, HostedSessionState, OutputSequence,
-    PositionKey, ProjectId, Revision, SessionLaunchRoute, SessionOrigin, SessionTitle,
-    SshAccessPolicy, TitleSource,
+    PositionKey, Revision, SessionLaunchRoute, SessionOrigin, SessionTitle, SshAccessPolicy,
+    TitleSource,
 };
 use multiplex_protocol::{
     MobileDevicePairingError, MobileDevicePairingRequest, MobileDeviceRecord, MobileDeviceVaultKey,
@@ -1266,7 +1266,9 @@ pub struct SavedAppAttachedSession {
     pub route: SessionLaunchRoute,
     pub origin: SessionOrigin,
     pub state: HostedSessionState,
-    pub project_label: String,
+    /// The folder the session runs in, which its Project used to stand for.
+    #[serde(default)]
+    pub folder: String,
     pub preset_label: String,
     #[serde(default)]
     pub title: String,
@@ -3408,8 +3410,10 @@ fn graph_has_path(
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SavedWorkspace {
     pub title: String,
-    #[serde(default)]
-    pub project_directory: Option<String>,
+    /// The folder this workspace is rooted at. It was `project_directory` while Projects
+    /// existed; the alias keeps saved workspaces readable.
+    #[serde(default, alias = "project_directory")]
+    pub folder: Option<String>,
     #[serde(default)]
     pub layout_mode: WorkspaceLayoutMode,
     #[serde(default)]
@@ -3424,8 +3428,8 @@ pub struct SavedWorkspace {
 
 impl SavedWorkspace {
     pub fn normalize(&mut self) {
-        self.project_directory = self
-            .project_directory
+        self.folder = self
+            .folder
             .take()
             .map(|directory| directory.trim().to_string())
             .filter(|directory| !directory.is_empty());
@@ -3630,11 +3634,6 @@ impl QuickConnect {
 impl SavedState {
     fn normalize_app_attached_sessions(&mut self) {
         for session in &mut self.app_attached_sessions {
-            session.project_label = session
-                .project_label
-                .chars()
-                .take(MAX_APP_ATTACHED_SESSION_LABEL_CHARS)
-                .collect();
             session.preset_label = session
                 .preset_label
                 .chars()
@@ -3668,16 +3667,10 @@ impl SavedState {
         self.normalize_app_attached_sessions();
     }
 
-    pub fn next_app_attached_session_position(
-        &self,
-        project_id: ProjectId,
-        group_id: Option<GroupId>,
-    ) -> PositionKey {
+    pub fn next_app_attached_session_position(&self, group_id: Option<GroupId>) -> PositionKey {
         self.app_attached_sessions
             .iter()
-            .filter(|session| {
-                session.origin.project_id == project_id && session.group_id == group_id
-            })
+            .filter(|session| session.group_id == group_id)
             .map(|session| session.position)
             .max()
             .and_then(|position| position.after().ok())
@@ -3690,23 +3683,15 @@ impl SavedState {
         destination: GroupDestination,
         before: Option<HostedSessionId>,
     ) -> Option<Vec<SavedSessionPlacement>> {
-        let project_id = self
-            .app_attached_sessions
-            .iter()
-            .find(|session| session.id == id)?
-            .origin
-            .project_id;
         let destination_group = destination.group_id();
         if before.is_some_and(|before_id| {
-            self.app_attached_sessions.iter().all(|session| {
-                session.id != before_id
-                    || session.origin.project_id != project_id
-                    || session.group_id != destination_group
-            })
+            self.app_attached_sessions
+                .iter()
+                .all(|session| session.id != before_id || session.group_id != destination_group)
         }) {
             return None;
         }
-        let inverse = self.project_session_placements(project_id);
+        let inverse = self.session_placements();
         let moving_index = self
             .app_attached_sessions
             .iter()
@@ -3716,9 +3701,7 @@ impl SavedState {
         let mut destination_ids = self
             .app_attached_sessions
             .iter()
-            .filter(|session| {
-                session.origin.project_id == project_id && session.group_id == destination_group
-            })
+            .filter(|session| session.group_id == destination_group)
             .map(|session| (session.position, session.id))
             .collect::<Vec<_>>();
         destination_ids.sort_by_key(|(position, session_id)| (*position, *session_id));
@@ -3744,17 +3727,14 @@ impl SavedState {
 
     pub fn relocate_group_sessions(
         &mut self,
-        project_id: ProjectId,
         group_id: GroupId,
         destination: GroupDestination,
     ) -> Vec<SavedSessionPlacement> {
-        let inverse = self.project_session_placements(project_id);
+        let inverse = self.session_placements();
         let ids = self
             .app_attached_sessions
             .iter()
-            .filter(|session| {
-                session.origin.project_id == project_id && session.group_id == Some(group_id)
-            })
+            .filter(|session| session.group_id == Some(group_id))
             .map(|session| session.id)
             .collect::<Vec<_>>();
         for id in ids {
@@ -3781,37 +3761,27 @@ impl SavedState {
 
     pub fn repair_app_attached_group_references(
         &mut self,
-        valid_groups: &HashMap<GroupId, ProjectId>,
+        valid_groups: &HashSet<GroupId>,
     ) -> Vec<HostedSessionId> {
         let mut repaired = Vec::new();
         for session in &mut self.app_attached_sessions {
-            let valid = session.group_id.is_none_or(|group_id| {
-                valid_groups.get(&group_id) == Some(&session.origin.project_id)
-            });
+            let valid = session
+                .group_id
+                .is_none_or(|group_id| valid_groups.contains(&group_id));
             if !valid {
                 session.group_id = None;
                 repaired.push(session.id);
             }
         }
-        let project_ids = repaired
-            .iter()
-            .filter_map(|id| {
-                self.app_attached_sessions
-                    .iter()
-                    .find(|session| session.id == *id)
-                    .map(|session| session.origin.project_id)
-            })
-            .collect::<HashSet<_>>();
-        for project_id in project_ids {
-            self.rebalance_app_attached_destination(project_id, None);
+        if !repaired.is_empty() {
+            self.rebalance_app_attached_destination(None);
         }
         repaired
     }
 
-    fn project_session_placements(&self, project_id: ProjectId) -> Vec<SavedSessionPlacement> {
+    fn session_placements(&self) -> Vec<SavedSessionPlacement> {
         self.app_attached_sessions
             .iter()
-            .filter(|session| session.origin.project_id == project_id)
             .map(|session| SavedSessionPlacement {
                 id: session.id,
                 group_id: session.group_id,
@@ -3820,24 +3790,15 @@ impl SavedState {
             .collect()
     }
 
-    pub fn app_attached_session_placements(
-        &self,
-        project_id: ProjectId,
-    ) -> Vec<SavedSessionPlacement> {
-        self.project_session_placements(project_id)
+    pub fn app_attached_session_placements(&self) -> Vec<SavedSessionPlacement> {
+        self.session_placements()
     }
 
-    fn rebalance_app_attached_destination(
-        &mut self,
-        project_id: ProjectId,
-        group_id: Option<GroupId>,
-    ) {
+    fn rebalance_app_attached_destination(&mut self, group_id: Option<GroupId>) {
         let mut ids = self
             .app_attached_sessions
             .iter()
-            .filter(|session| {
-                session.origin.project_id == project_id && session.group_id == group_id
-            })
+            .filter(|session| session.group_id == group_id)
             .map(|session| (session.position, session.id))
             .collect::<Vec<_>>();
         ids.sort_by_key(|(position, id)| (*position, *id));
@@ -3929,7 +3890,10 @@ impl SavedAppAttachedSession {
             .filter(|sequence| *sequence <= last_output_sequence);
         Ok(HostedSession {
             id: self.id,
-            project_id: self.origin.project_id,
+            folder: multiplex_domain::CanonicalPath::resolve(std::path::Path::new(&self.folder))
+                .map_err(|_| multiplex_domain::SessionStateError::Store {
+                    code: "session-folder-unavailable",
+                })?,
             group_id: self.group_id,
             preset_id: Some(self.origin.preset_id),
             title,
@@ -3949,6 +3913,8 @@ impl SavedAppAttachedSession {
     }
 
     pub fn apply_hosted_session(&mut self, session: &HostedSession) {
+        // A record saved while Projects existed has no folder of its own; the store has it.
+        self.folder = session.folder.as_path().display().to_string();
         self.state = session.lifecycle;
         self.group_id = session.group_id;
         self.position = session.position;
@@ -3986,8 +3952,8 @@ mod tests {
         default_persistent_session_name_from_id, identity_id_for_path,
     };
     use multiplex_domain::{
-        HostedSessionId, HostedSessionState, PresetId, ProjectId, Revision, SessionLaunchRoute,
-        SessionOrigin, SshAgentForwardingPolicy, SshAuthenticationKind, TitleSource,
+        HostedSessionId, HostedSessionState, PresetId, Revision, SessionLaunchRoute, SessionOrigin,
+        SshAgentForwardingPolicy, SshAuthenticationKind, TitleSource,
     };
 
     #[test]
@@ -4110,12 +4076,11 @@ mod tests {
             id,
             route: SessionLaunchRoute::LegacyAppAttached,
             origin: SessionOrigin {
-                project_id: ProjectId::new(),
                 preset_id: PresetId::new(),
             },
             state: HostedSessionState::RunningAppAttached,
-            project_label: "p".repeat(400),
-            preset_label: "preset".to_string(),
+            folder: std::env::temp_dir().display().to_string(),
+            preset_label: "p".repeat(400),
             title: String::new(),
             title_source: TitleSource::Default,
             activity: multiplex_domain::ActivityAggregate::default(),
@@ -4132,7 +4097,7 @@ mod tests {
         });
         assert_eq!(state.app_attached_sessions.len(), 1);
         assert_eq!(
-            state.app_attached_sessions[0].project_label.chars().count(),
+            state.app_attached_sessions[0].preset_label.chars().count(),
             256
         );
         state.mark_app_attached_sessions_exited();
@@ -4155,11 +4120,10 @@ mod tests {
             id,
             route: SessionLaunchRoute::DurableHost,
             origin: SessionOrigin {
-                project_id: ProjectId::new(),
                 preset_id: PresetId::new(),
             },
             state: HostedSessionState::Live,
-            project_label: "project".to_string(),
+            folder: std::env::temp_dir().display().to_string(),
             preset_label: "codex".to_string(),
             title: "codex".to_string(),
             title_source: TitleSource::Default,
@@ -4744,7 +4708,7 @@ mod tests {
     fn saved_workspace_normalizes_active_pane() {
         let mut workspace = SavedWorkspace {
             title: "prod".to_string(),
-            project_directory: None,
+            folder: None,
             layout_mode: WorkspaceLayoutMode::Split,
             layout: None,
             canvas: None,
@@ -4785,7 +4749,7 @@ mod tests {
         state.settings.restore_workspaces_on_launch = true;
         state.restored_workspaces.push(SavedWorkspace {
             title: "docker-e2e".to_string(),
-            project_directory: None,
+            folder: None,
             layout_mode: WorkspaceLayoutMode::Split,
             layout: None,
             canvas: None,
@@ -4857,14 +4821,14 @@ mod tests {
 
         assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Split);
         assert_eq!(workspace.canvas, None);
-        assert_eq!(workspace.project_directory, None);
+        assert_eq!(workspace.folder, None);
     }
 
     #[test]
     fn canvas_workspace_round_trips_agent_definition_and_edges() {
         let mut workspace = SavedWorkspace {
             title: "agents".to_string(),
-            project_directory: Some(" /srv/project ".to_string()),
+            folder: Some(" /srv/project ".to_string()),
             layout_mode: WorkspaceLayoutMode::Canvas,
             layout: None,
             canvas: Some(SavedCanvasState {
@@ -4906,13 +4870,13 @@ mod tests {
             panes: Vec::new(),
         };
         workspace.normalize();
-        assert_eq!(workspace.project_directory.as_deref(), Some("/srv/project"));
+        assert_eq!(workspace.folder.as_deref(), Some("/srv/project"));
 
         let value = serde_json::to_string(&workspace).expect("canvas should serialize");
         let decoded: SavedWorkspace =
             serde_json::from_str(&value).expect("canvas should deserialize");
         assert_eq!(decoded.layout_mode, WorkspaceLayoutMode::Canvas);
-        assert_eq!(decoded.project_directory, workspace.project_directory);
+        assert_eq!(decoded.folder, workspace.folder);
         assert_eq!(decoded.canvas, workspace.canvas);
     }
 

@@ -12,7 +12,7 @@ use gpui_component::{
     Disableable as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt as _, h_flex, v_flex,
 };
 use multiplex_domain::{
-    GitReference, ManagedWorktreeId, PresetId, ProjectId, WorktreeError, WorktreeIntent,
+    CanonicalPath, GitReference, ManagedWorktreeId, PresetId, WorktreeError, WorktreeIntent,
     WorktreeIntentState, WorktreeLaunchDraft, WorktreeLaunchStage, WorktreeRegistration,
 };
 use multiplex_store::StoreError;
@@ -23,20 +23,21 @@ use multiplex_ui_contract::{
     WorktreeArtifactSemanticSnapshot, WorktreeArtifactSurfaceState,
 };
 
-use super::project_coordinator::{WorktreeInspectionRequest, WorktreePlanRequest};
+use super::launch_coordinator::{WorktreeInspectionRequest, WorktreePlanRequest};
 use super::{MultiplexApp, theme};
 use crate::storage::managed_agent_worktree_dir;
 use crate::ui::localization;
 use crate::worktree_launch::{WorktreeCancellation, WorktreeInspection, generated_worktree_branch};
 
 pub(super) struct WorktreeLaunchUiState {
-    pub source_project_id: ProjectId,
+    /// The repository the worktree is cut from.
+    pub source_folder: CanonicalPath,
     pub worktree_id: ManagedWorktreeId,
-    pub child_project_id: ProjectId,
     pub stage: WorktreeLaunchStage,
     pub inspection: Option<WorktreeInspection>,
     pub selected_preset_id: Option<PresetId>,
-    pub registered_child_id: Option<ProjectId>,
+    /// The new worktree, once registered: the folder its first session starts in.
+    pub registered_folder: Option<CanonicalPath>,
     pub error: Option<WorktreeError>,
     pub generation: u64,
     pub cancellation: WorktreeCancellation,
@@ -193,7 +194,7 @@ impl MultiplexApp {
         match command {
             WorktreeArtifactAccessibilityCommand::FocusRow(_)
             | WorktreeArtifactAccessibilityCommand::ActivateRow(_) => {
-                self.project_list_focus.focus(window);
+                self.session_list_focus.focus(window);
             }
             WorktreeArtifactAccessibilityCommand::FocusControl(action) => match action {
                 WorktreeArtifactAction::SetWorktreeBase => self
@@ -202,7 +203,7 @@ impl MultiplexApp {
                 WorktreeArtifactAction::SetWorktreeBranch => self
                     .worktree_branch_input
                     .update(cx, |input, cx| input.focus(window, cx)),
-                _ => self.project_list_focus.focus(window),
+                _ => self.session_list_focus.focus(window),
             },
             WorktreeArtifactAccessibilityCommand::SetControlValue(action) => {
                 let Some(SemanticActionValue::Text(value)) = value else {
@@ -289,22 +290,11 @@ impl MultiplexApp {
 
     pub(super) fn open_worktree_launch(
         &mut self,
-        project_id: ProjectId,
+        source_folder: CanonicalPath,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let available = self
-            .project_library
-            .snapshot
-            .as_ref()
-            .and_then(|snapshot| {
-                snapshot
-                    .projects
-                    .iter()
-                    .find(|summary| summary.project.id == project_id)
-            })
-            .is_some_and(|summary| summary.status == multiplex_domain::ProjectStatus::Available);
-        if !available {
+        if source_folder.status() != multiplex_domain::PathStatus::Available {
             self.error_message = localization::worktree_error_invalid_repository();
             cx.notify();
             return;
@@ -332,13 +322,12 @@ impl MultiplexApp {
             cx,
         );
         self.worktree_launch = Some(WorktreeLaunchUiState {
-            source_project_id: project_id,
+            source_folder,
             worktree_id,
-            child_project_id: ProjectId::new(),
             stage: WorktreeLaunchStage::Ready,
             inspection: None,
             selected_preset_id,
-            registered_child_id: None,
+            registered_folder: None,
             error: None,
             generation: 0,
             cancellation: WorktreeCancellation::default(),
@@ -382,20 +371,7 @@ impl MultiplexApp {
             Ok(value) => value,
             Err(error) => return self.fail_worktree_review(error, cx),
         };
-        let Some(project) = self
-            .project_library
-            .snapshot
-            .as_ref()
-            .and_then(|snapshot| {
-                snapshot
-                    .projects
-                    .iter()
-                    .find(|summary| summary.project.id == state.source_project_id)
-            })
-            .map(|summary| summary.project.clone())
-        else {
-            return self.fail_worktree_review(WorktreeError::InvalidRepository, cx);
-        };
+        let repository_root = state.source_folder.as_path().to_path_buf();
         let managed_root = match managed_agent_worktree_dir() {
             Ok(path) => path,
             Err(_) => return self.fail_worktree_review(WorktreeError::InvalidPath, cx),
@@ -415,28 +391,24 @@ impl MultiplexApp {
         let generation = state.generation;
         let cancellation = state.cancellation.clone();
         let worktree_id = state.worktree_id;
-        let child_project_id = state.child_project_id;
-        let source_project_id = state.source_project_id;
         let draft = WorktreeLaunchDraft {
-            source_project_id,
             requested_base,
             fetch,
             confirm_current_branch: confirm_current,
             branch,
             preset_id: state.selected_preset_id,
         };
-        let project_coordinator = self.project_coordinator.clone();
+        let launch_coordinator = self.launch_coordinator.clone();
         cx.notify();
 
         cx.spawn_in(window, async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    project_coordinator.inspect_worktree(WorktreeInspectionRequest {
-                        project_root: project.canonical_root.as_path().to_path_buf(),
+                    launch_coordinator.inspect_worktree(WorktreeInspectionRequest {
+                        repository_root,
                         managed_root,
                         worktree_id,
-                        child_project_id,
                         draft,
                         cancellation,
                     })
@@ -524,14 +496,14 @@ impl MultiplexApp {
             .and_then(|inspection| {
                 Some((
                     inspection,
-                    self.project_library.repository.clone()?,
-                    self.project_library.snapshot.as_ref()?.revision,
+                    self.library.repository.clone()?,
+                    self.library.snapshot.as_ref()?.revision,
                 ))
             })
         else {
             return self.fail_worktree_review(WorktreeError::RegistrationConflict, cx);
         };
-        let label = child_project_label(&inspection);
+        let label = worktree_label(&inspection);
         let intent = WorktreeIntent {
             plan: inspection.plan.clone(),
             child_display_name: label,
@@ -542,7 +514,7 @@ impl MultiplexApp {
             Ok(intent) => intent,
             Err(error) => return self.fail_worktree_review(store_worktree_error(error), cx),
         };
-        self.project_library.reload();
+        self.library.reload();
         let Some(state) = self.worktree_launch.as_mut() else {
             return;
         };
@@ -551,13 +523,13 @@ impl MultiplexApp {
         let generation = state.generation;
         let cancellation = state.cancellation.clone();
         let plan = inspection.plan;
-        let project_coordinator = self.project_coordinator.clone();
+        let launch_coordinator = self.launch_coordinator.clone();
         cx.notify();
         cx.spawn_in(window, async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    project_coordinator.create_worktree(WorktreePlanRequest { plan, cancellation })
+                    launch_coordinator.create_worktree(WorktreePlanRequest { plan, cancellation })
                 })
                 .await;
             let _ = cx.update(|window, cx| {
@@ -594,7 +566,7 @@ impl MultiplexApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(repository) = self.project_library.repository.clone() else {
+        let Some(repository) = self.library.repository.clone() else {
             self.preserve_worktree_intent(&intent, WorktreeError::RegistrationConflict, cx);
             return;
         };
@@ -605,13 +577,13 @@ impl MultiplexApp {
         state.error = None;
         let cancellation = state.cancellation.clone();
         let plan = intent.plan.clone();
-        let project_coordinator = self.project_coordinator.clone();
+        let launch_coordinator = self.launch_coordinator.clone();
         cx.notify();
         cx.spawn_in(window, async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    project_coordinator.verify_worktree(WorktreePlanRequest {
+                    launch_coordinator.verify_worktree(WorktreePlanRequest {
                         plan: plan.clone(),
                         cancellation,
                     })?;
@@ -633,19 +605,18 @@ impl MultiplexApp {
         &mut self,
         generation: u64,
         intent: WorktreeIntent,
-        result: Result<(multiplex_domain::Project, WorktreeRegistration), WorktreeError>,
+        result: Result<WorktreeRegistration, WorktreeError>,
         cx: &mut Context<Self>,
     ) {
         if !self.worktree_generation_matches(generation) {
             return;
         }
         match result {
-            Ok((project, _)) => {
-                self.project_library.reload();
-                self.project_library.selected_id = Some(project.id);
+            Ok(registration) => {
+                self.library.reload();
                 if let Some(state) = self.worktree_launch.as_mut() {
                     state.stage = WorktreeLaunchStage::Registered;
-                    state.registered_child_id = Some(project.id);
+                    state.registered_folder = Some(registration.managed_path);
                     state.recovering = false;
                     state.error = None;
                 }
@@ -661,11 +632,11 @@ impl MultiplexApp {
         error: WorktreeError,
         cx: &mut Context<Self>,
     ) {
-        if let Some(repository) = self.project_library.repository.as_ref() {
+        if let Some(repository) = self.library.repository.as_ref() {
             let _ =
                 repository.mark_worktree_intent_needs_inspection(intent.plan.id, intent.revision);
         }
-        self.project_library.reload();
+        self.library.reload();
         if let Some(state) = self.worktree_launch.as_mut() {
             state.stage = WorktreeLaunchStage::Ready;
             state.inspection = Some(WorktreeInspection {
@@ -694,7 +665,7 @@ impl MultiplexApp {
         cx: &mut Context<Self>,
     ) {
         let Some(intent) = self
-            .project_library
+            .library
             .snapshot
             .as_ref()
             .and_then(|snapshot| {
@@ -717,9 +688,8 @@ impl MultiplexApp {
             cx,
         );
         self.worktree_launch = Some(WorktreeLaunchUiState {
-            source_project_id: intent.plan.source_project_id,
+            source_folder: intent.plan.repository_root.clone(),
             worktree_id: intent.plan.id,
-            child_project_id: intent.plan.child_project_id,
             stage: WorktreeLaunchStage::Ready,
             inspection: Some(WorktreeInspection {
                 repository_basename: intent
@@ -740,7 +710,7 @@ impl MultiplexApp {
                 .as_ref()
                 .and_then(|snapshot| snapshot.presets.iter().find(|preset| preset.enabled))
                 .map(|preset| preset.id),
-            registered_child_id: None,
+            registered_folder: None,
             error: None,
             generation: 1,
             cancellation: WorktreeCancellation::default(),
@@ -756,7 +726,7 @@ impl MultiplexApp {
             return;
         };
         let Some(intent) = self
-            .project_library
+            .library
             .snapshot
             .as_ref()
             .and_then(|snapshot| {
@@ -798,11 +768,11 @@ impl MultiplexApp {
             self.fail_worktree_review(WorktreeError::RegistrationConflict, cx);
             return;
         }
-        let Some(repository) = self.project_library.repository.as_ref() else {
+        let Some(repository) = self.library.repository.as_ref() else {
             return;
         };
         let Some(revision) = self
-            .project_library
+            .library
             .snapshot
             .as_ref()
             .map(|snapshot| snapshot.revision)
@@ -811,7 +781,7 @@ impl MultiplexApp {
         };
         match repository.cancel_worktree_intent(id, revision) {
             Ok(()) => {
-                self.project_library.reload();
+                self.library.reload();
                 self.worktree_launch = None;
             }
             Err(error) => self.fail_worktree_review(store_worktree_error(error), cx),
@@ -829,15 +799,15 @@ impl MultiplexApp {
     }
 
     fn start_worktree_session(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((project_id, preset_id)) = self
+        let Some((folder, preset_id)) = self
             .worktree_launch
             .as_ref()
-            .and_then(|state| Some((state.registered_child_id?, state.selected_preset_id?)))
+            .and_then(|state| Some((state.registered_folder.clone()?, state.selected_preset_id?)))
         else {
             return;
         };
         self.worktree_launch = None;
-        self.open_new_session_with_preset(project_id, preset_id, window, cx);
+        self.open_new_session_with_preset(folder, preset_id, window, cx);
     }
 
     pub(super) fn close_worktree_launch(&mut self, cx: &mut Context<Self>) {
@@ -996,7 +966,7 @@ impl MultiplexApp {
                                 this.child(review_row(
                                     localization::worktree_repository_field(),
                                     if recording_friendly {
-                                        localization::product_private_project_row()
+                                        localization::product_private_repository_row()
                                     } else {
                                         inspection.repository_basename.clone()
                                     },
@@ -1301,7 +1271,7 @@ fn worktree_stage_progress(stage: WorktreeLaunchStage) -> u64 {
     }
 }
 
-fn child_project_label(inspection: &WorktreeInspection) -> String {
+fn worktree_label(inspection: &WorktreeInspection) -> String {
     let branch = inspection
         .plan
         .generated_branch
@@ -1388,12 +1358,7 @@ fn worktree_error_message(error: &WorktreeError) -> String {
 fn store_worktree_error(error: StoreError) -> WorktreeError {
     match error {
         StoreError::WorktreeDomain(error) => error,
-        StoreError::Domain(multiplex_domain::ProjectError::StaleRevision { .. }) => {
-            WorktreeError::RegistrationConflict
-        }
-        StoreError::Domain(multiplex_domain::ProjectError::ResourceLimit { limit }) => {
-            WorktreeError::ResourceLimit { limit }
-        }
+        StoreError::StaleRevision { .. } => WorktreeError::RegistrationConflict,
         StoreError::Io {
             kind: std::io::ErrorKind::PermissionDenied,
             ..
@@ -1403,7 +1368,7 @@ fn store_worktree_error(error: StoreError) -> WorktreeError {
             ..
         } => WorktreeError::StorageFull,
         _ => WorktreeError::Store {
-            code: "project-store",
+            code: "library-store",
         },
     }
 }
@@ -1484,8 +1449,6 @@ mod tests {
         let inspection = WorktreeInspection {
             plan: WorktreePlan::new(
                 id,
-                ProjectId::new(),
-                ProjectId::new(),
                 multiplex_domain::CanonicalPath::resolve(&repository).unwrap(),
                 canonical_managed.clone(),
                 multiplex_domain::BaseCandidate {
@@ -1502,7 +1465,7 @@ mod tests {
             fetched: false,
             current_branch_fallback: false,
         };
-        let label = child_project_label(&inspection);
+        let label = worktree_label(&inspection);
         let preview = managed_path_preview(&inspection.plan);
         assert!(label.chars().count() <= multiplex_domain::MAX_LABEL_SCALARS);
         assert!(!label.contains(fixture.path().to_string_lossy().as_ref()));

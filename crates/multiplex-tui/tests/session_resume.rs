@@ -75,7 +75,7 @@ fn tui_resume_preview_is_read_only_private_and_commit_is_exact() {
     let debug = format!("{review:?}");
     assert!(!debug.contains(HANDLE));
     assert!(!debug.contains(PROVIDER_CANARY));
-    assert!(!debug.contains(fixture.seed.project_root.to_string_lossy().as_ref()));
+    assert!(!debug.contains(fixture.seed.folder.to_string_lossy().as_ref()));
     assert!(!debug.contains(&SESSION_ID.to_string()));
 
     let result = executor
@@ -325,7 +325,7 @@ fn resume_fixture(version: &str) -> ResumeFixture {
                 label: "Codex".into(),
                 executable: executable.to_string_lossy().into_owned(),
                 args: Vec::new(),
-                working_directory: WorkingDirectoryRule::ProjectRoot,
+                working_directory: WorkingDirectoryRule::SessionFolder,
                 runtime: Some("codex".into()),
                 enabled: true,
                 favorite: true,
@@ -382,7 +382,7 @@ fn resume_fixture(version: &str) -> ResumeFixture {
         .unwrap();
     drop(lease);
     let codex_sessions = seed.temp.path().join("codex-home/sessions");
-    let provider_metadata_path = write_codex_metadata(&codex_sessions, &seed.project_root, version);
+    let provider_metadata_path = write_codex_metadata(&codex_sessions, &seed.folder, version);
     ResumeFixture {
         source_host_path: source_dir.join("host.json"),
         seed,

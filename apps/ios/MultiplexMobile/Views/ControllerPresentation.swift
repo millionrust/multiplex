@@ -2,7 +2,6 @@ import Foundation
 import SwiftUI
 
 struct ControllerSessionGroupID: Hashable, Sendable {
-    let project: String?
     let group: String?
 }
 
@@ -158,7 +157,7 @@ enum ControllerPresentation {
         var positions: [ControllerSessionGroupID: Int] = [:]
         var groups: [ControllerSessionGroup] = []
         for session in sessions {
-            let id = ControllerSessionGroupID(project: session.project, group: session.group)
+            let id = ControllerSessionGroupID(group: session.group)
             if let index = positions[id] {
                 groups[index].sessions.append(session)
             } else {
@@ -170,8 +169,6 @@ enum ControllerPresentation {
     }
 
     static func sessionGroupTitle(_ id: ControllerSessionGroupID) -> String? {
-        let names = [id.project, id.group].compactMap { $0 }
-        guard !names.isEmpty else { return nil }
-        return names.map(isolated).joined(separator: " · ")
+        id.group.map(isolated)
     }
 }

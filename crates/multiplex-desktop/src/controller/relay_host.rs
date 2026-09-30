@@ -140,7 +140,7 @@ impl RelayHostRouteOwner {
     pub async fn serve_repository(
         &self,
         controller_root: PathBuf,
-        project_root: PathBuf,
+        library_root: PathBuf,
         session_data_root: PathBuf,
         runtime_parent: PathBuf,
         pairing_broker_path: PathBuf,
@@ -165,7 +165,7 @@ impl RelayHostRouteOwner {
             reader,
             writer,
             controller_root,
-            project_root,
+            library_root,
             session_data_root,
             runtime_parent,
             pairing_broker_path,

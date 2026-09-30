@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -6,12 +6,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use multiplex_client::LocalEndpoint;
 use multiplex_domain::HostedSessionId;
-use multiplex_domain::ProjectStatus;
 use multiplex_store::{StoreError, StoreHealth, load_fleet_read_only};
 
 use crate::model::{
-    FleetGroup, FleetHealth, FleetProject, FleetRevision, FleetSession, FleetSnapshot,
-    MAX_PROJECTS, MAX_VISIBLE_SESSIONS, ProjectAvailability, TuiDiagnostic,
+    FleetGroup, FleetHealth, FleetRevision, FleetSession, FleetSnapshot, MAX_GROUPS,
+    MAX_VISIBLE_SESSIONS, TuiDiagnostic,
 };
 
 const STORE_DIR_NAME: &str = "agent-workspace";
@@ -125,41 +124,18 @@ impl FleetSource for LocalFleetSource {
         }
 
         let mut skipped_records = 0usize;
-        let project_count = stored.projects.projects.len();
-        let mut projects = Vec::with_capacity(project_count.min(MAX_PROJECTS));
-        let mut project_indexes = BTreeMap::<String, usize>::new();
-        for summary in stored.projects.projects.into_iter().take(MAX_PROJECTS) {
-            let id = summary.project.id.to_string();
-            project_indexes.insert(id.clone(), projects.len());
-            projects.push(FleetProject {
-                id,
-                name: safe_user_text(summary.project.display_name.as_str()),
-                availability: match summary.status {
-                    ProjectStatus::Available => ProjectAvailability::Available,
-                    ProjectStatus::Unavailable => ProjectAvailability::Unavailable,
-                    ProjectStatus::PermissionDenied => ProjectAvailability::PermissionDenied,
-                },
-                groups: Vec::new(),
-            });
-        }
-        skipped_records =
-            skipped_records.saturating_add(project_count.saturating_sub(projects.len()));
-
+        let group_count = stored.library.groups.len();
+        let mut groups = Vec::with_capacity(group_count.min(MAX_GROUPS));
         let mut group_ids = BTreeSet::new();
-        for group in stored.projects.groups {
-            let project_id = group.project_id.to_string();
-            let Some(index) = project_indexes.get(&project_id).copied() else {
-                skipped_records = skipped_records.saturating_add(1);
-                continue;
-            };
+        for group in stored.library.groups.into_iter().take(MAX_GROUPS) {
             let id = group.id.to_string();
             group_ids.insert(id.clone());
-            projects[index].groups.push(FleetGroup {
+            groups.push(FleetGroup {
                 id,
-                project_id,
                 name: safe_user_text(group.name.as_str()),
             });
         }
+        skipped_records = skipped_records.saturating_add(group_count.saturating_sub(groups.len()));
 
         let mut sessions =
             Vec::with_capacity(stored.sessions.sessions.len().min(MAX_VISIBLE_SESSIONS));
@@ -171,11 +147,6 @@ impl FleetSource for LocalFleetSource {
                 skipped_records = skipped_records.saturating_add(1);
                 continue;
             }
-            let project_id = session.project_id.to_string();
-            if !project_indexes.contains_key(&project_id) {
-                skipped_records = skipped_records.saturating_add(1);
-                continue;
-            }
             let group_id = session.group_id.map(|id| id.to_string());
             if group_id.as_ref().is_some_and(|id| !group_ids.contains(id)) {
                 skipped_records = skipped_records.saturating_add(1);
@@ -183,7 +154,6 @@ impl FleetSource for LocalFleetSource {
             }
             sessions.push(FleetSession {
                 id: session.id.to_string(),
-                project_id,
                 group_id,
                 title: safe_user_text(session.title.as_str()),
                 state: session_state(session.lifecycle).to_string(),
@@ -195,14 +165,14 @@ impl FleetSource for LocalFleetSource {
             });
         }
 
-        let recovered = stored.projects.health == StoreHealth::RecoveredLastGood
+        let recovered = stored.library.health == StoreHealth::RecoveredLastGood
             || stored.sessions.health == StoreHealth::RecoveredLastGood;
         Ok(FleetSnapshot {
             revision: FleetRevision {
-                projects: stored.projects.revision.get(),
+                library: stored.library.revision.get(),
                 sessions: stored.sessions.revision.get(),
             },
-            projects,
+            groups,
             sessions,
             health: if recovered {
                 FleetHealth::RecoveredLastGood
@@ -254,7 +224,9 @@ fn map_store_error(error: StoreError) -> FleetLoadError {
             "Update Multiplex, then press r to refresh.",
             true,
         ),
-        StoreError::Corrupt { .. } => (
+        StoreError::Corrupt { .. }
+        | StoreError::StaleRevision { .. }
+        | StoreError::RevisionOverflow => (
             "store-corrupt",
             "Multiplex metadata could not be read safely",
             "Open desktop diagnostics before attempting recovery.",
@@ -343,8 +315,8 @@ fn activity_state(state: multiplex_domain::ActivityState) -> &'static str {
 mod tests {
     use std::fs;
 
-    use multiplex_domain::{AddProject, ProjectId, Revision};
-    use multiplex_store::{ProjectRepository, SessionRepository};
+    use multiplex_domain::GroupId;
+    use multiplex_store::{LibraryRepository, SessionRepository};
     use tempfile::TempDir;
 
     use super::*;
@@ -354,27 +326,21 @@ mod tests {
         let fixture = TempDir::new().unwrap();
         let metadata = fixture.path().join("metadata");
         let data = fixture.path().join("session-data");
-        let project_dir = fixture.path().join("project");
-        fs::create_dir(&project_dir).unwrap();
-        let projects = ProjectRepository::open(&metadata).unwrap();
-        projects
-            .add_project(AddProject {
-                id: ProjectId::new(),
-                root: project_dir,
-                display_name: Some("Alpha\u{1b}[31m".into()),
-                expected: Revision::ZERO,
-            })
+        let library = LibraryRepository::open(&metadata).unwrap();
+        let revision = library.load().unwrap().revision;
+        library
+            .create_group(GroupId::new(), "Alpha\u{1b}[31m", revision)
             .unwrap();
         SessionRepository::open(&metadata, data).unwrap();
-        let before = fs::read(metadata.join("projects.json")).unwrap();
+        let before = fs::read(metadata.join("library.json")).unwrap();
 
         let snapshot = LocalFleetSource::new(&metadata)
             .load(&FleetCancellation::default())
             .unwrap();
 
-        assert_eq!(snapshot.projects.len(), 1);
-        assert_eq!(snapshot.projects[0].name, "Alpha[31m");
-        assert_eq!(fs::read(metadata.join("projects.json")).unwrap(), before);
+        assert_eq!(snapshot.groups.len(), 1);
+        assert_eq!(snapshot.groups[0].name, "Alpha[31m");
+        assert_eq!(fs::read(metadata.join("library.json")).unwrap(), before);
     }
 
     #[test]
@@ -397,15 +363,15 @@ mod tests {
         let fixture = TempDir::new().unwrap();
         let metadata = fixture.path().join("metadata");
         let data = fixture.path().join("session-data");
-        ProjectRepository::open(&metadata).unwrap();
+        LibraryRepository::open(&metadata).unwrap();
         SessionRepository::open(&metadata, data).unwrap();
-        fs::write(metadata.join("projects.json"), b"not json").unwrap();
-        let before = fs::read(metadata.join("projects.json")).unwrap();
+        fs::write(metadata.join("library.json"), b"not json").unwrap();
+        let before = fs::read(metadata.join("library.json")).unwrap();
         let recovered = LocalFleetSource::new(&metadata)
             .load(&FleetCancellation::default())
             .unwrap();
         assert_eq!(recovered.health, FleetHealth::RecoveredLastGood);
-        assert_eq!(fs::read(metadata.join("projects.json")).unwrap(), before);
+        assert_eq!(fs::read(metadata.join("library.json")).unwrap(), before);
 
         fs::write(
             metadata.join("format.json"),
@@ -429,10 +395,10 @@ mod tests {
         assert!(!permission.recovery_required);
 
         let unsafe_entry = map_store_error(StoreError::UnsafeEntry {
-            name: "projects.json",
+            name: "library.json",
         });
         assert_eq!(unsafe_entry.diagnostic.code, "unsafe-metadata");
         assert!(unsafe_entry.recovery_required);
-        assert!(!unsafe_entry.diagnostic.summary.contains("projects.json"));
+        assert!(!unsafe_entry.diagnostic.summary.contains("library.json"));
     }
 }

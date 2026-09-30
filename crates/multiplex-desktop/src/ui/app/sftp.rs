@@ -428,7 +428,7 @@ impl MultiplexApp {
             return;
         };
         match command {
-            SftpAccessibilityCommand::FocusRow(_) => self.project_list_focus.focus(window),
+            SftpAccessibilityCommand::FocusRow(_) => self.session_list_focus.focus(window),
             SftpAccessibilityCommand::ActivateRow(row_id) => {
                 if snapshot
                     .rows
@@ -449,7 +449,7 @@ impl MultiplexApp {
                             .sftp_local_filter
                             .update(cx, |state, cx| state.focus(window, cx));
                     } else {
-                        self.project_list_focus.focus(window);
+                        self.session_list_focus.focus(window);
                     }
                 }
             }

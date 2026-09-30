@@ -6,8 +6,7 @@ use multiplex_client::{
 };
 use multiplex_domain::{
     ActivityState, ControllerDeviceId, DeviceStoreRevision, GroupId, HostedSessionId,
-    HostedSessionState, OccupantGeneration, OutputSequence, PairedDeviceStatus, PresetId,
-    ProjectId, Revision,
+    HostedSessionState, OccupantGeneration, OutputSequence, PairedDeviceStatus, PresetId, Revision,
 };
 use uuid::Uuid;
 
@@ -30,7 +29,6 @@ pub struct Invocation {
 pub enum CliCommand {
     Help,
     Status,
-    ProjectList,
     DeviceList(DeviceListFilter),
     DeviceShow {
         device_id: ControllerDeviceId,
@@ -40,9 +38,7 @@ pub enum CliCommand {
         expected_revision: Option<DeviceStoreRevision>,
         confirmed: bool,
     },
-    PresetList {
-        project_id: ProjectId,
-    },
+    PresetList,
     SessionList(SessionListFilter),
     SessionShow {
         session_id: HostedSessionId,
@@ -75,7 +71,7 @@ pub enum CliCommand {
         confirmed: bool,
     },
     SessionLaunch {
-        project_id: ProjectId,
+        folder: std::path::PathBuf,
         preset_id: PresetId,
         group_id: Option<GroupId>,
     },
@@ -264,7 +260,6 @@ pub enum ControllerSshAction {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SessionListFilter {
-    pub project_id: Option<ProjectId>,
     pub group_id: Option<GroupId>,
     pub state: Option<HostedSessionState>,
     pub archived_only: bool,
@@ -298,7 +293,6 @@ pub fn parse_args(arguments: Vec<String>) -> Result<Invocation, CliError> {
 
     let command = match filtered.as_slice() {
         [command] if command == "status" => CliCommand::Status,
-        [scope, action] if scope == "project" && action == "list" => CliCommand::ProjectList,
         [scope, action, rest @ ..] if scope == "device" && action == "list" => {
             let options = parse_options(rest, &["--status"], &[])?;
             CliCommand::DeviceList(DeviceListFilter {
@@ -328,17 +322,10 @@ pub fn parse_args(arguments: Vec<String>) -> Result<Invocation, CliError> {
                 confirmed,
             }
         }
-        [scope, action, rest @ ..] if scope == "preset" && action == "list" => {
-            let options = parse_options(rest, &["--project"], &[])?;
-            CliCommand::PresetList {
-                project_id: parse_id(required(&options, "--project")?, "project")?,
-            }
-        }
+        [scope, action] if scope == "preset" && action == "list" => CliCommand::PresetList,
         [scope, action, rest @ ..] if scope == "session" && action == "list" => {
-            let options =
-                parse_options(rest, &["--project", "--group", "--state"], &["--archived"])?;
+            let options = parse_options(rest, &["--group", "--state"], &["--archived"])?;
             CliCommand::SessionList(SessionListFilter {
-                project_id: optional_id(&options, "--project", "project")?,
                 group_id: optional_id(&options, "--group", "group")?,
                 state: options.value("--state").map(parse_state).transpose()?,
                 archived_only: options.flag("--archived"),
@@ -423,9 +410,9 @@ pub fn parse_args(arguments: Vec<String>) -> Result<Invocation, CliError> {
             }
         }
         [scope, action, rest @ ..] if scope == "session" && action == "launch" => {
-            let options = parse_options(rest, &["--project", "--preset", "--group"], &[])?;
+            let options = parse_options(rest, &["--folder", "--preset", "--group"], &[])?;
             CliCommand::SessionLaunch {
-                project_id: parse_id(required(&options, "--project")?, "project")?,
+                folder: std::path::PathBuf::from(required(&options, "--folder")?),
                 preset_id: parse_id(required(&options, "--preset")?, "preset")?,
                 group_id: optional_id(&options, "--group", "group")?,
             }
@@ -733,7 +720,6 @@ fn optional_id<T: std::str::FromStr>(
 fn parse_id<T: std::str::FromStr>(value: &str, kind: &'static str) -> Result<T, CliError> {
     value.parse().map_err(|_| {
         usage(match kind {
-            "project" => "project ID must be a canonical UUID",
             "preset" => "preset ID must be a canonical UUID",
             "group" => "group ID must be a canonical UUID",
             _ => "session ID must be a canonical UUID",

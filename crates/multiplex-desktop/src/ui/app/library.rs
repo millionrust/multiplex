@@ -1958,7 +1958,7 @@ impl MultiplexApp {
         match section {
             SettingsSectionId::Appearance => app_icon(ICON_PALETTE),
             SettingsSectionId::Terminal => IconName::SquareTerminal.into(),
-            SettingsSectionId::ProjectsSessions => IconName::Folder.into(),
+            SettingsSectionId::Sessions => IconName::Folder.into(),
             SettingsSectionId::PresetsRuntimes => app_icon(ICON_GRID),
             SettingsSectionId::Notifications => IconName::Bell.into(),
             SettingsSectionId::Keyboard => app_icon(ICON_KEYBOARD),
@@ -2245,7 +2245,7 @@ impl MultiplexApp {
         };
         let appearance_visible = section_visible(SettingsSectionId::Appearance);
         let terminal_visible = section_visible(SettingsSectionId::Terminal);
-        let projects_sessions_visible = section_visible(SettingsSectionId::ProjectsSessions);
+        let sessions_visible = section_visible(SettingsSectionId::Sessions);
         let presets_runtimes_visible = section_visible(SettingsSectionId::PresetsRuntimes);
         let notifications_visible = section_visible(SettingsSectionId::Notifications);
         let keyboard_visible = section_visible(SettingsSectionId::Keyboard);
@@ -2927,15 +2927,17 @@ impl MultiplexApp {
                         .gap_2()
                         .items_center()
                         .child(
-                            Icon::new(if self
-                                .health_report
-                                .as_ref()
-                                .is_some_and(multiplex_store::HealthReport::is_healthy)
-                            {
-                                IconName::CircleCheck
-                            } else {
-                                IconName::TriangleAlert
-                            })
+                            Icon::new(
+                                if self
+                                    .health_report
+                                    .as_ref()
+                                    .is_some_and(multiplex_store::HealthReport::is_healthy)
+                                {
+                                    IconName::CircleCheck
+                                } else {
+                                    IconName::TriangleAlert
+                                },
+                            )
                             .size(px(theme::ICON_SIZE_COMPACT))
                             .text_color(theme::text_muted()),
                         )
@@ -2947,72 +2949,72 @@ impl MultiplexApp {
                                 .child(health_model.status.clone()),
                         ),
                 )
-                .children(health_model.findings.iter().enumerate().map(|(index, finding)| {
-                    let kind = finding.kind;
-                    let can_rebuild = finding.can_rebuild;
-                    let action_label = match kind {
-                        multiplex_store::HealthCheckKind::ProjectSessionIndex => {
-                            localization::health_rebuild_project_session_action()
-                        }
-                        multiplex_store::HealthCheckKind::PaletteIndex => {
-                            localization::health_rebuild_palette_action()
-                        }
-                        _ => String::new(),
-                    };
-                    h_flex()
-                        .id(("settings-health-finding", index))
-                        .gap_3()
-                        .items_center()
-                        .justify_between()
-                        .p(px(theme::SPACE_COMPACT))
-                        .rounded(px(theme::CONTROL_RADIUS))
-                        .bg(theme::hover())
-                        .child(
-                            v_flex()
-                                .min_w_0()
-                                .gap_1()
+                .children(
+                    health_model
+                        .findings
+                        .iter()
+                        .enumerate()
+                        .map(|(index, finding)| {
+                            let kind = finding.kind;
+                            let can_rebuild = finding.can_rebuild;
+                            let action_label = match kind {
+                                multiplex_store::HealthCheckKind::PaletteIndex => {
+                                    localization::health_rebuild_palette_action()
+                                }
+                                _ => String::new(),
+                            };
+                            h_flex()
+                                .id(("settings-health-finding", index))
+                                .gap_3()
+                                .items_center()
+                                .justify_between()
+                                .p(px(theme::SPACE_COMPACT))
+                                .rounded(px(theme::CONTROL_RADIUS))
+                                .bg(theme::hover())
                                 .child(
-                                    div()
-                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                        .font_semibold()
-                                        .text_color(theme::text_main())
-                                        .child(finding.label.clone()),
+                                    v_flex()
+                                        .min_w_0()
+                                        .gap_1()
+                                        .child(
+                                            div()
+                                                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                                .font_semibold()
+                                                .text_color(theme::text_main())
+                                                .child(finding.label.clone()),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                                .text_color(theme::text_muted())
+                                                .child(finding.state.clone()),
+                                        ),
                                 )
-                                .child(
-                                    div()
-                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                        .text_color(theme::text_muted())
-                                        .child(finding.state.clone()),
-                                ),
-                        )
-                        .when(can_rebuild, |this| {
-                            this.child(
-                                Button::new(("settings-health-rebuild", index))
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
-                                    .label(action_label)
-                                    .on_click(cx.listener(move |app, _, _, cx| match kind {
-                                        multiplex_store::HealthCheckKind::ProjectSessionIndex => {
-                                            app.rebuild_derived_index(
-                                                multiplex_store::IndexRepairKind::ProjectSessionIndex,
+                                .when(can_rebuild, |this| {
+                                    this.child(
+                                        Button::new(("settings-health-rebuild", index))
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Accent,
                                                 cx,
-                                            );
-                                        }
-                                        multiplex_store::HealthCheckKind::PaletteIndex => {
-                                            app.rebuild_derived_index(
-                                                multiplex_store::IndexRepairKind::PaletteIndex,
-                                                cx,
-                                            );
-                                        }
-                                        _ => {}
-                                    })),
-                            )
-                        })
-                        .into_any_element()
-                }))
+                                            ))
+                                            .label(action_label)
+                                            .on_click(cx.listener(
+                                                move |app, _, _, cx| {
+                                                    if kind
+                                                        == multiplex_store::HealthCheckKind::PaletteIndex
+                                                    {
+                                                        app.rebuild_derived_index(
+                                                            multiplex_store::IndexRepairKind::PaletteIndex,
+                                                            cx,
+                                                        );
+                                                    }
+                                                },
+                                            )),
+                                    )
+                                })
+                                .into_any_element()
+                        }),
+                )
                 .when(recovery_model.visible, |this| {
                     this.child(
                         v_flex()
@@ -3117,10 +3119,7 @@ impl MultiplexApp {
                         .child(
                             Button::new("settings-health-scan")
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Neutral,
-                                    cx,
-                                ))
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
                                 .label(localization::health_scan_action())
                                 .disabled(!health_model.can_scan)
                                 .on_click(cx.listener(|app, _, _, cx| {
@@ -3490,22 +3489,21 @@ impl MultiplexApp {
                             "Cmd+1",
                             library_copy(MessageId::SettingsShortcutOpenActivity),
                         ),
-                        ("Cmd+2", localization::projects_shortcut_description()),
                         (
-                            "Cmd+3",
+                            "Cmd+2",
                             library_copy(MessageId::SettingsShortcutOpenConnections),
                         ),
                         (
-                            "Cmd+4",
+                            "Cmd+3",
                             library_copy(MessageId::SettingsShortcutOpenSessions),
                         ),
-                        ("Cmd+5", library_copy(MessageId::SettingsShortcutOpenFiles)),
+                        ("Cmd+4", library_copy(MessageId::SettingsShortcutOpenFiles)),
                         (
-                            "Cmd+6",
+                            "Cmd+5",
                             library_copy(MessageId::SettingsShortcutOpenDevices),
                         ),
                         (
-                            "Cmd+7",
+                            "Cmd+6",
                             library_copy(MessageId::SettingsShortcutOpenSettings),
                         ),
                         (
@@ -3795,10 +3793,10 @@ impl MultiplexApp {
                                 )
                                 .child(terminal_card)
                             })
-                            .when(projects_sessions_visible, |this| {
-                                this.child(self.settings_hierarchy_heading(
-                                    SettingsSectionId::ProjectsSessions,
-                                ))
+                            .when(sessions_visible, |this| {
+                                this.child(
+                                    self.settings_hierarchy_heading(SettingsSectionId::Sessions),
+                                )
                                 .child(startup_card)
                                 .child(sessions_card)
                             })

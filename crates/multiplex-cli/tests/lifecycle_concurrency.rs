@@ -20,7 +20,7 @@ fn lifecycle_commands_launch_stop_archive_restore_and_reject_stale_revision() {
     let launched = service
         .execute(
             CliCommand::SessionLaunch {
-                project_id: PROJECT_ID,
+                folder: seed.folder.clone(),
                 preset_id: PRESET_ID,
                 group_id: None,
             },
@@ -117,7 +117,7 @@ fn pre_ready_cancellation_cleans_host_and_post_ready_cancellation_detaches_succe
     let error = first_service
         .execute(
             CliCommand::SessionLaunch {
-                project_id: PROJECT_ID,
+                folder: seed.folder.clone(),
                 preset_id: PRESET_ID,
                 group_id: None,
             },
@@ -154,7 +154,7 @@ fn pre_ready_cancellation_cleans_host_and_post_ready_cancellation_detaches_succe
     let post_ready = second_service
         .execute(
             CliCommand::SessionLaunch {
-                project_id: PROJECT_ID,
+                folder: seed.folder.clone(),
                 preset_id: PRESET_ID,
                 group_id: None,
             },
@@ -177,7 +177,7 @@ fn pre_ready_cancellation_cleans_host_and_post_ready_cancellation_detaches_succe
     pre_cancelled.cancel();
     let before_ready = third_service.execute(
         CliCommand::SessionLaunch {
-            project_id: PROJECT_ID,
+            folder: seed.folder.clone(),
             preset_id: PRESET_ID,
             group_id: None,
         },

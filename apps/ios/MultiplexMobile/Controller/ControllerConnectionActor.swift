@@ -554,7 +554,6 @@ private struct SessionSummaryPayload: Decodable {
     let runtime: String?
     let capabilities: [ControllerSessionCapability]?
     let title: String
-    let project: String?
     let group: String?
     let lifecycle: String
     let activity: String?
@@ -570,7 +569,6 @@ private struct SessionSummaryPayload: Decodable {
         case runtime
         case capabilities
         case title
-        case project
         case group
         case lifecycle
         case activity
@@ -2114,7 +2112,6 @@ actor ControllerConnectionActor: ControllerConnecting {
                         runtime: value.runtime,
                         capabilities: value.capabilities ?? [],
                         title: value.title,
-                        project: value.project,
                         group: value.group,
                         lifecycle: value.lifecycle,
                         activity: value.activity,
@@ -2166,12 +2163,14 @@ actor ControllerConnectionActor: ControllerConnecting {
         ]
         let enrichedKeys = legacyKeys.union([
             "host_instance_id", "origin", "runtime", "capabilities",
-            "project", "group", "activity", "unread",
+            "group", "activity", "unread",
         ])
+        // Desktops up to 0.0.5 also sent the session's Project, which is read and ignored.
+        let enrichedKeysWithProject = enrichedKeys.union(["project"])
         guard let sessions = object["sessions"] as? [[String: Any]],
               sessions.allSatisfy({ summary in
                   let keys = Set(summary.keys)
-                  return keys == legacyKeys || keys == enrichedKeys
+                  return keys == legacyKeys || keys == enrichedKeys || keys == enrichedKeysWithProject
               }) else {
             throw ControllerConnectionError.malformedResponse
         }

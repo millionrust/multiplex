@@ -30,9 +30,9 @@ pub use management::{
     ManagementModel, ManagementResult, RemovalPreview,
 };
 pub use model::{
-    FleetGroup, FleetHealth, FleetProject, FleetRevision, FleetSession, FleetSnapshot, LoadState,
-    MAX_FILTER_SCALARS, MAX_PROJECTS, MAX_VISIBLE_SESSIONS, ModelAction, ModelEffect, PaneFocus,
-    ProjectAvailability, ScopeId, TuiDiagnostic, TuiModel,
+    FleetGroup, FleetHealth, FleetRevision, FleetSession, FleetSnapshot, LoadState,
+    MAX_FILTER_SCALARS, MAX_GROUPS, MAX_VISIBLE_SESSIONS, ModelAction, ModelEffect, PaneFocus,
+    ScopeId, TuiDiagnostic, TuiModel,
 };
 pub use resume::{
     LocalResumeExecutor, ResumeEffect, ResumeExecutor, ResumeFailure, ResumeModel, ResumeProgress,

@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use gpui::prelude::FluentBuilder as _;
@@ -15,8 +14,7 @@ use gpui_component::{
 use multiplex_client::HostReconciliationService;
 use multiplex_domain::{
     Group, GroupDestination, GroupError, GroupId, GroupInverseCommand, HostedSessionId,
-    HostedSessionState, OutputSequence, ProjectError, ProjectId, SessionMutation,
-    SessionStateError, SessionTitle,
+    HostedSessionState, OutputSequence, SessionMutation, SessionStateError, SessionTitle,
 };
 use multiplex_store::{RecoveryResult, SessionRemovalPlan, StoreError};
 use multiplex_ui_contract::{
@@ -53,7 +51,6 @@ pub(super) struct SessionSidebarState {
 }
 
 struct GroupEditor {
-    project_id: ProjectId,
     group_id: Option<GroupId>,
 }
 
@@ -79,40 +76,28 @@ struct PendingOrganizationUndo {
 impl MultiplexApp {
     pub(super) fn repair_session_group_references(&mut self) {
         let valid_groups = self
-            .project_library
+            .library
             .snapshot
             .as_ref()
             .map(|snapshot| {
                 snapshot
                     .groups
                     .iter()
-                    .map(|group| (group.id, group.project_id))
-                    .collect::<HashMap<_, _>>()
+                    .map(|group| group.id)
+                    .collect::<std::collections::HashSet<_>>()
             })
             .unwrap_or_default();
         let repaired = self
             .saved
             .repair_app_attached_group_references(&valid_groups);
         if !repaired.is_empty() {
-            let projects = repaired
-                .iter()
-                .filter_map(|id| {
-                    self.saved
-                        .app_attached_sessions
-                        .iter()
-                        .find(|session| session.id == *id)
-                        .map(|session| session.origin.project_id)
-                })
-                .collect::<std::collections::HashSet<_>>();
-            for project_id in projects {
-                let placements = self.saved.app_attached_session_placements(project_id);
-                if let Err(error) = self
-                    .session_library
-                    .apply_placements(&mut self.saved, &placements)
-                {
-                    self.handle_session_library_error(error);
-                    return;
-                }
+            let placements = self.saved.app_attached_session_placements();
+            if let Err(error) = self
+                .session_library
+                .apply_placements(&mut self.saved, &placements)
+            {
+                self.handle_session_library_error(error);
+                return;
             }
             self.persist_session_projection();
             self.status_message = localization::group_repair_status(repaired.len());
@@ -121,7 +106,6 @@ impl MultiplexApp {
 
     pub(super) fn open_group_editor(
         &mut self,
-        project_id: ProjectId,
         group_id: Option<GroupId>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -131,10 +115,7 @@ impl MultiplexApp {
             .map(|group| group.name.as_str().to_string())
             .unwrap_or_default();
         Self::set_input_value(&self.group_name_input, value, window, cx);
-        self.session_sidebar.editor = Some(GroupEditor {
-            project_id,
-            group_id,
-        });
+        self.session_sidebar.editor = Some(GroupEditor { group_id });
         self.session_sidebar.pending_removal = None;
         self.group_name_input
             .update(cx, |input, cx| input.focus(window, cx));
@@ -152,18 +133,18 @@ impl MultiplexApp {
         let Some(editor) = self.session_sidebar.editor.as_ref() else {
             return;
         };
-        let Some(repository) = self.project_library.repository.clone() else {
-            self.error_message = localization::project_store_unavailable();
+        let Some(repository) = self.library.repository.clone() else {
+            self.error_message = localization::library_store_unavailable();
             cx.notify();
             return;
         };
-        let Some(expected) = self.project_revision() else {
+        let Some(expected) = self.library_revision() else {
             return;
         };
         let name = self.group_name_input.read(cx).value().to_string();
         let result = match editor.group_id {
             Some(group_id) => repository.rename_group(group_id, &name, expected),
-            None => repository.create_group(editor.project_id, GroupId::new(), &name, expected),
+            None => repository.create_group(GroupId::new(), &name, expected),
         };
         match result {
             Ok(mutation) => {
@@ -177,10 +158,10 @@ impl MultiplexApp {
     }
 
     fn set_group_collapsed(&mut self, id: GroupId, collapsed: bool, cx: &mut Context<Self>) {
-        let Some(repository) = self.project_library.repository.clone() else {
+        let Some(repository) = self.library.repository.clone() else {
             return;
         };
-        let Some(expected) = self.project_revision() else {
+        let Some(expected) = self.library_revision() else {
             return;
         };
         match repository.set_group_collapsed(id, collapsed, expected) {
@@ -194,10 +175,10 @@ impl MultiplexApp {
     }
 
     fn move_group(&mut self, id: GroupId, delta: isize, cx: &mut Context<Self>) {
-        let Some(group) = self.group(id).cloned() else {
+        if self.group(id).is_none() {
             return;
-        };
-        let groups = self.project_groups(group.project_id);
+        }
+        let groups = self.library_groups();
         let Some(index) = groups.iter().position(|candidate| candidate.id == id) else {
             return;
         };
@@ -210,10 +191,10 @@ impl MultiplexApp {
         } else {
             groups.get(index + 2).map(|group| group.id)
         };
-        let Some(repository) = self.project_library.repository.clone() else {
+        let Some(repository) = self.library.repository.clone() else {
             return;
         };
-        let Some(expected) = self.project_revision() else {
+        let Some(expected) = self.library_revision() else {
             return;
         };
         match repository.move_group_before(id, before, expected) {
@@ -252,19 +233,17 @@ impl MultiplexApp {
             return;
         };
         let has_sessions = self.group_session_count(id) > 0;
-        let Some(repository) = self.project_library.repository.clone() else {
+        let Some(repository) = self.library.repository.clone() else {
             return;
         };
-        let Some(expected) = self.project_revision() else {
+        let Some(expected) = self.library_revision() else {
             return;
         };
         match repository.remove_group(id, destination, has_sessions, expected) {
             Ok(mutation) => {
-                let destination = destination.unwrap_or(GroupDestination::ProjectRoot);
-                let placements =
-                    self.saved
-                        .relocate_group_sessions(group.project_id, group.id, destination);
-                let updated = self.saved.app_attached_session_placements(group.project_id);
+                let destination = destination.unwrap_or(GroupDestination::Ungrouped);
+                let placements = self.saved.relocate_group_sessions(group.id, destination);
+                let updated = self.saved.app_attached_session_placements();
                 if let Err(error) = self
                     .session_library
                     .apply_placements(&mut self.saved, &updated)
@@ -753,18 +732,17 @@ impl MultiplexApp {
         before: Option<HostedSessionId>,
         cx: &mut Context<Self>,
     ) {
-        let Some(project_id) = self
+        if !self
             .saved
             .app_attached_sessions
             .iter()
-            .find(|session| session.id == id)
-            .map(|session| session.origin.project_id)
-        else {
+            .any(|session| session.id == id)
+        {
             self.error_message = localization::group_error_generic();
             cx.notify();
             return;
         };
-        let inverse = self.saved.app_attached_session_placements(project_id);
+        let inverse = self.saved.app_attached_session_placements();
         let mut candidate = self.saved.clone();
         if candidate
             .move_app_attached_session(id, destination, before)
@@ -774,7 +752,7 @@ impl MultiplexApp {
             cx.notify();
             return;
         }
-        let placements = candidate.app_attached_session_placements(project_id);
+        let placements = candidate.app_attached_session_placements();
         if let Err(error) = self
             .session_library
             .apply_placements(&mut self.saved, &placements)
@@ -806,7 +784,7 @@ impl MultiplexApp {
         else {
             return;
         };
-        let sessions = self.sessions_in_destination(session.origin.project_id, session.group_id);
+        let sessions = self.sessions_in_destination(session.group_id);
         let Some(index) = sessions.iter().position(|candidate| candidate.id == id) else {
             return;
         };
@@ -822,7 +800,7 @@ impl MultiplexApp {
         let destination = session
             .group_id
             .map(GroupDestination::Group)
-            .unwrap_or(GroupDestination::ProjectRoot);
+            .unwrap_or(GroupDestination::Ungrouped);
         self.move_session_to(id, destination, before, cx);
     }
 
@@ -831,7 +809,7 @@ impl MultiplexApp {
             return;
         };
         if Instant::now() >= pending.expires_at {
-            self.status_message = localization::project_undo_expired();
+            self.status_message = localization::organization_undo_expired();
             cx.notify();
             return;
         }
@@ -862,31 +840,28 @@ impl MultiplexApp {
         command: GroupInverseCommand,
         placements: Vec<SavedSessionPlacement>,
     ) {
-        let Some(repository) = self.project_library.repository.clone() else {
-            self.error_message = localization::project_store_unavailable();
+        let Some(repository) = self.library.repository.clone() else {
+            self.error_message = localization::library_store_unavailable();
             return;
         };
-        let Some(expected) = self.project_revision() else {
+        let Some(expected) = self.library_revision() else {
             return;
         };
         let result = match command {
             GroupInverseCommand::RemoveCreated { group_id } => {
-                let Some(group) = self.group(group_id).cloned() else {
+                if self.group(group_id).is_none() {
                     return;
-                };
+                }
                 let has_sessions = self.group_session_count(group_id) > 0;
                 let result = repository.remove_group(
                     group_id,
-                    Some(GroupDestination::ProjectRoot),
+                    Some(GroupDestination::Ungrouped),
                     has_sessions,
                     expected,
                 );
                 if result.is_ok() && has_sessions {
-                    self.saved.relocate_group_sessions(
-                        group.project_id,
-                        group_id,
-                        GroupDestination::ProjectRoot,
-                    );
+                    self.saved
+                        .relocate_group_sessions(group_id, GroupDestination::Ungrouped);
                 }
                 result.map(|_| ())
             }
@@ -942,7 +917,7 @@ impl MultiplexApp {
     }
 
     fn finish_group_mutation(&mut self) {
-        self.project_library.reload();
+        self.library.reload();
         self.repair_session_group_references();
         self.status_message = localization::group_organization_updated();
         self.error_message.clear();
@@ -951,7 +926,7 @@ impl MultiplexApp {
     fn handle_group_error(&mut self, error: StoreError) {
         let stale = matches!(
             error,
-            StoreError::Domain(ProjectError::StaleRevision { .. })
+            StoreError::StaleRevision { .. }
                 | StoreError::GroupDomain(GroupError::StaleRevision { .. })
         );
         self.error_message = match error {
@@ -961,27 +936,27 @@ impl MultiplexApp {
             StoreError::GroupDomain(GroupError::DuplicateName) => {
                 localization::group_error_duplicate()
             }
-            StoreError::Domain(ProjectError::StaleRevision { .. })
+            StoreError::StaleRevision { .. }
             | StoreError::GroupDomain(GroupError::StaleRevision { .. }) => {
                 localization::group_error_stale()
             }
             _ => localization::group_error_generic(),
         };
         if stale {
-            self.project_library.reload();
+            self.library.reload();
             self.repair_session_group_references();
         }
     }
 
-    fn project_revision(&self) -> Option<multiplex_domain::Revision> {
-        self.project_library
+    fn library_revision(&self) -> Option<multiplex_domain::Revision> {
+        self.library
             .snapshot
             .as_ref()
             .map(|snapshot| snapshot.revision)
     }
 
     fn group(&self, id: GroupId) -> Option<&Group> {
-        self.project_library
+        self.library
             .snapshot
             .as_ref()?
             .groups
@@ -989,30 +964,20 @@ impl MultiplexApp {
             .find(|group| group.id == id)
     }
 
-    fn project_groups(&self, project_id: ProjectId) -> Vec<&Group> {
+    fn library_groups(&self) -> Vec<&Group> {
         let mut groups = self
-            .project_library
+            .library
             .snapshot
             .as_ref()
-            .map(|snapshot| {
-                snapshot
-                    .groups
-                    .iter()
-                    .filter(|group| group.project_id == project_id)
-                    .collect::<Vec<_>>()
-            })
+            .map(|snapshot| snapshot.groups.iter().collect::<Vec<_>>())
             .unwrap_or_default();
         groups.sort_by_key(|group| (group.position, group.id));
         groups
     }
 
-    fn sessions_in_destination(
-        &self,
-        project_id: ProjectId,
-        group_id: Option<GroupId>,
-    ) -> Vec<SavedAppAttachedSession> {
+    fn sessions_in_destination(&self, group_id: Option<GroupId>) -> Vec<SavedAppAttachedSession> {
         self.session_library
-            .visible_sessions(project_id, group_id)
+            .visible_sessions(group_id)
             .into_iter()
             .filter_map(|metadata| {
                 self.saved
@@ -1133,120 +1098,58 @@ impl MultiplexApp {
         cx: &Context<Self>,
     ) -> Option<ProductSessionSemanticSnapshot> {
         let screen = match self.nav_section {
-            super::NavSection::Projects => ProductSessionScreen::Projects,
             super::NavSection::Sessions => ProductSessionScreen::Sessions,
             _ => return None,
         };
-        let project_snapshot = self.project_library.snapshot.as_ref();
-        let projects = project_snapshot
-            .map(|snapshot| snapshot.projects.as_slice())
-            .unwrap_or_default();
+        // Sessions outside any group come first, then each group with its own sessions under it.
+        // A Project used to sit above both; nothing does now.
         let mut rows = Vec::new();
-        let project_ids = if screen == ProductSessionScreen::Projects {
-            projects
-                .iter()
-                .map(|summary| summary.project.id)
-                .collect::<Vec<_>>()
-        } else {
-            let mut ids = self
-                .session_library
-                .visible_sessions_all()
-                .into_iter()
-                .map(|session| session.project_id)
-                .collect::<Vec<_>>();
-            ids.sort_unstable();
-            ids.dedup();
-            ids
-        };
-
-        for (project_index, project_id) in project_ids.iter().copied().enumerate() {
-            let summary = projects
-                .iter()
-                .find(|summary| summary.project.id == project_id);
-            let project_name = summary
-                .map(|summary| summary.project.display_name.as_str().to_string())
-                .or_else(|| {
-                    self.saved
-                        .app_attached_sessions
-                        .iter()
-                        .find(|session| session.origin.project_id == project_id)
-                        .map(|session| session.project_label.clone())
-                })
-                .unwrap_or_else(localization::projects_nav_label);
-            let project_status = summary
-                .map(|summary| summary.status)
-                .unwrap_or(multiplex_domain::ProjectStatus::Unavailable);
-            let project_row_id = accessible_project_id(project_id);
+        let ungrouped = self.sessions_in_destination(None);
+        let groups = self.library_groups();
+        let top_level_count = ungrouped.len() + groups.len();
+        append_accessible_session_rows(
+            &mut rows,
+            &ungrouped,
+            None,
+            &self.session_library,
+            self.session_sidebar.selected_session,
+            0,
+            top_level_count,
+        );
+        for (group_index, group) in groups.iter().enumerate() {
+            let group_row_id = accessible_group_id(group.id);
             rows.push(AccessibleCollectionRow {
-                id: project_row_id,
+                id: group_row_id,
                 parent: None,
-                level: HierarchyLevel::Project,
-                name: project_name,
-                status: project_status_message_id(project_status),
-                selected: self.project_library.selected_id == Some(project_id),
-                expanded: Some(
-                    screen == ProductSessionScreen::Sessions
-                        || self.project_library.selected_id == Some(project_id),
-                ),
+                level: HierarchyLevel::Group,
+                name: group.name.as_str().to_string(),
+                status: MessageId::ProductSurfaceStateReady,
+                selected: false,
+                expanded: Some(!group.collapsed),
                 unread: false,
-                disabled: project_status != multiplex_domain::ProjectStatus::Available,
-                position: project_index + 1,
-                set_size: project_ids.len().max(1),
+                disabled: false,
+                position: ungrouped.len() + group_index + 1,
+                set_size: top_level_count.max(1),
             });
-
-            let include_children = screen == ProductSessionScreen::Sessions
-                || self.project_library.selected_id == Some(project_id);
-            if !include_children {
-                continue;
-            }
-
-            let ungrouped = self.sessions_in_destination(project_id, None);
-            let groups = self.project_groups(project_id);
-            let project_child_count = ungrouped.len() + groups.len();
-            append_accessible_session_rows(
-                &mut rows,
-                &ungrouped,
-                project_row_id,
-                &self.session_library,
-                self.session_sidebar.selected_session,
-                0,
-                project_child_count,
-            );
-            for (group_index, group) in groups.iter().enumerate() {
-                let group_row_id = accessible_group_id(group.id);
-                rows.push(AccessibleCollectionRow {
-                    id: group_row_id,
-                    parent: Some(project_row_id),
-                    level: HierarchyLevel::Group,
-                    name: group.name.as_str().to_string(),
-                    status: MessageId::ProductSurfaceStateReady,
-                    selected: false,
-                    expanded: Some(!group.collapsed),
-                    unread: false,
-                    disabled: false,
-                    position: ungrouped.len() + group_index + 1,
-                    set_size: project_child_count.max(1),
-                });
-                if !group.collapsed {
-                    let sessions = self.sessions_in_destination(project_id, Some(group.id));
-                    let session_count = sessions.len();
-                    append_accessible_session_rows(
-                        &mut rows,
-                        &sessions,
-                        group_row_id,
-                        &self.session_library,
-                        self.session_sidebar.selected_session,
-                        0,
-                        session_count,
-                    );
-                }
+            if !group.collapsed {
+                let sessions = self.sessions_in_destination(Some(group.id));
+                let session_count = sessions.len();
+                append_accessible_session_rows(
+                    &mut rows,
+                    &sessions,
+                    Some(group_row_id),
+                    &self.session_library,
+                    self.session_sidebar.selected_session,
+                    0,
+                    session_count,
+                );
             }
         }
 
         let dialog = self.product_destructive_presentation(cx);
         let controls = self.product_session_controls(screen, cx);
         let state = product_session_surface_state(
-            &self.project_library.load_state,
+            &self.library.load_state,
             self.session_library.recovery_state(),
             rows.is_empty(),
             self.session_library.filter != SessionLibraryFilter::All,
@@ -1267,172 +1170,105 @@ impl MultiplexApp {
         cx: &Context<Self>,
     ) -> Vec<ProductSessionControl> {
         let mut controls = Vec::new();
-        if matches!(
-            &self.project_library.load_state,
-            super::projects::ProjectLibraryLoadState::Failed(_)
-        ) {
+        if matches!(&self.library.load_state, super::LibraryLoadState::Failed(_)) {
             controls.push(product_button(
-                ProductSessionAction::RetryProjects,
+                ProductSessionAction::RetryLibrary,
                 MessageId::CommonRetry,
                 None,
             ));
             return controls;
         }
 
-        if screen == ProductSessionScreen::Projects {
-            let mut add = product_button(
-                ProductSessionAction::AddProject,
-                MessageId::ProjectsAddAction,
-                None,
+        controls.push(product_button(
+            ProductSessionAction::AddGroup,
+            MessageId::GroupNewAction,
+            None,
+        ));
+        let groups = self.library_groups();
+        for (index, group) in groups.iter().enumerate() {
+            let group_id = accessible_group_id(group.id);
+            controls.push(product_button(
+                ProductSessionAction::ToggleGroup(group_id),
+                if group.collapsed {
+                    MessageId::GroupExpandAction
+                } else {
+                    MessageId::GroupCollapseAction
+                },
+                Some(group_id),
+            ));
+            let mut move_up = product_button(
+                ProductSessionAction::MoveGroup(group_id, ProductMoveDirection::Up),
+                MessageId::GroupMoveUpAction,
+                Some(group_id),
             );
-            add.disabled = self.project_library.add_draft.is_some()
-                || self.project_library.add_validation.is_some();
-            controls.push(add);
-            if self.project_library.add_draft.is_some() {
-                controls.extend([
-                    product_text_field(
-                        ProductSessionAction::SetProjectName,
-                        MessageId::ProjectLabelField,
-                        self.project_label_input.read(cx).value().to_string(),
-                        false,
-                    ),
-                    product_button(
-                        ProductSessionAction::ConfirmProjectAdd,
-                        MessageId::ProjectAddConfirm,
-                        None,
-                    ),
-                    product_button(
-                        ProductSessionAction::CancelProjectAdd,
-                        MessageId::CommonCancel,
-                        None,
-                    ),
-                ]);
-            } else if self.project_library.add_validation.is_some() {
-                controls.push(product_button(
-                    ProductSessionAction::CancelProjectAdd,
+            move_up.disabled = index == 0;
+            controls.push(move_up);
+            let mut move_down = product_button(
+                ProductSessionAction::MoveGroup(group_id, ProductMoveDirection::Down),
+                MessageId::GroupMoveDownAction,
+                Some(group_id),
+            );
+            move_down.disabled = index + 1 == groups.len();
+            controls.push(move_down);
+            controls.extend([
+                product_button(
+                    ProductSessionAction::RenameGroup(group_id),
+                    MessageId::GroupRenameAction,
+                    Some(group_id),
+                ),
+                product_button(
+                    ProductSessionAction::RemoveGroup(group_id),
+                    MessageId::GroupRemoveAction,
+                    Some(group_id),
+                ),
+            ]);
+        }
+        if self.session_sidebar.pending_undo.is_some() {
+            controls.push(product_button(
+                ProductSessionAction::UndoOrganization,
+                MessageId::GroupUndoAction,
+                None,
+            ));
+        }
+        if self.session_sidebar.editor.is_some() {
+            controls.extend([
+                product_text_field(
+                    ProductSessionAction::SetGroupName,
+                    MessageId::GroupNameField,
+                    self.group_name_input.read(cx).value().to_string(),
+                    false,
+                ),
+                product_button(ProductSessionAction::SaveGroup, MessageId::CommonSave, None),
+                product_button(
+                    ProductSessionAction::CancelGroup,
                     MessageId::CommonCancel,
                     None,
-                ));
-            }
-            if self.project_library.pending_removal.is_some() {
-                controls.push(product_button(
-                    ProductSessionAction::UndoProjectRemoval,
-                    MessageId::ProjectUndoAction,
-                    None,
-                ));
-            }
-            if let Some(snapshot) = self.project_library.snapshot.as_ref() {
-                for summary in &snapshot.projects {
-                    if summary.status == multiplex_domain::ProjectStatus::Available {
-                        let id = accessible_project_id(summary.project.id);
-                        controls.push(product_button(
-                            ProductSessionAction::RemoveProject(id),
-                            MessageId::ProjectRemoveAction,
-                            Some(id),
-                        ));
-                    }
-                }
-            }
-            if let Some(project_id) = self.project_library.selected_id {
-                let project = accessible_project_id(project_id);
-                controls.push(product_button(
-                    ProductSessionAction::AddGroup(project),
-                    MessageId::GroupNewAction,
-                    Some(project),
-                ));
-                let groups = self.project_groups(project_id);
-                for (index, group) in groups.iter().enumerate() {
-                    let group_id = accessible_group_id(group.id);
-                    controls.push(product_button(
-                        ProductSessionAction::ToggleGroup(group_id),
-                        if group.collapsed {
-                            MessageId::GroupExpandAction
-                        } else {
-                            MessageId::GroupCollapseAction
-                        },
-                        Some(group_id),
-                    ));
-                    let mut move_up = product_button(
-                        ProductSessionAction::MoveGroup(group_id, ProductMoveDirection::Up),
-                        MessageId::GroupMoveUpAction,
-                        Some(group_id),
-                    );
-                    move_up.disabled = index == 0;
-                    controls.push(move_up);
-                    let mut move_down = product_button(
-                        ProductSessionAction::MoveGroup(group_id, ProductMoveDirection::Down),
-                        MessageId::GroupMoveDownAction,
-                        Some(group_id),
-                    );
-                    move_down.disabled = index + 1 == groups.len();
-                    controls.push(move_down);
-                    controls.extend([
-                        product_button(
-                            ProductSessionAction::RenameGroup(group_id),
-                            MessageId::GroupRenameAction,
-                            Some(group_id),
-                        ),
-                        product_button(
-                            ProductSessionAction::RemoveGroup(group_id),
-                            MessageId::GroupRemoveAction,
-                            Some(group_id),
-                        ),
-                    ]);
-                }
-            }
-            if self.session_sidebar.pending_undo.is_some() {
-                controls.push(product_button(
-                    ProductSessionAction::UndoOrganization,
-                    MessageId::GroupUndoAction,
-                    None,
-                ));
-            }
-            if self.session_sidebar.editor.is_some() {
-                controls.extend([
-                    product_text_field(
-                        ProductSessionAction::SetGroupName,
-                        MessageId::GroupNameField,
-                        self.group_name_input.read(cx).value().to_string(),
-                        false,
-                    ),
-                    product_button(ProductSessionAction::SaveGroup, MessageId::CommonSave, None),
-                    product_button(
-                        ProductSessionAction::CancelGroup,
-                        MessageId::CommonCancel,
-                        None,
-                    ),
-                ]);
-            }
-            if let Some(pending) = self.session_sidebar.pending_removal.as_ref() {
-                let mut move_to_root = product_button(
+                ),
+            ]);
+        }
+        if let Some(pending) = self.session_sidebar.pending_removal.as_ref() {
+            let mut move_to_root = product_button(
+                ProductSessionAction::RemoveGroupTo(accessible_group_id(pending.group_id), None),
+                MessageId::GroupMoveToRootAction,
+                None,
+            );
+            move_to_root.in_dialog = true;
+            controls.push(move_to_root);
+            for destination in groups
+                .iter()
+                .filter(|destination| destination.id != pending.group_id)
+            {
+                let mut move_to_group = product_button(
                     ProductSessionAction::RemoveGroupTo(
                         accessible_group_id(pending.group_id),
-                        None,
+                        Some(accessible_group_id(destination.id)),
                     ),
-                    MessageId::GroupMoveToRootAction,
+                    MessageId::GroupMoveSessionAction,
                     None,
                 );
-                move_to_root.in_dialog = true;
-                controls.push(move_to_root);
-                if let Some(group) = self.group(pending.group_id) {
-                    for destination in self
-                        .project_groups(group.project_id)
-                        .into_iter()
-                        .filter(|destination| destination.id != pending.group_id)
-                    {
-                        let mut move_to_group = product_button(
-                            ProductSessionAction::RemoveGroupTo(
-                                accessible_group_id(pending.group_id),
-                                Some(accessible_group_id(destination.id)),
-                            ),
-                            MessageId::GroupMoveSessionAction,
-                            None,
-                        );
-                        move_to_group.value = Some(destination.name.as_str().to_string());
-                        move_to_group.in_dialog = true;
-                        controls.push(move_to_group);
-                    }
-                }
+                move_to_group.value = Some(destination.name.as_str().to_string());
+                move_to_group.in_dialog = true;
+                controls.push(move_to_group);
             }
         }
 
@@ -1528,7 +1364,7 @@ impl MultiplexApp {
                 control.disabled = !resume.enabled;
                 controls.push(control);
             }
-            let sessions = self.sessions_in_destination(record.origin.project_id, record.group_id);
+            let sessions = self.sessions_in_destination(record.group_id);
             if let Some(index) = sessions
                 .iter()
                 .position(|candidate| candidate.id == selected_id)
@@ -1651,7 +1487,7 @@ impl MultiplexApp {
                 kind: DestructiveActionKind::RemoveGroup,
                 target: accessible_group_id(pending.group_id),
                 revision: self
-                    .project_library
+                    .library
                     .snapshot
                     .as_ref()
                     .map(|snapshot| snapshot.revision.get())
@@ -1671,40 +1507,21 @@ impl MultiplexApp {
             ProductSessionAccessibilityCommand::FocusRow(row)
             | ProductSessionAccessibilityCommand::ActivateRow(row) => {
                 match row.kind {
-                    multiplex_ui_contract::AccessibleRowKind::Project => {
-                        let id = ProjectId::from_uuid(uuid::Uuid::from_u128(row.value));
-                        if self
-                            .project_library
-                            .snapshot
-                            .as_ref()
-                            .is_some_and(|snapshot| {
-                                snapshot
-                                    .projects
-                                    .iter()
-                                    .any(|summary| summary.project.id == id)
-                            })
-                        {
-                            self.project_library.selected_id = Some(id);
-                            self.project_list_focus.focus(window);
-                        }
-                    }
                     multiplex_ui_contract::AccessibleRowKind::Group => {
                         let id = GroupId::from_uuid(uuid::Uuid::from_u128(row.value));
                         if let Some(group) = self.group(id).cloned() {
-                            self.project_library.selected_id = Some(group.project_id);
                             if matches!(command, ProductSessionAccessibilityCommand::ActivateRow(_))
                             {
                                 self.set_group_collapsed(id, !group.collapsed, cx);
                             }
-                            self.project_list_focus.focus(window);
+                            self.session_list_focus.focus(window);
                         }
                     }
                     multiplex_ui_contract::AccessibleRowKind::Session => {
                         let id = HostedSessionId::from_uuid(uuid::Uuid::from_u128(row.value));
-                        if let Some(session) = self.session_library.session(id) {
-                            self.project_library.selected_id = Some(session.project_id);
+                        if self.session_library.session(id).is_some() {
                             self.session_sidebar.selected_session = Some(id);
-                            self.project_list_focus.focus(window);
+                            self.session_list_focus.focus(window);
                             self.refresh_artifacts(id, cx);
                         }
                     }
@@ -1712,9 +1529,6 @@ impl MultiplexApp {
                 cx.notify();
             }
             ProductSessionAccessibilityCommand::FocusControl(action) => match action {
-                ProductSessionAction::SetProjectName => self
-                    .project_label_input
-                    .update(cx, |input, cx| input.focus(window, cx)),
                 ProductSessionAction::SetGroupName => self
                     .group_name_input
                     .update(cx, |input, cx| input.focus(window, cx)),
@@ -1724,18 +1538,13 @@ impl MultiplexApp {
                 ProductSessionAction::SetSessionRemovalConfirmation => self
                     .session_remove_confirm_input
                     .update(cx, |input, cx| input.focus(window, cx)),
-                _ => self.project_list_focus.focus(window),
+                _ => self.session_list_focus.focus(window),
             },
             ProductSessionAccessibilityCommand::SetControlValue(action) => {
                 let Some(SemanticActionValue::Text(value)) = value else {
                     return;
                 };
                 match action {
-                    ProductSessionAction::SetProjectName
-                        if self.project_library.add_draft.is_some() =>
-                    {
-                        Self::set_input_value(&self.project_label_input, value, window, cx);
-                    }
                     ProductSessionAction::SetGroupName if self.session_sidebar.editor.is_some() => {
                         Self::set_input_value(&self.group_name_input, value, window, cx);
                     }
@@ -1759,50 +1568,13 @@ impl MultiplexApp {
                 cx.notify();
             }
             ProductSessionAccessibilityCommand::ActivateControl(action) => match action {
-                ProductSessionAction::RetryProjects => self.retry_project_library(window, cx),
-                ProductSessionAction::AddProject => self.choose_project_folder(window, cx),
-                ProductSessionAction::ConfirmProjectAdd => self.commit_project_add(window, cx),
-                ProductSessionAction::CancelProjectAdd => self.cancel_project_add(cx),
-                ProductSessionAction::RemoveProject(row) => {
-                    if let Some(id) = accessible_project_row_id(row)
-                        && self
-                            .project_library
-                            .snapshot
-                            .as_ref()
-                            .is_some_and(|snapshot| {
-                                snapshot
-                                    .projects
-                                    .iter()
-                                    .any(|summary| summary.project.id == id)
-                            })
-                    {
-                        self.remove_project(id, cx);
-                    }
-                }
-                ProductSessionAction::UndoProjectRemoval => {
-                    self.undo_project_removal(window, cx);
-                }
-                ProductSessionAction::AddGroup(row) => {
-                    if let Some(id) = accessible_project_row_id(row)
-                        && self
-                            .project_library
-                            .snapshot
-                            .as_ref()
-                            .is_some_and(|snapshot| {
-                                snapshot
-                                    .projects
-                                    .iter()
-                                    .any(|summary| summary.project.id == id)
-                            })
-                    {
-                        self.open_group_editor(id, None, window, cx);
-                    }
-                }
+                ProductSessionAction::RetryLibrary => self.retry_library(window, cx),
+                ProductSessionAction::AddGroup => self.open_group_editor(None, window, cx),
                 ProductSessionAction::RenameGroup(row) => {
                     if let Some(id) = accessible_group_row_id(row)
-                        && let Some(group) = self.group(id).cloned()
+                        && self.group(id).is_some()
                     {
-                        self.open_group_editor(group.project_id, Some(id), window, cx);
+                        self.open_group_editor(Some(id), window, cx);
                     }
                 }
                 ProductSessionAction::SaveGroup => self.save_group_editor(cx),
@@ -1842,7 +1614,7 @@ impl MultiplexApp {
                                 }
                                 GroupDestination::Group(destination)
                             }
-                            None => GroupDestination::ProjectRoot,
+                            None => GroupDestination::Ungrouped,
                         };
                         self.remove_group_to(id, Some(destination), cx);
                     }
@@ -1929,17 +1701,16 @@ impl MultiplexApp {
                     if let Some(id) = accessible_session_row_id(row)
                         && self.session_library.session(id).is_some()
                     {
-                        self.move_session_to(id, GroupDestination::ProjectRoot, None, cx);
+                        self.move_session_to(id, GroupDestination::Ungrouped, None, cx);
                     }
                 }
-                ProductSessionAction::SetProjectName
-                | ProductSessionAction::SetGroupName
+                ProductSessionAction::SetGroupName
                 | ProductSessionAction::SetSessionTitle
                 | ProductSessionAction::SetSessionRemovalConfirmation => {}
             },
             ProductSessionAccessibilityCommand::FocusSafeAction
             | ProductSessionAccessibilityCommand::FocusConfirmAction => {
-                self.project_list_focus.focus(window);
+                self.session_list_focus.focus(window);
             }
             ProductSessionAccessibilityCommand::ConfirmDialog => {
                 let Some(dialog) = self.product_destructive_presentation(cx) else {
@@ -1962,158 +1733,18 @@ impl MultiplexApp {
                 } else if self.session_sidebar.pending_removal.is_some() {
                     self.cancel_group_removal(cx);
                 }
-                self.project_list_focus.focus(window);
+                self.session_list_focus.focus(window);
             }
         }
     }
 
-    pub(super) fn render_global_session_library(&self, cx: &Context<Self>) -> AnyElement {
-        let sessions = self.session_library.visible_sessions_all();
-        let records = sessions
-            .iter()
-            .filter_map(|metadata| {
-                self.saved
-                    .app_attached_sessions
-                    .iter()
-                    .find(|record| record.id == metadata.id)
-                    .cloned()
-            })
-            .collect::<Vec<_>>();
-
-        v_flex()
-            .id("global-session-library")
-            .debug_selector(|| "global-session-library".to_string())
-            .flex_1()
-            .min_w_0()
-            .min_h_0()
-            .bg(theme::library_bg())
-            .child(self.render_session_library_controls(cx))
-            .children(self.render_other_terminals(cx))
-            .when_some(self.session_library.recovery_state(), |this, recovery| {
-                this.child(
-                    div()
-                        .mx(px(theme::SPACE_4))
-                        .mt(px(theme::SPACE_3))
-                        .p(px(theme::SPACE_3))
-                        .border_1()
-                        .border_color(theme::warning())
-                        .rounded(px(theme::CARD_RADIUS))
-                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                        .text_color(theme::text_main())
-                        .child(session_recovery_label(recovery)),
-                )
-            })
-            .when_some(
-                self.session_library.pending_stop_archive_review,
-                |this, id| this.child(self.render_stop_archive_review(id, cx)),
-            )
-            .when(self.session_sidebar.pending_undo.is_some(), |this| {
-                this.child(
-                    h_flex()
-                        .id("global-session-undo-banner")
-                        .justify_end()
-                        .px(px(theme::SPACE_5))
-                        .pt(px(theme::SPACE_3))
-                        .child(
-                            Button::new("global-session-undo")
-                                .debug_selector(|| "global-session-undo".to_string())
-                                .small()
-                                .icon(IconName::Undo2)
-                                .label(localization::group_undo_action())
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.undo_organization(cx);
-                                })),
-                        ),
-                )
-            })
-            .when_some(
-                self.session_library.pending_removal.as_ref(),
-                |this, plan| this.child(self.render_session_removal(plan, cx)),
-            )
-            .child(
-                v_flex()
-                    .id("global-session-list")
-                    .debug_selector(|| "global-session-list".to_string())
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scrollbar()
-                    .p(px(theme::SPACE_4))
-                    .when(!records.is_empty(), |this| {
-                        this.child(
-                            v_flex()
-                                .w_full()
-                                .border_1()
-                                .border_color(theme::border())
-                                .rounded(px(theme::CARD_RADIUS))
-                                .overflow_hidden()
-                                .children(records.iter().map(|session| {
-                                    let destination = self.sessions_in_destination(
-                                        session.origin.project_id,
-                                        session.group_id,
-                                    );
-                                    let index = destination
-                                        .iter()
-                                        .position(|candidate| candidate.id == session.id)
-                                        .unwrap_or(0);
-                                    self.render_session_row(
-                                        session,
-                                        index,
-                                        destination.len().max(1),
-                                        cx,
-                                    )
-                                })),
-                        )
-                    })
-                    .when(records.is_empty(), |this| {
-                        this.child(
-                            div()
-                                .p(px(theme::SPACE_5))
-                                .text_center()
-                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                                .text_color(theme::text_muted())
-                                .child(
-                                    if self.session_library.filter != SessionLibraryFilter::All {
-                                        localization::session_library_filter_empty()
-                                    } else if self.session_library.view
-                                        == SessionLibraryView::Archive
-                                    {
-                                        localization::session_library_archive_empty()
-                                    } else {
-                                        localization::session_sidebar_empty()
-                                    },
-                                ),
-                        )
-                    }),
-            )
-            .into_any_element()
-    }
-
-    pub(super) fn render_session_sidebar(
-        &self,
-        project_id: Option<ProjectId>,
-        cx: &Context<Self>,
-    ) -> AnyElement {
-        let Some(project_id) = project_id else {
-            return v_flex()
-                .id("session-sidebar")
-                .debug_selector(|| "session-sidebar".to_string())
-                .flex_1()
-                .items_center()
-                .justify_center()
-                .border_l_1()
-                .border_color(theme::border())
-                .text_color(theme::text_muted())
-                .child(localization::session_sidebar_select_project())
-                .into_any_element();
-        };
-        let groups = self.project_groups(project_id);
-        let session_count = self.sessions_in_destination(project_id, None).len()
+    /// The Sessions page: sessions outside any group, then each group with its own.
+    pub(super) fn render_session_sidebar(&self, cx: &Context<Self>) -> AnyElement {
+        let groups = self.library_groups();
+        let session_count = self.sessions_in_destination(None).len()
             + groups
                 .iter()
-                .map(|group| {
-                    self.sessions_in_destination(project_id, Some(group.id))
-                        .len()
-                })
+                .map(|group| self.sessions_in_destination(Some(group.id)).len())
                 .sum::<usize>();
 
         v_flex()
@@ -2122,8 +1753,6 @@ impl MultiplexApp {
             .flex_1()
             .min_w_0()
             .min_h_0()
-            .border_l_1()
-            .border_color(theme::border())
             .bg(theme::library_bg())
             .child(
                 h_flex()
@@ -2152,18 +1781,33 @@ impl MultiplexApp {
                             ),
                     )
                     .child(
-                        Button::new("group-new")
-                            .debug_selector(|| "group-new".to_string())
-                            .small()
-                            .primary()
-                            .icon(IconName::Plus)
-                            .label(localization::group_new_action())
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.open_group_editor(project_id, None, window, cx);
-                            })),
+                        h_flex()
+                            .gap(px(theme::SPACE_2))
+                            .child(
+                                Button::new("worktree-new")
+                                    .debug_selector(|| "worktree-new".to_string())
+                                    .small()
+                                    .icon(IconName::Plus)
+                                    .label(localization::worktree_new_action())
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.start_worktree_in_a_folder(window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("group-new")
+                                    .debug_selector(|| "group-new".to_string())
+                                    .small()
+                                    .primary()
+                                    .icon(IconName::Plus)
+                                    .label(localization::group_new_action())
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.open_group_editor(None, window, cx);
+                                    })),
+                            ),
                     ),
             )
             .child(self.render_session_library_controls(cx))
+            .children(self.render_other_terminals(cx))
             .when_some(self.session_library.recovery_state(), |this, recovery| {
                 this.child(
                     div()
@@ -2220,7 +1864,6 @@ impl MultiplexApp {
                     .p(px(theme::SPACE_4))
                     .gap(px(theme::SPACE_3))
                     .child(self.render_session_group(
-                        project_id,
                         None,
                         localization::group_ungrouped_label(),
                         false,
@@ -2229,7 +1872,6 @@ impl MultiplexApp {
                     ))
                     .children(groups.iter().enumerate().map(|(index, group)| {
                         self.render_session_group(
-                            project_id,
                             Some(group.id),
                             group.name.as_str().to_string(),
                             group.collapsed,
@@ -2432,7 +2074,7 @@ impl MultiplexApp {
             return div().into_any_element();
         };
         let count = self.group_session_count(group.id);
-        let project_groups = self.project_groups(group.project_id);
+        let other_groups = self.library_groups();
         let group_id = group.id;
         v_flex()
             .id("group-remove-review")
@@ -2471,12 +2113,12 @@ impl MultiplexApp {
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.remove_group_to(
                                     group_id,
-                                    Some(GroupDestination::ProjectRoot),
+                                    Some(GroupDestination::Ungrouped),
                                     cx,
                                 );
                             })),
                     )
-                    .children(project_groups.into_iter().filter_map(|destination| {
+                    .children(other_groups.into_iter().filter_map(|destination| {
                         if destination.id == group_id {
                             return None;
                         }
@@ -2595,14 +2237,13 @@ impl MultiplexApp {
     #[allow(clippy::too_many_arguments)]
     fn render_session_group(
         &self,
-        project_id: ProjectId,
         group_id: Option<GroupId>,
         label: String,
         collapsed: bool,
         order: Option<(usize, usize)>,
         cx: &Context<Self>,
     ) -> AnyElement {
-        let sessions = self.sessions_in_destination(project_id, group_id);
+        let sessions = self.sessions_in_destination(group_id);
         let running = sessions
             .iter()
             .filter(|session| {
@@ -2713,7 +2354,7 @@ impl MultiplexApp {
                                 .small()
                                 .label(localization::group_rename_action())
                                 .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.open_group_editor(project_id, Some(id), window, cx);
+                                    this.open_group_editor(Some(id), window, cx);
                                 })),
                         )
                         .child(
@@ -2760,7 +2401,7 @@ impl MultiplexApp {
         };
         let key = session_key(id);
         let selected = self.session_sidebar.selected_session == Some(id);
-        let groups = self.project_groups(session.origin.project_id);
+        let groups = self.library_groups();
         let current_group = session.group_id;
         let renaming = self.session_library.renaming == Some(id);
         let recognition = session
@@ -2809,8 +2450,8 @@ impl MultiplexApp {
             self.host_recovery_operation.is_some() || self.host_recovery_plan.is_some(),
         );
         v_flex()
-            .id(("project-session-row", key))
-            .debug_selector(|| "project-session-row".to_string())
+            .id(("session-row", key))
+            .debug_selector(|| "session-row".to_string())
             .w_full()
             .px(px(theme::SPACE_3))
             .py(px(theme::SPACE_3))
@@ -2868,9 +2509,11 @@ impl MultiplexApp {
                                             .child(
                                                 div()
                                                     .debug_selector(|| {
-                                                        "session-origin-project".to_string()
+                                                        "session-origin-folder".to_string()
                                                     })
-                                                    .child(session.project_label.clone()),
+                                                    .child(super::folder_display_name(
+                                                        &session.folder,
+                                                    )),
                                             )
                                             .when(
                                                 !session.preset_label.trim().is_empty(),
@@ -3261,7 +2904,7 @@ impl MultiplexApp {
                                         .on_click(cx.listener(move |this, _, _, cx| {
                                             this.move_session_to(
                                                 id,
-                                                GroupDestination::ProjectRoot,
+                                                GroupDestination::Ungrouped,
                                                 None,
                                                 cx,
                                             );
@@ -3460,7 +3103,7 @@ fn product_text_field(
 fn append_accessible_session_rows(
     rows: &mut Vec<AccessibleCollectionRow>,
     sessions: &[SavedAppAttachedSession],
-    parent: AccessibleRowId,
+    parent: Option<AccessibleRowId>,
     library: &super::session_library::SessionLibraryState,
     selected: Option<HostedSessionId>,
     position_offset: usize,
@@ -3472,7 +3115,7 @@ fn append_accessible_session_rows(
         };
         rows.push(AccessibleCollectionRow {
             id: accessible_session_id(session.id),
-            parent: Some(parent),
+            parent,
             level: HierarchyLevel::Session,
             name: metadata.title.as_str().to_string(),
             status: session_state_message_id(metadata.lifecycle),
@@ -3486,21 +3129,12 @@ fn append_accessible_session_rows(
     }
 }
 
-fn accessible_project_id(id: ProjectId) -> AccessibleRowId {
-    AccessibleRowId::project(id.as_uuid().as_u128())
-}
-
 fn accessible_group_id(id: GroupId) -> AccessibleRowId {
     AccessibleRowId::group(id.as_uuid().as_u128())
 }
 
 fn accessible_session_id(id: HostedSessionId) -> AccessibleRowId {
     AccessibleRowId::session(id.as_uuid().as_u128())
-}
-
-fn accessible_project_row_id(id: AccessibleRowId) -> Option<ProjectId> {
-    (id.kind == multiplex_ui_contract::AccessibleRowKind::Project)
-        .then(|| ProjectId::from_uuid(uuid::Uuid::from_u128(id.value)))
 }
 
 fn accessible_group_row_id(id: AccessibleRowId) -> Option<GroupId> {
@@ -3517,16 +3151,6 @@ fn product_move_delta(direction: ProductMoveDirection) -> isize {
     match direction {
         ProductMoveDirection::Up => -1,
         ProductMoveDirection::Down => 1,
-    }
-}
-
-fn project_status_message_id(status: multiplex_domain::ProjectStatus) -> MessageId {
-    match status {
-        multiplex_domain::ProjectStatus::Available => MessageId::ProjectStatusAvailable,
-        multiplex_domain::ProjectStatus::Unavailable => MessageId::ProjectStatusUnavailable,
-        multiplex_domain::ProjectStatus::PermissionDenied => {
-            MessageId::ProjectStatusPermissionDenied
-        }
     }
 }
 
@@ -3554,23 +3178,23 @@ fn session_state_message_id(state: HostedSessionState) -> MessageId {
 }
 
 fn product_session_surface_state(
-    project_load: &super::projects::ProjectLibraryLoadState,
+    library_load: &super::LibraryLoadState,
     recovery: Option<SessionLibraryRecovery>,
     rows_empty: bool,
     filtered: bool,
 ) -> ProductSessionSurfaceState {
-    match project_load {
-        super::projects::ProjectLibraryLoadState::Loading => {
+    match library_load {
+        super::LibraryLoadState::Loading => {
             return ProductSessionSurfaceState::Loading;
         }
-        super::projects::ProjectLibraryLoadState::Failed(
-            super::projects::ProjectStoreFailure::Unavailable,
-        ) => return ProductSessionSurfaceState::Unavailable,
-        super::projects::ProjectLibraryLoadState::Failed(
-            super::projects::ProjectStoreFailure::Corrupt
-            | super::projects::ProjectStoreFailure::Newer,
+        super::LibraryLoadState::Failed(super::library_state::LibraryStoreFailure::Unavailable) => {
+            return ProductSessionSurfaceState::Unavailable;
+        }
+        super::LibraryLoadState::Failed(
+            super::library_state::LibraryStoreFailure::Corrupt
+            | super::library_state::LibraryStoreFailure::Newer,
         ) => return ProductSessionSurfaceState::Recovery,
-        super::projects::ProjectLibraryLoadState::Ready => {}
+        super::LibraryLoadState::Ready => {}
     }
     if let Some(recovery) = recovery {
         return match recovery {
@@ -3705,7 +3329,6 @@ mod tests {
 
     fn session(
         id: HostedSessionId,
-        project_id: ProjectId,
         group_id: Option<GroupId>,
         position: PositionKey,
     ) -> SavedAppAttachedSession {
@@ -3713,11 +3336,10 @@ mod tests {
             id,
             route: SessionLaunchRoute::LegacyAppAttached,
             origin: SessionOrigin {
-                project_id,
                 preset_id: PresetId::new(),
             },
             state: HostedSessionState::RunningAppAttached,
-            project_label: localization::projects_nav_label(),
+            folder: std::env::temp_dir().display().to_string(),
             preset_label: localization::new_session_title(),
             title: localization::new_session_title(),
             title_source: multiplex_domain::TitleSource::Default,
@@ -3737,13 +3359,12 @@ mod tests {
 
     #[test]
     fn session_move_and_inverse_change_only_organization_fields() {
-        let project_id = ProjectId::new();
         let group_id = GroupId::new();
         let session_id = HostedSessionId::new();
         let mut saved = crate::models::SavedState::default();
         saved
             .app_attached_sessions
-            .push(session(session_id, project_id, None, PositionKey::FIRST));
+            .push(session(session_id, None, PositionKey::FIRST));
         let origin = saved.app_attached_sessions[0].origin;
         let state = saved.app_attached_sessions[0].state;
         let inverse = saved
@@ -3759,18 +3380,17 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_group_reference_repairs_to_project_root_without_session_loss() {
-        let project_id = ProjectId::new();
+    fn corrupt_group_reference_repairs_to_ungrouped_without_session_loss() {
         let invalid_group = GroupId::new();
         let session_id = HostedSessionId::new();
         let mut saved = crate::models::SavedState::default();
         saved.app_attached_sessions.push(session(
             session_id,
-            project_id,
             Some(invalid_group),
             PositionKey::new(7),
         ));
-        let repaired = saved.repair_app_attached_group_references(&HashMap::new());
+        let repaired =
+            saved.repair_app_attached_group_references(&std::collections::HashSet::new());
         assert_eq!(repaired, [session_id]);
         assert_eq!(saved.app_attached_sessions.len(), 1);
         assert_eq!(saved.app_attached_sessions[0].group_id, None);

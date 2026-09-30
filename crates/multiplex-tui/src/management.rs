@@ -6,7 +6,7 @@ use multiplex_cli::{
     Cancellation, CliCommand, CliData, CliPaths, CommandService, ErrorCode, LocalCommandService,
     ManagementCommand as LocalCommand, ManagementRemovalManifest,
 };
-use multiplex_domain::{CommandId, GroupId, ProjectId, Revision};
+use multiplex_domain::{CommandId, GroupId, Revision};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::FleetSession;
@@ -80,16 +80,14 @@ impl From<&FleetSession> for ManagementTarget {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ManagementDraft {
     LoadingLaunch {
-        project_id: String,
-        project_name: String,
+        folder: String,
         group_id: Option<String>,
     },
     LoadingRemoval {
         target: ManagementTarget,
     },
     Launch {
-        project_id: String,
-        project_name: String,
+        folder: String,
         group_id: Option<String>,
         choices: Vec<LaunchChoice>,
         selected: usize,
@@ -165,7 +163,7 @@ pub struct ManagementResult {
 pub enum ManagementCommand {
     Launch {
         command_id: CommandId,
-        project_id: String,
+        folder: String,
         preset_id: String,
         group_id: Option<String>,
     },
@@ -239,9 +237,7 @@ impl fmt::Debug for ManagementCommand {
 pub enum ManagementEffect {
     None,
     Close,
-    LoadLaunchChoices {
-        project_id: String,
-    },
+    LoadLaunchChoices,
     LoadRemovalPreview {
         session_id: String,
         expected_session_revision: u64,
@@ -319,20 +315,11 @@ impl ManagementModel {
                 || (self.intent == Some(ManagementIntent::Remove) && self.dispatched.is_none()))
     }
 
-    pub fn begin_launch(
-        &mut self,
-        project_id: String,
-        project_name: String,
-        group_id: Option<String>,
-    ) -> ManagementEffect {
+    pub fn begin_launch(&mut self, folder: String, group_id: Option<String>) -> ManagementEffect {
         self.reset_for(ManagementIntent::Launch);
-        self.draft = Some(ManagementDraft::LoadingLaunch {
-            project_id: project_id.clone(),
-            project_name,
-            group_id,
-        });
+        self.draft = Some(ManagementDraft::LoadingLaunch { folder, group_id });
         self.progress = CommandProgress::Running;
-        ManagementEffect::LoadLaunchChoices { project_id }
+        ManagementEffect::LoadLaunchChoices
     }
 
     pub fn begin_session(
@@ -367,8 +354,8 @@ impl ManagementModel {
                 "Choose a Session with unread activity.",
             )),
             ManagementIntent::Launch => Some((
-                "Launch requires a Project selection.",
-                "Select a Project and press n.",
+                "Launch starts from the fleet.",
+                "Press n to start a Session in this folder.",
             )),
             _ => None,
         };
@@ -422,8 +409,8 @@ impl ManagementModel {
             }
             ManagementIntent::Launch => {
                 self.progress = CommandProgress::Failed(ManagementFailure::validation(
-                    "Launch requires a Project selection.",
-                    "Select a Project and press n.",
+                    "Launch starts from the fleet.",
+                    "Press n to start a Session in this folder.",
                 ));
                 return ManagementEffect::None;
             }
@@ -468,11 +455,7 @@ impl ManagementModel {
         }
         match result {
             Ok(choices) => {
-                let Some(ManagementDraft::LoadingLaunch {
-                    project_id,
-                    project_name,
-                    group_id,
-                }) = self.draft.take()
+                let Some(ManagementDraft::LoadingLaunch { folder, group_id }) = self.draft.take()
                 else {
                     return;
                 };
@@ -483,14 +466,13 @@ impl ManagementModel {
                     .collect::<Vec<_>>();
                 if choices.is_empty() {
                     self.progress = CommandProgress::Failed(ManagementFailure::validation(
-                        "No enabled safe preset is available for this Project.",
+                        "No enabled safe preset is available.",
                         "Create or enable a safe preset in the desktop application.",
                     ));
                     return;
                 }
                 self.draft = Some(ManagementDraft::Launch {
-                    project_id,
-                    project_name,
+                    folder,
                     group_id,
                     choices,
                     selected: 0,
@@ -560,7 +542,7 @@ impl ManagementModel {
                 _ => ManagementEffect::None,
             },
             Some(ManagementDraft::Launch {
-                project_id,
+                folder,
                 group_id,
                 choices,
                 selected,
@@ -582,7 +564,7 @@ impl ManagementModel {
                     };
                     let command = ManagementCommand::Launch {
                         command_id: CommandId::new(),
-                        project_id: project_id.clone(),
+                        folder: folder.clone(),
                         preset_id: choice.id.clone(),
                         group_id: group_id.clone(),
                     };
@@ -742,7 +724,6 @@ impl ManagementModel {
 pub trait ManagementExecutor: Send + Sync {
     fn launch_choices(
         &self,
-        project_id: &str,
         cancellation: &Cancellation,
     ) -> Result<Vec<LaunchChoice>, ManagementFailure>;
 
@@ -795,13 +776,11 @@ impl LocalManagementExecutor {
 impl ManagementExecutor for LocalManagementExecutor {
     fn launch_choices(
         &self,
-        project_id: &str,
         cancellation: &Cancellation,
     ) -> Result<Vec<LaunchChoice>, ManagementFailure> {
-        let project_id = parse_id::<ProjectId>(project_id, "Project")?;
         let mut service = self.service();
         let data = service
-            .execute(CliCommand::PresetList { project_id }, cancellation)
+            .execute(CliCommand::PresetList, cancellation)
             .map_err(map_cli_error)?;
         let CliData::Presets(data) = data else {
             return Err(ManagementFailure::validation(
@@ -874,12 +853,12 @@ fn map_command(command: ManagementCommand) -> Result<LocalCommand, ManagementFai
     Ok(match command {
         ManagementCommand::Launch {
             command_id,
-            project_id,
+            folder,
             preset_id,
             group_id,
         } => LocalCommand::Launch {
             command_id,
-            project_id: parse_id(&project_id, "Project")?,
+            folder: std::path::PathBuf::from(folder),
             preset_id: parse_id(&preset_id, "preset")?,
             group_id: group_id
                 .as_deref()
@@ -1154,7 +1133,6 @@ mod tests {
     fn session() -> FleetSession {
         FleetSession {
             id: HostedSessionId::new().to_string(),
-            project_id: ProjectId::new().to_string(),
             group_id: None,
             title: "Build".into(),
             state: "live".into(),
@@ -1261,10 +1239,8 @@ mod tests {
     fn launch_filters_disabled_and_risky_presets() {
         let mut model = ManagementModel::default();
         assert_eq!(
-            model.begin_launch("project".into(), "Project".into(), None),
-            ManagementEffect::LoadLaunchChoices {
-                project_id: "project".into()
-            }
+            model.begin_launch(".".into(), None),
+            ManagementEffect::LoadLaunchChoices
         );
         model.launch_choices_loaded(
             model.generation(),
@@ -1320,7 +1296,7 @@ mod tests {
     #[test]
     fn launch_can_cancel_while_loading_but_stale_results_stay_discarded() {
         let mut model = ManagementModel::default();
-        model.begin_launch("project".into(), "Project".into(), None);
+        model.begin_launch(".".into(), None);
         let generation = model.generation();
         assert_eq!(
             model.handle_key(key(KeyCode::Esc), Instant::now()),

@@ -9,9 +9,10 @@ mod fleet;
 pub mod health;
 pub mod journal;
 pub mod lease;
+mod legacy_projects;
+pub mod library;
 pub mod notifications;
 pub mod presets;
-pub mod projects;
 pub mod recovery;
 pub mod replication;
 pub mod sessions;
@@ -52,6 +53,9 @@ pub use lease::{
     HostLease, HostLeaseState, HostMetadata, LeaseError, LeaseErrorCode, ReconciliationResult,
     probe_host_lease, read_host_metadata, read_host_metadata_snapshot, reconcile_host,
 };
+pub use library::{
+    CURRENT_FORMAT_VERSION, LibraryRepository, LibrarySnapshot, StoreError, StoreHealth,
+};
 #[cfg(feature = "os-keyring")]
 pub use multiplex_replication_security::OsReplicationSecretBackend;
 /// Only exists with a credential store to talk to; a build without one, such as the mobile
@@ -64,10 +68,6 @@ pub use multiplex_replication_security::{
 };
 pub use notifications::{NotificationRepository, NotificationSnapshot, NotificationStoreError};
 pub use presets::{PresetRepository, PresetSnapshot};
-pub use projects::{
-    CURRENT_FORMAT_VERSION, ProjectRepository, ProjectSnapshot, RemovedProject, StoreError,
-    StoreHealth,
-};
 pub use recovery::{
     MetadataFileKind, MetadataRecoveryService, RecoveryCancellation, RecoveryError,
     RecoveryErrorCode, RecoveryFaultPoint, RecoveryFilePlan, RecoveryKind, RecoveryPlan,

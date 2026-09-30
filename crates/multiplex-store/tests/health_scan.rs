@@ -27,14 +27,9 @@ fn scan_is_read_only_and_reports_only_the_two_missing_derived_indexes() {
             HealthFindingState::Healthy
         );
     }
-    for kind in [
-        HealthCheckKind::ProjectSessionIndex,
-        HealthCheckKind::PaletteIndex,
-    ] {
-        let finding = report.finding(kind).unwrap();
-        assert_eq!(finding.state, HealthFindingState::Partial);
-        assert_eq!(finding.evidence, HealthEvidenceCode::IndexMissing);
-    }
+    let finding = report.finding(HealthCheckKind::PaletteIndex).unwrap();
+    assert_eq!(finding.state, HealthFindingState::Partial);
+    assert_eq!(finding.evidence, HealthEvidenceCode::IndexMissing);
 }
 
 #[test]
@@ -42,16 +37,13 @@ fn named_repairs_make_scan_healthy_without_changing_authoritative_metadata() {
     let fixture = StoreFixture::new();
     let before = fixture.authoritative_bytes();
     let repository = HealthRepository::open(&fixture.metadata).unwrap();
-    for kind in [
-        IndexRepairKind::ProjectSessionIndex,
-        IndexRepairKind::PaletteIndex,
-    ] {
-        let plan = repository.plan_repair(kind).unwrap();
-        assert!(plan.estimated_bytes > 0);
-        repository
-            .repair(plan, &RepairCancellation::default())
-            .unwrap();
-    }
+    let plan = repository
+        .plan_repair(IndexRepairKind::PaletteIndex)
+        .unwrap();
+    assert!(plan.estimated_bytes > 0);
+    repository
+        .repair(plan, &RepairCancellation::default())
+        .unwrap();
     assert!(repository.scan().is_healthy());
     assert_eq!(fixture.authoritative_bytes(), before);
 }
@@ -102,26 +94,19 @@ fn repair_outputs_are_private_to_the_current_user() {
 
     let fixture = StoreFixture::new();
     let repository = HealthRepository::open(&fixture.metadata).unwrap();
-    for kind in [
-        IndexRepairKind::ProjectSessionIndex,
-        IndexRepairKind::PaletteIndex,
-    ] {
-        let plan = repository.plan_repair(kind).unwrap();
-        repository
-            .repair(plan, &RepairCancellation::default())
-            .unwrap();
-    }
+    let plan = repository
+        .plan_repair(IndexRepairKind::PaletteIndex)
+        .unwrap();
+    repository
+        .repair(plan, &RepairCancellation::default())
+        .unwrap();
 
     let index_root = fixture.metadata.join("derived-indexes");
     assert_eq!(
         fs::metadata(&index_root).unwrap().permissions().mode() & 0o777,
         0o700
     );
-    for name in [
-        ".termirust-derived-indexes-v1",
-        "project-session-v1.json",
-        "palette-v1.json",
-    ] {
+    for name in [".termirust-derived-indexes-v1", "palette-v1.json"] {
         assert_eq!(
             fs::metadata(index_root.join(name))
                 .unwrap()
@@ -137,7 +122,7 @@ fn repair_outputs_are_private_to_the_current_user() {
 #[test]
 fn corrupt_and_future_sources_produce_closed_read_only_findings() {
     let corrupt = StoreFixture::new();
-    fs::write(corrupt.metadata.join("projects.json"), b"{not-json").unwrap();
+    fs::write(corrupt.metadata.join("library.json"), b"{not-json").unwrap();
     let repository = HealthRepository::open(&corrupt.metadata).unwrap();
     let report = repository.scan();
     assert_eq!(
@@ -149,7 +134,7 @@ fn corrupt_and_future_sources_produce_closed_read_only_findings() {
     );
     assert!(
         repository
-            .plan_repair(IndexRepairKind::ProjectSessionIndex)
+            .plan_repair(IndexRepairKind::PaletteIndex)
             .is_err()
     );
 

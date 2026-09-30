@@ -15,7 +15,7 @@ use multiplex_domain::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AtomicWriter, Durability, ProjectRepository, StoreError, StoreHealth, SystemAtomicWriter,
+    AtomicWriter, Durability, LibraryRepository, StoreError, StoreHealth, SystemAtomicWriter,
     file_lock,
 };
 
@@ -51,7 +51,7 @@ struct PresetsDocument {
 pub(crate) fn read_preset_health_source(
     root: &Path,
 ) -> Result<(Vec<u8>, Revision, Vec<LaunchPreset>), StoreError> {
-    let bytes = crate::projects::read_regular_bounded(
+    let bytes = crate::library::read_regular_bounded(
         &root.join(PRESETS_FILE),
         PRESETS_FILE,
         MAX_PRESETS_BYTES,
@@ -80,8 +80,8 @@ impl PresetRepository {
         writer: Arc<dyn AtomicWriter>,
     ) -> Result<Self, StoreError> {
         let root = root.into();
-        // The project repository owns the shared format marker and root hardening.
-        ProjectRepository::open(root.clone())?;
+        // The library repository owns the shared format marker and root hardening.
+        LibraryRepository::open(root.clone())?;
         let repository = Self { root, writer };
         let _lock = repository.acquire_lock()?;
         if !repository.root.join(PRESETS_FILE).exists() {
@@ -444,6 +444,8 @@ fn store_as_domain(error: StoreError) -> PresetError {
         },
         StoreError::Corrupt { .. }
         | StoreError::UnsafeEntry { .. }
+        | StoreError::StaleRevision { .. }
+        | StoreError::RevisionOverflow
         | StoreError::TooLarge { .. } => PresetError::Store { code: "corrupt" },
         StoreError::Io {
             kind: io::ErrorKind::PermissionDenied,
@@ -486,7 +488,7 @@ mod tests {
             label: label.to_string(),
             executable: "codex".to_string(),
             args: vec!["--model".to_string(), format!("literal-{value}")],
-            working_directory: WorkingDirectoryRule::ProjectRoot,
+            working_directory: WorkingDirectoryRule::SessionFolder,
             runtime: Some("codex".to_string()),
             enabled: true,
             favorite: false,

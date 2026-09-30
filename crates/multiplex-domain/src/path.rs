@@ -4,8 +4,6 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{PositionKey, ProjectId, Revision};
-
 /// A path in its one true form, written the way every tool that receives it can use. Windows
 /// canonical paths start with the `\\?\` verbatim prefix: Git reads that back as `//?/C:/...` and
 /// refuses to create directories under it, and a path written the ordinary way never compares
@@ -25,7 +23,6 @@ pub fn canonical_path(path: &Path) -> std::io::Result<PathBuf> {
     Ok(canonical)
 }
 
-pub const MAX_PROJECTS: usize = 1_000;
 pub const MAX_LABEL_SCALARS: usize = 256;
 pub const MAX_PATH_BYTES: usize = 32 * 1024;
 
@@ -34,6 +31,14 @@ pub const MAX_PATH_BYTES: usize = 32 * 1024;
 pub enum FileIdentity {
     Unix { device: u64, inode: u64 },
     CanonicalPath { comparison_key: String },
+}
+
+/// Whether a folder is still there, and still ours to read.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PathStatus {
+    Available,
+    Unavailable,
+    PermissionDenied,
 }
 
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
@@ -53,22 +58,22 @@ impl fmt::Debug for CanonicalPath {
 }
 
 impl CanonicalPath {
-    pub fn resolve(input: &Path) -> Result<Self, ProjectError> {
+    pub fn resolve(input: &Path) -> Result<Self, PathError> {
         validate_path_input(input)?;
         let selected_metadata = fs::symlink_metadata(input).map_err(map_path_error)?;
         if !selected_metadata.file_type().is_dir() && !selected_metadata.file_type().is_symlink() {
-            return Err(ProjectError::NotDirectory);
+            return Err(PathError::NotDirectory);
         }
 
         let path = canonical_path(input).map_err(map_path_error)?;
-        let encoded = path.to_str().ok_or(ProjectError::NonUnicodePath)?;
+        let encoded = path.to_str().ok_or(PathError::NonUnicodePath)?;
         if encoded.len() > MAX_PATH_BYTES {
-            return Err(ProjectError::PathTooLong);
+            return Err(PathError::PathTooLong);
         }
 
         let metadata = fs::metadata(&path).map_err(map_path_error)?;
         if !metadata.is_dir() {
-            return Err(ProjectError::NotDirectory);
+            return Err(PathError::NotDirectory);
         }
         let mut entries = fs::read_dir(&path).map_err(map_path_error)?;
         let _ = entries.next().transpose().map_err(map_path_error)?;
@@ -76,7 +81,7 @@ impl CanonicalPath {
 
         let metadata_after = fs::metadata(&path).map_err(map_path_error)?;
         if identity_for(&path, &metadata_after)? != identity {
-            return Err(ProjectError::PathChanged);
+            return Err(PathError::PathChanged);
         }
 
         Ok(Self { path, identity })
@@ -90,52 +95,52 @@ impl CanonicalPath {
         &self.identity
     }
 
-    pub fn display_name(&self) -> Result<LocalizedUserText, ProjectError> {
+    pub fn display_name(&self) -> Result<LocalizedUserText, PathError> {
         let candidate = self
             .path
             .file_name()
             .and_then(|name| name.to_str())
             .filter(|name| !name.trim().is_empty())
-            .unwrap_or_else(|| self.path.to_str().unwrap_or("Project"));
+            .unwrap_or_else(|| self.path.to_str().unwrap_or("Folder"));
         LocalizedUserText::new(candidate)
     }
 
-    pub fn status(&self) -> ProjectStatus {
+    pub fn status(&self) -> PathStatus {
         match fs::metadata(&self.path) {
             Ok(metadata) if metadata.is_dir() => match identity_for(&self.path, &metadata) {
                 Ok(identity) if identity == self.identity => match fs::read_dir(&self.path) {
-                    Ok(_) => ProjectStatus::Available,
+                    Ok(_) => PathStatus::Available,
                     Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
-                        ProjectStatus::PermissionDenied
+                        PathStatus::PermissionDenied
                     }
-                    Err(_) => ProjectStatus::Unavailable,
+                    Err(_) => PathStatus::Unavailable,
                 },
-                _ => ProjectStatus::Unavailable,
+                _ => PathStatus::Unavailable,
             },
             Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
-                ProjectStatus::PermissionDenied
+                PathStatus::PermissionDenied
             }
-            _ => ProjectStatus::Unavailable,
+            _ => PathStatus::Unavailable,
         }
     }
 }
 
-fn validate_path_input(path: &Path) -> Result<(), ProjectError> {
-    let encoded = path.to_str().ok_or(ProjectError::NonUnicodePath)?;
+fn validate_path_input(path: &Path) -> Result<(), PathError> {
+    let encoded = path.to_str().ok_or(PathError::NonUnicodePath)?;
     if encoded.trim().is_empty() {
-        return Err(ProjectError::EmptyPath);
+        return Err(PathError::EmptyPath);
     }
     if encoded.contains('\0') {
-        return Err(ProjectError::PathContainsNul);
+        return Err(PathError::PathContainsNul);
     }
     if encoded.len() > MAX_PATH_BYTES {
-        return Err(ProjectError::PathTooLong);
+        return Err(PathError::PathTooLong);
     }
     Ok(())
 }
 
 #[cfg(unix)]
-fn identity_for(_path: &Path, metadata: &fs::Metadata) -> Result<FileIdentity, ProjectError> {
+fn identity_for(_path: &Path, metadata: &fs::Metadata) -> Result<FileIdentity, PathError> {
     use std::os::unix::fs::MetadataExt as _;
 
     Ok(FileIdentity::Unix {
@@ -145,8 +150,8 @@ fn identity_for(_path: &Path, metadata: &fs::Metadata) -> Result<FileIdentity, P
 }
 
 #[cfg(not(unix))]
-fn identity_for(path: &Path, _metadata: &fs::Metadata) -> Result<FileIdentity, ProjectError> {
-    let encoded = path.to_str().ok_or(ProjectError::NonUnicodePath)?;
+fn identity_for(path: &Path, _metadata: &fs::Metadata) -> Result<FileIdentity, PathError> {
+    let encoded = path.to_str().ok_or(PathError::NonUnicodePath)?;
     #[cfg(target_os = "windows")]
     let comparison_key = encoded.to_lowercase();
     #[cfg(not(target_os = "windows"))]
@@ -154,11 +159,11 @@ fn identity_for(path: &Path, _metadata: &fs::Metadata) -> Result<FileIdentity, P
     Ok(FileIdentity::CanonicalPath { comparison_key })
 }
 
-fn map_path_error(error: std::io::Error) -> ProjectError {
+fn map_path_error(error: std::io::Error) -> PathError {
     match error.kind() {
-        std::io::ErrorKind::PermissionDenied => ProjectError::PermissionDenied,
-        std::io::ErrorKind::NotFound => ProjectError::Unavailable,
-        _ => ProjectError::PathValidation,
+        std::io::ErrorKind::PermissionDenied => PathError::PermissionDenied,
+        std::io::ErrorKind::NotFound => PathError::Unavailable,
+        _ => PathError::PathValidation,
     }
 }
 
@@ -167,16 +172,16 @@ fn map_path_error(error: std::io::Error) -> ProjectError {
 pub struct LocalizedUserText(String);
 
 impl LocalizedUserText {
-    pub fn new(value: &str) -> Result<Self, ProjectError> {
+    pub fn new(value: &str) -> Result<Self, PathError> {
         let value = value.trim();
         if value.is_empty() {
-            return Err(ProjectError::EmptyLabel);
+            return Err(PathError::EmptyLabel);
         }
         if value.contains('\0') {
-            return Err(ProjectError::LabelContainsNul);
+            return Err(PathError::LabelContainsNul);
         }
         if value.chars().count() > MAX_LABEL_SCALARS {
-            return Err(ProjectError::LabelTooLong);
+            return Err(PathError::LabelTooLong);
         }
         Ok(Self(value.to_string()))
     }
@@ -198,57 +203,8 @@ impl fmt::Debug for LocalizedUserText {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProjectStatus {
-    Available,
-    Unavailable,
-    PermissionDenied,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Project {
-    pub id: ProjectId,
-    pub display_name: LocalizedUserText,
-    pub canonical_root: CanonicalPath,
-    pub position: PositionKey,
-    pub revision: Revision,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProjectSummary {
-    pub project: Project,
-    pub status: ProjectStatus,
-}
-
-impl From<Project> for ProjectSummary {
-    fn from(project: Project) -> Self {
-        let status = project.canonical_root.status();
-        Self { project, status }
-    }
-}
-
-#[derive(Clone)]
-pub struct AddProject {
-    pub id: ProjectId,
-    pub root: PathBuf,
-    pub display_name: Option<String>,
-    pub expected: Revision,
-}
-
-impl fmt::Debug for AddProject {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("AddProject")
-            .field("id", &self.id)
-            .field("root", &"<redacted>")
-            .field("display_name", &"<redacted>")
-            .field("expected", &self.expected)
-            .finish()
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ProjectError {
+pub enum PathError {
     EmptyPath,
     PathContainsNul,
     PathTooLong,
@@ -261,72 +217,43 @@ pub enum ProjectError {
     EmptyLabel,
     LabelContainsNul,
     LabelTooLong,
-    AlreadyPresent {
-        id: ProjectId,
-    },
-    StaleRevision {
-        expected: Revision,
-        actual: Revision,
-    },
-    ResourceLimit {
-        limit: usize,
-    },
-    RevisionOverflow,
-    Store {
-        code: &'static str,
-    },
 }
 
-impl fmt::Display for ProjectError {
+impl fmt::Display for PathError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::EmptyPath => formatter.write_str("project path is empty"),
-            Self::PathContainsNul => formatter.write_str("project path contains NUL"),
-            Self::PathTooLong => formatter.write_str("project path exceeds the platform limit"),
-            Self::NonUnicodePath => {
-                formatter.write_str("project path cannot be represented safely")
-            }
-            Self::NotDirectory => formatter.write_str("project path is not a directory"),
-            Self::PermissionDenied => formatter.write_str("project folder permission was denied"),
-            Self::Unavailable => formatter.write_str("project folder is unavailable"),
-            Self::PathChanged => formatter.write_str("project folder changed during validation"),
-            Self::PathValidation => formatter.write_str("project folder validation failed"),
-            Self::EmptyLabel => formatter.write_str("project label is empty"),
-            Self::LabelContainsNul => formatter.write_str("project label contains NUL"),
-            Self::LabelTooLong => formatter.write_str("project label exceeds 256 characters"),
-            Self::AlreadyPresent { .. } => formatter.write_str("project folder is already present"),
-            Self::StaleRevision { .. } => {
-                formatter.write_str("project library changed; reload required")
-            }
-            Self::ResourceLimit { limit } => write!(formatter, "project limit of {limit} reached"),
-            Self::RevisionOverflow => formatter.write_str("project revision exhausted"),
-            Self::Store { code } => write!(formatter, "project store error ({code})"),
+            Self::EmptyPath => formatter.write_str("path is empty"),
+            Self::PathContainsNul => formatter.write_str("path contains NUL"),
+            Self::PathTooLong => formatter.write_str("path exceeds the platform limit"),
+            Self::NonUnicodePath => formatter.write_str("path cannot be represented safely"),
+            Self::NotDirectory => formatter.write_str("path is not a directory"),
+            Self::PermissionDenied => formatter.write_str("folder permission was denied"),
+            Self::Unavailable => formatter.write_str("folder is unavailable"),
+            Self::PathChanged => formatter.write_str("folder changed during validation"),
+            Self::PathValidation => formatter.write_str("folder validation failed"),
+            Self::EmptyLabel => formatter.write_str("label is empty"),
+            Self::LabelContainsNul => formatter.write_str("label contains NUL"),
+            Self::LabelTooLong => formatter.write_str("label exceeds 256 characters"),
         }
     }
 }
 
-impl std::error::Error for ProjectError {}
-
-pub trait ProjectService {
-    fn list(&self) -> Result<Vec<ProjectSummary>, ProjectError>;
-    fn add(&self, request: AddProject) -> Result<Project, ProjectError>;
-    fn remove(&self, id: ProjectId, expected: Revision) -> Result<(), ProjectError>;
-}
+impl std::error::Error for PathError {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn project_labels_are_trimmed_bounded_user_data() {
+    fn labels_are_trimmed_bounded_user_data() {
         assert_eq!(
             LocalizedUserText::new("  Console  ").unwrap().as_str(),
             "Console"
         );
-        assert_eq!(LocalizedUserText::new("  "), Err(ProjectError::EmptyLabel));
+        assert_eq!(LocalizedUserText::new("  "), Err(PathError::EmptyLabel));
         assert_eq!(
             LocalizedUserText::new(&"x".repeat(257)),
-            Err(ProjectError::LabelTooLong)
+            Err(PathError::LabelTooLong)
         );
     }
 
@@ -341,7 +268,7 @@ mod tests {
             fs::canonicalize(fixture.path()).unwrap()
         );
         assert!(!canonical.as_path().to_string_lossy().starts_with(r"\\?\"));
-        assert_eq!(canonical.status(), ProjectStatus::Available);
+        assert_eq!(canonical.status(), PathStatus::Available);
     }
 
     #[test]
@@ -349,13 +276,10 @@ mod tests {
         let fixture = tempfile::tempdir().unwrap();
         let file = fixture.path().join("file");
         fs::write(&file, b"sentinel").unwrap();
-        assert_eq!(
-            CanonicalPath::resolve(&file),
-            Err(ProjectError::NotDirectory)
-        );
+        assert_eq!(CanonicalPath::resolve(&file), Err(PathError::NotDirectory));
         assert_eq!(
             CanonicalPath::resolve(&fixture.path().join("missing")),
-            Err(ProjectError::Unavailable)
+            Err(PathError::Unavailable)
         );
     }
 
@@ -382,34 +306,25 @@ mod tests {
         fs::create_dir(&path).unwrap();
         let canonical = CanonicalPath::resolve(&path).unwrap();
         fs::remove_dir(&path).unwrap();
-        assert_eq!(canonical.status(), ProjectStatus::Unavailable);
+        assert_eq!(canonical.status(), PathStatus::Unavailable);
     }
 
     #[test]
-    fn sensitive_project_values_are_redacted_from_debug() {
+    fn a_folder_and_its_label_are_redacted_from_debug() {
         let fixture = tempfile::tempdir().unwrap();
-        let secret_path = fixture.path().join("customer-secret-project");
+        let secret_path = fixture.path().join("customer-secret-folder");
         fs::create_dir(&secret_path).unwrap();
         let canonical = CanonicalPath::resolve(&secret_path).unwrap();
         let label = LocalizedUserText::new("Confidential Client").unwrap();
-        assert!(!format!("{canonical:?}").contains("customer-secret-project"));
+        assert!(!format!("{canonical:?}").contains("customer-secret-folder"));
         assert!(!format!("{label:?}").contains("Confidential Client"));
-        let request = AddProject {
-            id: ProjectId::new(),
-            root: secret_path,
-            display_name: Some("Confidential Client".to_string()),
-            expected: Revision::ZERO,
-        };
-        let debug = format!("{request:?}");
-        assert!(!debug.contains("customer-secret-project"));
-        assert!(!debug.contains("Confidential Client"));
     }
 
     #[test]
     fn permission_errors_map_to_stable_code_without_path() {
         assert_eq!(
             map_path_error(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
-            ProjectError::PermissionDenied
+            PathError::PermissionDenied
         );
     }
 
@@ -424,10 +339,10 @@ mod tests {
         let canonical = CanonicalPath::resolve(&project_root).unwrap();
         fs::set_permissions(&project_root, fs::Permissions::from_mode(0o000)).unwrap();
 
-        assert_eq!(canonical.status(), ProjectStatus::PermissionDenied);
+        assert_eq!(canonical.status(), PathStatus::PermissionDenied);
         assert_eq!(
             CanonicalPath::resolve(&project_root),
-            Err(ProjectError::PermissionDenied)
+            Err(PathError::PermissionDenied)
         );
 
         fs::set_permissions(&project_root, fs::Permissions::from_mode(0o700)).unwrap();
@@ -445,7 +360,7 @@ mod tests {
         symlink(&first, &second).unwrap();
         assert_eq!(
             CanonicalPath::resolve(&first),
-            Err(ProjectError::PathValidation)
+            Err(PathError::PathValidation)
         );
         assert!(
             fs::symlink_metadata(&first)

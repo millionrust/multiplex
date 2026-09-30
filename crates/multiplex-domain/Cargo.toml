@@ -3,7 +3,7 @@ name = "multiplex-domain"
 version = "0.0.5"
 edition = "2024"
 rust-version.workspace = true
-description = "Pure domain contracts for TermiRust projects and durable sessions"
+description = "Pure domain contracts for Multiplex durable sessions"
 license = "MIT OR Apache-2.0"
 
 [dependencies]

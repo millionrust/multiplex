@@ -10,14 +10,14 @@ use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 
 use multiplex_domain::{
     DERIVED_INDEX_VERSION, Group, HostedSession, IndexSourceRevisions, LaunchPreset, PaletteIndex,
-    Project, ProjectSessionIndex, build_palette_index, build_project_session_index,
+    build_palette_index,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+use crate::library::{LibraryHealthSource, read_library_health_source, read_regular_bounded};
 use crate::presets::read_preset_health_source;
-use crate::projects::{ProjectHealthSource, read_project_health_source, read_regular_bounded};
 use crate::sessions::read_session_health_source;
 use crate::{CURRENT_FORMAT_VERSION, StoreError, file_lock};
 
@@ -25,7 +25,6 @@ const FORMAT_FILE: &str = "format.json";
 const LOCK_FILE: &str = "metadata.lock";
 const INDEX_DIR: &str = "derived-indexes";
 const INDEX_MARKER: &str = ".termirust-derived-indexes-v1";
-const PROJECT_SESSION_FILE: &str = "project-session-v1.json";
 const PALETTE_FILE: &str = "palette-v1.json";
 const REPAIR_JOURNAL: &str = "repair-journal-v1.json";
 const MAX_FORMAT_BYTES: u64 = 64 * 1024;
@@ -47,7 +46,6 @@ pub enum HealthCheckKind {
     StoreReadable,
     StoreVersion,
     RecordHashes,
-    ProjectSessionIndex,
     PaletteIndex,
 }
 
@@ -113,7 +111,6 @@ impl HealthReport {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IndexRepairKind {
-    ProjectSessionIndex,
     PaletteIndex,
 }
 
@@ -240,7 +237,6 @@ pub struct HealthRepository {
 
 struct SourceSnapshot {
     revisions: IndexSourceRevisions,
-    projects: Vec<Project>,
     groups: Vec<Group>,
     sessions: Vec<HostedSession>,
     presets: Vec<LaunchPreset>,
@@ -290,29 +286,19 @@ impl HealthRepository {
                 return failed_report(id, error.code);
             }
         };
-        let project_session = match self.project_session_bytes(&source) {
-            Ok(bytes) => bytes,
-            Err(error) => return failed_report(id, error.code),
-        };
         let palette = match self.palette_bytes(&source) {
             Ok(bytes) => bytes,
             Err(error) => return failed_report(id, error.code),
         };
         let authoritative_records = source
-            .projects
+            .groups
             .len()
-            .saturating_add(source.groups.len())
             .saturating_add(source.sessions.len())
             .saturating_add(source.presets.len()) as u64;
         let findings = vec![
             healthy_finding(HealthCheckKind::StoreReadable),
             healthy_finding(HealthCheckKind::StoreVersion),
             healthy_finding(HealthCheckKind::RecordHashes),
-            self.inspect_index(
-                IndexRepairKind::ProjectSessionIndex,
-                &project_session,
-                source.revisions,
-            ),
             self.inspect_index(IndexRepairKind::PaletteIndex, &palette, source.revisions),
         ];
         drop(lock);
@@ -328,7 +314,6 @@ impl HealthRepository {
         let _lock = MetadataLock::shared(&self.root).map_err(map_store_error)?;
         let source = self.read_source_locked()?;
         let expected_bytes = match kind {
-            IndexRepairKind::ProjectSessionIndex => self.project_session_bytes(&source)?,
             IndexRepairKind::PaletteIndex => self.palette_bytes(&source)?,
         };
         if expected_bytes.len() as u64 > MAX_INDEX_BYTES {
@@ -340,12 +325,8 @@ impl HealthRepository {
             self.index_root()
                 .join(format!(".repair-{}-{}.tmp", id.0, kind_slug(kind)));
         let estimated_entries = match kind {
-            IndexRepairKind::ProjectSessionIndex => source.sessions.len() + source.projects.len(),
             IndexRepairKind::PaletteIndex => {
-                source.projects.len()
-                    + source.groups.len()
-                    + source.sessions.len()
-                    + source.presets.len()
+                source.groups.len() + source.sessions.len() + source.presets.len()
             }
         } as u64;
         Ok(IndexRepairPlan {
@@ -488,26 +469,18 @@ impl HealthRepository {
         {
             return Err(error(HealthErrorCode::CorruptSource));
         }
-        let (
-            project_bytes,
-            ProjectHealthSource {
-                revision: projects_revision,
-                projects,
-                groups,
-            },
-        ) = read_project_health_source(&self.root).map_err(map_store_error)?;
+        let (_library_bytes, LibraryHealthSource { groups, .. }) =
+            read_library_health_source(&self.root).map_err(map_store_error)?;
         let (session_bytes, sessions_revision, sessions) =
             read_session_health_source(&self.root).map_err(map_store_error)?;
         let (preset_bytes, presets_revision, presets) =
             read_preset_health_source(&self.root).map_err(map_store_error)?;
         let revisions = IndexSourceRevisions {
-            projects: projects_revision,
             sessions: sessions_revision,
             presets: presets_revision,
         };
         Ok(SourceSnapshot {
             revisions,
-            projects,
             groups,
             sessions,
             presets,
@@ -515,10 +488,6 @@ impl HealthRepository {
                 SourceHash {
                     kind: HealthCheckKind::StoreVersion,
                     sha256: sha256_hex(&format_bytes),
-                },
-                SourceHash {
-                    kind: HealthCheckKind::ProjectSessionIndex,
-                    sha256: sha256_hex(&project_bytes),
                 },
                 SourceHash {
                     kind: HealthCheckKind::RecordHashes,
@@ -532,17 +501,9 @@ impl HealthRepository {
         })
     }
 
-    fn project_session_bytes(&self, source: &SourceSnapshot) -> Result<Vec<u8>, HealthError> {
-        let index =
-            build_project_session_index(source.revisions, &source.projects, &source.sessions)
-                .map_err(|_| error(HealthErrorCode::CorruptSource))?;
-        serialize_index(&index)
-    }
-
     fn palette_bytes(&self, source: &SourceSnapshot) -> Result<Vec<u8>, HealthError> {
         let index = build_palette_index(
             source.revisions,
-            &source.projects,
             &source.groups,
             &source.presets,
             &source.sessions,
@@ -586,11 +547,6 @@ impl HealthRepository {
             }
         };
         let valid = match kind {
-            IndexRepairKind::ProjectSessionIndex => {
-                serde_json::from_slice::<ProjectSessionIndex>(&actual).is_ok_and(|index| {
-                    index.version == DERIVED_INDEX_VERSION && index.source_revisions == revisions
-                })
-            }
             IndexRepairKind::PaletteIndex => serde_json::from_slice::<PaletteIndex>(&actual)
                 .is_ok_and(|index| {
                     index.version == DERIVED_INDEX_VERSION && index.source_revisions == revisions
@@ -808,7 +764,6 @@ fn failed_report(id: HealthCheckId, code: HealthErrorCode) -> HealthReport {
         HealthCheckKind::StoreReadable,
         HealthCheckKind::StoreVersion,
         HealthCheckKind::RecordHashes,
-        HealthCheckKind::ProjectSessionIndex,
         HealthCheckKind::PaletteIndex,
     ];
     HealthReport {
@@ -924,6 +879,8 @@ fn map_store_error(store_error: StoreError) -> HealthError {
         | StoreError::PresetDomain(_)
         | StoreError::SessionDomain(_)
         | StoreError::WorktreeDomain(_)
+        | StoreError::StaleRevision { .. }
+        | StoreError::RevisionOverflow
         | StoreError::InvalidInstanceId => error(HealthErrorCode::CorruptSource),
         StoreError::UnsafeEntry { .. } => error(HealthErrorCode::UnsafeEntry),
         StoreError::TooLarge { .. } => error(HealthErrorCode::SizeLimit),
@@ -1002,21 +959,18 @@ fn sha256_hex(bytes: &[u8]) -> String {
 
 fn target_name(kind: IndexRepairKind) -> &'static str {
     match kind {
-        IndexRepairKind::ProjectSessionIndex => PROJECT_SESSION_FILE,
         IndexRepairKind::PaletteIndex => PALETTE_FILE,
     }
 }
 
 fn kind_slug(kind: IndexRepairKind) -> &'static str {
     match kind {
-        IndexRepairKind::ProjectSessionIndex => "project-session",
         IndexRepairKind::PaletteIndex => "palette",
     }
 }
 
 fn check_kind(kind: IndexRepairKind) -> HealthCheckKind {
     match kind {
-        IndexRepairKind::ProjectSessionIndex => HealthCheckKind::ProjectSessionIndex,
         IndexRepairKind::PaletteIndex => HealthCheckKind::PaletteIndex,
     }
 }

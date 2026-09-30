@@ -122,7 +122,10 @@ impl fmt::Debug for OsStringValue {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum WorkingDirectoryRule {
-    ProjectRoot,
+    /// The folder the session starts in. Saved presets from before Projects were removed call it
+    /// `project_root`.
+    #[serde(alias = "project_root")]
+    SessionFolder,
     ContainedSubdirectory(String),
     PlatformHome,
 }
@@ -264,7 +267,7 @@ impl PresetDraft {
                 .sum::<usize>()
             + match &self.working_directory {
                 WorkingDirectoryRule::ContainedSubdirectory(value) => value.len(),
-                WorkingDirectoryRule::ProjectRoot | WorkingDirectoryRule::PlatformHome => 0,
+                WorkingDirectoryRule::SessionFolder | WorkingDirectoryRule::PlatformHome => 0,
             };
         if total > MAX_RESOLVED_LAUNCH_BYTES {
             return Err(PresetError::LaunchTooLarge);
@@ -448,7 +451,7 @@ mod tests {
             label: "  Literal CLI  ".to_string(),
             executable: "codex".to_string(),
             args,
-            working_directory: WorkingDirectoryRule::ProjectRoot,
+            working_directory: WorkingDirectoryRule::SessionFolder,
             runtime: Some("codex".to_string()),
             enabled: true,
             favorite: false,
@@ -547,5 +550,21 @@ mod tests {
         let argument = OsStringValue::new("--token=secret").unwrap();
         assert!(!format!("{executable:?}").contains("customer-cli"));
         assert!(!format!("{argument:?}").contains("secret"));
+    }
+}
+
+#[cfg(test)]
+mod working_directory_rule_compatibility {
+    use super::WorkingDirectoryRule;
+
+    #[test]
+    fn a_preset_saved_with_project_root_reads_as_the_session_folder() {
+        let rule: WorkingDirectoryRule =
+            serde_json::from_str(r#"{"kind":"project_root"}"#).unwrap();
+        assert_eq!(rule, WorkingDirectoryRule::SessionFolder);
+        assert_eq!(
+            serde_json::to_string(&rule).unwrap(),
+            r#"{"kind":"session_folder"}"#
+        );
     }
 }

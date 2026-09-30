@@ -1,20 +1,20 @@
 use std::path::Path;
 
-use crate::{ProjectRepository, ProjectSnapshot, SessionRepository, SessionSnapshot, StoreError};
+use crate::{LibraryRepository, LibrarySnapshot, SessionRepository, SessionSnapshot, StoreError};
 
-/// One bounded, validated, non-mutating view of the local project and Session stores.
+/// One bounded, validated, non-mutating view of the local group and Session stores.
 #[derive(Clone, Eq, PartialEq)]
 pub struct FleetStoreSnapshot {
-    pub projects: ProjectSnapshot,
+    pub library: LibrarySnapshot,
     pub sessions: SessionSnapshot,
 }
 
 /// Reads existing metadata without creating a store, lock file, backup, or Session data directory.
 pub fn load_fleet_read_only(root: impl AsRef<Path>) -> Result<FleetStoreSnapshot, StoreError> {
     let root = root.as_ref();
-    let projects = ProjectRepository::load_existing_read_only(root)?;
+    let library = LibraryRepository::load_existing_read_only(root)?;
     let sessions = SessionRepository::load_existing_read_only(root)?;
-    Ok(FleetStoreSnapshot { projects, sessions })
+    Ok(FleetStoreSnapshot { library, sessions })
 }
 
 #[cfg(test)]
@@ -26,7 +26,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::{ProjectRepository, SessionRepository};
+    use crate::{LibraryRepository, SessionRepository};
 
     fn files(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
         let mut result = BTreeMap::new();
@@ -55,13 +55,13 @@ mod tests {
         let fixture = TempDir::new().unwrap();
         let metadata = fixture.path().join("metadata");
         let session_data = fixture.path().join("sessions");
-        ProjectRepository::open(&metadata).unwrap();
+        LibraryRepository::open(&metadata).unwrap();
         SessionRepository::open(&metadata, &session_data).unwrap();
         let before = files(fixture.path());
 
         let snapshot = load_fleet_read_only(&metadata).unwrap();
 
-        assert!(snapshot.projects.projects.is_empty());
+        assert!(snapshot.library.groups.is_empty());
         assert!(snapshot.sessions.sessions.is_empty());
         assert_eq!(files(fixture.path()), before);
     }

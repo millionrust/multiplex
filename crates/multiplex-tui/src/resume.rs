@@ -598,7 +598,6 @@ mod tests {
     fn session(state: &str, archived: bool) -> FleetSession {
         FleetSession {
             id: "00000000-0000-0000-0000-000000000007".into(),
-            project_id: "00000000-0000-0000-0000-000000000001".into(),
             group_id: None,
             title: "Private Session".into(),
             state: state.into(),

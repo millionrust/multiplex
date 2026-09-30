@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use multiplex_client::{ConnectOptions, HostClient, LocalEndpoint};
 use multiplex_domain::{
     ActivityState, CommandId, HostInstanceId, HostedSession, HostedSessionId, HostedSessionState,
-    OutputSequence, PositionKey, PresetId, ProjectId, Revision, SessionMutation, SessionStateError,
+    OutputSequence, PositionKey, PresetId, Revision, SessionMutation, SessionStateError,
     SessionTitle, TitleSource,
 };
 use multiplex_host_protocol::wire;
@@ -69,7 +69,7 @@ async fn activity_lifecycle_stop_archive_restore_requires_confirmed_host_exit() 
         .create_session(
             HostedSession {
                 id: session_id,
-                project_id: ProjectId::new(),
+                folder: multiplex_domain::CanonicalPath::resolve(&std::env::temp_dir()).unwrap(),
                 group_id: None,
                 preset_id: Some(PresetId::new()),
                 title: SessionTitle::new("Lifecycle fixture").unwrap(),

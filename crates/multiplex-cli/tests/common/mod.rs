@@ -8,23 +8,22 @@ use multiplex_cli::{
     HostController, HostLaunchOutcome, HostLauncher, HostResizeRequest, LocalCommandService,
 };
 use multiplex_domain::{
-    ActivityAggregate, AddProject, CommandId, ControllerCapabilities, ControllerCapability,
+    ActivityAggregate, CanonicalPath, CommandId, ControllerCapabilities, ControllerCapability,
     ControllerDeviceAuthority, ControllerDeviceId, ControllerProtocolRange, DevicePublicKey,
     DeviceStoreRevision, ExecutableSpec, HostIdentityGeneration, HostIdentityPublic,
     HostIdentitySecretRef, HostIdentityState, HostInstanceId, HostLifecycle, HostPublicKey,
     HostedSession, HostedSessionId, HostedSessionState, LaunchPreset, OsStringValue,
     OutputSequence, PairedDeviceRecord, PairedDeviceStatus, PairingOfferId, PermissionPolicy,
-    PositionKey, PresetDraft, PresetId, PresetOrigin, PresetRisk, ProjectId, Revision,
-    SessionTitle, TitleSource, WorkingDirectoryRule,
+    PositionKey, PresetDraft, PresetId, PresetOrigin, PresetRisk, Revision, SessionTitle,
+    TitleSource, WorkingDirectoryRule,
 };
 use multiplex_session_host::LaunchDescriptor;
 use multiplex_store::{
     ControllerDeviceRepository, ControllerDeviceSnapshot, HostLease, HostMetadata,
-    PresetRepository, ProjectRepository, SessionRepository,
+    PresetRepository, SessionRepository,
 };
 use uuid::Uuid;
 
-pub const PROJECT_ID: ProjectId = ProjectId::from_uuid(Uuid::from_u128(1));
 pub const PRESET_ID: PresetId = PresetId::from_uuid(Uuid::from_u128(2));
 pub const SESSION_ID: HostedSessionId = HostedSessionId::from_uuid(Uuid::from_u128(3));
 pub const LAUNCH_SESSION_ID: HostedSessionId = HostedSessionId::from_uuid(Uuid::from_u128(4));
@@ -37,7 +36,8 @@ pub struct SeededStore {
     pub temp: tempfile::TempDir,
     pub config_root: std::path::PathBuf,
     pub metadata_root: std::path::PathBuf,
-    pub project_root: std::path::PathBuf,
+    /// The folder seeded sessions run in.
+    pub folder: std::path::PathBuf,
 }
 
 impl SeededStore {
@@ -91,17 +91,8 @@ pub fn seed_store() -> SeededStore {
     let temp = tempfile::tempdir().unwrap();
     let config_root = temp.path().join("config");
     let metadata_root = config_root.join("agent-workspace");
-    let project_root = temp.path().join("project");
-    std::fs::create_dir_all(&project_root).unwrap();
-    let projects = ProjectRepository::open(&metadata_root).unwrap();
-    projects
-        .add_project(AddProject {
-            id: PROJECT_ID,
-            root: project_root.clone(),
-            display_name: Some("Example Project".into()),
-            expected: Revision::ZERO,
-        })
-        .unwrap();
+    let folder = temp.path().join("folder");
+    std::fs::create_dir_all(&folder).unwrap();
     let presets = PresetRepository::open(&metadata_root).unwrap();
     presets
         .save_preset(
@@ -110,7 +101,7 @@ pub fn seed_store() -> SeededStore {
                 label: "Counter".into(),
                 executable: fixture_executable(),
                 args: vec!["-c".into(), "sleep 30".into()],
-                working_directory: WorkingDirectoryRule::ProjectRoot,
+                working_directory: WorkingDirectoryRule::SessionFolder,
                 runtime: None,
                 enabled: true,
                 favorite: true,
@@ -126,7 +117,7 @@ pub fn seed_store() -> SeededStore {
         temp,
         config_root,
         metadata_root,
-        project_root,
+        folder,
     }
 }
 
@@ -141,7 +132,7 @@ pub fn insert_session(
         .create_session(
             HostedSession {
                 id: SESSION_ID,
-                project_id: PROJECT_ID,
+                folder: CanonicalPath::resolve(&seed.folder).unwrap(),
                 group_id: None,
                 preset_id: Some(PRESET_ID),
                 title: SessionTitle::new("Counter session").unwrap(),
@@ -412,7 +403,7 @@ pub fn preset_fixture() -> LaunchPreset {
         label: multiplex_domain::LocalizedUserText::new("Counter").unwrap(),
         executable: ExecutableSpec::parse("/bin/sh").unwrap(),
         args: vec![OsStringValue::new("-c").unwrap()],
-        working_directory: WorkingDirectoryRule::ProjectRoot,
+        working_directory: WorkingDirectoryRule::SessionFolder,
         runtime: None,
         enabled: true,
         favorite: true,

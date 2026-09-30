@@ -11,22 +11,24 @@ mod connection_coordinator;
 mod controller_coordinator;
 mod dev_urls;
 mod editor;
+mod folder_panel;
 mod global_search;
 mod host_rail;
 mod hosted_session;
 mod hosts;
 mod key_lifecycle;
+mod launch_coordinator;
 mod library;
+mod library_state;
 mod motion;
 mod new_session;
 mod notification_settings;
 mod other_terminals;
 mod overlay;
+use launch_coordinator::LaunchCoordinator;
+use library_state::{LibraryLoadState, LibraryState};
 mod palette;
 mod presets;
-mod project;
-mod project_coordinator;
-mod projects;
 mod remote_devices;
 mod remote_screen;
 mod remote_terminals;
@@ -66,6 +68,7 @@ use connection_coordinator::{
 };
 use controller_coordinator::ControllerCoordinator;
 use dev_urls::DevUrlUiState;
+use folder_panel::CanvasFolderPanelState;
 use global_search::GlobalSearchState;
 use hosted_session::DurableSessionPaths;
 use key_lifecycle::{KeyLifecycleDialog, KeyLifecycleInputs};
@@ -76,9 +79,6 @@ use palette::{
     collect_autocomplete_candidates, collect_command_palette_candidates, pane_recent_output_lines,
 };
 use presets::PresetLibraryState;
-use project::CanvasProjectPanelState;
-use project_coordinator::ProjectCoordinator;
-use projects::ProjectLibraryState;
 use remote_devices::RemoteDevicesState;
 use replication_settings::{ReplicationLifecycleState, ReplicationSettingsInputs};
 use session_coordinator::{
@@ -157,8 +157,8 @@ use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent, SshEventSender,
 use crate::storage::{
     KnownHostStore, export_encrypted_mobile_vault, export_encrypted_portable_data_bundle,
     export_portable_data_bundle, import_encrypted_portable_data_bundle,
-    import_portable_data_bundle, inspect_identity_file, load_local_ssh_identities,
-    project_store_dir, save_saved_state,
+    import_portable_data_bundle, inspect_identity_file, library_store_dir,
+    load_local_ssh_identities, save_saved_state,
 };
 use crate::terminal::{TerminalSize, TerminalState};
 use crate::ui::accessibility::shell::ShellAccessibilityAdapter;
@@ -309,7 +309,6 @@ fn drain_coalesced_ssh_events(receiver: &Receiver<SshEvent>) -> Vec<SshEvent> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum NavSection {
-    Projects,
     Activity,
     Sessions,
     Devices,
@@ -334,7 +333,6 @@ enum KeychainTab {
 impl NavSection {
     fn label(self) -> String {
         match self {
-            Self::Projects => localization::projects_nav_label(),
             Self::Activity => localization::activity_center_nav_label(),
             Self::Sessions => localization::session_sidebar_title(),
             Self::Devices => localization::remote_devices_title(),
@@ -352,7 +350,6 @@ impl NavSection {
 
     fn icon(self) -> Icon {
         match self {
-            Self::Projects => IconName::Folder.into(),
             Self::Activity => IconName::Bell.into(),
             Self::Sessions => IconName::SquareTerminal.into(),
             Self::Devices => IconName::Globe.into(),
@@ -372,12 +369,11 @@ impl NavSection {
 fn primary_nav_shortcut(number: u8) -> Option<NavSection> {
     match number {
         1 => Some(NavSection::Activity),
-        2 => Some(NavSection::Projects),
-        3 => Some(NavSection::Hosts),
-        4 => Some(NavSection::Sessions),
-        5 => Some(NavSection::Sftp),
-        6 => Some(NavSection::Devices),
-        7 => Some(NavSection::Settings),
+        2 => Some(NavSection::Hosts),
+        3 => Some(NavSection::Sessions),
+        4 => Some(NavSection::Sftp),
+        5 => Some(NavSection::Devices),
+        6 => Some(NavSection::Settings),
         _ => None,
     }
 }
@@ -953,7 +949,7 @@ struct PendingSnippetInsert {
 struct WorkspaceTab {
     id: u64,
     title: String,
-    project_directory: Option<String>,
+    folder: Option<String>,
     pane_ids: Vec<u64>,
     active_pane_id: u64,
     unread_events: u32,
@@ -1205,11 +1201,10 @@ pub struct MultiplexApp {
     vault_inputs: VaultInputs,
     vault_member_inputs: VaultMemberInputs,
     draft_auth_mode: AuthMode,
-    project_coordinator: ProjectCoordinator,
+    launch_coordinator: LaunchCoordinator,
     controller_coordinator: ControllerCoordinator,
     canvas_coordinator: CanvasCoordinator,
-    project_library: ProjectLibraryState,
-    project_label_input: Entity<InputState>,
+    library: LibraryState,
     group_name_input: Entity<InputState>,
     session_title_input: Entity<InputState>,
     session_remove_confirm_input: Entity<InputState>,
@@ -1230,7 +1225,7 @@ pub struct MultiplexApp {
     window_active: bool,
     global_search: GlobalSearchState,
     shell_accessibility: ShellAccessibilityAdapter,
-    project_list_focus: FocusHandle,
+    session_list_focus: FocusHandle,
     focus_trace: Option<String>,
     preset_library: PresetLibraryState,
     preset_label_input: Entity<InputState>,
@@ -1357,7 +1352,7 @@ pub struct MultiplexApp {
     canvas_fleet_open: bool,
     canvas_fleet_workspace_id: Option<u64>,
     pending_canvas_fleet_disconnect: bool,
-    canvas_project_panel: Option<CanvasProjectPanelState>,
+    canvas_folder_panel: Option<CanvasFolderPanelState>,
     canvas_node_menu_id: Option<crate::models::CanvasNodeId>,
     worktree_manager_open: bool,
     agent_creation: Option<AgentCreationState>,
@@ -1386,7 +1381,7 @@ pub struct MultiplexApp {
     pane_rename_input: Entity<InputState>,
     canvas_node_rename_input: Entity<InputState>,
     canvas_note_editor_input: Entity<InputState>,
-    canvas_project_editor_input: Entity<InputState>,
+    canvas_folder_editor_input: Entity<InputState>,
     pending_paste: Option<PendingPaste>,
     pending_snippet_prompts: Option<PendingSnippetPrompts>,
     pending_snippet_insert: Option<PendingSnippetInsert>,
@@ -1408,7 +1403,7 @@ pub struct MultiplexApp {
     event_root_notification_count: u64,
     #[cfg(test)]
     event_root_notification_causes: Vec<&'static str>,
-    _canvas_project_editor_subscription: Subscription,
+    _canvas_folder_editor_subscription: Subscription,
     _canvas_note_editor_subscription: Subscription,
     _command_palette_subscription: Subscription,
     _settings_search_subscription: Subscription,
@@ -1505,14 +1500,14 @@ impl MultiplexApp {
         let (event_tx, event_rx, event_wake) = SshEventSender::channel();
         let session_coordinator = SessionCoordinator::new(event_tx.clone());
         let (sftp_event_tx, sftp_event_rx) = mpsc::channel();
-        let canvas_project_editor_input =
+        let canvas_folder_editor_input =
             cx.new(|cx| {
                 InputState::new(window, cx).multi_line(true).placeholder(
-                    localization::static_message(MessageId::CanvasProjectEditorPlaceholder),
+                    localization::static_message(MessageId::CanvasFolderEditorPlaceholder),
                 )
             });
-        let canvas_project_editor_subscription = cx.subscribe(
-            &canvas_project_editor_input,
+        let canvas_folder_editor_subscription = cx.subscribe(
+            &canvas_folder_editor_input,
             |_, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
                     cx.notify();
@@ -1586,14 +1581,14 @@ impl MultiplexApp {
                     .map(|profile| profile.auth_mode)
             })
             .unwrap_or(AuthMode::Password);
-        let project_library = ProjectLibraryState::open_default();
+        let library = LibraryState::open_default();
         let session_library = SessionLibraryState::open_default(&mut saved);
-        if let Ok(root) = project_store_dir()
+        if let Ok(root) = library_store_dir()
             && let Ok(repository) = HealthRepository::open(root)
         {
             let _ = repository.recover_interrupted_repair();
         }
-        if let Ok(root) = project_store_dir()
+        if let Ok(root) = library_store_dir()
             && let Ok(recovery) = MetadataRecoveryService::open(root)
         {
             let _ = recovery.recover_interrupted_restore();
@@ -1632,8 +1627,6 @@ impl MultiplexApp {
             saved.settings.remote_screen_sharing,
             saved.settings.remote_screen_restore_token.clone(),
         );
-        let project_label_input = cx
-            .new(|cx| InputState::new(window, cx).placeholder(localization::project_label_field()));
         let group_name_input =
             cx.new(|cx| InputState::new(window, cx).placeholder(localization::group_name_field()));
         let session_title_input = cx.new(|cx| {
@@ -1643,7 +1636,7 @@ impl MultiplexApp {
             InputState::new(window, cx)
                 .placeholder(localization::session_library_remove_confirm_placeholder())
         });
-        let project_list_focus = cx.focus_handle().tab_stop(true);
+        let session_list_focus = cx.focus_handle().tab_stop(true);
         let preset_library = PresetLibraryState::open_default();
         let preset_label_input = cx
             .new(|cx| InputState::new(window, cx).placeholder(localization::preset_label_field()));
@@ -1696,11 +1689,10 @@ impl MultiplexApp {
             vault_inputs,
             vault_member_inputs,
             draft_auth_mode,
-            project_coordinator: ProjectCoordinator::default(),
+            launch_coordinator: LaunchCoordinator::default(),
             controller_coordinator,
             canvas_coordinator: CanvasCoordinator,
-            project_library,
-            project_label_input,
+            library,
             group_name_input,
             session_title_input,
             session_remove_confirm_input,
@@ -1719,7 +1711,7 @@ impl MultiplexApp {
             window_active: window.is_window_active(),
             global_search: GlobalSearchState::new(),
             shell_accessibility: ShellAccessibilityAdapter::new(),
-            project_list_focus,
+            session_list_focus,
             focus_trace: multiplex_env::var_os("MULTIPLEX_TRACE_FOCUS").map(|_| String::new()),
             preset_library,
             preset_label_input,
@@ -1825,7 +1817,7 @@ impl MultiplexApp {
             canvas_fleet_open: false,
             canvas_fleet_workspace_id: None,
             pending_canvas_fleet_disconnect: false,
-            canvas_project_panel: None,
+            canvas_folder_panel: None,
             canvas_node_menu_id: None,
             worktree_manager_open: false,
             agent_creation: None,
@@ -1865,7 +1857,7 @@ impl MultiplexApp {
                 ))
             }),
             canvas_note_editor_input,
-            canvas_project_editor_input,
+            canvas_folder_editor_input,
             pending_paste: None,
             pending_snippet_prompts: None,
             pending_snippet_insert: None,
@@ -1887,7 +1879,7 @@ impl MultiplexApp {
             event_root_notification_count: 0,
             #[cfg(test)]
             event_root_notification_causes: Vec::new(),
-            _canvas_project_editor_subscription: canvas_project_editor_subscription,
+            _canvas_folder_editor_subscription: canvas_folder_editor_subscription,
             _canvas_note_editor_subscription: canvas_note_editor_subscription,
             _command_palette_subscription: command_palette_subscription,
             _settings_search_subscription: settings_search_subscription,
@@ -2013,8 +2005,8 @@ impl MultiplexApp {
         }
         let holder = if !window.is_window_active() {
             "window inactive".to_string()
-        } else if self.project_list_focus.is_focused(window) {
-            "project list".to_string()
+        } else if self.session_list_focus.is_focused(window) {
+            "session list".to_string()
         } else if let Some(pane) = self
             .panes
             .iter()
@@ -2049,11 +2041,11 @@ impl MultiplexApp {
                     if let Some(pane) = self.active_pane() {
                         pane.terminal_focus.focus(window);
                     } else {
-                        self.project_list_focus.focus(window);
+                        self.session_list_focus.focus(window);
                     }
                 }
                 ShellAccessibilityCommand::FocusRegion(_) => {
-                    self.project_list_focus.focus(window);
+                    self.session_list_focus.focus(window);
                 }
                 ShellAccessibilityCommand::DismissPalette => {
                     if self.show_command_palette {
@@ -2103,7 +2095,7 @@ impl MultiplexApp {
                             multiplex_ui_contract::PresetRuntimeAccessibilityCommand::FocusRow(_)
                         ) =>
                     {
-                        self.project_list_focus.focus(window);
+                        self.session_list_focus.focus(window);
                     }
                     _ => {}
                 },
@@ -4937,7 +4929,6 @@ impl MultiplexApp {
         self.global_search.cancel();
         self.error_message.clear();
         self.status_message = match section {
-            NavSection::Projects => localization::projects_ready_status(),
             NavSection::Activity => localization::static_message(MessageId::ActivitySectionReady),
             NavSection::Sessions => localization::static_message(MessageId::SessionsSectionReady),
             NavSection::Devices => localization::static_message(MessageId::DevicesSectionReady),
@@ -5310,7 +5301,7 @@ impl MultiplexApp {
                     if worker_cancellation.is_cancelled() {
                         return Err(multiplex_store::HealthErrorCode::Cancelled);
                     }
-                    let root = project_store_dir()
+                    let root = library_store_dir()
                         .map_err(|_| multiplex_store::HealthErrorCode::Unavailable)?;
                     let repository = HealthRepository::open(root).map_err(|error| error.code)?;
                     let report = repository.scan();
@@ -5365,7 +5356,7 @@ impl MultiplexApp {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    let root = project_store_dir()
+                    let root = library_store_dir()
                         .map_err(|_| multiplex_store::HealthErrorCode::Unavailable)?;
                     let repository = HealthRepository::open(root).map_err(|error| error.code)?;
                     let plan = repository.plan_repair(kind).map_err(|error| error.code)?;
@@ -5434,7 +5425,7 @@ impl MultiplexApp {
                     if worker_cancellation.is_cancelled() {
                         return Err(multiplex_store::RecoveryErrorCode::Cancelled);
                     }
-                    let root = project_store_dir()
+                    let root = library_store_dir()
                         .map_err(|_| multiplex_store::RecoveryErrorCode::StorageUnavailable)?;
                     MetadataRecoveryService::open(root)
                         .map_err(|error| error.code)?
@@ -5483,7 +5474,7 @@ impl MultiplexApp {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    let root = project_store_dir()
+                    let root = library_store_dir()
                         .map_err(|_| multiplex_store::RecoveryErrorCode::StorageUnavailable)?;
                     let recovery =
                         MetadataRecoveryService::open(&root).map_err(|error| error.code)?;
@@ -6541,7 +6532,7 @@ impl MultiplexApp {
 
             let mut saved_workspace = SavedWorkspace {
                 title: workspace.title.clone(),
-                project_directory: workspace.project_directory.clone(),
+                folder: workspace.folder.clone(),
                 layout_mode: workspace.layout_mode,
                 layout,
                 canvas: Some(workspace.canvas.to_saved(&saved_index)),
@@ -6687,7 +6678,7 @@ impl MultiplexApp {
             self.workspaces.push(WorkspaceTab {
                 id: workspace_id,
                 title,
-                project_directory: saved_workspace.project_directory.clone(),
+                folder: saved_workspace.folder.clone(),
                 pane_ids,
                 active_pane_id,
                 unread_events: 0,
@@ -7589,7 +7580,7 @@ impl MultiplexApp {
             self.session_library.view = SessionLibraryView::Archive;
             self.session_library.filter = SessionLibraryFilter::All;
             self.session_sidebar.selected_session = Some(session_id);
-            self.project_list_focus.focus(window);
+            self.session_list_focus.focus(window);
             cx.notify();
             return true;
         }
@@ -7645,7 +7636,8 @@ impl MultiplexApp {
         );
         request.title = format!(
             "{} - {}",
-            saved_session.project_label, saved_session.preset_label
+            folder_display_name(&saved_session.folder),
+            saved_session.preset_label
         );
         let Some(pane_id) =
             self.spawn_saved_durable_pane(request.clone(), &saved_session, window, cx)
@@ -7979,7 +7971,7 @@ impl MultiplexApp {
         self.workspaces.push(WorkspaceTab {
             id: workspace_id,
             title: request.title.clone(),
-            project_directory: request
+            folder: request
                 .local_shell
                 .as_ref()
                 .and_then(|shell| shell.cwd.clone()),
@@ -8032,7 +8024,7 @@ impl MultiplexApp {
                 self.workspaces.push(WorkspaceTab {
                     id: workspace_id,
                     title: request.title.clone(),
-                    project_directory: request
+                    folder: request
                         .local_shell
                         .as_ref()
                         .and_then(|shell| shell.cwd.clone()),
@@ -8339,7 +8331,7 @@ impl MultiplexApp {
         self.workspaces.push(WorkspaceTab {
             id: workspace_id,
             title: request.title.clone(),
-            project_directory: None,
+            folder: None,
             pane_ids: vec![pane_id],
             active_pane_id: pane_id,
             unread_events: 0,
@@ -8747,7 +8739,6 @@ impl MultiplexApp {
         self.event_root_notification_causes.clear();
         let structured_agents_changed = self.process_structured_agent_events();
         let connection_diagnostics_changed = self.process_connection_diagnostic_events();
-        let project_undo_changed = self.process_project_undo_expiry();
         let panes_requested = self.open_panes_paired_devices_asked_for(cx);
         #[cfg(test)]
         {
@@ -8758,14 +8749,9 @@ impl MultiplexApp {
                 self.event_root_notification_causes
                     .push("connection-diagnostic");
             }
-            if project_undo_changed {
-                self.event_root_notification_causes.push("project-undo");
-            }
         }
-        let mut changed = structured_agents_changed
-            || connection_diagnostics_changed
-            || project_undo_changed
-            || panes_requested;
+        let mut changed =
+            structured_agents_changed || connection_diagnostics_changed || panes_requested;
         let mut panes_to_refresh = Vec::new();
         let mut sftp_directories_to_refresh = HashSet::new();
 
@@ -10310,9 +10296,9 @@ impl MultiplexApp {
             .pane(pane_id)
             .map(|pane| pane.title.clone())
             .unwrap_or_default();
-        let project_directory = self
+        let folder = self
             .workspace(workspace_id)
-            .and_then(|workspace| workspace.project_directory.clone())
+            .and_then(|workspace| workspace.folder.clone())
             .or_else(|| {
                 self.pane(pane_id)
                     .and_then(|pane| pane.request.local_shell.as_ref())
@@ -10341,7 +10327,7 @@ impl MultiplexApp {
         self.workspaces.push(WorkspaceTab {
             id: new_workspace_id,
             title,
-            project_directory,
+            folder,
             pane_ids: vec![pane_id],
             active_pane_id: pane_id,
             unread_events: 0,
@@ -10788,26 +10774,7 @@ impl MultiplexApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        use multiplex_domain::{ProjectStatus, SearchAction};
-
-        let available_project = || {
-            self.project_library.snapshot.as_ref().and_then(|snapshot| {
-                self.project_library
-                    .selected_id
-                    .and_then(|id| {
-                        snapshot.projects.iter().find(|summary| {
-                            summary.project.id == id && summary.status == ProjectStatus::Available
-                        })
-                    })
-                    .or_else(|| {
-                        snapshot
-                            .projects
-                            .iter()
-                            .find(|summary| summary.status == ProjectStatus::Available)
-                    })
-                    .map(|summary| summary.project.id)
-            })
-        };
+        use multiplex_domain::SearchAction;
 
         match action {
             SearchAction::OpenSession(id) => {
@@ -10819,50 +10786,16 @@ impl MultiplexApp {
                 }
                 true
             }
-            SearchAction::OpenProject(id) => {
-                let exists = self
-                    .project_library
-                    .snapshot
-                    .as_ref()
-                    .is_some_and(|snapshot| {
-                        snapshot
-                            .projects
-                            .iter()
-                            .any(|summary| summary.project.id == id)
-                    });
+            SearchAction::OpenGroup(group_id) => {
+                let exists = self.library.snapshot.as_ref().is_some_and(|snapshot| {
+                    snapshot.groups.iter().any(|group| group.id == group_id)
+                });
                 if !exists {
                     return self.reject_stale_global_palette_result(cx);
                 }
                 self.close_command_palette(window, cx);
-                self.activate_library_section(NavSection::Projects, window, cx);
-                self.project_library.selected_id = Some(id);
-                self.project_list_focus.focus(window);
-                true
-            }
-            SearchAction::OpenGroup {
-                project_id,
-                group_id,
-            } => {
-                let exists =
-                    self.project_library
-                        .snapshot
-                        .as_ref()
-                        .is_some_and(|snapshot| {
-                            snapshot
-                                .projects
-                                .iter()
-                                .any(|summary| summary.project.id == project_id)
-                                && snapshot.groups.iter().any(|group| {
-                                    group.id == group_id && group.project_id == project_id
-                                })
-                        });
-                if !exists {
-                    return self.reject_stale_global_palette_result(cx);
-                }
-                self.close_command_palette(window, cx);
-                self.activate_library_section(NavSection::Projects, window, cx);
-                self.project_library.selected_id = Some(project_id);
-                self.project_list_focus.focus(window);
+                self.activate_library_section(NavSection::Sessions, window, cx);
+                self.session_list_focus.focus(window);
                 true
             }
             SearchAction::StartPreset(preset_id) => {
@@ -10879,30 +10812,14 @@ impl MultiplexApp {
                 if !enabled {
                     return self.reject_stale_global_palette_result(cx);
                 }
-                let Some(project_id) = available_project() else {
-                    // Nowhere to run it yet: ask for the folder, which is the question that was
-                    // always behind "create a project first".
-                    self.close_command_palette(window, cx);
-                    self.start_session_in_a_folder(Some(preset_id), window, cx);
-                    return true;
-                };
+                // A session runs in a folder, so the folder is what starting one asks for.
                 self.close_command_palette(window, cx);
-                self.open_new_session_with_preset(project_id, preset_id, window, cx);
-                true
-            }
-            SearchAction::AddProject => {
-                self.close_command_palette(window, cx);
-                self.activate_library_section(NavSection::Projects, window, cx);
-                self.choose_project_folder(window, cx);
+                self.start_session_in_a_folder(Some(preset_id), window, cx);
                 true
             }
             SearchAction::NewSession => {
-                let project_id = available_project();
                 self.close_command_palette(window, cx);
-                match project_id {
-                    Some(project_id) => self.open_new_session(project_id, window, cx),
-                    None => self.start_session_in_a_folder(None, window, cx),
-                }
+                self.start_session_in_a_folder(None, window, cx);
                 true
             }
             SearchAction::ShowArchive => {
@@ -10911,7 +10828,7 @@ impl MultiplexApp {
                 self.session_library.view = SessionLibraryView::Archive;
                 self.session_library.filter = SessionLibraryFilter::All;
                 self.session_sidebar.selected_session = None;
-                self.project_list_focus.focus(window);
+                self.session_list_focus.focus(window);
                 cx.notify();
                 true
             }
@@ -13950,7 +13867,6 @@ impl MultiplexApp {
 
     fn render_library_content(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         match self.nav_section {
-            NavSection::Projects => self.render_projects_view(cx).into_any_element(),
             NavSection::Activity => self.render_activity_center_view(cx).into_any_element(),
             NavSection::Sessions => self.render_sessions_view(cx).into_any_element(),
             NavSection::Devices => self.render_devices_view(cx).into_any_element(),
@@ -14501,13 +14417,13 @@ impl MultiplexApp {
             AppShortcut::NavigateSection(number) => {
                 if let Some(section) = primary_nav_shortcut(number) {
                     self.activate_library_section(section, window, cx);
-                    self.project_list_focus.focus(window);
+                    self.session_list_focus.focus(window);
                     return true;
                 }
             }
             AppShortcut::Settings => {
                 self.activate_library_section(NavSection::Settings, window, cx);
-                self.project_list_focus.focus(window);
+                self.session_list_focus.focus(window);
                 return true;
             }
             AppShortcut::LogsOrHostSearch => {
@@ -14528,11 +14444,8 @@ impl MultiplexApp {
             }
             AppShortcut::NewHostOrSession => {
                 if self.active_workspace_id.is_none() {
-                    if self.nav_section == NavSection::Projects {
-                        match self.project_library.selected_id {
-                            Some(project_id) => self.open_new_session(project_id, window, cx),
-                            None => self.start_session_in_a_folder(None, window, cx),
-                        }
+                    if self.nav_section == NavSection::Sessions {
+                        self.start_session_in_a_folder(None, window, cx);
                         return true;
                     }
                     self.activate_library(window, cx);
@@ -14699,7 +14612,6 @@ fn search_rows(rows: &[String], query: &str) -> Vec<SearchMatch> {
 
 fn nav_section_key(section: NavSection) -> u64 {
     match section {
-        NavSection::Projects => 0,
         NavSection::Activity => 10,
         NavSection::Sessions => 11,
         NavSection::Devices => 12,
@@ -15062,7 +14974,6 @@ mod tests {
                             hosted_session_id: session_id,
                             route: multiplex_domain::SessionLaunchRoute::DurableHost,
                             origin: multiplex_domain::SessionOrigin {
-                                project_id: multiplex_domain::ProjectId::new(),
                                 preset_id: multiplex_domain::PresetId::new(),
                             },
                             pending_initial_input: None,
@@ -15445,7 +15356,6 @@ mod tests {
             id,
             category,
             title: title.to_string(),
-            project_label: None,
             group_label: None,
             preset_label: None,
             runtime_label: None,
@@ -15456,7 +15366,6 @@ mod tests {
             action,
             score: multiplex_domain::ScoreTuple {
                 match_quality: 3,
-                current_project: 0,
                 actionable_status: 0,
                 pinned: 0,
                 position: multiplex_domain::PositionKey::FIRST,
@@ -18608,7 +18517,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn canvas_project_folder_drives_new_terminals_agents_and_restore(cx: &mut TestAppContext) {
+    fn canvas_folder_folder_drives_new_terminals_agents_and_restore(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let fixture_root = std::env::temp_dir().join(format!(
             "termirust-project-folder-{}",
@@ -18650,7 +18559,7 @@ mod tests {
         let folder_button = wait_for_selector_click_center(
             window,
             cx,
-            "canvas-project-directory",
+            "canvas-folder-directory",
             Duration::from_secs(2),
         );
         VisualTestContext::from_window(window.into(), cx)
@@ -18659,7 +18568,7 @@ mod tests {
         let files_button = wait_for_selector_click_center(
             window,
             cx,
-            "canvas-project-files",
+            "canvas-folder-files",
             Duration::from_secs(2),
         );
         VisualTestContext::from_window(window.into(), cx)
@@ -18667,15 +18576,15 @@ mod tests {
         let file_entry = wait_for_selector_click_center(
             window,
             cx,
-            "canvas-project-entry-0",
+            "canvas-folder-entry-0",
             Duration::from_secs(2),
         );
         VisualTestContext::from_window(window.into(), cx)
             .simulate_click(file_entry, gpui::Modifiers::none());
         app.read_with(cx, |app, cx| {
-            assert!(app.canvas_project_panel.is_some());
+            assert!(app.canvas_folder_panel.is_some());
             assert_eq!(
-                app.canvas_project_editor_input.read(cx).value(),
+                app.canvas_folder_editor_input.read(cx).value(),
                 "original project text\n"
             );
         });
@@ -18683,7 +18592,7 @@ mod tests {
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     MultiplexApp::set_input_value(
-                        &app.canvas_project_editor_input,
+                        &app.canvas_folder_editor_input,
                         "edited through canvas\n",
                         window,
                         cx,
@@ -18694,7 +18603,7 @@ mod tests {
         let save_button = wait_for_selector_click_center(
             window,
             cx,
-            "canvas-project-save",
+            "canvas-folder-save",
             Duration::from_secs(2),
         );
         VisualTestContext::from_window(window.into(), cx)
@@ -18707,7 +18616,7 @@ mod tests {
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     MultiplexApp::set_input_value(
-                        &app.canvas_project_editor_input,
+                        &app.canvas_folder_editor_input,
                         "stale overwrite attempt\n",
                         window,
                         cx,
@@ -18719,7 +18628,7 @@ mod tests {
         let save_button = wait_for_selector_click_center(
             window,
             cx,
-            "canvas-project-save",
+            "canvas-folder-save",
             Duration::from_secs(2),
         );
         VisualTestContext::from_window(window.into(), cx)
@@ -18735,7 +18644,7 @@ mod tests {
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     MultiplexApp::set_input_value(
-                        &app.canvas_project_editor_input,
+                        &app.canvas_folder_editor_input,
                         "edited through canvas\n",
                         window,
                         cx,
@@ -18746,7 +18655,7 @@ mod tests {
         let close_button = wait_for_selector_click_center(
             window,
             cx,
-            "canvas-project-close",
+            "canvas-folder-close",
             Duration::from_secs(2),
         );
         VisualTestContext::from_window(window.into(), cx)
@@ -18766,10 +18675,7 @@ mod tests {
             let workspace = app
                 .workspace(workspace_id)
                 .expect("workspace should remain");
-            assert_eq!(
-                workspace.project_directory.as_deref(),
-                Some(selected.as_str())
-            );
+            assert_eq!(workspace.folder.as_deref(), Some(selected.as_str()));
             assert_eq!(workspace.title, "selected-project");
 
             let added_pane_id = workspace
@@ -18793,7 +18699,7 @@ mod tests {
                     .restored_workspaces
                     .iter()
                     .find(|saved| saved.title == "selected-project")
-                    .and_then(|saved| saved.project_directory.as_deref()),
+                    .and_then(|saved| saved.folder.as_deref()),
                 Some(selected.as_str())
             );
         });
@@ -18959,7 +18865,7 @@ sleep 30
         saved.settings.restore_workspaces_on_launch = true;
         saved.restored_workspaces.push(SavedWorkspace {
             title: "Restored structured agent".to_string(),
-            project_directory: Some(fixture_directory.display().to_string()),
+            folder: Some(fixture_directory.display().to_string()),
             layout_mode: WorkspaceLayoutMode::Canvas,
             layout: Some(SavedSplitNode::Leaf(0)),
             canvas: Some(SavedCanvasState {
@@ -25611,12 +25517,11 @@ sleep 1
 
         for (shortcut, expected) in [
             ("secondary-1", NavSection::Activity),
-            ("secondary-2", NavSection::Projects),
-            ("secondary-3", NavSection::Hosts),
-            ("secondary-4", NavSection::Sessions),
-            ("secondary-5", NavSection::Sftp),
-            ("secondary-6", NavSection::Devices),
-            ("secondary-7", NavSection::Settings),
+            ("secondary-2", NavSection::Hosts),
+            ("secondary-3", NavSection::Sessions),
+            ("secondary-4", NavSection::Sftp),
+            ("secondary-5", NavSection::Devices),
+            ("secondary-6", NavSection::Settings),
         ] {
             let event = KeyDownEvent {
                 keystroke: Keystroke::parse(shortcut).expect("shortcut should parse"),
@@ -25627,7 +25532,7 @@ sleep 1
                 .update(cx, |_, window, cx| {
                     app.update(cx, |app, cx| {
                         assert!(app.handle_global_key(&event, window, cx));
-                        assert!(app.project_list_focus.is_focused(window));
+                        assert!(app.session_list_focus.is_focused(window));
                     })
                 })
                 .expect("window update should succeed");
@@ -25639,7 +25544,6 @@ sleep 1
                     NavSection::Activity => {
                         localization::static_message(MessageId::ActivitySectionReady)
                     }
-                    NavSection::Projects => localization::projects_ready_status(),
                     NavSection::Hosts => localization::static_message(MessageId::HostsStateReady),
                     NavSection::Sessions => {
                         localization::static_message(MessageId::SessionsSectionReady)
@@ -25665,7 +25569,7 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     assert!(app.handle_global_key(&settings_event, window, cx));
-                    assert!(app.project_list_focus.is_focused(window));
+                    assert!(app.session_list_focus.is_focused(window));
                 })
             })
             .expect("window update should succeed");
@@ -25707,20 +25611,13 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_keyboard_conformance_global_palette_activates_project_preset_and_safe_action(
+    fn e2e_keyboard_conformance_global_palette_activates_preset_and_safe_action(
         cx: &mut TestAppContext,
     ) {
         let _isolation = TestIsolation::acquire();
-        let project_root = tempfile::tempdir().expect("project fixture should be created");
-        let project = multiplex_domain::Project {
-            id: multiplex_domain::ProjectId::new(),
-            display_name: multiplex_domain::LocalizedUserText::new("Keyboard project")
-                .expect("project label should be valid"),
-            canonical_root: multiplex_domain::CanonicalPath::resolve(project_root.path())
-                .expect("project path should resolve"),
-            position: multiplex_domain::PositionKey::FIRST,
-            revision: multiplex_domain::Revision::new(2),
-        };
+        let folder = tempfile::tempdir().expect("folder fixture should be created");
+        let folder_path =
+            multiplex_domain::CanonicalPath::resolve(folder.path()).expect("folder should resolve");
         let preset = multiplex_domain::PresetDraft {
             id: multiplex_domain::PresetId::new(),
             label: "Keyboard preset".to_string(),
@@ -25729,7 +25626,7 @@ sleep 1
                 .display()
                 .to_string(),
             args: Vec::new(),
-            working_directory: multiplex_domain::WorkingDirectoryRule::ProjectRoot,
+            working_directory: multiplex_domain::WorkingDirectoryRule::SessionFolder,
             runtime: None,
             enabled: true,
             favorite: true,
@@ -25755,17 +25652,7 @@ sleep 1
 
         window
             .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.project_library.snapshot = Some(multiplex_store::ProjectSnapshot {
-                        revision: project.revision,
-                        projects: vec![project.clone().into()],
-                        groups: Vec::new(),
-                        worktree_intents: Vec::new(),
-                        worktrees: Vec::new(),
-                        health: multiplex_store::StoreHealth::Healthy,
-                        read_only: false,
-                        durability: multiplex_store::Durability::Full,
-                    });
+                app.update(cx, |app, _| {
                     app.preset_library.snapshot = Some(multiplex_store::PresetSnapshot {
                         revision: preset.revision,
                         presets: vec![preset.clone()],
@@ -25773,46 +25660,10 @@ sleep 1
                         read_only: false,
                         durability: multiplex_store::Durability::Full,
                     });
-                    app.project_library.selected_id = Some(project.id);
-                    app.project_list_focus.focus(window);
-                    assert!(app.handle_global_key(&open_palette, window, cx));
-                    app.global_search.cancel();
-                    app.global_search.results = vec![keyboard_palette_result(
-                        multiplex_domain::SearchDocumentId::Project(project.id),
-                        multiplex_domain::SearchCategory::Project,
-                        "Keyboard project",
-                        multiplex_domain::SearchStatus::Unknown,
-                        false,
-                        multiplex_domain::SearchAction::OpenProject(project.id),
-                    )];
+                    app.session_list_focus.focus(window);
                 })
             })
-            .expect("project palette search should start");
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    let candidates = app.command_palette_candidates(cx);
-                    let index = candidates
-                        .iter()
-                        .position(|candidate| {
-                            candidate.action
-                                == super::PaletteAction::Search(
-                                    multiplex_domain::SearchAction::OpenProject(project.id),
-                                )
-                        })
-                        .expect("project result should be present");
-                    assert_eq!(
-                        candidates[index].category,
-                        super::palette::PaletteCategory::Projects
-                    );
-                    app.selected_command_palette_index = index;
-                    assert!(app.handle_command_palette_key(&enter, window, cx));
-                    assert_eq!(app.nav_section, NavSection::Projects);
-                    assert_eq!(app.project_library.selected_id, Some(project.id));
-                    assert!(!app.show_command_palette);
-                })
-            })
-            .expect("project result should activate");
+            .expect("fixture should install");
 
         window
             .update(cx, |_, window, cx| {
@@ -25848,12 +25699,13 @@ sleep 1
                         super::palette::PaletteCategory::Presets
                     );
                     app.selected_command_palette_index = index;
+                    crate::test_support::queue_dialog_path(Some(folder.path().to_path_buf()));
                     assert!(app.handle_command_palette_key(&enter, window, cx));
                     let new_session = app
                         .new_session
                         .as_ref()
                         .expect("preset activation should open session review");
-                    assert_eq!(new_session.project_id, project.id);
+                    assert_eq!(new_session.folder, folder_path);
                     assert_eq!(new_session.selected_preset_id, Some(preset.id));
                     assert!(app.saved.app_attached_sessions.is_empty());
                     assert!(app.workspaces.is_empty());
@@ -25919,13 +25771,15 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.worktree_launch = Some(super::worktree_launch::WorktreeLaunchUiState {
-                        source_project_id: multiplex_domain::ProjectId::new(),
+                        source_folder: multiplex_domain::CanonicalPath::resolve(
+                            &std::env::temp_dir(),
+                        )
+                        .expect("temporary folder should resolve"),
                         worktree_id: multiplex_domain::ManagedWorktreeId::new(),
-                        child_project_id: multiplex_domain::ProjectId::new(),
                         stage: multiplex_domain::WorktreeLaunchStage::Creating,
                         inspection: None,
                         selected_preset_id: None,
-                        registered_child_id: None,
+                        registered_folder: None,
                         error: None,
                         generation: 7,
                         cancellation,
@@ -26437,7 +26291,6 @@ sleep 1
 
         for (selector, expected) in [
             ("nav-card-10", NavSection::Activity),
-            ("nav-card-0", NavSection::Projects),
             ("nav-card-1", NavSection::Hosts),
             ("nav-card-11", NavSection::Sessions),
             ("nav-card-13", NavSection::Sftp),
@@ -26473,7 +26326,7 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_unified_sessions_show_projects_ownership_and_archive(cx: &mut TestAppContext) {
+    fn e2e_unified_sessions_show_folder_ownership_and_archive(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let make_session = |route, label: &str, archived: bool| {
             let durable = route == multiplex_domain::SessionLaunchRoute::DurableHost;
@@ -26481,7 +26334,6 @@ sleep 1
                 id: multiplex_domain::HostedSessionId::new(),
                 route,
                 origin: multiplex_domain::SessionOrigin {
-                    project_id: multiplex_domain::ProjectId::new(),
                     preset_id: multiplex_domain::PresetId::new(),
                 },
                 state: if archived {
@@ -26491,7 +26343,7 @@ sleep 1
                 } else {
                     multiplex_domain::HostedSessionState::RunningAppAttached
                 },
-                project_label: label.to_string(),
+                folder: std::env::temp_dir().display().to_string(),
                 preset_label: format!("{label} preset"),
                 title: format!("{label} session"),
                 title_source: multiplex_domain::TitleSource::Manual,
@@ -26676,9 +26528,9 @@ sleep 1
             })
             .expect("accessible row activation should update selection");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
-        assert!(visual.debug_bounds("global-session-library").is_some());
-        assert!(visual.debug_bounds("project-session-row").is_some());
-        assert!(visual.debug_bounds("session-origin-project").is_some());
+        assert!(visual.debug_bounds("session-sidebar").is_some());
+        assert!(visual.debug_bounds("session-row").is_some());
+        assert!(visual.debug_bounds("session-origin-folder").is_some());
         assert!(visual.debug_bounds("session-origin-preset").is_some());
         assert!(visual.debug_bounds("session-origin-ownership").is_some());
 
@@ -26704,11 +26556,10 @@ sleep 1
                 id: session_id,
                 route: multiplex_domain::SessionLaunchRoute::DurableHost,
                 origin: multiplex_domain::SessionOrigin {
-                    project_id: multiplex_domain::ProjectId::new(),
                     preset_id: multiplex_domain::PresetId::new(),
                 },
                 state: multiplex_domain::HostedSessionState::Exited,
-                project_label: "Cross-entry project".to_string(),
+                folder: std::env::temp_dir().display().to_string(),
                 preset_label: "Cross-entry preset".to_string(),
                 title: "Archived cross-entry session".to_string(),
                 title_source: multiplex_domain::TitleSource::Manual,
@@ -26763,7 +26614,7 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    app.activate_library_section(NavSection::Projects, window, cx);
+                    app.activate_library_section(NavSection::Hosts, window, cx);
                     app.session_library.view = SessionLibraryView::Active;
                     app.show_command_palette = true;
                     assert!(app.activate_global_palette_action(
@@ -26794,11 +26645,10 @@ sleep 1
                 id: session_id,
                 route: multiplex_domain::SessionLaunchRoute::DurableHost,
                 origin: multiplex_domain::SessionOrigin {
-                    project_id: multiplex_domain::ProjectId::new(),
                     preset_id: multiplex_domain::PresetId::new(),
                 },
                 state: multiplex_domain::HostedSessionState::Offline,
-                project_label: "Cross-entry project".to_string(),
+                folder: std::env::temp_dir().display().to_string(),
                 preset_label: "Cross-entry preset".to_string(),
                 title: "Recoverable cross-entry session".to_string(),
                 title_source: multiplex_domain::TitleSource::Manual,
@@ -26903,28 +26753,15 @@ sleep 1
     }
 
     #[gpui::test]
-    fn starting_a_session_in_a_folder_makes_its_project_without_being_asked(
-        cx: &mut TestAppContext,
-    ) {
+    fn starting_a_session_in_a_folder_reviews_it_in_exactly_that_folder(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let fixture = tempfile::tempdir().expect("folder fixture should be created");
         let repository = fixture.path().join("payments");
         let inside = repository.join("crates").join("api");
-        fs::create_dir_all(inside.join(".keep").parent().expect("parent"))
-            .expect("nested folder should be created");
+        fs::create_dir_all(&inside).expect("nested folder should be created");
         fs::create_dir(repository.join(".git")).expect("git directory should be created");
 
         let (app, window) = open_test_app(cx);
-        app.read_with(cx, |app, _| {
-            assert!(
-                app.project_library
-                    .snapshot
-                    .as_ref()
-                    .is_some_and(|snapshot| snapshot.projects.is_empty()),
-                "the fixture should start with no projects"
-            );
-        });
-
         queue_dialog_path(Some(inside.clone()));
         window
             .update(cx, |_, window, cx| {
@@ -26936,298 +26773,43 @@ sleep 1
         VisualTestContext::from_window(window.into(), cx).run_until_parked();
 
         app.read_with(cx, |app, _| {
-            let snapshot = app
-                .project_library
-                .snapshot
+            let review = app
+                .new_session
                 .as_ref()
-                .expect("project snapshot should load");
+                .expect("the new-session review should be open");
+            // The folder that was picked, not the repository above it.
             assert_eq!(
-                snapshot.projects.len(),
-                1,
-                "the folder should have made exactly one project"
-            );
-            // The repository above the folder, not the folder itself.
-            let root = snapshot.projects[0].project.canonical_root.as_path();
-            assert!(
-                root.ends_with("payments"),
-                "project root should be the git root, got {}",
-                root.display()
-            );
-            assert_eq!(
-                app.project_library.selected_id,
-                Some(snapshot.projects[0].project.id)
-            );
-            assert!(
-                app.new_session.is_some(),
-                "the new-session review should be open"
+                review.folder,
+                multiplex_domain::CanonicalPath::resolve(&inside).expect("folder should resolve")
             );
         });
 
-        // The same folder again reuses that project rather than making a second one.
-        queue_dialog_path(Some(repository.clone()));
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.start_session_in_a_folder(None, window, cx);
-                })
-            })
-            .expect("picking the same folder should reuse the project");
-        VisualTestContext::from_window(window.into(), cx).run_until_parked();
-        app.read_with(cx, |app, _| {
-            assert_eq!(
-                app.project_library
-                    .snapshot
-                    .as_ref()
-                    .map(|snapshot| snapshot.projects.len()),
-                Some(1)
-            );
-        });
-    }
-
-    #[gpui::test]
-    fn e2e_projects_add_restart_unavailable_remove_and_undo_preserve_files(
-        cx: &mut TestAppContext,
-    ) {
-        let _isolation = TestIsolation::acquire();
-        let fixture = tempfile::tempdir().expect("project fixture should be created");
-        let project_root = fixture.path().join("Console");
-        fs::create_dir(&project_root).expect("project folder should be created");
-        let sentinel = project_root.join("KEEP.txt");
-        fs::write(&sentinel, b"folder-content-must-survive").expect("sentinel should be written");
-
-        let (app, window) = open_test_app(cx);
-        let projects_nav = selector_click_center(window, cx, "nav-card-0");
-        VisualTestContext::from_window(window.into(), cx)
-            .simulate_click(projects_nav, gpui::Modifiers::none());
-
+        // Nothing has to be declared first, and nothing is recorded until the session starts.
         queue_dialog_path(None);
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    app.choose_project_folder(window, cx);
+                    app.close_new_session(cx);
+                    app.start_session_in_a_folder(None, window, cx);
                 })
             })
-            .expect("cancelled picker should update without mutation");
-        app.read_with(cx, |app, _| {
-            assert!(app.project_library.add_draft.is_none());
-            let snapshot = app
-                .project_library
-                .snapshot
-                .as_ref()
-                .expect("project snapshot should load");
-            assert!(snapshot.projects.is_empty());
-            assert_eq!(snapshot.revision, multiplex_domain::Revision::default());
-        });
-
-        queue_dialog_path(Some(project_root.clone()));
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.choose_project_folder(window, cx);
-                    assert!(app.project_library.add_validation.is_some());
-                    app.cancel_project_add(cx);
-                })
-            })
-            .expect("validation cancellation should update without mutation");
+            .expect("cancelling the picker should do nothing");
         VisualTestContext::from_window(window.into(), cx).run_until_parked();
         app.read_with(cx, |app, _| {
-            assert!(app.project_library.add_validation.is_none());
-            assert!(app.project_library.add_draft.is_none());
-            assert!(
-                app.project_library
-                    .snapshot
-                    .as_ref()
-                    .is_some_and(|snapshot| snapshot.projects.is_empty())
-            );
+            assert!(app.new_session.is_none());
+            assert!(app.saved.app_attached_sessions.is_empty());
         });
-
-        queue_dialog_path(Some(project_root.clone()));
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.choose_project_folder(window, cx);
-                })
-            })
-            .expect("selected project folder should open review");
-        app.read_with(cx, |app, _| {
-            assert!(app.project_library.add_validation.is_some());
-        });
-        let _review_center = selector_click_center(window, cx, "project-add-review");
-        app.read_with(cx, |app, _| {
-            assert!(
-                app.project_library.add_draft.is_some(),
-                "project review should open: {}",
-                app.error_message
-            );
-        });
-        let confirm = selector_click_center(window, cx, "project-add-confirm");
-        VisualTestContext::from_window(window.into(), cx)
-            .simulate_click(confirm, gpui::Modifiers::none());
-
-        let project_id = app.read_with(cx, |app, _| {
-            assert_eq!(app.nav_section, NavSection::Projects);
-            let snapshot = app
-                .project_library
-                .snapshot
-                .as_ref()
-                .expect("project snapshot should load");
-            assert_eq!(snapshot.projects.len(), 1);
-            assert_eq!(
-                snapshot.projects[0].status,
-                multiplex_domain::ProjectStatus::Available
-            );
-            snapshot.projects[0].project.id
-        });
-
-        queue_dialog_path(Some(project_root.clone()));
-        let duplicate_add = selector_click_center(window, cx, "projects-add");
-        VisualTestContext::from_window(window.into(), cx)
-            .simulate_click(duplicate_add, gpui::Modifiers::none());
-        app.read_with(cx, |app, _| {
-            assert!(
-                app.project_library.add_validation.is_some()
-                    || app.project_library.add_draft.is_some(),
-                "projects add click did not begin validation: section={:?} worktree_sheet={} error={:?}",
-                app.nav_section,
-                app.worktree_launch.is_some(),
-                app.error_message,
-            );
-        });
-        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
-            app.project_library.add_draft.is_some().then_some(())
-        });
-        let duplicate_confirm = selector_click_center(window, cx, "project-add-confirm");
-        VisualTestContext::from_window(window.into(), cx)
-            .simulate_click(duplicate_confirm, gpui::Modifiers::none());
-        app.read_with(cx, |app, _| {
-            let snapshot = app
-                .project_library
-                .snapshot
-                .as_ref()
-                .expect("project snapshot should load");
-            assert_eq!(snapshot.projects.len(), 1);
-            assert_eq!(app.project_library.selected_id, Some(project_id));
-            let expected_name = snapshot.projects[0].project.display_name.as_str();
-            assert_eq!(
-                app.status_message,
-                localization::project_duplicate_status(expected_name)
-            );
-        });
-
-        let (restarted, restarted_window) = open_test_app(cx);
-        restarted_window
-            .update(cx, |_, window, cx| {
-                restarted.update(cx, |app, cx| {
-                    app.activate_library_section(NavSection::Projects, window, cx);
-                })
-            })
-            .expect("restart window update should succeed");
-        restarted.read_with(cx, |app, _| {
-            assert!(
-                app.project_library
-                    .snapshot
-                    .as_ref()
-                    .is_some_and(|snapshot| {
-                        snapshot
-                            .projects
-                            .iter()
-                            .any(|summary| summary.project.id == project_id)
-                    })
-            );
-        });
-
-        let displaced_root = fixture.path().join("Console-disconnected");
-        fs::rename(&project_root, &displaced_root)
-            .expect("fixture folder should become unavailable");
-        let (unavailable, _) = open_test_app(cx);
-        unavailable.read_with(cx, |app, _| {
-            let snapshot = app
-                .project_library
-                .snapshot
-                .as_ref()
-                .expect("unavailable project record should remain");
-            assert_eq!(snapshot.projects.len(), 1);
-            assert_eq!(
-                snapshot.projects[0].status,
-                multiplex_domain::ProjectStatus::Unavailable
-            );
-        });
-        fs::rename(&displaced_root, &project_root)
-            .expect("fixture folder should become available again");
-
-        restarted_window
-            .update(cx, |_, _window, cx| {
-                restarted.update(cx, |app, cx| {
-                    app.remove_project(project_id, cx);
-                    assert!(app.project_library.pending_removal.is_some());
-                })
-            })
-            .expect("remove should update");
-        assert_eq!(
-            fs::read(&sentinel).expect("sentinel must remain after remove"),
-            b"folder-content-must-survive"
-        );
-
-        restarted_window
-            .update(cx, |_, window, cx| {
-                restarted.update(cx, |app, cx| {
-                    app.undo_project_removal(window, cx);
-                })
-            })
-            .expect("undo should update");
-        restarted.read_with(cx, |app, _| {
-            assert!(
-                app.project_library
-                    .snapshot
-                    .as_ref()
-                    .is_some_and(|snapshot| {
-                        snapshot
-                            .projects
-                            .iter()
-                            .any(|summary| summary.project.id == project_id)
-                    })
-            );
-        });
-        assert_eq!(
-            fs::read(&sentinel).expect("sentinel must remain after undo"),
-            b"folder-content-must-survive"
-        );
     }
 
     #[gpui::test]
     fn e2e_session_sidebar_group_move_guard_undo_and_restart(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
-        let fixture = tempfile::tempdir().expect("project fixture should be created");
-        let project_root = fixture.path().join("session-groups");
-        fs::create_dir(&project_root).expect("project folder should be created");
         let (app, window) = open_test_app(cx);
-        let (project_id, session_id, origin) = window
+        let (session_id, origin) = window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    let repository = app
-                        .project_library
-                        .repository
-                        .clone()
-                        .expect("project repository should exist");
-                    let expected = app
-                        .project_library
-                        .snapshot
-                        .as_ref()
-                        .expect("project snapshot should exist")
-                        .revision;
-                    let project = repository
-                        .add_project(multiplex_domain::AddProject {
-                            id: multiplex_domain::ProjectId::new(),
-                            root: project_root.clone(),
-                            display_name: None,
-                            expected,
-                        })
-                        .expect("project should be added");
-                    app.project_library.reload();
-                    app.project_library.selected_id = Some(project.id);
                     let session_id = multiplex_domain::HostedSessionId::new();
                     let origin = multiplex_domain::SessionOrigin {
-                        project_id: project.id,
                         preset_id: multiplex_domain::PresetId::new(),
                     };
                     let record = crate::models::SavedAppAttachedSession {
@@ -27235,7 +26817,7 @@ sleep 1
                         route: multiplex_domain::SessionLaunchRoute::LegacyAppAttached,
                         origin,
                         state: multiplex_domain::HostedSessionState::RunningAppAttached,
-                        project_label: localization::projects_nav_label(),
+                        folder: std::env::temp_dir().display().to_string(),
                         preset_label: localization::new_session_title(),
                         title: localization::new_session_title(),
                         title_source: multiplex_domain::TitleSource::Default,
@@ -27256,8 +26838,8 @@ sleep 1
                         .expect("session metadata should be created");
                     crate::storage::save_saved_state(&app.saved)
                         .expect("session placement should persist");
-                    app.activate_library_section(NavSection::Projects, window, cx);
-                    (project.id, session_id, origin)
+                    app.activate_library_section(NavSection::Sessions, window, cx);
+                    (session_id, origin)
                 })
             })
             .expect("fixture setup should update");
@@ -27267,7 +26849,7 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    app.open_group_editor(project_id, None, window, cx);
+                    app.open_group_editor(None, window, cx);
                     MultiplexApp::set_input_value(
                         &app.group_name_input,
                         localization::group_editor_new_title(),
@@ -27283,10 +26865,10 @@ sleep 1
             .simulate_click(save_group, gpui::Modifiers::none());
         let group_id = app.read_with(cx, |app, _| {
             let snapshot = app
-                .project_library
+                .library
                 .snapshot
                 .as_ref()
-                .expect("project snapshot should exist");
+                .expect("library snapshot should exist");
             assert_eq!(snapshot.groups.len(), 1);
             snapshot.groups[0].id
         });
@@ -27323,7 +26905,7 @@ sleep 1
             .simulate_click(disclosure, gpui::Modifiers::none());
         app.read_with(cx, |app, _| {
             assert!(
-                app.project_library
+                app.library
                     .snapshot
                     .as_ref()
                     .and_then(|snapshot| snapshot.groups.first())
@@ -27351,7 +26933,7 @@ sleep 1
         app.read_with(cx, |app, _| {
             assert_eq!(app.saved.app_attached_sessions[0].group_id, Some(group_id));
             assert_eq!(
-                app.project_library
+                app.library
                     .snapshot
                     .as_ref()
                     .expect("snapshot should exist")
@@ -27378,7 +26960,7 @@ sleep 1
                 app.update(cx, |app, cx| {
                     app.remove_group_to(
                         group_id,
-                        Some(multiplex_domain::GroupDestination::ProjectRoot),
+                        Some(multiplex_domain::GroupDestination::Ungrouped),
                         cx,
                     );
                 })
@@ -27386,7 +26968,7 @@ sleep 1
             .expect("group sessions should move to root");
         app.read_with(cx, |app, _| {
             assert!(
-                app.project_library
+                app.library
                     .snapshot
                     .as_ref()
                     .expect("snapshot should exist")
@@ -27405,12 +26987,9 @@ sleep 1
             .expect("group removal should undo");
         app.read_with(cx, |app, _| {
             assert_eq!(app.saved.app_attached_sessions[0].group_id, Some(group_id));
-            assert_eq!(
-                app.saved.app_attached_sessions[0].origin.project_id,
-                project_id
-            );
+            assert_eq!(app.saved.app_attached_sessions[0].origin, origin);
             assert!(
-                app.project_library
+                app.library
                     .snapshot
                     .as_ref()
                     .and_then(|snapshot| snapshot.groups.first())
@@ -27423,7 +27002,7 @@ sleep 1
         restarted.read_with(cx, |app, _| {
             assert_eq!(app.saved.app_attached_sessions[0].group_id, Some(group_id));
             assert!(
-                app.project_library
+                app.library
                     .snapshot
                     .as_ref()
                     .and_then(|snapshot| snapshot.groups.first())
@@ -27616,9 +27195,9 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    app.activate_library_section(NavSection::Projects, window, cx);
-                    app.project_list_focus.focus(window);
-                    assert!(app.project_list_focus.is_focused(window));
+                    app.activate_library_section(NavSection::Hosts, window, cx);
+                    app.session_list_focus.focus(window);
+                    assert!(app.session_list_focus.is_focused(window));
                     assert!(app.handle_global_key(&open_palette, window, cx));
                     assert!(app.show_command_palette);
                     assert!(
@@ -27665,7 +27244,7 @@ sleep 1
                     };
                     assert!(app.handle_command_palette_key(&escape, window, cx));
                     assert!(!app.show_command_palette);
-                    assert!(app.project_list_focus.is_focused(window));
+                    assert!(app.session_list_focus.is_focused(window));
 
                     assert!(app.handle_global_key(&open_palette, window, cx));
                     let missing_session = multiplex_domain::HostedSessionId::new();
@@ -32455,4 +32034,13 @@ sleep 1
             .then_some(())
         });
     }
+}
+
+/// The last part of a folder, which is what a person calls it.
+pub(super) fn folder_display_name(folder: &str) -> String {
+    std::path::Path::new(folder)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(folder)
+        .to_string()
 }

@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use multiplex_store::{PresetRepository, ProjectRepository, SessionRepository};
+use multiplex_store::{LibraryRepository, PresetRepository, SessionRepository};
 
 pub struct StoreFixture {
     pub temp: tempfile::TempDir,
@@ -15,7 +15,7 @@ impl StoreFixture {
     pub fn new() -> Self {
         let temp = tempfile::tempdir().unwrap();
         let metadata = temp.path().join("metadata");
-        ProjectRepository::open(&metadata).unwrap();
+        LibraryRepository::open(&metadata).unwrap();
         SessionRepository::open(&metadata, temp.path().join("sessions")).unwrap();
         PresetRepository::open(&metadata).unwrap();
         Self { temp, metadata }
@@ -24,7 +24,7 @@ impl StoreFixture {
     pub fn authoritative_bytes(&self) -> BTreeMap<String, Vec<u8>> {
         [
             "format.json",
-            "projects.json",
+            "library.json",
             "sessions.json",
             "presets.json",
         ]

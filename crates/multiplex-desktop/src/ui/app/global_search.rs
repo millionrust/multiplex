@@ -3,10 +3,9 @@ use std::sync::Arc;
 
 use gpui::Context;
 use multiplex_domain::{
-    ActivityState, HostedSessionState, PositionKey, ProjectId, ProjectStatus, Revision,
-    SearchAction, SearchActionId, SearchCancellation, SearchCategory, SearchDocument,
-    SearchDocumentId, SearchDocumentInput, SearchError, SearchIndex, SearchPage, SearchQuery,
-    SearchResult, SearchStatus,
+    ActivityState, HostedSessionState, PositionKey, Revision, SearchAction, SearchActionId,
+    SearchCancellation, SearchCategory, SearchDocument, SearchDocumentId, SearchDocumentInput,
+    SearchError, SearchIndex, SearchPage, SearchQuery, SearchResult, SearchStatus,
 };
 
 use super::MultiplexApp;
@@ -18,7 +17,7 @@ use crate::ui::localization;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 struct SearchSourceRevisions {
-    projects: Option<Revision>,
+    library: Option<Revision>,
     presets: Option<Revision>,
     sessions: Option<Revision>,
 }
@@ -33,14 +32,14 @@ pub(super) enum GlobalSearchFailure {
 pub(super) struct GlobalSearchState {
     index: Arc<SearchIndex>,
     revisions: SearchSourceRevisions,
-    project_documents: Vec<SearchDocumentId>,
+    library_documents: Vec<SearchDocumentId>,
     preset_documents: Vec<SearchDocumentId>,
     session_documents: Vec<SearchDocumentId>,
     pub results: Vec<SearchResult>,
     pub archived_fallback: bool,
     pub searching: bool,
     pub skipped_documents: usize,
-    project_skipped: usize,
+    library_skipped: usize,
     preset_skipped: usize,
     session_skipped: usize,
     pub failure: Option<GlobalSearchFailure>,
@@ -52,11 +51,6 @@ impl GlobalSearchState {
     pub fn new() -> Self {
         let mut index = SearchIndex::default();
         for (id, title, action) in [
-            (
-                SearchActionId::AddProject,
-                localization::global_palette_add_project_action(),
-                SearchAction::AddProject,
-            ),
             (
                 SearchActionId::NewSession,
                 localization::global_palette_new_session_action(),
@@ -71,8 +65,6 @@ impl GlobalSearchState {
             let document = SearchDocument::new(SearchDocumentInput {
                 id: SearchDocumentId::Action(id),
                 title,
-                project_id: None,
-                project_label: None,
                 group_label: None,
                 preset_label: None,
                 runtime_label: None,
@@ -91,14 +83,14 @@ impl GlobalSearchState {
         Self {
             index: Arc::new(index),
             revisions: SearchSourceRevisions::default(),
-            project_documents: Vec::new(),
+            library_documents: Vec::new(),
             preset_documents: Vec::new(),
             session_documents: Vec::new(),
             results: Vec::new(),
             archived_fallback: false,
             searching: false,
             skipped_documents: 0,
-            project_skipped: 0,
+            library_skipped: 0,
             preset_skipped: 0,
             session_skipped: 0,
             failure: None,
@@ -156,8 +148,8 @@ impl GlobalSearchState {
 impl MultiplexApp {
     pub(super) fn refresh_global_search_index(&mut self) {
         let next_revisions = SearchSourceRevisions {
-            projects: self
-                .project_library
+            library: self
+                .library
                 .snapshot
                 .as_ref()
                 .map(|snapshot| snapshot.revision),
@@ -172,54 +164,14 @@ impl MultiplexApp {
                 .as_ref()
                 .map(|snapshot| snapshot.revision),
         };
-        if next_revisions.projects != self.global_search.revisions.projects {
-            self.global_search.project_skipped = 0;
+        if next_revisions.library != self.global_search.revisions.library {
+            self.global_search.library_skipped = 0;
             let mut documents = Vec::new();
-            if let Some(snapshot) = self.project_library.snapshot.as_ref() {
-                let project_labels = snapshot
-                    .projects
-                    .iter()
-                    .map(|summary| {
-                        (
-                            summary.project.id,
-                            summary.project.display_name.as_str().to_string(),
-                        )
-                    })
-                    .collect::<HashMap<_, _>>();
-                for summary in &snapshot.projects {
-                    let project = &summary.project;
-                    documents.push(SearchDocument::new(SearchDocumentInput {
-                        id: SearchDocumentId::Project(project.id),
-                        title: project.display_name.as_str().to_string(),
-                        project_id: Some(project.id),
-                        project_label: Some(project.display_name.as_str().to_string()),
-                        group_label: None,
-                        preset_label: None,
-                        runtime_label: None,
-                        status: match summary.status {
-                            ProjectStatus::Available => SearchStatus::Unknown,
-                            ProjectStatus::Unavailable | ProjectStatus::PermissionDenied => {
-                                SearchStatus::Unavailable
-                            }
-                        },
-                        pinned: false,
-                        archived: false,
-                        position: project.position,
-                        meaningful_activity_at: 0,
-                        action: SearchAction::OpenProject(project.id),
-                    }));
-                }
+            if let Some(snapshot) = self.library.snapshot.as_ref() {
                 for group in &snapshot.groups {
-                    let Some(project_label) = project_labels.get(&group.project_id) else {
-                        self.global_search.project_skipped =
-                            self.global_search.project_skipped.saturating_add(1);
-                        continue;
-                    };
                     documents.push(SearchDocument::new(SearchDocumentInput {
                         id: SearchDocumentId::Group(group.id),
                         title: group.name.as_str().to_string(),
-                        project_id: Some(group.project_id),
-                        project_label: Some(project_label.clone()),
                         group_label: Some(group.name.as_str().to_string()),
                         preset_label: None,
                         runtime_label: None,
@@ -228,19 +180,16 @@ impl MultiplexApp {
                         archived: false,
                         position: group.position,
                         meaningful_activity_at: 0,
-                        action: SearchAction::OpenGroup {
-                            project_id: group.project_id,
-                            group_id: group.id,
-                        },
+                        action: SearchAction::OpenGroup(group.id),
                     }));
                 }
             }
-            let old = std::mem::take(&mut self.global_search.project_documents);
-            self.global_search.project_documents =
+            let old = std::mem::take(&mut self.global_search.library_documents);
+            self.global_search.library_documents =
                 self.global_search.replace_documents(old, documents);
-            self.global_search.project_skipped = self
+            self.global_search.library_skipped = self
                 .global_search
-                .project_skipped
+                .library_skipped
                 .saturating_add(self.global_search.skipped_documents);
             self.global_search.skipped_documents = 0;
         }
@@ -253,8 +202,6 @@ impl MultiplexApp {
                     documents.push(SearchDocument::new(SearchDocumentInput {
                         id: SearchDocumentId::Preset(preset.id),
                         title: preset.label.as_str().to_string(),
-                        project_id: None,
-                        project_label: None,
                         group_label: None,
                         preset_label: Some(preset.label.as_str().to_string()),
                         runtime_label: preset
@@ -282,31 +229,14 @@ impl MultiplexApp {
         }
 
         if next_revisions.sessions != self.global_search.revisions.sessions
-            || next_revisions.projects != self.global_search.revisions.projects
+            || next_revisions.library != self.global_search.revisions.library
             || next_revisions.presets != self.global_search.revisions.presets
         {
             self.global_search.session_skipped = 0;
             let mut documents = Vec::new();
             if let Some(snapshot) = self.session_library.snapshot.as_ref() {
-                let projects = self
-                    .project_library
-                    .snapshot
-                    .as_ref()
-                    .map(|snapshot| {
-                        snapshot
-                            .projects
-                            .iter()
-                            .map(|summary| {
-                                (
-                                    summary.project.id,
-                                    summary.project.display_name.as_str().to_string(),
-                                )
-                            })
-                            .collect::<HashMap<_, _>>()
-                    })
-                    .unwrap_or_default();
                 let groups = self
-                    .project_library
+                    .library
                     .snapshot
                     .as_ref()
                     .map(|snapshot| {
@@ -341,11 +271,6 @@ impl MultiplexApp {
                     })
                     .unwrap_or_default();
                 for session in &snapshot.sessions {
-                    let Some(project_label) = projects.get(&session.project_id) else {
-                        self.global_search.session_skipped =
-                            self.global_search.session_skipped.saturating_add(1);
-                        continue;
-                    };
                     let (preset_label, runtime_label) = session
                         .preset_id
                         .and_then(|id| presets.get(&id).cloned())
@@ -354,8 +279,6 @@ impl MultiplexApp {
                     documents.push(SearchDocument::new(SearchDocumentInput {
                         id: SearchDocumentId::Session(session.id),
                         title: session.title.as_str().to_string(),
-                        project_id: Some(session.project_id),
-                        project_label: Some(project_label.clone()),
                         group_label: session.group_id.and_then(|id| groups.get(&id).cloned()),
                         preset_label,
                         runtime_label,
@@ -384,7 +307,7 @@ impl MultiplexApp {
         self.global_search.revisions = next_revisions;
         self.global_search.skipped_documents = self
             .global_search
-            .project_skipped
+            .library_skipped
             .saturating_add(self.global_search.preset_skipped)
             .saturating_add(self.global_search.session_skipped);
         if self.global_search.skipped_documents > 0 {
@@ -420,7 +343,6 @@ impl MultiplexApp {
                 return;
             }
         };
-        let current_project = self.current_palette_project();
         let index = Arc::clone(&self.global_search.index);
         let (generation, cancellation) = self.global_search.begin_query();
         cx.notify();
@@ -429,7 +351,7 @@ impl MultiplexApp {
                 .background_executor()
                 .spawn({
                     let cancellation = cancellation.clone();
-                    async move { index.search(&query, current_project, &cancellation) }
+                    async move { index.search(&query, &cancellation) }
                 })
                 .await;
             let _ = this.update(cx, |app, cx| {
@@ -458,14 +380,6 @@ impl MultiplexApp {
         .detach();
     }
 
-    fn current_palette_project(&self) -> Option<ProjectId> {
-        self.active_pane()
-            .and_then(|pane| pane.app_attached.as_ref())
-            .map(|attached| attached.origin.project_id)
-            .or_else(|| self.new_session.as_ref().map(|state| state.project_id))
-            .or(self.project_library.selected_id)
-    }
-
     pub(super) fn global_palette_candidates(
         &self,
         command_candidates: Vec<CommandPaletteCandidate>,
@@ -484,7 +398,6 @@ impl MultiplexApp {
 
 pub(super) fn search_result_candidate(result: &SearchResult) -> CommandPaletteCandidate {
     let location = [
-        result.project_label.as_deref(),
         result.group_label.as_deref(),
         result.preset_label.as_deref(),
         result.runtime_label.as_deref(),
@@ -504,7 +417,6 @@ pub(super) fn search_result_candidate(result: &SearchResult) -> CommandPaletteCa
         category: match result.category {
             SearchCategory::Attention => PaletteCategory::Attention,
             SearchCategory::Session => PaletteCategory::Sessions,
-            SearchCategory::Project => PaletteCategory::Projects,
             SearchCategory::Group => PaletteCategory::Groups,
             SearchCategory::Preset => PaletteCategory::Presets,
             SearchCategory::Action => PaletteCategory::Actions,
@@ -574,7 +486,6 @@ pub(super) fn category_label(category: PaletteCategory) -> String {
     match category {
         PaletteCategory::Attention => localization::global_palette_category_attention(),
         PaletteCategory::Sessions => localization::global_palette_category_sessions(),
-        PaletteCategory::Projects => localization::global_palette_category_projects(),
         PaletteCategory::Groups => localization::global_palette_category_groups(),
         PaletteCategory::Presets => localization::global_palette_category_presets(),
         PaletteCategory::Actions => localization::global_palette_category_actions(),
@@ -595,7 +506,6 @@ mod tests {
             id: SearchDocumentId::Session(id),
             category: SearchCategory::Archive,
             title: "Retained".to_string(),
-            project_label: Some("Console".to_string()),
             group_label: Some("Auth".to_string()),
             preset_label: None,
             runtime_label: Some("codex".to_string()),
@@ -606,7 +516,6 @@ mod tests {
             action: SearchAction::OpenSession(id),
             score: multiplex_domain::ScoreTuple {
                 match_quality: 3,
-                current_project: 1,
                 actionable_status: 1,
                 pinned: 1,
                 position: PositionKey::FIRST,
@@ -616,7 +525,7 @@ mod tests {
         };
         let candidate = search_result_candidate(&result);
         assert_eq!(candidate.category, PaletteCategory::Archive);
-        assert_eq!(candidate.detail, "Console / Auth / codex");
+        assert_eq!(candidate.detail, "Auth / codex");
         assert!(candidate.pinned);
         assert_eq!(candidate.status, Some(SearchStatus::Done));
         assert_eq!(search_status_label(SearchStatus::Done), "Done");

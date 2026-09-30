@@ -124,7 +124,6 @@ data class ControllerSessionSummary(
     val runtime: String? = null,
     val capabilities: List<ControllerSessionCapability> = emptyList(),
     val title: String,
-    val project: String? = null,
     val group: String? = null,
     val lifecycle: String,
     val activity: String? = null,
@@ -139,7 +138,6 @@ data class ControllerSessionSummary(
         require(runtime == null || runtime.toByteArray().size in 1..128)
         require(capabilities.size <= 5 && capabilities.toSet().size == capabilities.size)
         require(title.codePointCount() in 1..ControllerLimits.MAX_TITLE_CODE_POINTS)
-        require(project == null || project.codePointCount() <= ControllerLimits.MAX_TITLE_CODE_POINTS)
         require(group == null || group.codePointCount() <= ControllerLimits.MAX_TITLE_CODE_POINTS)
         require(lifecycle.toByteArray().size in 1..64)
         require(activity == null || activity.toByteArray().size <= 64)

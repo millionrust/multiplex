@@ -405,7 +405,7 @@ mod tests {
     use multiplex_domain::{
         ActivityAggregate, CommandId, ContinuityLink, HostInstanceId, HostedSession,
         HostedSessionId, HostedSessionState, OccupantGeneration, OutputSequence, PositionKey,
-        PresetId, ProjectId, Revision, RuntimeId, SessionLaunchRoute, SessionOrigin, TitleSource,
+        PresetId, Revision, RuntimeId, SessionLaunchRoute, SessionOrigin, TitleSource,
     };
     use multiplex_store::SessionRepository;
 
@@ -446,11 +446,10 @@ mod tests {
             id,
             route: SessionLaunchRoute::DurableHost,
             origin: SessionOrigin {
-                project_id: ProjectId::new(),
                 preset_id: PresetId::new(),
             },
             state,
-            project_label: "Project".to_string(),
+            folder: std::env::temp_dir().display().to_string(),
             preset_label: "Codex".to_string(),
             title: "Investigate parser".to_string(),
             title_source: TitleSource::Manual,

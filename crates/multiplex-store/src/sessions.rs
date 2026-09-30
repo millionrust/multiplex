@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read as _};
 use std::path::{Path, PathBuf};
@@ -9,13 +9,13 @@ use std::time::Duration;
 use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 
 use multiplex_domain::{
-    GroupId, HostedSession, HostedSessionId, MAX_SESSIONS_PER_PROJECT, PositionKey, ProjectId,
-    Revision, SessionMutation, SessionStateError, SessionTitle, reduce_session,
+    GroupId, HostedSession, HostedSessionId, MAX_SESSIONS, PositionKey, Revision, SessionMutation,
+    SessionStateError, SessionTitle, reduce_session,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AtomicWriter, Durability, ProjectRepository, StoreError, StoreHealth, SystemAtomicWriter,
+    AtomicWriter, Durability, LibraryRepository, StoreError, StoreHealth, SystemAtomicWriter,
     file_lock,
 };
 
@@ -102,7 +102,7 @@ struct SessionsDocument {
 pub(crate) fn read_session_health_source(
     root: &Path,
 ) -> Result<(Vec<u8>, Revision, Vec<HostedSession>), StoreError> {
-    let bytes = crate::projects::read_regular_bounded(
+    let bytes = crate::library::read_regular_bounded(
         &root.join(SESSIONS_FILE),
         SESSIONS_FILE,
         MAX_SESSIONS_BYTES,
@@ -162,7 +162,7 @@ impl SessionRepository {
     ) -> Result<Self, StoreError> {
         let root = root.into();
         let data_root = data_root.into();
-        ProjectRepository::open(root.clone())?;
+        LibraryRepository::open(root.clone())?;
         create_user_only_directory(&data_root)?;
         let repository = Self {
             root,
@@ -225,19 +225,14 @@ impl SessionRepository {
             return Ok(existing.clone());
         }
         require_revision(expected, document.revision)?;
-        let project_count = document
-            .sessions
-            .iter()
-            .filter(|candidate| candidate.project_id == session.project_id)
-            .count();
-        if project_count >= MAX_SESSIONS_PER_PROJECT {
+        let session_count = document.sessions.len();
+        if session_count >= MAX_SESSIONS {
             return Err(SessionStateError::ResourceLimit {
-                limit: MAX_SESSIONS_PER_PROJECT,
+                limit: MAX_SESSIONS,
             }
             .into());
         }
-        session.position =
-            next_tail_position(&document.sessions, session.project_id, session.group_id)?;
+        session.position = next_tail_position(&document.sessions, session.group_id)?;
         let revision = next_revision(document.revision)?;
         session.revision = revision;
         document.revision = revision;
@@ -297,10 +292,9 @@ impl SessionRepository {
         if before == Some(id) {
             return Ok(document.sessions[moving_index].clone());
         }
-        let project_id = document.sessions[moving_index].project_id;
-        let old_order = destination_ids(&document.sessions, project_id, group_id);
+        let old_order = destination_ids(&document.sessions, group_id);
         let moving = document.sessions.remove(moving_index);
-        let mut destination = destination_ids(&document.sessions, project_id, group_id);
+        let mut destination = destination_ids(&document.sessions, group_id);
         let insert_at = match before {
             Some(before_id) => destination
                 .iter()
@@ -313,7 +307,7 @@ impl SessionRepository {
             return Ok(moving);
         }
         document.sessions.push(moving);
-        rebalance_destination(&mut document.sessions, project_id, group_id, &destination)?;
+        rebalance_destination(&mut document.sessions, group_id, &destination)?;
         let revision = next_revision(document.revision)?;
         document.revision = revision;
         let moved = document
@@ -574,11 +568,27 @@ impl SessionRepository {
                 limit: MAX_SESSIONS_BYTES,
             });
         }
-        let mut document: SessionsDocument =
-            serde_json::from_slice(&bytes).map_err(|_| StoreError::Corrupt { name })?;
+        let mut document: SessionsDocument = match serde_json::from_slice(&bytes) {
+            Ok(document) => document,
+            // Written while sessions named a Project: read it with each Project's folder, which
+            // is what opening the store for writing will also do, permanently.
+            Err(_) => self
+                .legacy_document(&bytes)
+                .ok_or(StoreError::Corrupt { name })?,
+        };
         validate_document(&document)?;
         sort_sessions(&mut document.sessions);
         Ok(document)
+    }
+
+    fn legacy_document(&self, bytes: &[u8]) -> Option<SessionsDocument> {
+        let legacy = crate::legacy_projects::read_legacy(&self.root)?;
+        let mut value = serde_json::from_slice::<serde_json::Value>(bytes).ok()?;
+        crate::legacy_projects::upgrade_sessions(
+            &mut value,
+            &crate::legacy_projects::legacy_folders(&legacy),
+        );
+        serde_json::from_value(value).ok()
     }
 
     fn write_document_locked(&self, document: &SessionsDocument) -> Result<(), StoreError> {
@@ -644,7 +654,6 @@ fn snapshot(document: SessionsDocument, health: StoreHealth, read_only: bool) ->
 fn validate_document(document: &SessionsDocument) -> Result<(), StoreError> {
     let mut ids = HashSet::with_capacity(document.sessions.len());
     let mut positions = HashSet::with_capacity(document.sessions.len());
-    let mut project_counts = HashMap::<ProjectId, usize>::new();
     for session in &document.sessions {
         if session.revision > document.revision {
             return Err(SessionStateError::Store {
@@ -652,19 +661,15 @@ fn validate_document(document: &SessionsDocument) -> Result<(), StoreError> {
             }
             .into());
         }
-        if !ids.insert(session.id)
-            || !positions.insert((session.project_id, session.group_id, session.position))
-        {
+        if !ids.insert(session.id) || !positions.insert((session.group_id, session.position)) {
             return Err(SessionStateError::Store {
                 code: "duplicate-session",
             }
             .into());
         }
-        let count = project_counts.entry(session.project_id).or_default();
-        *count = count.saturating_add(1);
-        if *count > MAX_SESSIONS_PER_PROJECT {
+        if ids.len() > MAX_SESSIONS {
             return Err(SessionStateError::ResourceLimit {
-                limit: MAX_SESSIONS_PER_PROJECT,
+                limit: MAX_SESSIONS,
             }
             .into());
         }
@@ -686,24 +691,13 @@ fn validate_document(document: &SessionsDocument) -> Result<(), StoreError> {
 }
 
 fn sort_sessions(sessions: &mut [HostedSession]) {
-    sessions.sort_by_key(|session| {
-        (
-            session.project_id,
-            session.group_id,
-            session.position,
-            session.id,
-        )
-    });
+    sessions.sort_by_key(|session| (session.group_id, session.position, session.id));
 }
 
-fn destination_ids(
-    sessions: &[HostedSession],
-    project_id: ProjectId,
-    group_id: Option<GroupId>,
-) -> Vec<HostedSessionId> {
+fn destination_ids(sessions: &[HostedSession], group_id: Option<GroupId>) -> Vec<HostedSessionId> {
     let mut sessions = sessions
         .iter()
-        .filter(|session| session.project_id == project_id && session.group_id == group_id)
+        .filter(|session| session.group_id == group_id)
         .collect::<Vec<_>>();
     sessions.sort_by_key(|session| (session.position, session.id));
     sessions.into_iter().map(|session| session.id).collect()
@@ -711,12 +705,11 @@ fn destination_ids(
 
 fn next_tail_position(
     sessions: &[HostedSession],
-    project_id: ProjectId,
     group_id: Option<GroupId>,
 ) -> Result<PositionKey, StoreError> {
     let last = sessions
         .iter()
-        .filter(|session| session.project_id == project_id && session.group_id == group_id)
+        .filter(|session| session.group_id == group_id)
         .max_by_key(|session| (session.position, session.id));
     match last {
         None => Ok(PositionKey::FIRST),
@@ -731,7 +724,6 @@ fn next_tail_position(
 
 fn rebalance_destination(
     sessions: &mut [HostedSession],
-    project_id: ProjectId,
     group_id: Option<GroupId>,
     ordered_ids: &[HostedSessionId],
 ) -> Result<(), StoreError> {
@@ -740,12 +732,6 @@ fn rebalance_destination(
             .iter_mut()
             .find(|session| session.id == *id)
             .ok_or(SessionStateError::Unavailable)?;
-        if session.project_id != project_id {
-            return Err(SessionStateError::Store {
-                code: "cross-project-move",
-            }
-            .into());
-        }
         session.group_id = group_id;
         session.position =
             PositionKey::rebalanced(index).map_err(|_| SessionStateError::Store {
@@ -838,10 +824,11 @@ mod tests {
     use std::thread;
     use uuid::Uuid;
 
-    fn session(project: u128, id: u128, state: HostedSessionState) -> HostedSession {
+    fn session(id: u128, state: HostedSessionState) -> HostedSession {
         HostedSession {
             id: HostedSessionId::from_uuid(Uuid::from_u128(id)),
-            project_id: ProjectId::from_uuid(Uuid::from_u128(project)),
+            folder: multiplex_domain::CanonicalPath::resolve(std::env::temp_dir().as_path())
+                .unwrap(),
             group_id: None,
             preset_id: Some(PresetId::from_uuid(Uuid::from_u128(99))),
             title: SessionTitle::new(&format!("Session {id}")).unwrap(),
@@ -874,7 +861,7 @@ mod tests {
     fn sessions_revisioned_mutations_survive_restart_and_reject_stale_writers() {
         let (fixture, repository) = repository();
         let created = repository
-            .create_session(session(1, 10, HostedSessionState::Live), Revision::ZERO)
+            .create_session(session(10, HostedSessionState::Live), Revision::ZERO)
             .unwrap();
         assert_eq!(created.revision, Revision::new(1));
         let renamed = repository
@@ -911,7 +898,7 @@ mod tests {
     fn activity_replay_persists_attention_and_exact_read_watermarks_across_restart() {
         let (fixture, repository) = repository();
         let created = repository
-            .create_session(session(1, 20, HostedSessionState::Live), Revision::ZERO)
+            .create_session(session(20, HostedSessionState::Live), Revision::ZERO)
             .unwrap();
         let observed = repository
             .mutate_session(
@@ -986,7 +973,7 @@ mod tests {
                 thread::spawn(move || {
                     barrier.wait();
                     repository
-                        .create_session(session(1, id, HostedSessionState::Exited), Revision::ZERO)
+                        .create_session(session(id, HostedSessionState::Exited), Revision::ZERO)
                 })
             })
             .collect::<Vec<_>>();
@@ -1015,7 +1002,7 @@ mod tests {
     fn sessions_corrupt_primary_recovers_last_good_read_only_without_overwrite() {
         let (_fixture, repository) = repository();
         repository
-            .create_session(session(1, 10, HostedSessionState::Exited), Revision::ZERO)
+            .create_session(session(10, HostedSessionState::Exited), Revision::ZERO)
             .unwrap();
         let path = repository.root.join(SESSIONS_FILE);
         fs::write(&path, b"{broken").unwrap();
@@ -1048,10 +1035,10 @@ mod tests {
     fn sessions_ordering_is_stable_and_move_is_idempotent() {
         let (_fixture, repository) = repository();
         let first = repository
-            .create_session(session(1, 10, HostedSessionState::Exited), Revision::ZERO)
+            .create_session(session(10, HostedSessionState::Exited), Revision::ZERO)
             .unwrap();
         let second = repository
-            .create_session(session(1, 11, HostedSessionState::Exited), Revision::new(1))
+            .create_session(session(11, HostedSessionState::Exited), Revision::new(1))
             .unwrap();
         let moved = repository
             .move_session_before(second.id, None, Some(first.id), Revision::new(2), 5)
@@ -1070,7 +1057,7 @@ mod tests {
     fn sessions_remove_requires_exited_archive_and_quarantines_only_owned_data() {
         let (fixture, repository) = repository();
         let created = repository
-            .create_session(session(1, 10, HostedSessionState::Exited), Revision::ZERO)
+            .create_session(session(10, HostedSessionState::Exited), Revision::ZERO)
             .unwrap();
         assert!(matches!(
             repository.removal_plan(created.id),
@@ -1120,7 +1107,7 @@ mod tests {
     fn sessions_removal_rejects_changed_manifest_and_preserves_evidence() {
         let (fixture, repository) = repository();
         let created = repository
-            .create_session(session(1, 10, HostedSessionState::Exited), Revision::ZERO)
+            .create_session(session(10, HostedSessionState::Exited), Revision::ZERO)
             .unwrap();
         let archived = repository
             .mutate_session(
@@ -1149,12 +1136,11 @@ mod tests {
     }
 
     #[test]
-    fn sessions_enforce_ten_thousand_records_per_project() {
+    fn sessions_enforce_ten_thousand_records() {
         let (_fixture, repository) = repository();
-        let mut sessions = Vec::with_capacity(MAX_SESSIONS_PER_PROJECT);
-        for index in 0..MAX_SESSIONS_PER_PROJECT {
+        let mut sessions = Vec::with_capacity(MAX_SESSIONS);
+        for index in 0..MAX_SESSIONS {
             let mut value = session(
-                1,
                 u128::try_from(index).unwrap() + 1,
                 HostedSessionState::Exited,
             );
@@ -1169,12 +1155,12 @@ mod tests {
             .unwrap();
         assert!(matches!(
             repository.create_session(
-                session(1, 20_000, HostedSessionState::Exited),
+                session(20_000, HostedSessionState::Exited),
                 Revision::new(1),
             ),
             Err(StoreError::SessionDomain(
                 SessionStateError::ResourceLimit {
-                    limit: MAX_SESSIONS_PER_PROJECT
+                    limit: MAX_SESSIONS
                 }
             ))
         ));
@@ -1187,7 +1173,7 @@ mod tests {
 
         let (fixture, repository) = repository();
         let created = repository
-            .create_session(session(1, 10, HostedSessionState::Exited), Revision::ZERO)
+            .create_session(session(10, HostedSessionState::Exited), Revision::ZERO)
             .unwrap();
         repository
             .mutate_session(
@@ -1220,7 +1206,7 @@ mod tests {
 
         let (fixture, repository) = repository();
         let created = repository
-            .create_session(session(1, 10, HostedSessionState::Exited), Revision::ZERO)
+            .create_session(session(10, HostedSessionState::Exited), Revision::ZERO)
             .unwrap();
         repository
             .mutate_session(

@@ -8,10 +8,8 @@ use unicode_casefold::UnicodeCaseFold as _;
 use unicode_normalization::UnicodeNormalization as _;
 use unicode_segmentation::UnicodeSegmentation as _;
 
-use crate::project::MAX_PROJECTS;
 use crate::{
-    GroupId, HostedSessionId, MAX_GROUPS_PER_PROJECT, MAX_PRESETS, MAX_SESSIONS_PER_PROJECT,
-    PositionKey, PresetId, ProjectId,
+    GroupId, HostedSessionId, MAX_GROUPS, MAX_PRESETS, MAX_SESSIONS, PositionKey, PresetId,
 };
 
 pub const MAX_SEARCH_DOCUMENT_BYTES: usize = 4 * 1024;
@@ -20,11 +18,10 @@ pub const MAX_SEARCH_QUERY_TOKENS: usize = 16;
 pub const MAX_SEARCH_RESULTS: usize = 100;
 const CANCELLATION_BLOCK: usize = 128;
 const MAX_SEARCH_ACTIONS: usize = 64;
-const MAX_SEARCH_GROUPS: usize = MAX_GROUPS_PER_PROJECT * MAX_PROJECTS;
+const MAX_SEARCH_GROUPS: usize = MAX_GROUPS;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum SearchActionId {
-    AddProject,
     NewSession,
     ShowArchive,
 }
@@ -32,7 +29,6 @@ pub enum SearchActionId {
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum SearchDocumentId {
     Session(HostedSessionId),
-    Project(ProjectId),
     Group(GroupId),
     Preset(PresetId),
     Action(SearchActionId),
@@ -42,10 +38,8 @@ impl SearchDocumentId {
     fn search_text(self) -> String {
         match self {
             Self::Session(id) => id.to_string(),
-            Self::Project(id) => id.to_string(),
             Self::Group(id) => id.to_string(),
             Self::Preset(id) => id.to_string(),
-            Self::Action(SearchActionId::AddProject) => "add-project".to_string(),
             Self::Action(SearchActionId::NewSession) => "new-session".to_string(),
             Self::Action(SearchActionId::ShowArchive) => "show-archive".to_string(),
         }
@@ -56,7 +50,6 @@ impl SearchDocumentId {
 pub enum SearchCategory {
     Attention,
     Session,
-    Project,
     Group,
     Preset,
     Action,
@@ -108,13 +101,8 @@ impl SearchStatus {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SearchAction {
     OpenSession(HostedSessionId),
-    OpenProject(ProjectId),
-    OpenGroup {
-        project_id: ProjectId,
-        group_id: GroupId,
-    },
+    OpenGroup(GroupId),
     StartPreset(PresetId),
-    AddProject,
     NewSession,
     ShowArchive,
 }
@@ -123,8 +111,6 @@ pub enum SearchAction {
 pub struct SearchDocumentInput {
     pub id: SearchDocumentId,
     pub title: String,
-    pub project_id: Option<ProjectId>,
-    pub project_label: Option<String>,
     pub group_label: Option<String>,
     pub preset_label: Option<String>,
     pub runtime_label: Option<String>,
@@ -140,8 +126,6 @@ pub struct SearchDocumentInput {
 pub struct SearchDocument {
     id: SearchDocumentId,
     title: String,
-    project_id: Option<ProjectId>,
-    project_label: Option<String>,
     group_label: Option<String>,
     preset_label: Option<String>,
     runtime_label: Option<String>,
@@ -160,7 +144,6 @@ impl fmt::Debug for SearchDocument {
             .debug_struct("SearchDocument")
             .field("id", &self.id)
             .field("title", &"<redacted>")
-            .field("project_id", &self.project_id)
             .field("status", &self.status)
             .field("pinned", &self.pinned)
             .field("archived", &self.archived)
@@ -178,11 +161,6 @@ impl SearchDocument {
             HighlightField::Title,
             input.title.clone(),
         ));
-        push_optional_field(
-            &mut fields,
-            HighlightField::Project,
-            input.project_label.as_ref(),
-        );
         push_optional_field(
             &mut fields,
             HighlightField::Group,
@@ -217,8 +195,6 @@ impl SearchDocument {
         Ok(Self {
             id: input.id,
             title: input.title,
-            project_id: input.project_id,
-            project_label: input.project_label,
             group_label: input.group_label,
             preset_label: input.preset_label,
             runtime_label: input.runtime_label,
@@ -242,7 +218,6 @@ pub enum Filter {
     Archived,
     Running,
     Attention,
-    Project(String),
     Runtime(String),
 }
 
@@ -252,7 +227,6 @@ impl fmt::Debug for Filter {
             Self::Archived => formatter.write_str("Archived"),
             Self::Running => formatter.write_str("Running"),
             Self::Attention => formatter.write_str("Attention"),
-            Self::Project(_) => formatter.write_str("Project(<redacted>)"),
             Self::Runtime(_) => formatter.write_str("Runtime(<redacted>)"),
         }
     }
@@ -292,9 +266,6 @@ impl SearchQuery {
                 "is:archived" => filters.push(Filter::Archived),
                 "is:running" => filters.push(Filter::Running),
                 "is:attention" => filters.push(Filter::Attention),
-                _ if normalized.starts_with("project:") && normalized.len() > 8 => {
-                    filters.push(Filter::Project(normalized[8..].to_string()));
-                }
                 _ if normalized.starts_with("runtime:") && normalized.len() > 8 => {
                     filters.push(Filter::Runtime(normalized[8..].to_string()));
                 }
@@ -326,7 +297,6 @@ impl SearchQuery {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HighlightField {
     Title,
-    Project,
     Group,
     Preset,
     Runtime,
@@ -344,7 +314,6 @@ pub struct TextHighlight {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ScoreTuple {
     pub match_quality: u8,
-    pub current_project: u8,
     pub actionable_status: u8,
     pub pinned: u8,
     pub position: PositionKey,
@@ -357,7 +326,6 @@ pub struct SearchResult {
     pub id: SearchDocumentId,
     pub category: SearchCategory,
     pub title: String,
-    pub project_label: Option<String>,
     pub group_label: Option<String>,
     pub preset_label: Option<String>,
     pub runtime_label: Option<String>,
@@ -444,7 +412,6 @@ impl std::error::Error for SearchError {}
 pub struct SearchIndex {
     documents: BTreeMap<SearchDocumentId, SearchDocument>,
     sessions: usize,
-    projects: usize,
     groups: usize,
     presets: usize,
     actions: usize,
@@ -456,7 +423,6 @@ impl fmt::Debug for SearchIndex {
             .debug_struct("SearchIndex")
             .field("documents", &self.documents.len())
             .field("sessions", &self.sessions)
-            .field("projects", &self.projects)
             .field("groups", &self.groups)
             .field("presets", &self.presets)
             .field("actions", &self.actions)
@@ -478,13 +444,8 @@ impl SearchIndex {
             return Err(SearchError::DuplicateDocument);
         }
         let (count, limit, kind) = match document.id {
-            SearchDocumentId::Session(_) => (
-                &mut self.sessions,
-                MAX_SESSIONS_PER_PROJECT,
-                SearchCategory::Session,
-            ),
-            SearchDocumentId::Project(_) => {
-                (&mut self.projects, MAX_PROJECTS, SearchCategory::Project)
+            SearchDocumentId::Session(_) => {
+                (&mut self.sessions, MAX_SESSIONS, SearchCategory::Session)
             }
             SearchDocumentId::Group(_) => {
                 (&mut self.groups, MAX_SEARCH_GROUPS, SearchCategory::Group)
@@ -508,7 +469,6 @@ impl SearchIndex {
         let removed = self.documents.remove(&id)?;
         match id {
             SearchDocumentId::Session(_) => self.sessions = self.sessions.saturating_sub(1),
-            SearchDocumentId::Project(_) => self.projects = self.projects.saturating_sub(1),
             SearchDocumentId::Group(_) => self.groups = self.groups.saturating_sub(1),
             SearchDocumentId::Preset(_) => self.presets = self.presets.saturating_sub(1),
             SearchDocumentId::Action(_) => self.actions = self.actions.saturating_sub(1),
@@ -519,27 +479,26 @@ impl SearchIndex {
     pub fn search(
         &self,
         query: &SearchQuery,
-        current_project: Option<ProjectId>,
         cancellation: &SearchCancellation,
     ) -> Result<SearchPage, SearchError> {
         if cancellation.is_cancelled() {
             return Err(SearchError::Cancelled);
         }
         if query.explicitly_archived() {
-            let results = self.search_partition(query, current_project, true, cancellation)?;
+            let results = self.search_partition(query, true, cancellation)?;
             return Ok(SearchPage {
                 results,
                 archived_fallback: false,
             });
         }
-        let active = self.search_partition(query, current_project, false, cancellation)?;
+        let active = self.search_partition(query, false, cancellation)?;
         if !active.is_empty() {
             return Ok(SearchPage {
                 results: active,
                 archived_fallback: false,
             });
         }
-        let archived = self.search_partition(query, current_project, true, cancellation)?;
+        let archived = self.search_partition(query, true, cancellation)?;
         Ok(SearchPage {
             archived_fallback: !archived.is_empty(),
             results: archived,
@@ -549,7 +508,6 @@ impl SearchIndex {
     fn search_partition(
         &self,
         query: &SearchQuery,
-        current_project: Option<ProjectId>,
         archived: bool,
         cancellation: &SearchCancellation,
     ) -> Result<Vec<SearchResult>, SearchError> {
@@ -566,9 +524,6 @@ impl SearchIndex {
             };
             let score = ScoreTuple {
                 match_quality,
-                current_project: u8::from(
-                    current_project.is_some() && document.project_id == current_project,
-                ),
                 actionable_status: document.status.actionable_weight(),
                 pinned: u8::from(document.pinned),
                 position: document.position,
@@ -614,7 +569,6 @@ fn compare_results(left: &SearchResult, right: &SearchResult) -> Ordering {
         .score
         .match_quality
         .cmp(&left.score.match_quality)
-        .then_with(|| right.score.current_project.cmp(&left.score.current_project))
         .then_with(|| {
             right
                 .score
@@ -644,7 +598,6 @@ fn result_from(
     } else {
         match document.id {
             SearchDocumentId::Session(_) => SearchCategory::Session,
-            SearchDocumentId::Project(_) => SearchCategory::Project,
             SearchDocumentId::Group(_) => SearchCategory::Group,
             SearchDocumentId::Preset(_) => SearchCategory::Preset,
             SearchDocumentId::Action(_) => SearchCategory::Action,
@@ -654,7 +607,6 @@ fn result_from(
         id: document.id,
         category,
         title: document.title.clone(),
-        project_label: document.project_label.clone(),
         group_label: document.group_label.clone(),
         preset_label: document.preset_label.clone(),
         runtime_label: document.runtime_label.clone(),
@@ -672,10 +624,6 @@ fn matches_filters(document: &SearchDocument, query: &SearchQuery) -> bool {
         Filter::Archived => document.archived,
         Filter::Running => document.status.is_running(),
         Filter::Attention => document.status == SearchStatus::Attention,
-        Filter::Project(value) => document
-            .project_label
-            .as_deref()
-            .is_some_and(|label| contains_normalized(label, value)),
         Filter::Runtime(value) => document
             .runtime_label
             .as_deref()
@@ -883,10 +831,6 @@ mod tests {
     use super::*;
     use uuid::Uuid;
 
-    fn project_id(value: u128) -> ProjectId {
-        ProjectId::from_uuid(Uuid::from_u128(value))
-    }
-
     fn session_id(value: u128) -> HostedSessionId {
         HostedSessionId::from_uuid(Uuid::from_u128(value))
     }
@@ -894,7 +838,6 @@ mod tests {
     fn session_document(
         id: u128,
         title: &str,
-        project: ProjectId,
         status: SearchStatus,
         pinned: bool,
         archived: bool,
@@ -904,8 +847,6 @@ mod tests {
         SearchDocument::new(SearchDocumentInput {
             id: SearchDocumentId::Session(id),
             title: title.to_string(),
-            project_id: Some(project),
-            project_label: Some("Console".to_string()),
             group_label: Some("Auth".to_string()),
             preset_label: Some("Codex".to_string()),
             runtime_label: Some("codex".to_string()),
@@ -921,30 +862,12 @@ mod tests {
 
     #[test]
     fn search_nfkc_casefold_ranking_and_highlights_are_deterministic() {
-        let project = project_id(1);
         let documents = vec![
-            session_document(
-                3,
-                "Straße console",
-                project,
-                SearchStatus::Running,
-                false,
-                false,
-                3,
-            ),
-            session_document(
-                2,
-                "STRASSE worker",
-                project,
-                SearchStatus::Attention,
-                true,
-                false,
-                2,
-            ),
+            session_document(3, "Straße console", SearchStatus::Running, false, false, 3),
+            session_document(2, "STRASSE worker", SearchStatus::Attention, true, false, 2),
             session_document(
                 1,
                 "Straße cafe\u{301} archive",
-                project,
                 SearchStatus::Done,
                 true,
                 true,
@@ -962,12 +885,8 @@ mod tests {
         for document in documents.into_iter().rev() {
             reverse.insert(document).unwrap();
         }
-        let first = forward
-            .search(&query, Some(project), &cancellation)
-            .unwrap();
-        let second = reverse
-            .search(&query, Some(project), &cancellation)
-            .unwrap();
+        let first = forward.search(&query, &cancellation).unwrap();
+        let second = reverse.search(&query, &cancellation).unwrap();
         assert_eq!(
             first
                 .results
@@ -988,11 +907,7 @@ mod tests {
         assert!(first.results.iter().all(|result| !result.archived));
 
         let canonical = forward
-            .search(
-                &SearchQuery::parse("café").unwrap(),
-                Some(project),
-                &cancellation,
-            )
+            .search(&SearchQuery::parse("café").unwrap(), &cancellation)
             .unwrap();
         assert!(canonical.archived_fallback);
         assert_eq!(canonical.results.len(), 1);
@@ -1001,13 +916,11 @@ mod tests {
 
     #[test]
     fn search_archive_fallback_and_filters_are_exact() {
-        let project = project_id(1);
         let mut index = SearchIndex::default();
         index
             .insert(session_document(
                 1,
                 "Active parser",
-                project,
                 SearchStatus::Running,
                 false,
                 false,
@@ -1018,7 +931,6 @@ mod tests {
             .insert(session_document(
                 2,
                 "Archived parser",
-                project,
                 SearchStatus::Done,
                 false,
                 true,
@@ -1027,18 +939,13 @@ mod tests {
             .unwrap();
         let cancellation = SearchCancellation::default();
         let fallback = index
-            .search(
-                &SearchQuery::parse("archived").unwrap(),
-                None,
-                &cancellation,
-            )
+            .search(&SearchQuery::parse("archived").unwrap(), &cancellation)
             .unwrap();
         assert!(fallback.archived_fallback);
         assert_eq!(fallback.results.len(), 1);
         let explicit = index
             .search(
                 &SearchQuery::parse("is:archived parser").unwrap(),
-                None,
                 &cancellation,
             )
             .unwrap();
@@ -1047,8 +954,7 @@ mod tests {
         assert!(explicit.results[0].archived);
         let running = index
             .search(
-                &SearchQuery::parse("is:running project:console runtime:codex parser").unwrap(),
-                None,
+                &SearchQuery::parse("is:running runtime:codex parser").unwrap(),
                 &cancellation,
             )
             .unwrap();
@@ -1061,7 +967,7 @@ mod tests {
         assert!(attention_query.filters.contains(&Filter::Attention));
         assert!(
             index
-                .search(&attention_query, None, &cancellation)
+                .search(&attention_query, &cancellation)
                 .unwrap()
                 .results
                 .is_empty()
@@ -1081,10 +987,8 @@ mod tests {
             Err(SearchError::TooManyQueryTokens)
         ));
         let oversized = SearchDocument::new(SearchDocumentInput {
-            id: SearchDocumentId::Project(project_id(1)),
+            id: SearchDocumentId::Preset(PresetId::new()),
             title: "x".repeat(MAX_SEARCH_DOCUMENT_BYTES + 1),
-            project_id: Some(project_id(1)),
-            project_label: None,
             group_label: None,
             preset_label: None,
             runtime_label: None,
@@ -1093,7 +997,7 @@ mod tests {
             archived: false,
             position: PositionKey::FIRST,
             meaningful_activity_at: 0,
-            action: SearchAction::OpenProject(project_id(1)),
+            action: SearchAction::StartPreset(PresetId::new()),
         });
         assert!(matches!(oversized, Err(SearchError::DocumentTooLarge)));
 
@@ -1103,7 +1007,6 @@ mod tests {
                 .insert(session_document(
                     id,
                     "matching session",
-                    project_id(1),
                     SearchStatus::Unknown,
                     false,
                     false,
@@ -1114,26 +1017,21 @@ mod tests {
         let query = SearchQuery::parse("matching").unwrap();
         let cancellation = SearchCancellation::default();
         assert_eq!(
-            index
-                .search(&query, None, &cancellation)
-                .unwrap()
-                .results
-                .len(),
+            index.search(&query, &cancellation).unwrap().results.len(),
             MAX_SEARCH_RESULTS
         );
         cancellation.cancel();
         assert!(matches!(
-            index.search(&query, None, &cancellation),
+            index.search(&query, &cancellation),
             Err(SearchError::Cancelled)
         ));
 
         let mut bounded = SearchIndex::default();
-        for id in 1..=MAX_SESSIONS_PER_PROJECT as u128 {
+        for id in 1..=MAX_SESSIONS as u128 {
             bounded
                 .insert(session_document(
                     id,
                     "bounded",
-                    project_id(2),
                     SearchStatus::Unknown,
                     false,
                     false,
@@ -1143,28 +1041,25 @@ mod tests {
         }
         assert!(matches!(
             bounded.insert(session_document(
-                MAX_SESSIONS_PER_PROJECT as u128 + 1,
+                MAX_SESSIONS as u128 + 1,
                 "overflow",
-                project_id(2),
                 SearchStatus::Unknown,
                 false,
                 false,
-                MAX_SESSIONS_PER_PROJECT as u64 + 1,
+                MAX_SESSIONS as u64 + 1,
             )),
             Err(SearchError::ResourceLimit {
                 kind: SearchCategory::Session,
-                limit: MAX_SESSIONS_PER_PROJECT,
+                limit: MAX_SESSIONS,
             })
         ));
     }
 
     #[test]
     fn search_viewing_is_stable_and_diagnostics_redact_user_text() {
-        let project = project_id(1);
         let document = session_document(
             1,
             "private customer title",
-            project,
             SearchStatus::Idle,
             true,
             false,
@@ -1180,8 +1075,8 @@ mod tests {
         let mut index = SearchIndex::default();
         index.insert(document).unwrap();
         let cancellation = SearchCancellation::default();
-        let first = index.search(&query, None, &cancellation).unwrap();
-        let second = index.search(&query, None, &cancellation).unwrap();
+        let first = index.search(&query, &cancellation).unwrap();
+        let second = index.search(&query, &cancellation).unwrap();
         assert_eq!(first.results[0].score, second.results[0].score);
         assert!(!format!("{:?}", first.results[0]).contains("private customer title"));
     }

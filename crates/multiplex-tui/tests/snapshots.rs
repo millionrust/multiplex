@@ -1,8 +1,7 @@
 use multiplex_tui::localization::TuiLocale;
 use multiplex_tui::render::{RenderOptions, render};
 use multiplex_tui::{
-    FleetHealth, FleetProject, FleetRevision, FleetSession, FleetSnapshot, ModelAction,
-    ProjectAvailability, TuiModel,
+    FleetGroup, FleetHealth, FleetRevision, FleetSession, FleetSnapshot, ModelAction, TuiModel,
 };
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -14,19 +13,16 @@ fn model() -> TuiModel {
         generation: 1,
         snapshot: FleetSnapshot {
             revision: FleetRevision {
-                projects: 4,
+                library: 4,
                 sessions: 9,
             },
-            projects: vec![FleetProject {
-                id: "p".into(),
+            groups: vec![FleetGroup {
+                id: "g".into(),
                 name: "Deployment".into(),
-                availability: ProjectAvailability::PermissionDenied,
-                groups: Vec::new(),
             }],
             sessions: vec![FleetSession {
                 id: "s".into(),
-                project_id: "p".into(),
-                group_id: None,
+                group_id: Some("g".into()),
                 title: "Production review".into(),
                 state: "permission_denied".into(),
                 activity: "needs_input".into(),
@@ -62,7 +58,6 @@ fn draw(width: u16, height: u16, options: RenderOptions) -> String {
 #[test]
 fn snapshots_keep_status_textual_and_hide_sensitive_labels_when_requested() {
     let normal = draw(140, 30, RenderOptions::default());
-    assert!(normal.contains("permission denied"));
     assert!(normal.contains("\u{25A1} permission_denied / \u{25C6} needs_input"));
     assert!(normal.contains("partial; 2 skipped"));
 
@@ -75,7 +70,7 @@ fn snapshots_keep_status_textual_and_hide_sensitive_labels_when_requested() {
             locale: TuiLocale::PseudoRtl,
         },
     );
-    assert!(hidden.contains("[project hidden]"));
+    assert!(hidden.contains("[group hidden]"));
     assert!(hidden.contains("[session hidden]"));
     assert!(!hidden.contains("Deployment"));
     assert!(!hidden.contains("Production review"));

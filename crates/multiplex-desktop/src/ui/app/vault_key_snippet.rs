@@ -495,7 +495,7 @@ impl MultiplexApp {
         match command {
             VaultKeySnippetAccessibilityCommand::FocusRow(_)
             | VaultKeySnippetAccessibilityCommand::FocusControl(_) => {
-                self.project_list_focus.focus(window)
+                self.session_list_focus.focus(window)
             }
             VaultKeySnippetAccessibilityCommand::ActivateRow(row) => {
                 if snapshot.rows.iter().any(|candidate| {

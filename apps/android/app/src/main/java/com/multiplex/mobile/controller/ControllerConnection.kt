@@ -1462,7 +1462,8 @@ private class ConfirmedPairing(
     val runtime: String? = null,
     val capabilities: List<ControllerSessionCapability> = emptyList(),
     val title: String,
-    val project: String? = null,
+    /** Sent by desktops up to 0.0.5, which still had Projects. Read and ignored. */
+    @Suppress("unused") @SerialName("project") val retiredProject: String? = null,
     val group: String? = null,
     val lifecycle: String,
     val activity: String? = null,
@@ -1478,7 +1479,6 @@ private class ConfirmedPairing(
         runtime = runtime,
         capabilities = capabilities,
         title = title,
-        project = project,
         group = group,
         lifecycle = lifecycle,
         activity = activity,

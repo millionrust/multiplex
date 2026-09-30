@@ -9,8 +9,8 @@ pub mod host;
 pub mod id;
 pub mod indexes;
 pub mod notification;
+pub mod path;
 pub mod preset;
-pub mod project;
 pub mod replication;
 pub mod runtime;
 pub mod runtime_resume;
@@ -64,17 +64,16 @@ pub use dev_url::{
 };
 pub use group::{
     Group, GroupDestination, GroupError, GroupInverseCommand, GroupMutation, GroupName,
-    MAX_GROUP_NAME_SCALARS, MAX_GROUPS_PER_PROJECT, validate_group_set,
+    MAX_GROUP_NAME_SCALARS, MAX_GROUPS, validate_group_set,
 };
 pub use host::{DurabilityWatermark, HostLifecycle, ProcessToken};
 pub use id::{
     ArtifactId, CommandId, GroupId, HostInstanceId, HostedSessionId, ManagedWorktreeId,
-    OutputSequence, PositionError, PositionKey, PresetId, ProjectId, Revision,
+    OutputSequence, PositionError, PositionKey, PresetId, Revision,
 };
 pub use indexes::{
     DERIVED_INDEX_VERSION, IndexBuildError, IndexSourceRevisions, PaletteDocumentKind,
-    PaletteDocumentStatus, PaletteIndex, PaletteIndexDocument, ProjectSessionIndex,
-    ProjectSessionIndexEntry, build_palette_index, build_project_session_index,
+    PaletteDocumentStatus, PaletteIndex, PaletteIndexDocument, build_palette_index,
 };
 pub use notification::{
     ABSOLUTE_OS_NOTIFICATIONS_PER_HOUR, COALESCE_AFTER_EVENTS, DEFAULT_OS_NOTIFICATIONS_PER_HOUR,
@@ -86,16 +85,16 @@ pub use notification::{
     NotificationRecord, NotificationSuppression, PermissionState, PlatformDelivery,
     SessionDeepLink, reduce_notification, resolve_session_deep_link,
 };
+pub use path::{
+    CanonicalPath, FileIdentity, LocalizedUserText, MAX_LABEL_SCALARS, MAX_PATH_BYTES, PathError,
+    PathStatus, canonical_path,
+};
 pub use preset::{
     DetectionCandidate, DetectionReport, DetectionStatus, ExecutableSpec, LaunchPreset,
     MAX_ARGUMENT_BYTES, MAX_ARGUMENTS, MAX_DETECTION_CANDIDATES, MAX_EXECUTABLE_BYTES, MAX_PRESETS,
     MAX_RESOLVED_LAUNCH_BYTES, OsStringValue, PermissionPolicy, PresetDraft, PresetError,
     PresetOrigin, PresetRisk, PresetService, RuntimeId, WorkingDirectoryRule,
     classify_argument_strings, classify_arguments,
-};
-pub use project::{
-    AddProject, CanonicalPath, FileIdentity, LocalizedUserText, MAX_LABEL_SCALARS, Project,
-    ProjectError, ProjectService, ProjectStatus, ProjectSummary, canonical_path,
 };
 pub use replication::{
     MAX_REPLICATION_CANDIDATES_PER_ENTRY, MAX_REPLICATION_DOCUMENT_BYTES, MAX_REPLICATION_ENTRIES,
@@ -129,9 +128,9 @@ pub use search::{
 };
 pub use session::{
     HostedSession, HostedSessionState, LaunchResolutionError, MAX_AUTOMATIC_TITLE_GRAPHEMES,
-    MAX_PATH_SEARCH_DIRECTORIES, MAX_SESSION_TITLE_SCALARS, MAX_SESSIONS_PER_PROJECT,
-    ResolvedLaunch, SessionLaunchRoute, SessionMutation, SessionOrigin, SessionStateError,
-    SessionTitle, TitleSource, automatic_title_from_explicit_input, reduce_session, resolve_launch,
+    MAX_PATH_SEARCH_DIRECTORIES, MAX_SESSION_TITLE_SCALARS, MAX_SESSIONS, ResolvedLaunch,
+    SessionLaunchRoute, SessionMutation, SessionOrigin, SessionStateError, SessionTitle,
+    TitleSource, automatic_title_from_explicit_input, reduce_session, resolve_launch,
 };
 pub use ssh_access::{
     SSH_ACCESS_CONTRACT_VERSION, SshAccessCapability, SshAccessCapabilityState, SshAccessError,

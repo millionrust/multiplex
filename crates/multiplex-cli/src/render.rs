@@ -81,17 +81,6 @@ fn render_human(data: &CliData, warnings: &[String], width: usize) -> String {
             status.store,
             status.host_control
         ),
-        CliData::Projects(data) => render_records(
-            "Projects",
-            data.projects.iter().map(|project| {
-                vec![
-                    ("ID", project.id.clone()),
-                    ("Name", project.name.clone()),
-                    ("Status", project.status.clone()),
-                    ("Revision", project.revision.to_string()),
-                ]
-            }),
-        ),
         CliData::Devices(data) => {
             let mut text = format!(
                 "Paired devices\nRepository revision: {}",
@@ -177,7 +166,7 @@ fn render_human(data: &CliData, warnings: &[String], width: usize) -> String {
             text
         }
         CliData::Presets(data) => {
-            let mut text = format!("Presets for project {}", data.project_id);
+            let mut text = String::from("Presets");
             text.push_str(&render_records(
                 "",
                 data.presets.iter().map(|preset| {
@@ -435,7 +424,6 @@ fn render_human(data: &CliData, warnings: &[String], width: usize) -> String {
 fn session_fields(session: &crate::SessionView) -> Vec<(&'static str, String)> {
     vec![
         ("ID", session.id.clone()),
-        ("Project", session.project_id.clone()),
         (
             "Group",
             session.group_id.clone().unwrap_or_else(|| "-".into()),
@@ -590,7 +578,7 @@ fn bounded(bytes: Vec<u8>) -> Result<Vec<u8>, CliError> {
         Err(CliError::new(
             ErrorCode::ResourceLimit,
             "command response exceeds the one MiB limit",
-            "Narrow the query with project, group, state, or archived filters.",
+            "Narrow the query with group, state, or archived filters.",
         ))
     } else {
         Ok(bytes)
@@ -614,7 +602,9 @@ mod tests {
     fn human_help_wraps_to_narrow_plain_text_without_ansi() {
         let rendered = render_success(
             &CliData::Help(HelpData {
-                commands: vec!["session launch --project <id> --preset <id> [--group <id>]".into()],
+                commands: vec![
+                    "session launch --folder <path> --preset <id> [--group <id>]".into(),
+                ],
                 safety: "Mutations never retry a conflict and stop requires --yes.".into(),
                 exit_codes: vec!["0 success".into()],
             }),

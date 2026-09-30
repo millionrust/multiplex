@@ -6,13 +6,13 @@ use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::{
-    ActivityAggregate, ExecutableSpec, FileIdentity, GroupId, HostedSessionId, LaunchPreset,
-    OutputSequence, PermissionPolicy, PositionKey, PresetId, PresetRisk, Project, ProjectId,
+    ActivityAggregate, CanonicalPath, ExecutableSpec, FileIdentity, GroupId, HostedSessionId,
+    LaunchPreset, OutputSequence, PermissionPolicy, PositionKey, PresetId, PresetRisk,
     ReadWatermark, Revision, WorkingDirectoryRule,
 };
 
 pub const MAX_PATH_SEARCH_DIRECTORIES: usize = 256;
-pub const MAX_SESSIONS_PER_PROJECT: usize = 10_000;
+pub const MAX_SESSIONS: usize = 10_000;
 pub const MAX_SESSION_TITLE_SCALARS: usize = 256;
 pub const MAX_AUTOMATIC_TITLE_GRAPHEMES: usize = 80;
 
@@ -25,7 +25,6 @@ pub enum SessionLaunchRoute {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SessionOrigin {
-    pub project_id: ProjectId,
     pub preset_id: PresetId,
 }
 
@@ -136,7 +135,9 @@ impl fmt::Display for SessionTitle {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct HostedSession {
     pub id: HostedSessionId,
-    pub project_id: ProjectId,
+    /// The folder this session runs in. It used to reach this through a Project; the folder was
+    /// always the part that mattered, so the session holds it directly.
+    pub folder: CanonicalPath,
     pub group_id: Option<GroupId>,
     pub preset_id: Option<PresetId>,
     pub title: SessionTitle,
@@ -555,10 +556,10 @@ fn legal_lifecycle_transition(from: HostedSessionState, to: HostedSessionState) 
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LaunchResolutionError {
-    ProjectChanged,
-    ProjectUnavailable,
+    FolderChanged,
+    FolderUnavailable,
     WorkingDirectoryUnavailable,
-    WorkingDirectoryEscapesProject,
+    WorkingDirectoryEscapesFolder,
     HomeUnavailable,
     ExecutableMissing,
     ExecutableNotRegularFile,
@@ -570,11 +571,11 @@ pub enum LaunchResolutionError {
 impl fmt::Display for LaunchResolutionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
-            Self::ProjectChanged => "project changed; review the project and try again",
-            Self::ProjectUnavailable => "project folder is unavailable",
+            Self::FolderChanged => "the folder changed; check it and try again",
+            Self::FolderUnavailable => "the folder is unavailable",
             Self::WorkingDirectoryUnavailable => "working directory is unavailable",
-            Self::WorkingDirectoryEscapesProject => {
-                "working directory resolves outside the selected project"
+            Self::WorkingDirectoryEscapesFolder => {
+                "working directory resolves outside the session's folder"
             }
             Self::HomeUnavailable => "platform home directory is unavailable",
             Self::ExecutableMissing => "preset executable was not found",
@@ -593,7 +594,6 @@ pub struct ResolvedLaunch {
     pub session_id: HostedSessionId,
     pub route: SessionLaunchRoute,
     pub origin: SessionOrigin,
-    pub project_revision: Revision,
     pub preset_revision: Revision,
     pub permission_policy: PermissionPolicy,
     pub risk: PresetRisk,
@@ -612,7 +612,6 @@ impl fmt::Debug for ResolvedLaunch {
             .field("session_id", &self.session_id)
             .field("route", &self.route)
             .field("origin", &self.origin)
-            .field("project_revision", &self.project_revision)
             .field("preset_revision", &self.preset_revision)
             .field("permission_policy", &self.permission_policy)
             .field("risk", &self.risk.is_risky())
@@ -640,7 +639,7 @@ impl ResolvedLaunch {
     pub fn revalidate(&self) -> Result<(), LaunchResolutionError> {
         let cwd = canonical_directory(&self.working_directory)?;
         if identity_for(&cwd)? != self.working_directory_identity {
-            return Err(LaunchResolutionError::ProjectChanged);
+            return Err(LaunchResolutionError::FolderChanged);
         }
         let executable = canonical_executable(&self.executable)?;
         if identity_for(&executable)? != self.executable_identity {
@@ -652,7 +651,7 @@ impl ResolvedLaunch {
 
 pub fn resolve_launch(
     session_id: HostedSessionId,
-    project: &Project,
+    folder: &CanonicalPath,
     preset: &LaunchPreset,
     path_snapshot: &[PathBuf],
     platform_home: Option<&Path>,
@@ -661,17 +660,17 @@ pub fn resolve_launch(
         return Err(LaunchResolutionError::PresetDisabled);
     }
 
-    let project_root = canonical_directory(project.canonical_root.as_path())?;
-    if identity_for(&project_root)? != *project.canonical_root.identity() {
-        return Err(LaunchResolutionError::ProjectChanged);
+    let root = canonical_directory(folder.as_path())?;
+    if identity_for(&root)? != *folder.identity() {
+        return Err(LaunchResolutionError::FolderChanged);
     }
 
     let working_directory = match &preset.working_directory {
-        WorkingDirectoryRule::ProjectRoot => project_root.clone(),
+        WorkingDirectoryRule::SessionFolder => root.clone(),
         WorkingDirectoryRule::ContainedSubdirectory(relative) => {
-            let resolved = canonical_directory(&project_root.join(relative))?;
-            if !resolved.starts_with(&project_root) {
-                return Err(LaunchResolutionError::WorkingDirectoryEscapesProject);
+            let resolved = canonical_directory(&root.join(relative))?;
+            if !resolved.starts_with(&root) {
+                return Err(LaunchResolutionError::WorkingDirectoryEscapesFolder);
             }
             resolved
         }
@@ -694,10 +693,8 @@ pub fn resolve_launch(
         session_id,
         route: SessionLaunchRoute::DurableHost,
         origin: SessionOrigin {
-            project_id: project.id,
             preset_id: preset.id,
         },
-        project_revision: project.revision,
         preset_revision: preset.revision,
         permission_policy: preset.permission_policy,
         risk: preset.risk.clone(),
@@ -718,7 +715,7 @@ pub fn resolve_launch(
 }
 
 fn canonical_directory(path: &Path) -> Result<PathBuf, LaunchResolutionError> {
-    let canonical = crate::project::canonical_path(path)
+    let canonical = crate::path::canonical_path(path)
         .map_err(|_| LaunchResolutionError::WorkingDirectoryUnavailable)?;
     let metadata =
         fs::metadata(&canonical).map_err(|_| LaunchResolutionError::WorkingDirectoryUnavailable)?;
@@ -730,7 +727,7 @@ fn canonical_directory(path: &Path) -> Result<PathBuf, LaunchResolutionError> {
 }
 
 fn canonical_executable(path: &Path) -> Result<PathBuf, LaunchResolutionError> {
-    let canonical = crate::project::canonical_path(path).map_err(|error| {
+    let canonical = crate::path::canonical_path(path).map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
             LaunchResolutionError::ExecutableMissing
         } else {
@@ -762,7 +759,7 @@ fn is_executable(_metadata: &fs::Metadata) -> bool {
 #[cfg(unix)]
 fn identity_for(path: &Path) -> Result<FileIdentity, LaunchResolutionError> {
     use std::os::unix::fs::MetadataExt as _;
-    let metadata = fs::metadata(path).map_err(|_| LaunchResolutionError::ProjectUnavailable)?;
+    let metadata = fs::metadata(path).map_err(|_| LaunchResolutionError::FolderUnavailable)?;
     Ok(FileIdentity::Unix {
         device: metadata.dev(),
         inode: metadata.ino(),
@@ -771,11 +768,11 @@ fn identity_for(path: &Path) -> Result<FileIdentity, LaunchResolutionError> {
 
 #[cfg(not(unix))]
 fn identity_for(path: &Path) -> Result<FileIdentity, LaunchResolutionError> {
-    let canonical = crate::project::canonical_path(path)
-        .map_err(|_| LaunchResolutionError::ProjectUnavailable)?;
+    let canonical =
+        crate::path::canonical_path(path).map_err(|_| LaunchResolutionError::FolderUnavailable)?;
     let encoded = canonical
         .to_str()
-        .ok_or(LaunchResolutionError::ProjectUnavailable)?;
+        .ok_or(LaunchResolutionError::FolderUnavailable)?;
     #[cfg(target_os = "windows")]
     let comparison_key = encoded.to_lowercase();
     #[cfg(not(target_os = "windows"))]
@@ -786,18 +783,12 @@ fn identity_for(path: &Path) -> Result<FileIdentity, LaunchResolutionError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{LocalizedUserText, PositionKey};
+    use crate::PositionKey;
     use std::io::Write as _;
     use uuid::Uuid;
 
-    fn project(root: &Path) -> Project {
-        Project {
-            id: ProjectId::from_uuid(Uuid::from_u128(1)),
-            display_name: LocalizedUserText::new("Fixture").unwrap(),
-            canonical_root: crate::CanonicalPath::resolve(root).unwrap(),
-            position: PositionKey::FIRST,
-            revision: Revision::new(7),
-        }
+    fn folder(root: &Path) -> CanonicalPath {
+        CanonicalPath::resolve(root).unwrap()
     }
 
     fn preset(executable: &Path, working_directory: WorkingDirectoryRule) -> LaunchPreset {
@@ -837,11 +828,11 @@ mod tests {
         let fixture = tempfile::tempdir().unwrap();
         let tool = fixture.path().join("fixture tool");
         executable(&tool);
-        let project = project(fixture.path());
+        let folder = folder(fixture.path());
         let resolved = resolve_launch(
             HostedSessionId::from_uuid(Uuid::from_u128(3)),
-            &project,
-            &preset(&tool, WorkingDirectoryRule::ProjectRoot),
+            &folder,
+            &preset(&tool, WorkingDirectoryRule::SessionFolder),
             &[],
             None,
         )
@@ -863,15 +854,15 @@ mod tests {
     #[test]
     fn session_rejects_contained_symlink_escape_and_non_executable_file() {
         use std::os::unix::fs::symlink;
-        let project_dir = tempfile::tempdir().unwrap();
+        let session_dir = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
-        symlink(outside.path(), project_dir.path().join("escape")).unwrap();
-        let tool = project_dir.path().join("plain-file");
+        symlink(outside.path(), session_dir.path().join("escape")).unwrap();
+        let tool = session_dir.path().join("plain-file");
         fs::write(&tool, b"not executable").unwrap();
-        let project = project(project_dir.path());
+        let folder = folder(session_dir.path());
         let escape = resolve_launch(
             HostedSessionId::new(),
-            &project,
+            &folder,
             &preset(
                 &std::env::current_exe().unwrap(),
                 WorkingDirectoryRule::ContainedSubdirectory("escape".to_string()),
@@ -881,12 +872,12 @@ mod tests {
         );
         assert_eq!(
             escape,
-            Err(LaunchResolutionError::WorkingDirectoryEscapesProject)
+            Err(LaunchResolutionError::WorkingDirectoryEscapesFolder)
         );
         let unusable = resolve_launch(
             HostedSessionId::new(),
-            &project,
-            &preset(&tool, WorkingDirectoryRule::ProjectRoot),
+            &folder,
+            &preset(&tool, WorkingDirectoryRule::SessionFolder),
             &[],
             None,
         );
@@ -901,11 +892,11 @@ mod tests {
         fs::create_dir(&bin).unwrap();
         let tool = bin.join("fixture-cli");
         executable(&tool);
-        let mut preset = preset(&tool, WorkingDirectoryRule::ProjectRoot);
+        let mut preset = preset(&tool, WorkingDirectoryRule::SessionFolder);
         preset.executable = ExecutableSpec::SearchPath("fixture-cli".to_string());
         let resolved = resolve_launch(
             HostedSessionId::new(),
-            &project(fixture.path()),
+            &folder(fixture.path()),
             &preset,
             &[bin],
             None,
@@ -917,7 +908,7 @@ mod tests {
     fn hosted_session(state: HostedSessionState) -> HostedSession {
         HostedSession {
             id: HostedSessionId::from_uuid(Uuid::from_u128(30)),
-            project_id: ProjectId::from_uuid(Uuid::from_u128(31)),
+            folder: CanonicalPath::resolve(std::env::temp_dir().as_path()).unwrap(),
             group_id: None,
             preset_id: Some(PresetId::from_uuid(Uuid::from_u128(32))),
             title: SessionTitle::new("Default title").unwrap(),

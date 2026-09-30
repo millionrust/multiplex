@@ -13,10 +13,10 @@ use multiplex_controller_listener::{
     ControllerDeviceService, ControllerDeviceServiceError, NoControllerChannels,
 };
 use multiplex_domain::{
-    ActivityAggregate, CommandId, ContinuityLink, ControllerDeviceError, ControllerDeviceId,
-    DeviceStoreRevision, GroupId, HostInstanceId, HostLifecycle, HostedSession, HostedSessionId,
-    HostedSessionState, OutputSequence, PairedDeviceStatus, PermissionPolicy, PositionKey,
-    PresetId, PresetRisk, ProjectId, ResumeError, ResumePlan, ResumeRequest, Revision,
+    ActivityAggregate, CanonicalPath, CommandId, ContinuityLink, ControllerDeviceError,
+    ControllerDeviceId, DeviceStoreRevision, GroupId, HostInstanceId, HostLifecycle, HostedSession,
+    HostedSessionId, HostedSessionState, OutputSequence, PairedDeviceStatus, PermissionPolicy,
+    PositionKey, PresetId, PresetRisk, ResumeError, ResumePlan, ResumeRequest, Revision,
     RuntimeCapability, RuntimeCapabilitySet, RuntimeDetectionResult, RuntimeDetectionStatus,
     SessionMutation, SessionStateError, SessionTitle, TitleSource, evaluate_resume, resolve_launch,
 };
@@ -27,9 +27,9 @@ use multiplex_session_host::{
 };
 use multiplex_store::{
     ContinuityRepository, ControllerDeviceRepository, ControllerDeviceSnapshot,
-    ControllerDeviceStoreError, JournalLimits, PresetRepository, PresetSnapshot, ProjectRepository,
-    ProjectSnapshot, SessionRemovalManifest, SessionRepository, SessionSnapshot, StoreError,
-    StoreHealth, read_host_metadata,
+    ControllerDeviceStoreError, JournalLimits, LibraryRepository, LibrarySnapshot,
+    PresetRepository, PresetSnapshot, SessionRemovalManifest, SessionRepository, SessionSnapshot,
+    StoreError, StoreHealth, read_host_metadata,
 };
 use rand::RngCore as _;
 use tokio::runtime::Builder;
@@ -39,11 +39,11 @@ use crate::{
     CLI_JSON_SCHEMA_VERSION, Cancellation, CliCommand, CliData, CliError, CommandService,
     ControllerSshCommand, DeviceData, DeviceListData, DeviceListFilter, DeviceRevocationData,
     DeviceRevocationPreviewData, DeviceView, ErrorCode, MAX_RESPONSE_RECORDS,
-    MAX_SESSION_WAIT_TIMEOUT_MS, PresetListData, PresetView, ProjectListData, ProjectView,
-    RemovalConfirmationKind, SessionAttachData, SessionData, SessionInput, SessionInputData,
-    SessionListData, SessionListFilter, SessionMutationData, SessionRemovalPreviewData,
-    SessionResizeData, SessionResumeData, SessionResumePreviewData, SessionView,
-    SessionWaitCondition, SessionWaitConditionData, SessionWaitData, StatusData,
+    MAX_SESSION_WAIT_TIMEOUT_MS, PresetListData, PresetView, RemovalConfirmationKind,
+    SessionAttachData, SessionData, SessionInput, SessionInputData, SessionListData,
+    SessionListFilter, SessionMutationData, SessionRemovalPreviewData, SessionResizeData,
+    SessionResumeData, SessionResumePreviewData, SessionView, SessionWaitCondition,
+    SessionWaitConditionData, SessionWaitData, StatusData,
 };
 
 const STORE_DIR_NAME: &str = "agent-workspace";
@@ -242,7 +242,7 @@ pub(crate) struct ValidatedSessionAttach {
 struct PreparedSessionResume {
     source: HostedSession,
     plan: ResumePlan,
-    projects_revision: Revision,
+    library_revision: Revision,
     presets_revision: Revision,
     sessions_revision: Revision,
 }
@@ -395,7 +395,7 @@ pub struct ManagementRemovalPreview {
 pub enum ManagementCommand {
     Launch {
         command_id: CommandId,
-        project_id: ProjectId,
+        folder: PathBuf,
         preset_id: PresetId,
         group_id: Option<GroupId>,
     },
@@ -604,11 +604,11 @@ impl LocalCommandService {
         match command {
             ManagementCommand::Launch {
                 command_id,
-                project_id,
+                folder,
                 preset_id,
                 group_id,
             } => self.session_launch(
-                project_id,
+                &folder,
                 preset_id,
                 group_id,
                 Some(HostedSessionId::from_uuid(command_id.as_uuid())),
@@ -975,9 +975,9 @@ impl LocalCommandService {
 
     fn status(&self) -> Result<CliData, CliError> {
         self.require_existing_store()?;
-        let projects =
-            ProjectRepository::open(self.paths.metadata_root.clone()).map_err(map_store)?;
-        let project_snapshot = projects.load().map_err(map_store)?;
+        let library =
+            LibraryRepository::open(self.paths.metadata_root.clone()).map_err(map_store)?;
+        let library_snapshot = library.load().map_err(map_store)?;
         Ok(CliData::Status(StatusData {
             cli_version: env!("CARGO_PKG_VERSION").to_string(),
             json_schema_version: CLI_JSON_SCHEMA_VERSION,
@@ -989,7 +989,7 @@ impl LocalCommandService {
                 "{}.{}",
                 CURRENT_PROTOCOL.maximum.major, CURRENT_PROTOCOL.maximum.minor
             ),
-            store: if project_snapshot.health == StoreHealth::Healthy {
+            store: if library_snapshot.health == StoreHealth::Healthy {
                 "available"
             } else {
                 "recovered_read_only"
@@ -1001,14 +1001,6 @@ impl LocalCommandService {
                 "host_unavailable"
             }
             .to_string(),
-        }))
-    }
-
-    fn project_list(&self) -> Result<CliData, CliError> {
-        let snapshot = self.projects()?.load().map_err(map_store)?;
-        bounded_records(snapshot.projects.len())?;
-        Ok(CliData::Projects(ProjectListData {
-            projects: snapshot.projects.iter().map(ProjectView::from).collect(),
         }))
     }
 
@@ -1120,47 +1112,28 @@ impl LocalCommandService {
             .ok_or_else(|| unavailable("paired Controller device authority is unavailable"))
     }
 
-    fn preset_list(&self, project_id: ProjectId) -> Result<CliData, CliError> {
-        let (projects, snapshot) = self.consistent_project_preset_snapshot()?;
-        require_project(&projects.projects, project_id)?;
+    fn preset_list(&self) -> Result<CliData, CliError> {
+        let (_, snapshot) = self.consistent_library_preset_snapshot()?;
         bounded_records(snapshot.presets.len())?;
         Ok(CliData::Presets(PresetListData {
-            project_id: project_id.to_string(),
             presets: snapshot.presets.iter().map(PresetView::from).collect(),
         }))
     }
 
     fn session_list(&self, filter: SessionListFilter) -> Result<CliData, CliError> {
-        let (projects, snapshot) = self.consistent_project_session_snapshot()?;
-        if let Some(project_id) = filter.project_id {
-            require_project(&projects.projects, project_id)?;
-        }
-        if let Some(group_id) = filter.group_id {
-            let group = projects
-                .groups
-                .iter()
-                .find(|group| group.id == group_id)
-                .ok_or_else(|| unavailable("group is unavailable"))?;
-            if filter
-                .project_id
-                .is_some_and(|project_id| group.project_id != project_id)
-            {
-                return Err(validation(
-                    "group does not belong to the selected project",
-                    "Choose a group from the same project.",
-                ));
-            }
+        let (library, snapshot) = self.consistent_library_session_snapshot()?;
+        if let Some(group_id) = filter.group_id
+            && !library.groups.iter().any(|group| group.id == group_id)
+        {
+            return Err(unavailable("group is unavailable"));
         }
         let sessions = snapshot
             .sessions
             .iter()
             .filter(|session| {
                 filter
-                    .project_id
-                    .is_none_or(|project_id| session.project_id == project_id)
-                    && filter
-                        .group_id
-                        .is_none_or(|group_id| session.group_id == Some(group_id))
+                    .group_id
+                    .is_none_or(|group_id| session.group_id == Some(group_id))
                     && filter.state.is_none_or(|state| session.lifecycle == state)
                     && (!filter.archived_only || session.archived_at.is_some())
             })
@@ -1434,10 +1407,10 @@ impl LocalCommandService {
             return Err(cancelled());
         }
 
-        let project_repository = self.projects()?;
+        let library_repository = self.library()?;
         let preset_repository = self.presets()?;
         let session_repository = self.sessions()?;
-        if project_repository.load().map_err(map_store)?.revision != prepared.projects_revision
+        if library_repository.load().map_err(map_store)?.revision != prepared.library_revision
             || preset_repository.load().map_err(map_store)?.revision != prepared.presets_revision
             || session_repository.load().map_err(map_store)?.revision != prepared.sessions_revision
         {
@@ -1466,7 +1439,7 @@ impl LocalCommandService {
         let now = self.clock.now_millis();
         let successor = HostedSession {
             id: replacement_session_id,
-            project_id: prepared.source.project_id,
+            folder: prepared.source.folder.clone(),
             group_id: prepared.source.group_id,
             preset_id: prepared.source.preset_id,
             title: prepared.source.title.clone(),
@@ -1593,10 +1566,10 @@ impl LocalCommandService {
         if cancellation.is_cancelled() {
             return Err(cancelled());
         }
-        let project_repository = self.projects()?;
+        let library_repository = self.library()?;
         let preset_repository = self.presets()?;
         let session_repository = self.sessions()?;
-        let projects = project_repository.load().map_err(map_store)?;
+        let library = library_repository.load().map_err(map_store)?;
         let presets = preset_repository.load().map_err(map_store)?;
         let sessions = session_repository.load().map_err(map_store)?;
         let source = require_session(&sessions.sessions, session_id)?.clone();
@@ -1622,9 +1595,6 @@ impl LocalCommandService {
                 "Resume only a verified Codex Session created from a saved preset.",
             )
         })?;
-        let project = require_project(&projects.projects, source.project_id)?
-            .project
-            .clone();
         let preset = presets
             .presets
             .iter()
@@ -1665,7 +1635,7 @@ impl LocalCommandService {
             .ok_or_else(|| resume_error(ResumeError::ConversationMissing))?;
         let resolved = resolve_launch(
             replacement_session_id,
-            &project,
+            &source.folder,
             &preset,
             &explicit_path_snapshot(),
             dirs::home_dir().as_deref(),
@@ -1698,7 +1668,6 @@ impl LocalCommandService {
                 CodexResumePlanInput {
                     candidate,
                     conversation_root,
-                    canonical_project: source.project_id,
                     expected_working_directory: resolved.working_directory(),
                     permission_policy: PermissionPolicy::ReadOnly,
                     executable: resolved.executable(),
@@ -1716,7 +1685,7 @@ impl LocalCommandService {
         let current_host = read_host_metadata(&self.paths.session_dir(session_id))
             .map_err(|_| resume_error(ResumeError::OwnershipUnproven))?;
         let current_sessions = session_repository.load().map_err(map_store)?;
-        if project_repository.load().map_err(map_store)?.revision != projects.revision
+        if library_repository.load().map_err(map_store)?.revision != library.revision
             || preset_repository.load().map_err(map_store)?.revision != presets.revision
             || current_sessions.revision != sessions.revision
             || current_sessions
@@ -1738,7 +1707,7 @@ impl LocalCommandService {
         Ok(PreparedSessionResume {
             source,
             plan,
-            projects_revision: projects.revision,
+            library_revision: library.revision,
             presets_revision: presets.revision,
             sessions_revision: sessions.revision,
         })
@@ -2011,7 +1980,7 @@ impl LocalCommandService {
 
     fn session_launch(
         &self,
-        project_id: ProjectId,
+        folder: &Path,
         preset_id: PresetId,
         group_id: Option<GroupId>,
         requested_session_id: Option<HostedSessionId>,
@@ -2021,10 +1990,10 @@ impl LocalCommandService {
         if cancellation.is_cancelled() {
             return Err(cancelled());
         }
-        let project_repository = self.projects()?;
+        let library_repository = self.library()?;
         let preset_repository = self.presets()?;
         let session_repository = self.sessions()?;
-        let projects = project_repository.load().map_err(map_store)?;
+        let library = library_repository.load().map_err(map_store)?;
         let presets = preset_repository.load().map_err(map_store)?;
         let sessions = session_repository.load().map_err(map_store)?;
         if let Some(session_id) = requested_session_id
@@ -2033,10 +2002,7 @@ impl LocalCommandService {
                 .iter()
                 .find(|session| session.id == session_id)
         {
-            if existing.project_id != project_id
-                || existing.preset_id != Some(preset_id)
-                || existing.group_id != group_id
-            {
+            if existing.preset_id != Some(preset_id) || existing.group_id != group_id {
                 return Err(CliError::new(
                     ErrorCode::Conflict,
                     "management command identity was already used for another launch",
@@ -2046,9 +2012,12 @@ impl LocalCommandService {
             }
             return Ok(mutation("launched", existing));
         }
-        let project = require_project(&projects.projects, project_id)?
-            .project
-            .clone();
+        let folder = CanonicalPath::resolve(folder).map_err(|_| {
+            validation(
+                "the folder is unavailable",
+                "Choose a folder that exists and can be read.",
+            )
+        })?;
         let preset = presets
             .presets
             .iter()
@@ -2061,25 +2030,17 @@ impl LocalCommandService {
                 "Review and launch this preset from the desktop application.",
             ));
         }
-        if let Some(group_id) = group_id {
-            let group = projects
-                .groups
-                .iter()
-                .find(|group| group.id == group_id)
-                .ok_or_else(|| unavailable("group is unavailable"))?;
-            if group.project_id != project_id {
-                return Err(validation(
-                    "group does not belong to the selected project",
-                    "Choose a group from the same project.",
-                ));
-            }
+        if let Some(group_id) = group_id
+            && !library.groups.iter().any(|group| group.id == group_id)
+        {
+            return Err(unavailable("group is unavailable"));
         }
         let session_id = requested_session_id.unwrap_or_else(|| self.ids.session_id());
         let path_snapshot = explicit_path_snapshot();
         let home = dirs::home_dir();
         let resolved = resolve_launch(
             session_id,
-            &project,
+            &folder,
             &preset,
             &path_snapshot,
             home.as_deref(),
@@ -2087,23 +2048,23 @@ impl LocalCommandService {
         .map_err(|_| {
             validation(
                 "session launch validation failed",
-                "Review project availability and the preset executable in the desktop application.",
+                "Review the folder and the preset executable in the desktop application.",
             )
         })?;
         resolved.revalidate().map_err(|_| {
             CliError::new(
                 ErrorCode::Conflict,
-                "project or executable changed during launch validation",
-                "Reload projects and presets, then run the command again.",
+                "the folder or executable changed during launch validation",
+                "Reload presets, then run the command again.",
             )
         })?;
-        if project_repository.load().map_err(map_store)?.revision != projects.revision
+        if library_repository.load().map_err(map_store)?.revision != library.revision
             || preset_repository.load().map_err(map_store)?.revision != presets.revision
         {
             return Err(CliError::new(
                 ErrorCode::Conflict,
-                "project or preset metadata changed during launch validation",
-                "Reload projects and presets, then run the command again.",
+                "preset metadata changed during launch validation",
+                "Reload presets, then run the command again.",
             ));
         }
         create_user_only_directory(&self.paths.runtime_root(session_id))?;
@@ -2111,7 +2072,7 @@ impl LocalCommandService {
         let now = self.clock.now_millis();
         let session = HostedSession {
             id: session_id,
-            project_id,
+            folder,
             group_id,
             preset_id: Some(preset_id),
             title: SessionTitle::new(preset.label.as_str()).map_err(|_| {
@@ -2247,9 +2208,9 @@ impl LocalCommandService {
         }
     }
 
-    fn projects(&self) -> Result<ProjectRepository, CliError> {
+    fn library(&self) -> Result<LibraryRepository, CliError> {
         self.require_existing_store()?;
-        ProjectRepository::open(self.paths.metadata_root.clone()).map_err(map_store)
+        LibraryRepository::open(self.paths.metadata_root.clone()).map_err(map_store)
     }
 
     fn presets(&self) -> Result<PresetRepository, CliError> {
@@ -2266,39 +2227,39 @@ impl LocalCommandService {
         .map_err(map_store)
     }
 
-    fn consistent_project_preset_snapshot(
+    fn consistent_library_preset_snapshot(
         &self,
-    ) -> Result<(ProjectSnapshot, PresetSnapshot), CliError> {
-        let projects = self.projects()?;
+    ) -> Result<(LibrarySnapshot, PresetSnapshot), CliError> {
+        let library = self.library()?;
         let presets = self.presets()?;
         for _ in 0..2 {
-            let first_projects = projects.load().map_err(map_store)?;
+            let first_library = library.load().map_err(map_store)?;
             let first_presets = presets.load().map_err(map_store)?;
-            let second_projects = projects.load().map_err(map_store)?;
+            let second_library = library.load().map_err(map_store)?;
             let second_presets = presets.load().map_err(map_store)?;
-            if first_projects.revision == second_projects.revision
+            if first_library.revision == second_library.revision
                 && first_presets.revision == second_presets.revision
             {
-                return Ok((second_projects, second_presets));
+                return Ok((second_library, second_presets));
             }
         }
         Err(temporarily_inconsistent())
     }
 
-    fn consistent_project_session_snapshot(
+    fn consistent_library_session_snapshot(
         &self,
-    ) -> Result<(ProjectSnapshot, SessionSnapshot), CliError> {
-        let projects = self.projects()?;
+    ) -> Result<(LibrarySnapshot, SessionSnapshot), CliError> {
+        let library = self.library()?;
         let sessions = self.sessions()?;
         for _ in 0..2 {
-            let first_projects = projects.load().map_err(map_store)?;
+            let first_library = library.load().map_err(map_store)?;
             let first_sessions = sessions.load().map_err(map_store)?;
-            let second_projects = projects.load().map_err(map_store)?;
+            let second_library = library.load().map_err(map_store)?;
             let second_sessions = sessions.load().map_err(map_store)?;
-            if first_projects.revision == second_projects.revision
+            if first_library.revision == second_library.revision
                 && first_sessions.revision == second_sessions.revision
             {
-                return Ok((second_projects, second_sessions));
+                return Ok((second_library, second_sessions));
             }
         }
         Err(temporarily_inconsistent())
@@ -2314,7 +2275,6 @@ impl CommandService for LocalCommandService {
         match command {
             CliCommand::Help => Ok(crate::help_data()),
             CliCommand::Status => self.status(),
-            CliCommand::ProjectList => self.project_list(),
             CliCommand::DeviceList(filter) => self.device_list(filter, cancellation),
             CliCommand::DeviceShow { device_id } => self.device_show(device_id, cancellation),
             CliCommand::DeviceRevoke {
@@ -2322,7 +2282,7 @@ impl CommandService for LocalCommandService {
                 expected_revision,
                 confirmed,
             } => self.device_revoke(device_id, expected_revision, confirmed, cancellation),
-            CliCommand::PresetList { project_id } => self.preset_list(project_id),
+            CliCommand::PresetList => self.preset_list(),
             CliCommand::SessionList(filter) => self.session_list(filter),
             CliCommand::SessionShow { session_id } => self.session_show(session_id),
             CliCommand::SessionWait {
@@ -2360,10 +2320,10 @@ impl CommandService for LocalCommandService {
                 confirmed,
             } => self.session_resume(session_id, expected_revision, confirmed, None, cancellation),
             CliCommand::SessionLaunch {
-                project_id,
+                folder,
                 preset_id,
                 group_id,
-            } => self.session_launch(project_id, preset_id, group_id, None, None, cancellation),
+            } => self.session_launch(&folder, preset_id, group_id, None, None, cancellation),
             CliCommand::SessionStop {
                 session_id,
                 expected_revision,
@@ -2947,16 +2907,6 @@ fn mutation(outcome: &str, session: &HostedSession) -> CliData {
     })
 }
 
-fn require_project(
-    projects: &[multiplex_domain::ProjectSummary],
-    id: ProjectId,
-) -> Result<&multiplex_domain::ProjectSummary, CliError> {
-    projects
-        .iter()
-        .find(|summary| summary.project.id == id)
-        .ok_or_else(|| unavailable("project is unavailable"))
-}
-
 fn require_session(
     sessions: &[HostedSession],
     id: HostedSessionId,
@@ -3041,7 +2991,7 @@ fn bounded_records(count: usize) -> Result<(), CliError> {
         Err(CliError::new(
             ErrorCode::ResourceLimit,
             "command result exceeds 1,000 records",
-            "Narrow the query with project, group, state, or archived filters.",
+            "Narrow the query with group, state, or archived filters.",
         ))
     } else {
         Ok(())
@@ -3059,7 +3009,7 @@ fn map_store(error: StoreError) -> CliError {
             kind: std::io::ErrorKind::PermissionDenied,
             ..
         }
-        | StoreError::Domain(multiplex_domain::ProjectError::PermissionDenied) => CliError::new(
+        | StoreError::Domain(multiplex_domain::PathError::PermissionDenied) => CliError::new(
             ErrorCode::PermissionDenied,
             "permission to access local Multiplex metadata was denied",
             "Check ownership and user-only permissions, then retry.",
@@ -3073,7 +3023,6 @@ fn map_store(error: StoreError) -> CliError {
             "Wait for the current Multiplex operation to finish, then retry once.",
         ),
         StoreError::TooLarge { .. }
-        | StoreError::Domain(multiplex_domain::ProjectError::ResourceLimit { .. })
         | StoreError::PresetDomain(multiplex_domain::PresetError::ResourceLimit { .. })
         | StoreError::SessionDomain(SessionStateError::ResourceLimit { .. }) => CliError::new(
             ErrorCode::ResourceLimit,
@@ -3118,7 +3067,7 @@ fn map_store(error: StoreError) -> CliError {
         ),
         StoreError::SessionDomain(SessionStateError::Unavailable)
         | StoreError::PresetDomain(multiplex_domain::PresetError::Unavailable)
-        | StoreError::Domain(multiplex_domain::ProjectError::Unavailable) => {
+        | StoreError::Domain(multiplex_domain::PathError::Unavailable) => {
             unavailable("requested local record is unavailable")
         }
         _ => operation("local metadata operation failed"),
@@ -3375,7 +3324,7 @@ fn resume_error(error: ResumeError) -> CliError {
             "Check ownership and user-only permissions, then retry.",
         ),
         ResumeError::ProviderUnavailable => {
-            unavailable("the exact verified Codex executable or project is unavailable")
+            unavailable("the exact verified Codex executable or folder is unavailable")
         }
         ResumeError::ResourceLimit => CliError::new(
             ErrorCode::ResourceLimit,
@@ -3544,11 +3493,11 @@ mod tests {
         assert!(!resource.message.contains("private.json"));
 
         let timeout = map_store(StoreError::Io {
-            operation: "lock project metadata",
+            operation: "lock library metadata",
             kind: std::io::ErrorKind::WouldBlock,
         });
         assert_eq!(timeout.code, ErrorCode::Timeout);
-        assert!(!timeout.message.contains("project"));
+        assert!(!timeout.message.contains("library"));
 
         assert_eq!(
             bounded_records(MAX_RESPONSE_RECORDS + 1).unwrap_err().code,

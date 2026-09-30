@@ -7,14 +7,14 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use multiplex_store::{ProjectRepository, SessionRepository};
+use multiplex_store::{LibraryRepository, SessionRepository};
 use portable_pty::{CommandBuilder, ExitStatus, PtySize, native_pty_system};
 use tempfile::TempDir;
 
 fn configured_store() -> TempDir {
     let fixture = TempDir::new().unwrap();
     let metadata = fixture.path().join("agent-workspace");
-    ProjectRepository::open(&metadata).unwrap();
+    LibraryRepository::open(&metadata).unwrap();
     SessionRepository::open(&metadata, fixture.path().join("durable-sessions")).unwrap();
     fixture
 }

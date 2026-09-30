@@ -93,7 +93,6 @@ impl ControllerConnectionBackend for Backend {
                     runtime: None,
                     capabilities: Vec::new(),
                     title: "Authoritative fixture".to_owned(),
-                    project: None,
                     group: None,
                     lifecycle: "running".to_owned(),
                     activity: "idle".to_owned(),

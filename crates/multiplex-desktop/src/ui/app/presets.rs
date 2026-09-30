@@ -33,7 +33,7 @@ use crate::agents::{
     CliDiscovery, DiscoveryCancellation, RuntimeDiscoveryEntry, RuntimeDiscoveryReport,
     discovery_path_snapshot, known_runtime_descriptors,
 };
-use crate::storage::project_store_dir;
+use crate::storage::library_store_dir;
 use crate::ui::localization;
 
 pub(super) enum PresetLibraryLoadState {
@@ -52,7 +52,7 @@ pub(super) enum PresetStoreFailure {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) enum PresetWorkingChoice {
     #[default]
-    ProjectRoot,
+    SessionFolder,
     PlatformHome,
     ContainedSubdirectory,
 }
@@ -90,7 +90,7 @@ impl PresetLibraryState {
             scan_cancel: None,
             scan_generation: 0,
         };
-        let repository = project_store_dir()
+        let repository = library_store_dir()
             .map_err(|_| PresetStoreFailure::Unavailable)
             .and_then(|root| PresetRepository::open(root).map_err(classify_store_failure));
         match repository {
@@ -152,7 +152,7 @@ impl MultiplexApp {
             enabled: true,
             favorite: false,
             permission_policy: PermissionPolicy::AskAsNeeded,
-            working_choice: PresetWorkingChoice::ProjectRoot,
+            working_choice: PresetWorkingChoice::SessionFolder,
             runtime: None,
             confirm_risky_favorite: false,
         });
@@ -185,7 +185,9 @@ impl MultiplexApp {
             cx,
         );
         let (working_choice, subdirectory) = match &preset.working_directory {
-            WorkingDirectoryRule::ProjectRoot => (PresetWorkingChoice::ProjectRoot, String::new()),
+            WorkingDirectoryRule::SessionFolder => {
+                (PresetWorkingChoice::SessionFolder, String::new())
+            }
             WorkingDirectoryRule::PlatformHome => {
                 (PresetWorkingChoice::PlatformHome, String::new())
             }
@@ -263,7 +265,7 @@ impl MultiplexApp {
             .map(|input| input.read(cx).value().to_string())
             .collect::<Vec<_>>();
         let working_directory = match editor.working_choice {
-            PresetWorkingChoice::ProjectRoot => WorkingDirectoryRule::ProjectRoot,
+            PresetWorkingChoice::SessionFolder => WorkingDirectoryRule::SessionFolder,
             PresetWorkingChoice::PlatformHome => WorkingDirectoryRule::PlatformHome,
             PresetWorkingChoice::ContainedSubdirectory => {
                 WorkingDirectoryRule::ContainedSubdirectory(
@@ -488,7 +490,7 @@ impl MultiplexApp {
             label: label.clone(),
             executable: executable.as_str().to_string(),
             args: Vec::new(),
-            working_directory: WorkingDirectoryRule::ProjectRoot,
+            working_directory: WorkingDirectoryRule::SessionFolder,
             runtime: Some(candidate.result.runtime_id.as_str().to_string()),
             enabled: true,
             favorite: false,
@@ -848,9 +850,9 @@ impl MultiplexApp {
 
         for (choice, name, selected) in [
             (
-                PresetWorkingDirectoryChoice::ProjectRoot,
-                MessageId::PresetWorkingProjectRoot,
-                editor.working_choice == PresetWorkingChoice::ProjectRoot,
+                PresetWorkingDirectoryChoice::SessionFolder,
+                MessageId::PresetWorkingSessionFolder,
+                editor.working_choice == PresetWorkingChoice::SessionFolder,
             ),
             (
                 PresetWorkingDirectoryChoice::PlatformHome,
@@ -1087,8 +1089,8 @@ impl MultiplexApp {
             PresetRuntimeAction::SelectWorkingDirectory(choice) => {
                 if let Some(editor) = self.preset_library.editor.as_mut() {
                     editor.working_choice = match choice {
-                        PresetWorkingDirectoryChoice::ProjectRoot => {
-                            PresetWorkingChoice::ProjectRoot
+                        PresetWorkingDirectoryChoice::SessionFolder => {
+                            PresetWorkingChoice::SessionFolder
                         }
                         PresetWorkingDirectoryChoice::PlatformHome => {
                             PresetWorkingChoice::PlatformHome
@@ -1782,8 +1784,8 @@ impl MultiplexApp {
                     localization::preset_working_directory_field(),
                     [
                         (
-                            PresetWorkingChoice::ProjectRoot,
-                            localization::preset_working_project_root(),
+                            PresetWorkingChoice::SessionFolder,
+                            localization::preset_working_session_folder(),
                         ),
                         (
                             PresetWorkingChoice::PlatformHome,
@@ -2231,6 +2233,8 @@ fn classify_store_failure(error: StoreError) -> PresetStoreFailure {
         | StoreError::TooLarge { .. } => PresetStoreFailure::Corrupt,
         StoreError::Io { .. }
         | StoreError::InvalidInstanceId
+        | StoreError::StaleRevision { .. }
+        | StoreError::RevisionOverflow
         | StoreError::Domain(_)
         | StoreError::GroupDomain(_)
         | StoreError::PresetDomain(_)

@@ -403,7 +403,7 @@ fn start_worker(
     let sources = super::remote_bridge_sources(&runtime_parent);
     let descriptor = ListenerLaunchDescriptor::new(
         controller_root,
-        crate::storage::project_store_dir().map_err(|_| unavailable)?,
+        crate::storage::library_store_dir().map_err(|_| unavailable)?,
         app_root.join("durable-sessions"),
         runtime_parent,
         network.revision,

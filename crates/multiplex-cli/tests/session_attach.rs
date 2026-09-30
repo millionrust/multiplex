@@ -389,7 +389,7 @@ fn descriptor(seed: &SeededStore) -> LaunchDescriptor {
             ),
         ],
         environment: BTreeMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
-        cwd: Some(seed.project_root.clone()),
+        cwd: Some(seed.folder.clone()),
         columns: 80,
         rows: 24,
         journal_limits: JournalLimits::default(),

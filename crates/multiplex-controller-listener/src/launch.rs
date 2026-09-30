@@ -16,7 +16,7 @@ use multiplex_domain::{
     PairingOfferId, PairingOfferState,
 };
 use multiplex_store::{
-    ControllerDeviceRepository, ControllerNetworkRepository, ProjectRepository, SessionRepository,
+    ControllerDeviceRepository, ControllerNetworkRepository, LibraryRepository, SessionRepository,
 };
 use rand::RngCore as _;
 use serde::{Deserialize, Serialize};
@@ -117,7 +117,9 @@ impl PairingDecisionBroker {
 pub struct ListenerLaunchDescriptor {
     pub format_version: u16,
     pub controller_root: PathBuf,
-    pub project_root: PathBuf,
+    /// Where the group library and session metadata live.
+    #[serde(alias = "project_root")]
+    pub library_root: PathBuf,
     pub session_data_root: PathBuf,
     pub runtime_parent: PathBuf,
     #[serde(default)]
@@ -141,7 +143,7 @@ impl ListenerLaunchDescriptor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         controller_root: PathBuf,
-        project_root: PathBuf,
+        library_root: PathBuf,
         session_data_root: PathBuf,
         runtime_parent: PathBuf,
         network_revision: ControllerNetworkRevision,
@@ -151,7 +153,7 @@ impl ListenerLaunchDescriptor {
         let descriptor = Self {
             format_version: LAUNCH_FORMAT_VERSION,
             controller_root,
-            project_root,
+            library_root,
             session_data_root,
             runtime_parent,
             desktop_pane_bridge: None,
@@ -237,7 +239,7 @@ impl ListenerLaunchDescriptor {
         if !self.policy.enabled
             || [
                 &self.controller_root,
-                &self.project_root,
+                &self.library_root,
                 &self.session_data_root,
                 &self.runtime_parent,
             ]
@@ -977,7 +979,7 @@ pub async fn serve_repository_stdio_bridge<R, W>(
     reader: R,
     writer: W,
     controller_root: PathBuf,
-    project_root: PathBuf,
+    library_root: PathBuf,
     session_data_root: PathBuf,
     runtime_parent: PathBuf,
     pairing_broker_path: PathBuf,
@@ -991,9 +993,9 @@ where
 {
     let devices = ControllerDeviceRepository::open(controller_root)
         .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
-    let sessions = SessionRepository::open(project_root.clone(), session_data_root)
+    let sessions = SessionRepository::open(library_root.clone(), session_data_root)
         .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
-    let projects = ProjectRepository::open(project_root)
+    let library = LibraryRepository::open(library_root)
         .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
     let authority = Arc::new(RepositoryStdioAuthority {
         repository: devices,
@@ -1001,7 +1003,7 @@ where
         pairing_broker_path,
     });
     let backends: Arc<dyn crate::ControllerBackendFactory> = Arc::new(
-        HostBackendFactory::new(sessions, projects, runtime_parent)
+        HostBackendFactory::new(sessions, library, runtime_parent)
             .with_desktop_pane_bridge(sources.desktop_pane_bridge)
             .with_tmux_sessions(sources.tmux_sessions)
             .with_screens(sources.screens),
@@ -1097,11 +1099,11 @@ where
     }
 
     let sessions = SessionRepository::open(
-        descriptor.project_root.clone(),
+        descriptor.library_root.clone(),
         descriptor.session_data_root.clone(),
     )
     .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
-    let projects = ProjectRepository::open(descriptor.project_root.clone())
+    let library = LibraryRepository::open(descriptor.library_root.clone())
         .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
     let events = ListenerEventSink::new(readiness);
     let decisions = PairingDecisionBroker::default();
@@ -1115,7 +1117,7 @@ where
     let authority: Arc<dyn ControllerAuthorityProvider> = repository_authority.clone();
     let pairing: Arc<dyn ControllerPairingAuthority> = repository_authority.clone();
     let backends = Arc::new(
-        HostBackendFactory::new(sessions, projects, descriptor.runtime_parent.clone())
+        HostBackendFactory::new(sessions, library, descriptor.runtime_parent.clone())
             .with_desktop_pane_bridge(descriptor.desktop_pane_bridge.clone())
             .with_tmux_sessions(
                 descriptor
@@ -1343,7 +1345,7 @@ mod tests {
         let controller = private_directory("controller");
         let descriptor = ListenerLaunchDescriptor::new(
             controller.clone(),
-            private_directory("projects"),
+            private_directory("library"),
             private_directory("sessions"),
             private_directory("runtime"),
             ControllerNetworkRevision::ZERO,
@@ -1633,7 +1635,7 @@ mod tests {
             .unwrap();
         let descriptor = ListenerLaunchDescriptor::new(
             controller_root.clone(),
-            fixture.path().join("projects"),
+            fixture.path().join("library"),
             fixture.path().join("sessions"),
             fixture.path().join("runtime"),
             saved.revision,
@@ -1741,7 +1743,7 @@ mod tests {
         };
         let fixture = tempfile::tempdir().unwrap();
         let controller_root = fixture.path().join("controller");
-        let project_root = fixture.path().join("projects");
+        let library_root = fixture.path().join("library");
         let session_root = fixture.path().join("sessions");
         let runtime_root = fixture.path().join("runtime");
         let private = StaticPrivateKey::from_fixture_bytes([17; 32]);
@@ -1773,7 +1775,7 @@ mod tests {
             .unwrap();
         let descriptor = ListenerLaunchDescriptor::new(
             controller_root,
-            project_root,
+            library_root,
             session_root,
             runtime_root,
             saved.revision,

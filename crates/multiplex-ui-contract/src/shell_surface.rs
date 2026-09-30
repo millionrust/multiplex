@@ -1065,17 +1065,17 @@ mod tests {
 
     #[test]
     fn shell_routes_product_collection_rows_by_typed_identity() {
-        let project_id = AccessibleRowId::project(0x1111);
+        let group_id = AccessibleRowId::group(0x1111);
         let row_id = AccessibleRowId::session(0x1234);
         let product = ProductSessionSemanticSnapshot {
             screen: ProductSessionScreen::Sessions,
             state: ProductSessionSurfaceState::Ready,
             rows: vec![
                 AccessibleCollectionRow {
-                    id: project_id,
+                    id: group_id,
                     parent: None,
-                    level: HierarchyLevel::Project,
-                    name: "Synthetic project".to_string(),
+                    level: HierarchyLevel::Group,
+                    name: "Synthetic group".to_string(),
                     status: MessageId::ProductSurfaceStateReady,
                     selected: false,
                     expanded: Some(true),
@@ -1086,7 +1086,7 @@ mod tests {
                 },
                 AccessibleCollectionRow {
                     id: row_id,
-                    parent: Some(project_id),
+                    parent: Some(group_id),
                     level: HierarchyLevel::Session,
                     name: "Synthetic session".to_string(),
                     status: MessageId::ProductSurfaceStateReady,

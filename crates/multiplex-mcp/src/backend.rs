@@ -22,7 +22,7 @@ use multiplex_cli::{
 };
 use multiplex_domain::{
     ActivityState, ArtifactCancellation, ArtifactId, ArtifactScope, CommandId, GroupId,
-    HostedSessionId, HostedSessionState, OutputSequence, PresetId, ProjectId, Revision,
+    HostedSessionId, HostedSessionState, OutputSequence, PresetId, Revision,
     TranscriptCancellation, TranscriptKind, normalize_transcript_content,
 };
 use multiplex_store::{ArtifactIngestRequest, ArtifactRepository};
@@ -41,12 +41,8 @@ const MAX_TRANSCRIPT_RESPONSE_BYTES: usize = 256 * 1024;
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum InspectionRequest {
     Status,
-    Projects,
-    Connections {
-        project_id: String,
-    },
+    Connections,
     Sessions {
-        project_id: Option<String>,
         state: Option<String>,
         include_archived: bool,
     },
@@ -69,7 +65,7 @@ pub enum InspectionRequest {
 pub enum ActionRequest {
     Launch {
         command_id: String,
-        project_id: String,
+        folder: String,
         preset_id: String,
         group_id: Option<String>,
     },
@@ -174,9 +170,9 @@ impl ActionRequest {
         }
     }
 
-    pub(crate) fn project_scope(&self) -> Option<&str> {
+    pub(crate) fn folder_scope(&self) -> Option<&str> {
         match self {
-            Self::Launch { project_id, .. } => Some(project_id),
+            Self::Launch { folder, .. } => Some(folder),
             _ => None,
         }
     }
@@ -428,33 +424,20 @@ impl InspectionSource for LocalInspectionSource {
                 };
                 singleton(data, "status")
             }
-            InspectionRequest::Projects => {
-                let CliData::Projects(data) =
-                    self.execute(CliCommand::ProjectList, cancellation)?
-                else {
-                    return Err(SourceError::Inconsistent);
-                };
-                paginated("projects", data.projects, offset, page_size)
-            }
-            InspectionRequest::Connections { project_id } => {
-                let project_id = parse_project_id(&project_id)?;
-                let CliData::Presets(data) =
-                    self.execute(CliCommand::PresetList { project_id }, cancellation)?
+            InspectionRequest::Connections => {
+                let CliData::Presets(data) = self.execute(CliCommand::PresetList, cancellation)?
                 else {
                     return Err(SourceError::Inconsistent);
                 };
                 paginated("connections", data.presets, offset, page_size)
             }
             InspectionRequest::Sessions {
-                project_id,
                 state,
                 include_archived,
             } => {
-                let project_id = project_id.as_deref().map(parse_project_id).transpose()?;
                 let state = state.as_deref().map(parse_session_state).transpose()?;
                 let CliData::Sessions(data) = self.execute(
                     CliCommand::SessionList(SessionListFilter {
-                        project_id,
                         group_id: None,
                         state,
                         archived_only: false,
@@ -549,13 +532,13 @@ impl LocalInspectionSource {
         let data = match request {
             ActionRequest::Launch {
                 command_id,
-                project_id,
+                folder,
                 preset_id,
                 group_id,
             } => service.execute_management(
                 ManagementCommand::Launch {
                     command_id: parse_command_id(command_id)?,
-                    project_id: parse_project_id(project_id)?,
+                    folder: std::path::PathBuf::from(folder),
                     preset_id: parse_preset_id(preset_id)?,
                     group_id: group_id.as_deref().map(parse_group_id).transpose()?,
                 },
@@ -872,10 +855,6 @@ fn paginated<T: serde::Serialize>(
     })
 }
 
-fn parse_project_id(value: &str) -> Result<ProjectId, SourceError> {
-    value.parse().map_err(|_| SourceError::InvalidInput)
-}
-
 fn parse_command_id(value: &str) -> Result<CommandId, SourceError> {
     value.parse().map_err(|_| SourceError::InvalidInput)
 }
@@ -1100,19 +1079,15 @@ mod tests {
 
     use crate::{ActionPolicy, ApprovedAction};
     use multiplex_domain::{
-        ActivityAggregate, AddProject, ArtifactCancellation, ArtifactId, HostedSession,
+        ActivityAggregate, ArtifactCancellation, ArtifactId, CanonicalPath, HostedSession,
         OutputSequence, PositionKey, Revision, SessionTitle, TitleSource,
     };
-    use multiplex_store::{ArtifactIngestRequest, ProjectRepository, SessionRepository};
+    use multiplex_store::{ArtifactIngestRequest, SessionRepository};
 
     #[test]
     fn invalid_identifiers_never_become_paths() {
         assert_eq!(
             parse_session_id("../../etc/passwd"),
-            Err(SourceError::InvalidInput)
-        );
-        assert_eq!(
-            parse_project_id("not-a-uuid"),
             Err(SourceError::InvalidInput)
         );
     }
@@ -1157,30 +1132,18 @@ mod tests {
         let config_root = temp.path().join("config");
         let metadata_root = config_root.join("agent-workspace");
         let data_root = config_root.join("durable-sessions");
-        let project_root = temp.path().join("project");
-        fs::create_dir_all(&project_root).expect("project fixture");
-        let project_id = "00000000-0000-0000-0000-000000000001"
-            .parse::<ProjectId>()
-            .expect("project ID");
+        let folder_root = temp.path().join("folder");
+        fs::create_dir_all(&folder_root).expect("folder fixture");
         let session_id = "00000000-0000-0000-0000-000000000003"
             .parse::<HostedSessionId>()
             .expect("session ID");
-        let projects = ProjectRepository::open(&metadata_root).expect("project repository");
-        projects
-            .add_project(AddProject {
-                id: project_id,
-                root: project_root,
-                display_name: Some("MCP Fixture".to_string()),
-                expected: Revision::ZERO,
-            })
-            .expect("seed project");
         let sessions =
             SessionRepository::open(&metadata_root, &data_root).expect("session repository");
         sessions
             .create_session(
                 HostedSession {
                     id: session_id,
-                    project_id,
+                    folder: CanonicalPath::resolve(&folder_root).expect("folder"),
                     group_id: None,
                     preset_id: None,
                     title: SessionTitle::new("MCP Session").expect("session title"),
@@ -1235,14 +1198,9 @@ mod tests {
             temp.path().join("missing-host"),
         ));
         let cancellation = Cancellation::default();
-        let projects = source
-            .inspect(InspectionRequest::Projects, 0, 10, &cancellation)
-            .expect("projects inspect");
-        assert_eq!(projects.data["projects"][0]["name"], "MCP Fixture");
         let sessions = source
             .inspect(
                 InspectionRequest::Sessions {
-                    project_id: None,
                     state: None,
                     include_archived: false,
                 },
@@ -1293,7 +1251,7 @@ mod tests {
                 grant_id: "00000000-0000-0000-0000-000000000006".to_string(),
                 expires_at_unix_ms: now_millis().saturating_add(60_000),
                 actions: vec![ApprovedAction::CreateArtifact],
-                project_ids: Vec::new(),
+                folders: Vec::new(),
                 session_ids: vec![session_id.to_string()],
                 browser_origins: Vec::new(),
             })

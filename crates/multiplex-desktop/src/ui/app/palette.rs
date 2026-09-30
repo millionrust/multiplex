@@ -23,7 +23,6 @@ use crate::ui::path::remote_parent_path;
 pub(super) enum PaletteCategory {
     Attention,
     Sessions,
-    Projects,
     Groups,
     Presets,
     Actions,
@@ -36,12 +35,11 @@ impl PaletteCategory {
         match self {
             Self::Attention => 0,
             Self::Sessions => 1,
-            Self::Projects => 2,
-            Self::Groups => 3,
-            Self::Presets => 4,
-            Self::Actions => 5,
-            Self::Archive => 6,
-            Self::Commands => 7,
+            Self::Groups => 2,
+            Self::Presets => 3,
+            Self::Actions => 4,
+            Self::Archive => 5,
+            Self::Commands => 6,
         }
     }
 }
@@ -1033,7 +1031,6 @@ mod tests {
             id: document_id,
             category: SearchCategory::Archive,
             title: "Build retained".to_string(),
-            project_label: Some("Console".to_string()),
             group_label: Some("Auth".to_string()),
             preset_label: None,
             runtime_label: Some("codex".to_string()),
@@ -1044,7 +1041,6 @@ mod tests {
             action: SearchAction::OpenSession(id),
             score: ScoreTuple {
                 match_quality: 3,
-                current_project: 1,
                 actionable_status: 1,
                 pinned: 1,
                 position: PositionKey::FIRST,
@@ -1056,7 +1052,7 @@ mod tests {
         let candidate = super::super::global_search::search_result_candidate(&result);
         assert_eq!(candidate.category, PaletteCategory::Archive);
         assert_eq!(candidate.status, Some(SearchStatus::Done));
-        assert_eq!(candidate.detail, "Console / Auth / codex");
+        assert_eq!(candidate.detail, "Auth / codex");
         assert_eq!(candidate.highlights, vec![highlight]);
         assert!(candidate.pinned);
         assert_eq!(
@@ -1070,16 +1066,12 @@ mod tests {
         let categories = [
             PaletteCategory::Attention,
             PaletteCategory::Sessions,
-            PaletteCategory::Projects,
             PaletteCategory::Groups,
             PaletteCategory::Presets,
             PaletteCategory::Actions,
             PaletteCategory::Archive,
             PaletteCategory::Commands,
         ];
-        assert_eq!(
-            categories.map(PaletteCategory::rank),
-            [0, 1, 2, 3, 4, 5, 6, 7]
-        );
+        assert_eq!(categories.map(PaletteCategory::rank), [0, 1, 2, 3, 4, 5, 6]);
     }
 }

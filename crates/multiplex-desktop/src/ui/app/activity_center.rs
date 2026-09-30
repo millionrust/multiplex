@@ -740,7 +740,7 @@ pub(super) mod tests {
 
     use multiplex_domain::{
         ActivityAggregate, ActivityConfidence, ActivitySourceKind, HostSequence,
-        HostedSessionState, OccupantGeneration, OutputSequence, PositionKey, ProjectId, Revision,
+        HostedSessionState, OccupantGeneration, OutputSequence, PositionKey, Revision,
         SessionTitle, TitleSource,
     };
 
@@ -798,7 +798,7 @@ pub(super) mod tests {
         const TEST_TITLE: &str = "Private title";
         HostedSession {
             id: HostedSessionId::new(),
-            project_id: ProjectId::new(),
+            folder: multiplex_domain::CanonicalPath::resolve(&std::env::temp_dir()).unwrap(),
             group_id: None,
             preset_id: None,
             title: SessionTitle::new(TEST_TITLE).unwrap(),

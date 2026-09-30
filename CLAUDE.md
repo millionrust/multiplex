@@ -5,14 +5,17 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 ## Current product shape
 
 - Host library UI inspired by Terminus-style launchers, with groups, tags, vaults, batch selection, and bulk actions.
-- A Project is derived from the folder a session starts in — the Git root above it, or the folder
-  itself — and reused when that folder is already known, so nobody declares one first. New Session
-  with no project asks for the folder instead of refusing.
-- Workflow navigation surfaces Activity, Projects, Connections, Sessions, Files,
-  Devices, and Settings as primary destinations; specialized presets, vaults, keys,
+- There are no Projects. A session records the folder it runs in and nothing else stands between
+  them; New Session asks for the folder. Sessions are organized only by groups, which live in the
+  store's `library.json` beside managed worktrees. A store from 0.0.5 or earlier is carried
+  forward once on open (`multiplex-store/src/legacy_projects.rs`): its groups and worktrees move
+  from `projects.json`, each session is given its Project's folder, and `projects.json` is renamed
+  to `projects.migrated.json` rather than deleted.
+- Workflow navigation surfaces Activity, Connections, Sessions, Files, Devices, and Settings
+  (Cmd+1 to Cmd+6) as primary destinations; specialized presets, vaults, keys,
   snippets, known hosts, and logs remain available as advanced tools.
 - Sessions presents the authoritative active or archived typed Session library across
-  all Projects and both app-attached and durable ownership routes, with Project, preset,
+  both app-attached and durable ownership routes, organized by group, with folder, preset,
   and ownership context on each row.
 - Files browses the local disk beside a connected host's files over SFTP. It used to carry a
   second tab holding a library of every Session artifact; that index was removed because nothing

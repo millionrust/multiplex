@@ -35,7 +35,10 @@ pub struct ActionPolicy {
     pub grant_id: String,
     pub expires_at_unix_ms: u64,
     pub actions: Vec<ApprovedAction>,
-    pub project_ids: Vec<String>,
+    /// Folders a launch may start a session in. A project used to stand in for one of these;
+    /// with projects gone the grant names the folder itself, and the comparison is on the
+    /// canonical path rather than the text, so a symlink or a `..` cannot widen the grant.
+    pub folders: Vec<String>,
     pub session_ids: Vec<String>,
     #[serde(default)]
     pub browser_origins: Vec<String>,
@@ -297,8 +300,8 @@ impl ActionPolicyStore {
         {
             return Err(SourceError::PermissionDenied);
         }
-        let allowed_scope = match (request.project_scope(), request.session_scope()) {
-            (Some(id), None) => policy.project_ids.iter().any(|candidate| candidate == id),
+        let allowed_scope = match (request.folder_scope(), request.session_scope()) {
+            (Some(folder), None) => folder_is_granted(folder, &policy.folders),
             (None, Some(id)) => policy.session_ids.iter().any(|candidate| candidate == id),
             _ => false,
         };
@@ -359,7 +362,7 @@ impl ActionPolicyStore {
             "grant_id": grant_id,
             "command_id": request.command_id(),
             "action": request.kind(),
-            "scope_kind": if request.project_scope().is_some() { "project" } else { "session" },
+            "scope_kind": if request.folder_scope().is_some() { "folder" } else { "session" },
             "outcome": outcome,
         });
         let mut bytes = serde_json::to_vec(&record).map_err(|_| SourceError::Inconsistent)?;
@@ -416,15 +419,15 @@ fn validate_policy(policy: &ActionPolicy) -> Result<(), SourceError> {
             .is_err()
         || policy.actions.is_empty()
         || policy.actions.len() > ApprovedAction::ALL.len()
-        || policy.project_ids.len() > MAX_SCOPE_IDS
+        || policy.folders.len() > MAX_SCOPE_IDS
         || policy.session_ids.len() > MAX_SCOPE_IDS
         || policy.browser_origins.len() > 32
         || policy.expires_at_unix_ms <= now
         || policy.expires_at_unix_ms > now.saturating_add(24 * 60 * 60 * 1_000)
         || policy
-            .project_ids
+            .folders
             .iter()
-            .any(|id| id.parse::<multiplex_domain::ProjectId>().is_err())
+            .any(|folder| folder.is_empty() || folder.len() > multiplex_domain::MAX_PATH_BYTES)
         || policy
             .session_ids
             .iter()
@@ -598,9 +601,39 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
 
-    const PROJECT: &str = "00000000-0000-0000-0000-000000000001";
     const SESSION: &str = "00000000-0000-0000-0000-000000000002";
     const COMMAND: &str = "00000000-0000-0000-0000-000000000003";
+
+    #[test]
+    fn a_folder_grant_matches_the_folder_and_nothing_a_path_can_dress_up_as_it() {
+        let root = tempfile::tempdir().unwrap();
+        let granted = root.path().join("granted");
+        let other = root.path().join("other");
+        std::fs::create_dir_all(&granted).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        let grant = vec![granted.display().to_string()];
+
+        assert!(folder_is_granted(&granted.display().to_string(), &grant));
+        // The same folder written another way is still that folder.
+        let roundabout = granted.join("..").join("granted");
+        assert!(folder_is_granted(&roundabout.display().to_string(), &grant));
+        // A `..` that leaves the granted folder is somewhere else.
+        let escape = granted.join("..").join("other");
+        assert!(!folder_is_granted(&escape.display().to_string(), &grant));
+        // A folder that does not exist cannot be granted, nor can text that merely starts with
+        // the granted path.
+        assert!(!folder_is_granted(
+            &root.path().join("granted-not").display().to_string(),
+            &grant
+        ));
+        #[cfg(unix)]
+        {
+            // A link inside the granted folder that points out of it resolves to where it points.
+            let link = granted.join("link");
+            std::os::unix::fs::symlink(&other, &link).unwrap();
+            assert!(!folder_is_granted(&link.display().to_string(), &grant));
+        }
+    }
 
     fn policy(actions: Vec<ApprovedAction>) -> ActionPolicy {
         ActionPolicy {
@@ -608,7 +641,7 @@ mod tests {
             grant_id: "00000000-0000-0000-0000-000000000004".to_string(),
             expires_at_unix_ms: now_millis().saturating_add(60_000),
             actions,
-            project_ids: vec![PROJECT.to_string()],
+            folders: vec![std::env::temp_dir().display().to_string()],
             session_ids: vec![SESSION.to_string()],
             browser_origins: Vec::new(),
         }
@@ -760,4 +793,20 @@ mod tests {
         assert!(!audit.contains("example.com"));
         assert!(!receipts.contains("example.com"));
     }
+}
+
+/// Whether `folder` is one the grant named.
+///
+/// Both sides are canonicalised before they are compared: the grant is a list of folders a
+/// person approved, and text comparison would let a symlink or a `..` stand in for one of them.
+/// A folder that cannot be resolved is not granted.
+fn folder_is_granted(folder: &str, granted: &[String]) -> bool {
+    let Ok(requested) = multiplex_domain::CanonicalPath::resolve(std::path::Path::new(folder))
+    else {
+        return false;
+    };
+    granted.iter().any(|candidate| {
+        multiplex_domain::CanonicalPath::resolve(std::path::Path::new(candidate))
+            .is_ok_and(|granted| granted.identity() == requested.identity())
+    })
 }

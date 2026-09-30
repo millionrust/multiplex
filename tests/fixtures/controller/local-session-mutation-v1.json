@@ -2,7 +2,6 @@
   "schema_version": 1,
   "initial": {
     "session_id": "00000000-0000-0000-0000-000000000003",
-    "project_id": "00000000-0000-0000-0000-000000000001",
     "preset_id": "00000000-0000-0000-0000-000000000002",
     "title": "Conformance session",
     "lifecycle": "exited",
@@ -14,7 +13,6 @@
     "repository_revision": 1,
     "session": {
       "id": "00000000-0000-0000-0000-000000000003",
-      "project_id": "00000000-0000-0000-0000-000000000001",
       "preset_id": "00000000-0000-0000-0000-000000000002",
       "title": "Conformance session",
       "title_source": "manual",
@@ -37,7 +35,6 @@
         "repository_revision": 2,
         "session": {
           "id": "00000000-0000-0000-0000-000000000003",
-          "project_id": "00000000-0000-0000-0000-000000000001",
           "preset_id": "00000000-0000-0000-0000-000000000002",
           "title": "Conformance renamed",
           "title_source": "manual",
@@ -60,7 +57,6 @@
         "repository_revision": 3,
         "session": {
           "id": "00000000-0000-0000-0000-000000000003",
-          "project_id": "00000000-0000-0000-0000-000000000001",
           "preset_id": "00000000-0000-0000-0000-000000000002",
           "title": "Conformance renamed",
           "title_source": "manual",
@@ -82,7 +78,6 @@
         "repository_revision": 4,
         "session": {
           "id": "00000000-0000-0000-0000-000000000003",
-          "project_id": "00000000-0000-0000-0000-000000000001",
           "preset_id": "00000000-0000-0000-0000-000000000002",
           "title": "Conformance renamed",
           "title_source": "manual",
@@ -104,7 +99,6 @@
         "repository_revision": 5,
         "session": {
           "id": "00000000-0000-0000-0000-000000000003",
-          "project_id": "00000000-0000-0000-0000-000000000001",
           "preset_id": "00000000-0000-0000-0000-000000000002",
           "title": "Conformance renamed",
           "title_source": "manual",
@@ -126,7 +120,6 @@
         "repository_revision": 6,
         "session": {
           "id": "00000000-0000-0000-0000-000000000003",
-          "project_id": "00000000-0000-0000-0000-000000000001",
           "preset_id": "00000000-0000-0000-0000-000000000002",
           "title": "Conformance renamed",
           "title_source": "manual",
@@ -153,7 +146,6 @@
       "repository_revision": 7,
       "session": {
         "id": "00000000-0000-0000-0000-000000000003",
-        "project_id": "00000000-0000-0000-0000-000000000001",
         "preset_id": "00000000-0000-0000-0000-000000000002",
         "title": "Conformance renamed",
         "title_source": "manual",

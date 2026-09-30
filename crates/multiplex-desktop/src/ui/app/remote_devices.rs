@@ -563,7 +563,7 @@ impl RemoteDevicesState {
         crate::controller::background_service::request_yield(&durable_runtime_parent(&app_root));
         let descriptor = ListenerLaunchDescriptor::new(
             crate::storage::controller_store_dir().map_err(|_| ())?,
-            crate::storage::project_store_dir().map_err(|_| ())?,
+            crate::storage::library_store_dir().map_err(|_| ())?,
             app_root.join("durable-sessions"),
             durable_runtime_parent(&app_root),
             self.network_revision,

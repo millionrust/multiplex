@@ -480,7 +480,6 @@ impl DesktopPaneRegistry {
                     runtime: Some(pane.runtime.clone()),
                     capabilities,
                     title: pane.title.clone(),
-                    project: None,
                     group: None,
                     lifecycle: "live".to_owned(),
                     activity: "unknown".to_owned(),

@@ -532,7 +532,6 @@ static_message!(health_not_scanned, HealthNotScannedArgs);
 static_message!(health_scanning, HealthScanningArgs);
 static_message!(health_scan_action, HealthScanActionArgs);
 static_message!(health_cancel_action, HealthCancelActionArgs);
-static_message!(health_project_session_label, HealthProjectSessionLabelArgs);
 static_message!(health_palette_label, HealthPaletteLabelArgs);
 static_message!(health_store_readable_label, HealthStoreReadableLabelArgs);
 static_message!(health_store_version_label, HealthStoreVersionLabelArgs);
@@ -544,10 +543,6 @@ static_message!(health_state_corrupt, HealthStateCorruptArgs);
 static_message!(health_state_newer, HealthStateNewerArgs);
 static_message!(health_state_permission, HealthStatePermissionArgs);
 static_message!(health_state_unavailable, HealthStateUnavailableArgs);
-static_message!(
-    health_rebuild_project_session_action,
-    HealthRebuildProjectSessionActionArgs
-);
 static_message!(
     health_rebuild_palette_action,
     HealthRebuildPaletteActionArgs
@@ -1396,7 +1391,10 @@ static_message!(artifact_gallery_title, ArtifactGalleryTitleArgs);
 static_message!(artifact_private_row, ArtifactPrivateRowArgs);
 static_message!(artifact_private_preview, ArtifactPrivatePreviewArgs);
 static_message!(preset_private_row, PresetPrivateRowArgs);
-static_message!(product_private_project_row, ProductPrivateProjectRowArgs);
+static_message!(
+    product_private_repository_row,
+    ProductPrivateRepositoryRowArgs
+);
 static_message!(worktree_private_reference, WorktreePrivateReferenceArgs);
 static_message!(worktree_private_path, WorktreePrivatePathArgs);
 static_message!(artifact_gallery_description, ArtifactGalleryDescriptionArgs);
@@ -1583,7 +1581,6 @@ pub fn status_connecting(host: impl Into<String>) -> String {
     text(&StatusConnectingArgs::new(UserData::new(host)))
 }
 
-static_message!(projects_nav_label, ProjectsNavLabelArgs);
 static_message!(activity_center_nav_label, ActivityCenterNavLabelArgs);
 static_message!(activity_center_title, ActivityCenterTitleArgs);
 static_message!(activity_center_description, ActivityCenterDescriptionArgs);
@@ -1716,30 +1713,9 @@ pub fn activity_age_months(count: usize) -> String {
 pub fn activity_age_years(count: usize) -> String {
     text(&ActivityAgeYearsArgs::new(Count(count as u64)))
 }
-static_message!(projects_title, ProjectsTitleArgs);
-static_message!(projects_subtitle, ProjectsSubtitleArgs);
-static_message!(
-    projects_shortcut_description,
-    ProjectsShortcutDescriptionArgs
-);
-static_message!(projects_loading, ProjectsLoadingArgs);
-static_message!(projects_ready_status, ProjectsReadyStatusArgs);
-static_message!(projects_add_action, ProjectsAddActionArgs);
-static_message!(projects_empty_title, ProjectsEmptyTitleArgs);
-static_message!(projects_empty_description, ProjectsEmptyDescriptionArgs);
-static_message!(
-    projects_empty_start_session_action,
-    ProjectsEmptyStartSessionActionArgs
-);
-static_message!(projects_folder_safety, ProjectsFolderSafetyArgs);
-static_message!(projects_local_only, ProjectsLocalOnlyArgs);
 static_message!(session_sidebar_title, SessionSidebarTitleArgs);
 static_message!(session_sidebar_subtitle, SessionSidebarSubtitleArgs);
 static_message!(session_sidebar_empty, SessionSidebarEmptyArgs);
-static_message!(
-    session_sidebar_select_project,
-    SessionSidebarSelectProjectArgs
-);
 static_message!(global_palette_title, GlobalPaletteTitleArgs);
 static_message!(global_palette_placeholder, GlobalPalettePlaceholderArgs);
 static_message!(global_palette_searching, GlobalPaletteSearchingArgs);
@@ -1764,10 +1740,6 @@ static_message!(
     GlobalPaletteCategorySessionsArgs
 );
 static_message!(
-    global_palette_category_projects,
-    GlobalPaletteCategoryProjectsArgs
-);
-static_message!(
     global_palette_category_groups,
     GlobalPaletteCategoryGroupsArgs
 );
@@ -1786,10 +1758,6 @@ static_message!(
 static_message!(
     global_palette_category_commands,
     GlobalPaletteCategoryCommandsArgs
-);
-static_message!(
-    global_palette_add_project_action,
-    GlobalPaletteAddProjectActionArgs
 );
 static_message!(
     global_palette_new_session_action,
@@ -1883,35 +1851,13 @@ pub fn group_move_to_action(name: impl Into<String>) -> String {
 pub fn group_repair_status(count: usize) -> String {
     text(&GroupRepairStatusArgs::new(Count(count as u64)))
 }
-static_message!(project_review_title, ProjectReviewTitleArgs);
-static_message!(project_validating, ProjectValidatingArgs);
-static_message!(project_label_field, ProjectLabelFieldArgs);
-static_message!(project_add_confirm, ProjectAddConfirmArgs);
-static_message!(project_status_available, ProjectStatusAvailableArgs);
-static_message!(project_status_unavailable, ProjectStatusUnavailableArgs);
-static_message!(
-    project_status_permission_denied,
-    ProjectStatusPermissionDeniedArgs
-);
-static_message!(project_remove_action, ProjectRemoveActionArgs);
-static_message!(project_files_stay, ProjectFilesStayArgs);
-static_message!(project_undo_action, ProjectUndoActionArgs);
-static_message!(project_undo_expired, ProjectUndoExpiredArgs);
-static_message!(project_store_recovered, ProjectStoreRecoveredArgs);
-static_message!(project_store_corrupt, ProjectStoreCorruptArgs);
-static_message!(project_store_newer, ProjectStoreNewerArgs);
-static_message!(project_store_unavailable, ProjectStoreUnavailableArgs);
-static_message!(project_error_empty_path, ProjectErrorEmptyPathArgs);
-static_message!(
-    project_error_permission_denied,
-    ProjectErrorPermissionDeniedArgs
-);
-static_message!(project_error_unavailable, ProjectErrorUnavailableArgs);
-static_message!(project_error_not_directory, ProjectErrorNotDirectoryArgs);
-static_message!(project_error_path_too_long, ProjectErrorPathTooLongArgs);
-static_message!(project_error_invalid_label, ProjectErrorInvalidLabelArgs);
-static_message!(project_error_stale, ProjectErrorStaleArgs);
-static_message!(project_error_generic, ProjectErrorGenericArgs);
+static_message!(organization_undo_expired, OrganizationUndoExpiredArgs);
+static_message!(library_loading, LibraryLoadingArgs);
+static_message!(library_store_recovered, LibraryStoreRecoveredArgs);
+static_message!(library_store_corrupt, LibraryStoreCorruptArgs);
+static_message!(library_store_newer, LibraryStoreNewerArgs);
+static_message!(library_store_unavailable, LibraryStoreUnavailableArgs);
+static_message!(folder_unavailable, FolderUnavailableArgs);
 static_message!(presets_nav_label, PresetsNavLabelArgs);
 static_message!(presets_title, PresetsTitleArgs);
 static_message!(presets_subtitle, PresetsSubtitleArgs);
@@ -1936,7 +1882,10 @@ static_message!(
     preset_working_directory_field,
     PresetWorkingDirectoryFieldArgs
 );
-static_message!(preset_working_project_root, PresetWorkingProjectRootArgs);
+static_message!(
+    preset_working_session_folder,
+    PresetWorkingSessionFolderArgs
+);
 static_message!(preset_working_home, PresetWorkingHomeArgs);
 static_message!(preset_working_subdirectory, PresetWorkingSubdirectoryArgs);
 static_message!(preset_subdirectory_field, PresetSubdirectoryFieldArgs);
@@ -2129,26 +2078,6 @@ pub fn runtime_registry_capabilities(capabilities: impl Into<String>) -> String 
     )))
 }
 
-pub fn project_review_description(path: impl Into<String>) -> String {
-    text(&ProjectReviewDescriptionArgs::new(UserData::new(path)))
-}
-
-pub fn project_added_status(name: impl Into<String>) -> String {
-    text(&ProjectAddedStatusArgs::new(UserData::new(name)))
-}
-
-pub fn project_duplicate_status(name: impl Into<String>) -> String {
-    text(&ProjectDuplicateStatusArgs::new(UserData::new(name)))
-}
-
-pub fn project_removed_status(name: impl Into<String>) -> String {
-    text(&ProjectRemovedStatusArgs::new(UserData::new(name)))
-}
-
-pub fn project_restored_status(name: impl Into<String>) -> String {
-    text(&ProjectRestoredStatusArgs::new(UserData::new(name)))
-}
-
 pub fn preset_saved_status(name: impl Into<String>) -> String {
     text(&PresetSavedStatusArgs::new(UserData::new(name)))
 }
@@ -2169,11 +2098,10 @@ pub fn preset_argument_count(count: usize) -> String {
     text(&PresetArgumentCountArgs::new(Count(count as u64)))
 }
 
-static_message!(new_session_action, NewSessionActionArgs);
 static_message!(new_session_title, NewSessionTitleArgs);
 static_message!(new_session_warning, NewSessionWarningArgs);
 static_message!(new_session_durable_copy, NewSessionDurableCopyArgs);
-static_message!(new_session_project_field, NewSessionProjectFieldArgs);
+static_message!(new_session_folder_field, NewSessionFolderFieldArgs);
 static_message!(new_session_preset_field, NewSessionPresetFieldArgs);
 static_message!(
     new_session_working_directory_field,
@@ -2237,7 +2165,7 @@ static_message!(
 );
 static_message!(new_session_preset_required, NewSessionPresetRequiredArgs);
 static_message!(new_session_review_stale, NewSessionReviewStaleArgs);
-static_message!(new_session_project_missing, NewSessionProjectMissingArgs);
+static_message!(new_session_folder_missing, NewSessionFolderMissingArgs);
 static_message!(new_session_preset_missing, NewSessionPresetMissingArgs);
 static_message!(new_session_cancelled_clean, NewSessionCancelledCleanArgs);
 static_message!(
@@ -2249,21 +2177,14 @@ static_message!(
     NewSessionExitedBeforeReadyArgs
 );
 static_message!(new_session_platform_home, NewSessionPlatformHomeArgs);
-static_message!(
-    new_session_unavailable_value,
-    NewSessionUnavailableValueArgs
-);
 
 pub fn new_session_start_error(detail: impl Into<String>) -> String {
     text(&NewSessionStartErrorArgs::new(UserData::new(detail)))
 }
 
-pub fn new_session_workspace_title(
-    project: impl Into<String>,
-    preset: impl Into<String>,
-) -> String {
+pub fn new_session_workspace_title(folder: impl Into<String>, preset: impl Into<String>) -> String {
     text(&NewSessionWorkspaceTitleArgs::new(
-        UserData::new(project),
+        UserData::new(folder),
         UserData::new(preset),
     ))
 }
@@ -3053,33 +2974,6 @@ mod tests {
 
         set_development_locale("en-US").unwrap();
         assert_eq!(common_save(), "Save");
-    }
-
-    #[test]
-    fn project_review_survives_expanded_and_bidirectional_locales() {
-        let _guard = LOCALE_TEST_LOCK.lock().unwrap();
-        let project_name = String::from("Console workspace");
-        let selected_path = String::from("/tmp/Console workspace");
-        let focused_field = String::from("project-label");
-
-        set_development_locale("en-XA").unwrap();
-        let expanded = project_review_description(selected_path.clone());
-        assert!(expanded.contains(&selected_path));
-        assert_eq!(project_name, "Console workspace");
-        assert_eq!(focused_field, "project-label");
-
-        set_development_locale("ar-XB").unwrap();
-        let bidirectional = project_review_description(selected_path.clone());
-        assert!(bidirectional.contains(&selected_path));
-        assert_eq!(
-            current_locale().direction(),
-            multiplex_ui_contract::TextDirection::RightToLeft
-        );
-        assert_eq!(project_name, "Console workspace");
-        assert_eq!(focused_field, "project-label");
-
-        set_development_locale("en-US").unwrap();
-        assert!(project_review_description(selected_path.clone()).contains(&selected_path));
     }
 
     #[test]

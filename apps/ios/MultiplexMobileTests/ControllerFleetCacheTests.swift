@@ -107,7 +107,6 @@ final class ControllerFleetCacheTests: XCTestCase {
         return ControllerSessionSummary(
             id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index)) ?? UUID(),
             title: expanded ? long : "Session \(index)",
-            project: expanded ? long : nil,
             group: expanded ? long : nil,
             lifecycle: "running",
             activity: nil,

@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use base64::Engine as _;
 use multiplex_cli::Cancellation;
-use multiplex_domain::{HostedSessionId, ProjectId};
+use multiplex_domain::HostedSessionId;
 use rand::RngCore as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -27,7 +27,6 @@ const MAX_TOOL_RESULT_BYTES: usize = 512 * 1024;
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Capability {
     InspectStatus,
-    ReadProjects,
     ReadConnections,
     ReadSessions,
     ReadRuntime,
@@ -47,9 +46,8 @@ pub enum Capability {
 }
 
 impl Capability {
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 17] = [
         Self::InspectStatus,
-        Self::ReadProjects,
         Self::ReadConnections,
         Self::ReadSessions,
         Self::ReadRuntime,
@@ -71,7 +69,6 @@ impl Capability {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::InspectStatus => "status.read",
-            Self::ReadProjects => "projects.read",
             Self::ReadConnections => "connections.read",
             Self::ReadSessions => "sessions.read",
             Self::ReadRuntime => "runtime.read",
@@ -103,7 +100,6 @@ impl Default for CapabilitySet {
     fn default() -> Self {
         Self(BTreeSet::from([
             Capability::InspectStatus,
-            Capability::ReadProjects,
             Capability::ReadConnections,
             Capability::ReadSessions,
             Capability::ReadRuntime,
@@ -119,7 +115,6 @@ impl CapabilitySet {
     pub fn read_only_all() -> Self {
         Self(BTreeSet::from([
             Capability::InspectStatus,
-            Capability::ReadProjects,
             Capability::ReadConnections,
             Capability::ReadSessions,
             Capability::ReadRuntime,
@@ -144,8 +139,14 @@ impl CapabilitySet {
         }
         let mut capabilities = BTreeSet::new();
         for item in value.split(',') {
+            let item = item.trim();
+            // Projects are gone, and so is what this granted; a configuration written before
+            // then still starts rather than failing on a name that grants nothing now.
+            if item == RETIRED_PROJECTS_CAPABILITY {
+                continue;
+            }
             let capability =
-                Capability::parse(item.trim()).ok_or(ConfigurationError::InvalidCapabilities)?;
+                Capability::parse(item).ok_or(ConfigurationError::InvalidCapabilities)?;
             capabilities.insert(capability);
         }
         Ok(Self(capabilities))
@@ -159,6 +160,8 @@ impl CapabilitySet {
         self.0.iter().map(|value| value.as_str()).collect()
     }
 }
+
+const RETIRED_PROJECTS_CAPABILITY: &str = "projects.read";
 
 #[derive(Clone, Debug)]
 pub struct ServerConfiguration {
@@ -232,6 +235,12 @@ mod capability_tests {
         assert_eq!(
             CapabilitySet::parse("sessions.write"),
             Err(ConfigurationError::InvalidCapabilities)
+        );
+        assert_eq!(
+            CapabilitySet::parse("projects.read,status.read")
+                .expect("a retired capability is ignored")
+                .display_names(),
+            vec!["status.read"]
         );
         assert_eq!(
             CapabilitySet::parse(&"x".repeat(513)),
@@ -737,16 +746,6 @@ struct PageArguments {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ProjectArguments {
-    project_id: String,
-    #[serde(default)]
-    cursor: Option<String>,
-    #[serde(default)]
-    page_size: Option<usize>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct SessionArguments {
     session_id: String,
 }
@@ -765,8 +764,6 @@ struct SessionPageArguments {
 #[serde(deny_unknown_fields)]
 struct SessionListArguments {
     #[serde(default)]
-    project_id: Option<String>,
-    #[serde(default)]
     state: Option<String>,
     #[serde(default)]
     include_archived: bool,
@@ -780,7 +777,7 @@ struct SessionListArguments {
 #[serde(deny_unknown_fields)]
 struct LaunchArguments {
     command_id: String,
-    project_id: String,
+    folder: String,
     preset_id: String,
     #[serde(default)]
     group_id: Option<String>,
@@ -897,7 +894,6 @@ struct ToolDefinition {
 #[derive(Clone, Copy)]
 enum ToolArguments {
     Empty,
-    Project,
     Session,
     SessionList,
     Launch,
@@ -913,11 +909,10 @@ enum ToolArguments {
 impl ToolDefinition {
     fn schema(&self) -> Value {
         let (mut properties, required, paginated) = match self.arguments {
-            ToolArguments::Empty => (json!({}), json!([]), self.name == "termirust_list_projects"),
-            ToolArguments::Project => (
-                json!({ "project_id": { "type": "string", "format": "uuid" } }),
-                json!(["project_id"]),
-                true,
+            ToolArguments::Empty => (
+                json!({}),
+                json!([]),
+                self.name == "termirust_list_connections",
             ),
             ToolArguments::Session => (
                 json!({ "session_id": { "type": "string", "format": "uuid" } }),
@@ -929,7 +924,6 @@ impl ToolDefinition {
             ),
             ToolArguments::SessionList => (
                 json!({
-                    "project_id": { "type": "string", "format": "uuid" },
                     "state": { "type": "string" },
                     "include_archived": { "type": "boolean", "default": false }
                 }),
@@ -939,11 +933,11 @@ impl ToolDefinition {
             ToolArguments::Launch => (
                 json!({
                     "command_id": uuid_schema(),
-                    "project_id": uuid_schema(),
+                    "folder": { "type": "string" },
                     "preset_id": uuid_schema(),
                     "group_id": uuid_schema()
                 }),
-                json!(["command_id", "project_id", "preset_id"]),
+                json!(["command_id", "folder", "preset_id"]),
                 false,
             ),
             ToolArguments::Wait => (
@@ -1083,20 +1077,10 @@ impl ToolDefinition {
                 parse_value::<EmptyArguments>(value)?;
                 Ok(parsed(InspectionRequest::Status, None, None))
             }
-            "termirust_list_projects" => {
+            "termirust_list_connections" => {
                 let value = parse_value::<PageArguments>(value)?;
                 Ok(parsed(
-                    InspectionRequest::Projects,
-                    value.cursor,
-                    value.page_size,
-                ))
-            }
-            "termirust_list_connections" => {
-                let value = parse_value::<ProjectArguments>(value)?;
-                Ok(parsed(
-                    InspectionRequest::Connections {
-                        project_id: canonical_project_id(value.project_id)?,
-                    },
+                    InspectionRequest::Connections,
                     value.cursor,
                     value.page_size,
                 ))
@@ -1105,7 +1089,6 @@ impl ToolDefinition {
                 let value = parse_value::<SessionListArguments>(value)?;
                 Ok(parsed(
                     InspectionRequest::Sessions {
-                        project_id: value.project_id.map(canonical_project_id).transpose()?,
                         state: value.state,
                         include_archived: value.include_archived,
                     },
@@ -1157,7 +1140,7 @@ impl ToolDefinition {
                 let value = parse_value::<LaunchArguments>(value)?;
                 Ok(action(ActionRequest::Launch {
                     command_id: canonical_command_id(value.command_id)?,
-                    project_id: canonical_project_id(value.project_id)?,
+                    folder: value.folder,
                     preset_id: canonical_uuid(value.preset_id, "preset_id must be a UUID")?,
                     group_id: value
                         .group_id
@@ -1295,7 +1278,7 @@ impl ToolDefinition {
     }
 }
 
-const TOOL_DEFINITIONS: [ToolDefinition; 19] = [
+const TOOL_DEFINITIONS: [ToolDefinition; 18] = [
     ToolDefinition {
         name: "termirust_status",
         title: "Inspect Multiplex status",
@@ -1304,23 +1287,16 @@ const TOOL_DEFINITIONS: [ToolDefinition; 19] = [
         arguments: ToolArguments::Empty,
     },
     ToolDefinition {
-        name: "termirust_list_projects",
-        title: "List Multiplex projects",
-        description: "List a bounded page of Project metadata without exposing filesystem paths.",
-        capability: Capability::ReadProjects,
-        arguments: ToolArguments::Empty,
-    },
-    ToolDefinition {
         name: "termirust_list_connections",
-        title: "List Project connections",
-        description: "List a bounded page of typed launch presets for one Project; executable details are omitted.",
+        title: "List launch connections",
+        description: "List a bounded page of typed launch presets; executable details are omitted.",
         capability: Capability::ReadConnections,
-        arguments: ToolArguments::Project,
+        arguments: ToolArguments::Empty,
     },
     ToolDefinition {
         name: "termirust_list_sessions",
         title: "List Multiplex sessions",
-        description: "List bounded Session metadata and activity, with optional Project and lifecycle filters.",
+        description: "List bounded Session metadata and activity, with an optional lifecycle filter.",
         capability: Capability::ReadSessions,
         arguments: ToolArguments::SessionList,
     },
@@ -1355,7 +1331,7 @@ const TOOL_DEFINITIONS: [ToolDefinition; 19] = [
     ToolDefinition {
         name: "termirust_launch_session",
         title: "Launch a Multiplex Session",
-        description: "Launch one reviewed Project preset with a stable command ID. Requires a current Project-scoped local approval.",
+        description: "Launch one reviewed preset in a granted folder with a stable command ID. Requires a current local approval for that folder.",
         capability: Capability::LaunchSessions,
         arguments: ToolArguments::Launch,
     },
@@ -1566,13 +1542,6 @@ fn action(request: ActionRequest) -> ParsedToolArguments {
 
 fn empty_object() -> Value {
     json!({})
-}
-
-fn canonical_project_id(value: String) -> Result<String, ProtocolError> {
-    value
-        .parse::<ProjectId>()
-        .map(|id| id.to_string())
-        .map_err(|_| ProtocolError::invalid_params("project_id must be a UUID"))
 }
 
 fn canonical_session_id(value: String) -> Result<String, ProtocolError> {
@@ -1812,7 +1781,7 @@ mod tests {
                 "termirust_launch_session",
                 json!({
                     "command_id": "not-a-uuid",
-                    "project_id": "00000000-0000-0000-0000-000000000002",
+                    "folder": "/tmp",
                     "preset_id": "00000000-0000-0000-0000-000000000003"
                 }),
             ))
@@ -1837,7 +1806,7 @@ mod tests {
     fn cursor_is_opaque_scoped_and_paginated() {
         let server = ready(CapabilitySet::all());
         let first = server
-            .process(call("termirust_list_projects", json!({})))
+            .process(call("termirust_list_connections", json!({})))
             .expect("first page responds");
         let cursor = first["result"]["structuredContent"]["nextCursor"]
             .as_str()
@@ -1853,7 +1822,7 @@ mod tests {
                 "id": 9,
                 "method": "tools/call",
                 "params": {
-                    "name": "termirust_list_projects",
+                    "name": "termirust_list_connections",
                     "arguments": { "cursor": "50" }
                 }
             }))
@@ -1865,7 +1834,7 @@ mod tests {
                 "id": 10,
                 "method": "tools/call",
                 "params": {
-                    "name": "termirust_list_projects",
+                    "name": "termirust_list_connections",
                     "arguments": { "cursor": cursor, "page_size": 10 }
                 }
             }))
@@ -1915,24 +1884,27 @@ mod tests {
                 .is_none()
         );
         let first = server
-            .process(call("termirust_list_projects", json!({})))
+            .process(call("termirust_list_connections", json!({})))
             .expect("first cursor");
         let expired = first["result"]["structuredContent"]["nextCursor"]
             .as_str()
             .expect("first token")
             .to_string();
         let _replacement = server
-            .process(call("termirust_list_projects", json!({})))
+            .process(call("termirust_list_connections", json!({})))
             .expect("replacement cursor");
         let response = server
             .process(call(
-                "termirust_list_projects",
+                "termirust_list_connections",
                 json!({ "cursor": expired }),
             ))
             .expect("expired cursor responds");
         assert_eq!(response["error"]["code"], -32602);
         let response = server
-            .process(call("termirust_list_projects", json!({ "page_size": 101 })))
+            .process(call(
+                "termirust_list_connections",
+                json!({ "page_size": 101 }),
+            ))
             .expect("oversized page responds");
         assert_eq!(response["error"]["code"], -32602);
     }
@@ -1991,7 +1963,7 @@ mod tests {
             json!({ "jsonrpc": "1.0", "id": 1, "method": "tools/list" }),
             json!({ "jsonrpc": "2.0", "id": null, "method": "tools/list" }),
             json!({ "jsonrpc": "2.0", "id": 1, "method": "sessions/launch" }),
-            call("termirust_list_projects", json!({ "unexpected": true })),
+            call("termirust_list_connections", json!({ "unexpected": true })),
             call(
                 "termirust_get_session",
                 json!({ "session_id": "../../private" }),

@@ -466,7 +466,6 @@ final class ControllerPairingFleetTests: XCTestCase {
         let release = ControllerSessionSummary(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
             title: "Release",
-            project: "Console",
             group: "Deploy",
             lifecycle: "live",
             activity: "busy",
@@ -478,7 +477,6 @@ final class ControllerPairingFleetTests: XCTestCase {
         let monitor = ControllerSessionSummary(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
             title: "Monitor",
-            project: "Console",
             group: "Deploy",
             lifecycle: "live",
             activity: "idle",
@@ -496,7 +494,7 @@ final class ControllerPairingFleetTests: XCTestCase {
         XCTAssertEqual(groups[1].sessions.map(\.id), [release.id, monitor.id])
         XCTAssertEqual(
             ControllerPresentation.sessionGroupTitle(groups[1].id),
-            "\u{2068}Console\u{2069} · \u{2068}Deploy\u{2069}"
+            "\u{2068}Deploy\u{2069}"
         )
     }
 
@@ -507,7 +505,6 @@ final class ControllerPairingFleetTests: XCTestCase {
             runtime: "local_shell",
             capabilities: [.observeSessions, .attachOutput, .sendInput],
             title: "Local Terminal",
-            project: nil,
             group: nil,
             lifecycle: "live",
             activity: "unknown",
@@ -519,7 +516,6 @@ final class ControllerPairingFleetTests: XCTestCase {
         let closed = ControllerSessionSummary(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000021")!,
             title: "Previous task",
-            project: nil,
             group: nil,
             lifecycle: "exited",
             activity: "done",
@@ -927,7 +923,6 @@ private struct Fixture {
     static let session = ControllerSessionSummary(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
         title: "Build agent",
-        project: nil,
         group: nil,
         lifecycle: "running",
         activity: "busy",

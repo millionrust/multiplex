@@ -10,11 +10,10 @@ use std::time::Duration;
 use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 
 use multiplex_domain::{
-    AddProject, CanonicalPath, Group, GroupDestination, GroupError, GroupId, GroupInverseCommand,
-    GroupMutation, GroupName, LocalizedUserText, MAX_GROUPS_PER_PROJECT,
-    MAX_WORKTREE_REGISTRATIONS, ManagedWorktreeId, PositionKey, Project, ProjectError, ProjectId,
-    ProjectService, ProjectSummary, Revision, WorktreeError, WorktreeIntent, WorktreeIntentState,
-    WorktreeRegistration, validate_group_set,
+    CanonicalPath, Group, GroupDestination, GroupError, GroupId, GroupInverseCommand,
+    GroupMutation, GroupName, LocalizedUserText, MAX_GROUPS, MAX_WORKTREE_REGISTRATIONS,
+    ManagedWorktreeId, PathError, PositionKey, Revision, WorktreeError, WorktreeIntent,
+    WorktreeIntentState, WorktreeRegistration, validate_group_set,
 };
 use serde::{Deserialize, Serialize};
 
@@ -23,11 +22,10 @@ use crate::{AtomicWriter, Durability, SystemAtomicWriter, file_lock};
 pub const CURRENT_FORMAT_VERSION: u16 = 1;
 const MINIMUM_READER_VERSION: u16 = 1;
 const MAX_FORMAT_BYTES: u64 = 64 * 1024;
-const MAX_PROJECTS_BYTES: u64 = 4 * 1024 * 1024;
-const MAX_PROJECTS: usize = 1_000;
+const MAX_LIBRARY_BYTES: u64 = 4 * 1024 * 1024;
 const FORMAT_FILE: &str = "format.json";
-const PROJECTS_FILE: &str = "projects.json";
-const PROJECTS_BACKUP_FILE: &str = "projects.last-good.json";
+pub(crate) const LIBRARY_FILE: &str = "library.json";
+const LIBRARY_BACKUP_FILE: &str = "library.last-good.json";
 const LOCK_FILE: &str = "metadata.lock";
 const INTERACTIVE_LOCK_TIMEOUT: Duration = Duration::from_secs(2);
 const LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(10);
@@ -39,21 +37,14 @@ pub enum StoreHealth {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProjectSnapshot {
+pub struct LibrarySnapshot {
     pub revision: Revision,
-    pub projects: Vec<ProjectSummary>,
     pub groups: Vec<Group>,
     pub worktree_intents: Vec<WorktreeIntent>,
     pub worktrees: Vec<WorktreeRegistration>,
     pub health: StoreHealth,
     pub read_only: bool,
     pub durability: Durability,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RemovedProject {
-    pub project: Project,
-    pub groups: Vec<Group>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -77,7 +68,13 @@ pub enum StoreError {
         supported: u16,
     },
     InvalidInstanceId,
-    Domain(ProjectError),
+    /// The caller's revision is not the one on disk, so it read a version that has since moved.
+    StaleRevision {
+        expected: Revision,
+        actual: Revision,
+    },
+    RevisionOverflow,
+    Domain(PathError),
     GroupDomain(GroupError),
     PresetDomain(multiplex_domain::PresetError),
     SessionDomain(multiplex_domain::SessionStateError),
@@ -88,22 +85,26 @@ impl fmt::Display for StoreError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Io { operation, kind } => {
-                write!(formatter, "project store {operation} failed ({kind:?})")
+                write!(formatter, "library store {operation} failed ({kind:?})")
             }
             Self::UnsafeEntry { name } => write!(
                 formatter,
-                "project store entry {name} is not a regular file"
+                "library store entry {name} is not a regular file"
             ),
             Self::TooLarge { name, limit } => write!(
                 formatter,
-                "project store entry {name} exceeds {limit} bytes"
+                "library store entry {name} exceeds {limit} bytes"
             ),
-            Self::Corrupt { name } => write!(formatter, "project store entry {name} is corrupt"),
+            Self::Corrupt { name } => write!(formatter, "library store entry {name} is corrupt"),
             Self::StoreNewer { found, supported } => write!(
                 formatter,
-                "project store format {found} is newer than supported format {supported}"
+                "library store format {found} is newer than supported format {supported}"
             ),
-            Self::InvalidInstanceId => formatter.write_str("project store instance ID is invalid"),
+            Self::InvalidInstanceId => formatter.write_str("library store instance ID is invalid"),
+            Self::StaleRevision { .. } => {
+                formatter.write_str("the library changed; reload required")
+            }
+            Self::RevisionOverflow => formatter.write_str("library revision exhausted"),
             Self::Domain(error) => error.fmt(formatter),
             Self::GroupDomain(error) => error.fmt(formatter),
             Self::PresetDomain(error) => error.fmt(formatter),
@@ -115,8 +116,8 @@ impl fmt::Display for StoreError {
 
 impl std::error::Error for StoreError {}
 
-impl From<ProjectError> for StoreError {
-    fn from(error: ProjectError) -> Self {
+impl From<PathError> for StoreError {
+    fn from(error: PathError) -> Self {
         Self::Domain(error)
     }
 }
@@ -146,7 +147,7 @@ impl From<WorktreeError> for StoreError {
 }
 
 #[derive(Clone)]
-pub struct ProjectRepository {
+pub struct LibraryRepository {
     root: PathBuf,
     writer: Arc<dyn AtomicWriter>,
 }
@@ -161,9 +162,8 @@ struct FormatDocument {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct ProjectsDocument {
+struct LibraryDocument {
     revision: Revision,
-    projects: Vec<Project>,
     #[serde(default)]
     groups: Vec<Group>,
     #[serde(default)]
@@ -172,55 +172,63 @@ struct ProjectsDocument {
     worktrees: Vec<WorktreeRegistration>,
 }
 
-pub(crate) struct ProjectHealthSource {
-    pub revision: Revision,
-    pub projects: Vec<Project>,
+pub(crate) struct LibraryHealthSource {
     pub groups: Vec<Group>,
 }
 
-pub(crate) fn read_project_health_source(
+pub(crate) fn read_library_health_source(
     root: &Path,
-) -> Result<(Vec<u8>, ProjectHealthSource), StoreError> {
-    let bytes = read_regular_bounded(&root.join(PROJECTS_FILE), PROJECTS_FILE, MAX_PROJECTS_BYTES)?;
-    let mut document: ProjectsDocument =
-        serde_json::from_slice(&bytes).map_err(|_| StoreError::Corrupt {
-            name: PROJECTS_FILE,
-        })?;
-    validate_document(&document).map_err(|_| StoreError::Corrupt {
-        name: PROJECTS_FILE,
-    })?;
-    sort_projects(&mut document.projects);
+) -> Result<(Vec<u8>, LibraryHealthSource), StoreError> {
+    let bytes = read_regular_bounded(&root.join(LIBRARY_FILE), LIBRARY_FILE, MAX_LIBRARY_BYTES)?;
+    let mut document: LibraryDocument =
+        serde_json::from_slice(&bytes).map_err(|_| StoreError::Corrupt { name: LIBRARY_FILE })?;
+    validate_document(&document).map_err(|_| StoreError::Corrupt { name: LIBRARY_FILE })?;
     sort_groups(&mut document.groups);
     Ok((
         bytes,
-        ProjectHealthSource {
-            revision: document.revision,
-            projects: document.projects,
+        LibraryHealthSource {
             groups: document.groups,
         },
     ))
 }
 
-pub(crate) fn validate_project_metadata_bytes(bytes: &[u8]) -> Result<Revision, StoreError> {
-    let document: ProjectsDocument =
-        serde_json::from_slice(bytes).map_err(|_| StoreError::Corrupt {
-            name: PROJECTS_FILE,
-        })?;
-    validate_document(&document).map_err(|_| StoreError::Corrupt {
-        name: PROJECTS_FILE,
-    })?;
+pub(crate) fn validate_library_metadata_bytes(bytes: &[u8]) -> Result<Revision, StoreError> {
+    let document: LibraryDocument =
+        serde_json::from_slice(bytes).map_err(|_| StoreError::Corrupt { name: LIBRARY_FILE })?;
+    validate_document(&document).map_err(|_| StoreError::Corrupt { name: LIBRARY_FILE })?;
     Ok(document.revision)
 }
 
-impl ProjectRepository {
+impl LibraryRepository {
     pub(crate) fn load_existing_read_only(
         root: impl Into<PathBuf>,
-    ) -> Result<ProjectSnapshot, StoreError> {
+    ) -> Result<LibrarySnapshot, StoreError> {
         let repository = Self {
             root: root.into(),
             writer: Arc::new(SystemAtomicWriter),
         };
         repository.validate_format_locked()?;
+        // A store nobody has opened for writing since Projects were removed still has its groups
+        // in `projects.json`; read them from there rather than report the library missing.
+        if !repository.root.join(LIBRARY_FILE).exists()
+            && let Some(legacy) = crate::legacy_projects::read_legacy(&repository.root)
+        {
+            let mut document: LibraryDocument =
+                serde_json::from_value(crate::legacy_projects::library_from_legacy(&legacy))
+                    .map_err(|_| StoreError::Corrupt {
+                        name: crate::legacy_projects::LEGACY_PROJECTS_FILE,
+                    })?;
+            validate_document(&document).map_err(|_| StoreError::Corrupt {
+                name: crate::legacy_projects::LEGACY_PROJECTS_FILE,
+            })?;
+            sort_groups(&mut document.groups);
+            return Ok(snapshot(
+                document,
+                StoreHealth::Healthy,
+                true,
+                Durability::Full,
+            ));
+        }
         repository.load_locked()
     }
 
@@ -254,51 +262,10 @@ impl ProjectRepository {
         &self.root
     }
 
-    pub fn load(&self) -> Result<ProjectSnapshot, StoreError> {
+    pub fn load(&self) -> Result<LibrarySnapshot, StoreError> {
         let _lock = self.acquire_lock()?;
         self.validate_format_locked()?;
         self.load_locked()
-    }
-
-    pub fn add_project(&self, request: AddProject) -> Result<Project, StoreError> {
-        let canonical_root = CanonicalPath::resolve(&request.root)?;
-        let display_name = match request.display_name.as_deref() {
-            Some(value) => LocalizedUserText::new(value)?,
-            None => canonical_root.display_name()?,
-        };
-
-        let _lock = self.acquire_lock()?;
-        self.validate_format_locked()?;
-        let mut document = self.mutable_document_locked()?;
-        require_revision(request.expected, document.revision)?;
-        if let Some(existing) = document
-            .projects
-            .iter()
-            .find(|project| project.canonical_root.identity() == canonical_root.identity())
-        {
-            return Err(StoreError::Domain(ProjectError::AlreadyPresent {
-                id: existing.id,
-            }));
-        }
-        if document.projects.len() >= MAX_PROJECTS {
-            return Err(StoreError::Domain(ProjectError::ResourceLimit {
-                limit: MAX_PROJECTS,
-            }));
-        }
-        let revision = next_revision(document.revision)?;
-        let position = next_tail_position(&mut document.projects)?;
-        let project = Project {
-            id: request.id,
-            display_name,
-            canonical_root,
-            position,
-            revision,
-        };
-        document.projects.push(project.clone());
-        document.revision = revision;
-        sort_projects(&mut document.projects);
-        self.write_document_locked(&document)?;
-        Ok(project)
     }
 
     pub fn begin_worktree_intent(
@@ -312,13 +279,6 @@ impl ProjectRepository {
         self.validate_format_locked()?;
         let mut document = self.mutable_document_locked()?;
         require_revision(expected, document.revision)?;
-        require_project(&document, intent.plan.source_project_id)?;
-        if document.projects.len() >= MAX_PROJECTS {
-            return Err(ProjectError::ResourceLimit {
-                limit: MAX_PROJECTS,
-            }
-            .into());
-        }
         if document.worktrees.len() + document.worktree_intents.len() >= MAX_WORKTREE_REGISTRATIONS
         {
             return Err(WorktreeError::ResourceLimit {
@@ -327,16 +287,11 @@ impl ProjectRepository {
             .into());
         }
         if document
-            .projects
+            .worktree_intents
             .iter()
-            .any(|project| project.id == intent.plan.child_project_id)
-            || document
-                .worktree_intents
-                .iter()
-                .any(|candidate| worktree_plan_conflicts(&candidate.plan, &intent.plan))
+            .any(|candidate| worktree_plan_conflicts(&candidate.plan, &intent.plan))
             || document.worktrees.iter().any(|candidate| {
                 candidate.id == intent.plan.id
-                    || candidate.child_project_id == intent.plan.child_project_id
                     || candidate.branch == intent.plan.generated_branch
                     || candidate.managed_path.as_path() == intent.plan.managed_path.as_path()
             })
@@ -403,7 +358,7 @@ impl ProjectRepository {
         &self,
         id: ManagedWorktreeId,
         expected: Revision,
-    ) -> Result<(Project, WorktreeRegistration), StoreError> {
+    ) -> Result<WorktreeRegistration, StoreError> {
         let _lock = self.acquire_lock()?;
         self.validate_format_locked()?;
         let mut document = self.mutable_document_locked()?;
@@ -417,13 +372,6 @@ impl ProjectRepository {
             ))?;
         let intent = document.worktree_intents[intent_index].clone();
         intent.plan.validate()?;
-        require_project(&document, intent.plan.source_project_id)?;
-        if document.projects.len() >= MAX_PROJECTS {
-            return Err(ProjectError::ResourceLimit {
-                limit: MAX_PROJECTS,
-            }
-            .into());
-        }
         let canonical_path = CanonicalPath::resolve(intent.plan.managed_path.as_path())?;
         if canonical_path.as_path() != intent.plan.managed_path.as_path()
             || canonical_path.as_path() == intent.plan.managed_root.as_path()
@@ -433,28 +381,16 @@ impl ProjectRepository {
         {
             return Err(WorktreeError::SymlinkSwap.into());
         }
-        if document.projects.iter().any(|project| {
-            project.id == intent.plan.child_project_id
-                || project.canonical_root.identity() == canonical_path.identity()
-        }) || document.worktrees.iter().any(|registration| {
+        if document.worktrees.iter().any(|registration| {
             registration.id == id
-                || registration.child_project_id == intent.plan.child_project_id
+                || registration.managed_path.identity() == canonical_path.identity()
                 || registration.branch == intent.plan.generated_branch
         }) {
             return Err(WorktreeError::RegistrationConflict.into());
         }
         let revision = next_revision(document.revision)?;
-        let project = Project {
-            id: intent.plan.child_project_id,
-            display_name: LocalizedUserText::new(&intent.child_display_name)?,
-            canonical_root: canonical_path.clone(),
-            position: next_tail_position(&mut document.projects)?,
-            revision,
-        };
         let registration = WorktreeRegistration {
             id,
-            source_project_id: intent.plan.source_project_id,
-            child_project_id: project.id,
             repository_root: intent.plan.repository_root,
             managed_root: intent.plan.managed_root,
             managed_path: canonical_path,
@@ -464,149 +400,14 @@ impl ProjectRepository {
         };
         registration.validate()?;
         document.worktree_intents.remove(intent_index);
-        document.projects.push(project.clone());
         document.worktrees.push(registration.clone());
         document.revision = revision;
-        sort_projects(&mut document.projects);
         self.write_document_locked(&document)?;
-        Ok((project, registration))
-    }
-
-    pub fn remove_project(
-        &self,
-        id: ProjectId,
-        expected: Revision,
-    ) -> Result<RemovedProject, StoreError> {
-        let _lock = self.acquire_lock()?;
-        self.validate_format_locked()?;
-        let mut document = self.mutable_document_locked()?;
-        require_revision(expected, document.revision)?;
-        let index = document
-            .projects
-            .iter()
-            .position(|project| project.id == id)
-            .ok_or(StoreError::Domain(ProjectError::Unavailable))?;
-        let project = document.projects.remove(index);
-        let (groups, retained_groups): (Vec<_>, Vec<_>) = document
-            .groups
-            .into_iter()
-            .partition(|group| group.project_id == project.id);
-        document.groups = retained_groups;
-        document.revision = next_revision(document.revision)?;
-        self.write_document_locked(&document)?;
-        Ok(RemovedProject { project, groups })
-    }
-
-    pub fn restore_project(
-        &self,
-        mut removed: RemovedProject,
-        expected: Revision,
-    ) -> Result<RemovedProject, StoreError> {
-        let _lock = self.acquire_lock()?;
-        self.validate_format_locked()?;
-        let mut document = self.mutable_document_locked()?;
-        require_revision(expected, document.revision)?;
-        if document.projects.len() >= MAX_PROJECTS {
-            return Err(StoreError::Domain(ProjectError::ResourceLimit {
-                limit: MAX_PROJECTS,
-            }));
-        }
-        if let Some(existing) = document.projects.iter().find(|candidate| {
-            candidate.id == removed.project.id
-                || candidate.canonical_root.identity() == removed.project.canonical_root.identity()
-        }) {
-            return Err(StoreError::Domain(ProjectError::AlreadyPresent {
-                id: existing.id,
-            }));
-        }
-        if removed
-            .groups
-            .iter()
-            .any(|group| group.project_id != removed.project.id)
-        {
-            return Err(StoreError::GroupDomain(GroupError::WrongProject));
-        }
-        if removed.groups.len() > MAX_GROUPS_PER_PROJECT {
-            return Err(StoreError::GroupDomain(GroupError::ResourceLimit {
-                limit: MAX_GROUPS_PER_PROJECT,
-            }));
-        }
-        let existing_group_ids: HashSet<_> = document.groups.iter().map(|group| group.id).collect();
-        if removed
-            .groups
-            .iter()
-            .any(|group| existing_group_ids.contains(&group.id))
-        {
-            return Err(StoreError::GroupDomain(GroupError::Store {
-                code: "duplicate-group-id",
-            }));
-        }
-        let revision = next_revision(document.revision)?;
-        removed.project.revision = revision;
-        removed.project.position = next_tail_position(&mut document.projects)?;
-        for group in &mut removed.groups {
-            group.revision = revision;
-        }
-        document.projects.push(removed.project.clone());
-        document.groups.extend(removed.groups.iter().cloned());
-        document.revision = revision;
-        sort_projects(&mut document.projects);
-        sort_groups(&mut document.groups);
-        validate_document(&document)?;
-        self.write_document_locked(&document)?;
-        Ok(removed)
-    }
-
-    pub fn move_project_before(
-        &self,
-        id: ProjectId,
-        before: Option<ProjectId>,
-        expected: Revision,
-    ) -> Result<Project, StoreError> {
-        let _lock = self.acquire_lock()?;
-        self.validate_format_locked()?;
-        let mut document = self.mutable_document_locked()?;
-        require_revision(expected, document.revision)?;
-        sort_projects(&mut document.projects);
-        let original_order: Vec<_> = document.projects.iter().map(|project| project.id).collect();
-        if before == Some(id) {
-            return document
-                .projects
-                .into_iter()
-                .find(|project| project.id == id)
-                .ok_or(StoreError::Domain(ProjectError::Unavailable));
-        }
-        let old_index = document
-            .projects
-            .iter()
-            .position(|project| project.id == id)
-            .ok_or(StoreError::Domain(ProjectError::Unavailable))?;
-        let project = document.projects.remove(old_index);
-        let new_index = match before {
-            Some(before_id) => document
-                .projects
-                .iter()
-                .position(|candidate| candidate.id == before_id)
-                .ok_or(StoreError::Domain(ProjectError::Unavailable))?,
-            None => document.projects.len(),
-        };
-        document.projects.insert(new_index, project);
-        let next_order: Vec<_> = document.projects.iter().map(|project| project.id).collect();
-        if next_order == original_order {
-            return Ok(document.projects[new_index].clone());
-        }
-        assign_position_at(&mut document.projects, new_index)?;
-        let revision = next_revision(document.revision)?;
-        document.revision = revision;
-        document.projects[new_index].revision = revision;
-        let moved = document.projects[new_index].clone();
-        self.write_document_locked(&document)?;
-        Ok(moved)
+        Ok(registration)
     }
 
     pub fn create_group(
         &self,
-        project_id: ProjectId,
         id: GroupId,
         name: &str,
         expected: Revision,
@@ -616,19 +417,11 @@ impl ProjectRepository {
         self.validate_format_locked()?;
         let mut document = self.mutable_document_locked()?;
         require_revision(expected, document.revision)?;
-        require_project(&document, project_id)?;
-        let project_group_count = document
-            .groups
-            .iter()
-            .filter(|group| group.project_id == project_id)
-            .count();
-        if project_group_count >= MAX_GROUPS_PER_PROJECT {
-            return Err(GroupError::ResourceLimit {
-                limit: MAX_GROUPS_PER_PROJECT,
-            }
-            .into());
+        let group_count = document.groups.len();
+        if group_count >= MAX_GROUPS {
+            return Err(GroupError::ResourceLimit { limit: MAX_GROUPS }.into());
         }
-        require_unique_group_name(&document.groups, project_id, None, &name)?;
+        require_unique_group_name(&document.groups, None, &name)?;
         if document.groups.iter().any(|group| group.id == id) {
             return Err(GroupError::Store {
                 code: "duplicate-group-id",
@@ -636,10 +429,9 @@ impl ProjectRepository {
             .into());
         }
         let revision = next_group_revision(document.revision)?;
-        let position = next_group_tail_position(&mut document.groups, project_id)?;
+        let position = next_group_tail_position(&mut document.groups)?;
         let group = Group {
             id,
-            project_id,
             name,
             position,
             collapsed: false,
@@ -667,8 +459,7 @@ impl ProjectRepository {
         let mut document = self.mutable_document_locked()?;
         require_revision(expected, document.revision)?;
         let index = group_index(&document.groups, id)?;
-        let project_id = document.groups[index].project_id;
-        require_unique_group_name(&document.groups, project_id, Some(id), &name)?;
+        require_unique_group_name(&document.groups, Some(id), &name)?;
         if document.groups[index].name == name {
             return Ok(GroupMutation {
                 value: document.groups[index].clone(),
@@ -739,18 +530,12 @@ impl ProjectRepository {
         require_revision(expected, document.revision)?;
         sort_groups(&mut document.groups);
         let index = group_index(&document.groups, id)?;
-        let project_id = document.groups[index].project_id;
-        if let Some(before_id) = before {
-            let destination = document
-                .groups
-                .iter()
-                .find(|group| group.id == before_id)
-                .ok_or(StoreError::GroupDomain(GroupError::DestinationNotFound))?;
-            if destination.project_id != project_id {
-                return Err(GroupError::WrongProject.into());
-            }
+        if let Some(before_id) = before
+            && !document.groups.iter().any(|group| group.id == before_id)
+        {
+            return Err(GroupError::DestinationNotFound.into());
         }
-        let mut order = project_group_ids(&document.groups, project_id);
+        let mut order = group_ids(&document.groups);
         let old_index = order
             .iter()
             .position(|candidate| *candidate == id)
@@ -774,7 +559,7 @@ impl ProjectRepository {
             None => order.len(),
         };
         order.insert(new_index, id);
-        let current_order = project_group_ids(&document.groups, project_id);
+        let current_order = group_ids(&document.groups);
         if order == current_order {
             return Ok(GroupMutation {
                 value: document.groups[index].clone(),
@@ -784,7 +569,7 @@ impl ProjectRepository {
                 },
             });
         }
-        assign_group_position(&mut document.groups, project_id, &order, new_index)?;
+        assign_group_position(&mut document.groups, &order, new_index)?;
         let revision = next_group_revision(document.revision)?;
         let index = group_index(&document.groups, id)?;
         document.groups[index].revision = revision;
@@ -813,24 +598,21 @@ impl ProjectRepository {
         let mut document = self.mutable_document_locked()?;
         require_revision(expected, document.revision)?;
         let index = group_index(&document.groups, id)?;
-        let project_id = document.groups[index].project_id;
         let destination = match (has_sessions, destination) {
             (true, None) => return Err(GroupError::NonEmptyDestinationRequired.into()),
             (_, Some(destination)) => destination,
-            (false, None) => GroupDestination::ProjectRoot,
+            (false, None) => GroupDestination::Ungrouped,
         };
         if destination.group_id() == Some(id) {
             return Err(GroupError::DestinationIsSource.into());
         }
-        if let Some(destination_id) = destination.group_id() {
-            let destination_group = document
+        if let Some(destination_id) = destination.group_id()
+            && !document
                 .groups
                 .iter()
-                .find(|group| group.id == destination_id)
-                .ok_or(StoreError::GroupDomain(GroupError::DestinationNotFound))?;
-            if destination_group.project_id != project_id {
-                return Err(GroupError::WrongProject.into());
-            }
+                .any(|group| group.id == destination_id)
+        {
+            return Err(GroupError::DestinationNotFound.into());
         }
         let removed = document.groups.remove(index);
         document.revision = next_group_revision(document.revision)?;
@@ -853,7 +635,6 @@ impl ProjectRepository {
         self.validate_format_locked()?;
         let mut document = self.mutable_document_locked()?;
         require_revision(expected, document.revision)?;
-        require_project(&document, group.project_id)?;
         if document
             .groups
             .iter()
@@ -864,18 +645,11 @@ impl ProjectRepository {
             }
             .into());
         }
-        let project_group_count = document
-            .groups
-            .iter()
-            .filter(|candidate| candidate.project_id == group.project_id)
-            .count();
-        if project_group_count >= MAX_GROUPS_PER_PROJECT {
-            return Err(GroupError::ResourceLimit {
-                limit: MAX_GROUPS_PER_PROJECT,
-            }
-            .into());
+        let group_count = document.groups.len();
+        if group_count >= MAX_GROUPS {
+            return Err(GroupError::ResourceLimit { limit: MAX_GROUPS }.into());
         }
-        require_unique_group_name(&document.groups, group.project_id, None, &group.name)?;
+        require_unique_group_name(&document.groups, None, &group.name)?;
         let revision = next_group_revision(document.revision)?;
         group.revision = revision;
         document.groups.push(group.clone());
@@ -921,12 +695,12 @@ impl ProjectRepository {
                 .map_err(|error| io_error("write format", error))?;
         }
         self.validate_format_locked()?;
+        crate::legacy_projects::migrate(&self.root, self.writer.as_ref())?;
 
-        let projects_path = self.root.join(PROJECTS_FILE);
-        if !projects_path.exists() {
-            let document = ProjectsDocument {
+        let library_path = self.root.join(LIBRARY_FILE);
+        if !library_path.exists() {
+            let document = LibraryDocument {
                 revision: Revision::ZERO,
-                projects: Vec::new(),
                 groups: Vec::new(),
                 worktree_intents: Vec::new(),
                 worktrees: Vec::new(),
@@ -958,8 +732,8 @@ impl ProjectRepository {
         Ok(format)
     }
 
-    fn load_locked(&self) -> Result<ProjectSnapshot, StoreError> {
-        match self.read_document(PROJECTS_FILE) {
+    fn load_locked(&self) -> Result<LibrarySnapshot, StoreError> {
+        match self.read_document(LIBRARY_FILE) {
             Ok(document) => Ok(snapshot(
                 document,
                 StoreHealth::Healthy,
@@ -967,7 +741,7 @@ impl ProjectRepository {
                 Durability::Full,
             )),
             Err(StoreError::Corrupt { .. }) => {
-                let backup = self.read_document(PROJECTS_BACKUP_FILE)?;
+                let backup = self.read_document(LIBRARY_BACKUP_FILE)?;
                 Ok(snapshot(
                     backup,
                     StoreHealth::RecoveredLastGood,
@@ -979,53 +753,47 @@ impl ProjectRepository {
         }
     }
 
-    fn mutable_document_locked(&self) -> Result<ProjectsDocument, StoreError> {
-        match self.read_document(PROJECTS_FILE) {
+    fn mutable_document_locked(&self) -> Result<LibraryDocument, StoreError> {
+        match self.read_document(LIBRARY_FILE) {
             Ok(document) => Ok(document),
-            Err(StoreError::Corrupt { .. }) => Err(StoreError::Corrupt {
-                name: PROJECTS_FILE,
-            }),
+            Err(StoreError::Corrupt { .. }) => Err(StoreError::Corrupt { name: LIBRARY_FILE }),
             Err(error) => Err(error),
         }
     }
 
-    fn read_document(&self, name: &'static str) -> Result<ProjectsDocument, StoreError> {
-        let bytes = read_regular_bounded(&self.root.join(name), name, MAX_PROJECTS_BYTES)?;
-        let mut document: ProjectsDocument =
+    fn read_document(&self, name: &'static str) -> Result<LibraryDocument, StoreError> {
+        let bytes = read_regular_bounded(&self.root.join(name), name, MAX_LIBRARY_BYTES)?;
+        let mut document: LibraryDocument =
             serde_json::from_slice(&bytes).map_err(|_| StoreError::Corrupt { name })?;
         validate_document(&document).map_err(|_| StoreError::Corrupt { name })?;
-        sort_projects(&mut document.projects);
         sort_groups(&mut document.groups);
         Ok(document)
     }
 
-    fn write_document_locked(&self, document: &ProjectsDocument) -> Result<Durability, StoreError> {
-        validate_document(document).map_err(StoreError::Domain)?;
+    fn write_document_locked(&self, document: &LibraryDocument) -> Result<Durability, StoreError> {
+        validate_document(document).map_err(|name| StoreError::Corrupt { name })?;
         let bytes = serialize(document)?;
-        if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_PROJECTS_BYTES {
+        if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_LIBRARY_BYTES {
             return Err(StoreError::TooLarge {
-                name: PROJECTS_FILE,
-                limit: MAX_PROJECTS_BYTES,
+                name: LIBRARY_FILE,
+                limit: MAX_LIBRARY_BYTES,
             });
         }
         let durability = self
             .writer
-            .write(&self.root.join(PROJECTS_FILE), &bytes)
-            .map_err(|error| io_error("commit projects", error))?;
-        let persisted = self.read_document(PROJECTS_FILE)?;
+            .write(&self.root.join(LIBRARY_FILE), &bytes)
+            .map_err(|error| io_error("commit library", error))?;
+        let persisted = self.read_document(LIBRARY_FILE)?;
         if persisted.revision != document.revision
-            || persisted.projects != document.projects
             || persisted.groups != document.groups
             || persisted.worktree_intents != document.worktree_intents
             || persisted.worktrees != document.worktrees
         {
-            return Err(StoreError::Corrupt {
-                name: PROJECTS_FILE,
-            });
+            return Err(StoreError::Corrupt { name: LIBRARY_FILE });
         }
         let _ = self
             .writer
-            .write(&self.root.join(PROJECTS_BACKUP_FILE), &bytes);
+            .write(&self.root.join(LIBRARY_BACKUP_FILE), &bytes);
         Ok(durability)
     }
 
@@ -1039,26 +807,8 @@ impl ProjectRepository {
             .open(path)
             .map_err(|error| io_error("open metadata lock", error))?;
         file_lock::exclusive_with_timeout(&file, INTERACTIVE_LOCK_TIMEOUT, LOCK_RETRY_INTERVAL)
-            .map_err(|error| io_error("lock project metadata", error))?;
+            .map_err(|error| io_error("lock library metadata", error))?;
         Ok(MetadataLock { file })
-    }
-}
-
-impl ProjectService for ProjectRepository {
-    fn list(&self) -> Result<Vec<ProjectSummary>, ProjectError> {
-        self.load()
-            .map(|snapshot| snapshot.projects)
-            .map_err(store_as_domain)
-    }
-
-    fn add(&self, request: AddProject) -> Result<Project, ProjectError> {
-        self.add_project(request).map_err(store_as_domain)
-    }
-
-    fn remove(&self, id: ProjectId, expected: Revision) -> Result<(), ProjectError> {
-        self.remove_project(id, expected)
-            .map(|_| ())
-            .map_err(store_as_domain)
     }
 }
 
@@ -1102,107 +852,63 @@ fn serialize<T: Serialize>(value: &T) -> Result<Vec<u8>, StoreError> {
     })
 }
 
-fn validate_document(document: &ProjectsDocument) -> Result<(), ProjectError> {
-    if document.projects.len() > MAX_PROJECTS {
-        return Err(ProjectError::ResourceLimit {
-            limit: MAX_PROJECTS,
-        });
-    }
-    let mut ids = HashSet::with_capacity(document.projects.len());
-    let mut identities = HashSet::with_capacity(document.projects.len());
-    for project in &document.projects {
-        if project.revision > document.revision {
-            return Err(ProjectError::Store {
-                code: "future-project-revision",
-            });
-        }
-        if !ids.insert(project.id) || !identities.insert(project.canonical_root.identity()) {
-            return Err(ProjectError::Store {
-                code: "duplicate-project",
-            });
-        }
-    }
-    let project_ids = document
-        .projects
-        .iter()
-        .map(|project| project.id)
-        .collect::<Vec<_>>();
-    validate_group_set(&document.groups, &project_ids).map_err(|error| ProjectError::Store {
-        code: match error {
-            GroupError::DuplicateName => "duplicate-group-name",
-            GroupError::ProjectNotFound => "orphaned-group",
-            GroupError::ResourceLimit { .. } => "group-limit",
-            GroupError::Store { code } => code,
-            _ => "invalid-group",
-        },
+fn validate_document(document: &LibraryDocument) -> Result<(), &'static str> {
+    validate_group_set(&document.groups).map_err(|error| match error {
+        GroupError::DuplicateName => "duplicate-group-name",
+        GroupError::ResourceLimit { .. } => "group-limit",
+        GroupError::Store { code } => code,
+        _ => "invalid-group",
     })?;
     if document
         .groups
         .iter()
         .any(|group| group.revision > document.revision)
     {
-        return Err(ProjectError::Store {
-            code: "future-group-revision",
-        });
+        return Err("future-group-revision");
     }
     if document.worktree_intents.len() + document.worktrees.len() > MAX_WORKTREE_REGISTRATIONS {
-        return Err(ProjectError::Store {
-            code: "worktree-limit",
-        });
+        return Err("worktree-limit");
     }
     let mut worktree_ids = HashSet::new();
-    let mut worktree_children = HashSet::new();
     let mut worktree_paths = HashSet::new();
     let mut worktree_branches = HashSet::new();
     for intent in &document.worktree_intents {
-        intent.plan.validate().map_err(|_| ProjectError::Store {
-            code: "invalid-worktree-intent",
-        })?;
-        LocalizedUserText::new(&intent.child_display_name).map_err(|_| ProjectError::Store {
-            code: "invalid-worktree-label",
-        })?;
+        intent
+            .plan
+            .validate()
+            .map_err(|_| "invalid-worktree-intent")?;
+        LocalizedUserText::new(&intent.child_display_name).map_err(|_| "invalid-worktree-label")?;
         if intent.revision > document.revision
             || !worktree_ids.insert(intent.plan.id)
-            || !worktree_children.insert(intent.plan.child_project_id)
             || !worktree_paths.insert(intent.plan.managed_path.as_path())
             || !worktree_branches.insert(&intent.plan.generated_branch)
         {
-            return Err(ProjectError::Store {
-                code: "duplicate-worktree-intent",
-            });
+            return Err("duplicate-worktree-intent");
         }
     }
     for registration in &document.worktrees {
-        registration.validate().map_err(|_| ProjectError::Store {
-            code: "invalid-worktree-registration",
-        })?;
+        registration
+            .validate()
+            .map_err(|_| "invalid-worktree-registration")?;
         if registration.revision > document.revision
             || !worktree_ids.insert(registration.id)
-            || !worktree_children.insert(registration.child_project_id)
             || !worktree_paths.insert(registration.managed_path.as_path())
             || !worktree_branches.insert(&registration.branch)
         {
-            return Err(ProjectError::Store {
-                code: "duplicate-worktree-registration",
-            });
+            return Err("duplicate-worktree-registration");
         }
     }
     Ok(())
 }
 
 fn snapshot(
-    document: ProjectsDocument,
+    document: LibraryDocument,
     health: StoreHealth,
     read_only: bool,
     durability: Durability,
-) -> ProjectSnapshot {
-    ProjectSnapshot {
+) -> LibrarySnapshot {
+    LibrarySnapshot {
         revision: document.revision,
-        projects: document
-            .projects
-            .into_iter()
-            .map(ProjectSummary::from)
-            .collect(),
         groups: document.groups,
         worktree_intents: document.worktree_intents,
         worktrees: document.worktrees,
@@ -1217,17 +923,12 @@ fn worktree_plan_conflicts(
     right: &multiplex_domain::WorktreePlan,
 ) -> bool {
     left.id == right.id
-        || left.child_project_id == right.child_project_id
         || left.generated_branch == right.generated_branch
         || left.managed_path.as_path() == right.managed_path.as_path()
 }
 
-fn sort_projects(projects: &mut [Project]) {
-    projects.sort_by_key(|project| (project.position, project.id));
-}
-
 fn sort_groups(groups: &mut [Group]) {
-    groups.sort_by_key(|group| (group.project_id, group.position, group.id));
+    groups.sort_by_key(|group| (group.position, group.id));
 }
 
 fn group_index(groups: &[Group], id: GroupId) -> Result<usize, StoreError> {
@@ -1237,26 +938,16 @@ fn group_index(groups: &[Group], id: GroupId) -> Result<usize, StoreError> {
         .ok_or(StoreError::GroupDomain(GroupError::NotFound))
 }
 
-fn require_project(document: &ProjectsDocument, id: ProjectId) -> Result<(), StoreError> {
-    if document.projects.iter().any(|project| project.id == id) {
-        Ok(())
-    } else {
-        Err(GroupError::ProjectNotFound.into())
-    }
-}
-
 fn require_unique_group_name(
     groups: &[Group],
-    project_id: ProjectId,
     except: Option<GroupId>,
     name: &GroupName,
 ) -> Result<(), StoreError> {
     let comparison_key = name.comparison_key();
-    if groups.iter().any(|group| {
-        group.project_id == project_id
-            && Some(group.id) != except
-            && group.name.comparison_key() == comparison_key
-    }) {
+    if groups
+        .iter()
+        .any(|group| Some(group.id) != except && group.name.comparison_key() == comparison_key)
+    {
         Err(GroupError::DuplicateName.into())
     } else {
         Ok(())
@@ -1269,20 +960,14 @@ fn next_group_revision(revision: Revision) -> Result<Revision, StoreError> {
         .ok_or(StoreError::GroupDomain(GroupError::RevisionOverflow))
 }
 
-fn project_group_ids(groups: &[Group], project_id: ProjectId) -> Vec<GroupId> {
-    let mut project_groups = groups
-        .iter()
-        .filter(|group| group.project_id == project_id)
-        .collect::<Vec<_>>();
-    project_groups.sort_by_key(|group| (group.position, group.id));
-    project_groups.into_iter().map(|group| group.id).collect()
+fn group_ids(groups: &[Group]) -> Vec<GroupId> {
+    let mut ordered = groups.iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|group| (group.position, group.id));
+    ordered.into_iter().map(|group| group.id).collect()
 }
 
-fn next_group_tail_position(
-    groups: &mut [Group],
-    project_id: ProjectId,
-) -> Result<PositionKey, StoreError> {
-    let ids = project_group_ids(groups, project_id);
+fn next_group_tail_position(groups: &mut [Group]) -> Result<PositionKey, StoreError> {
+    let ids = group_ids(groups);
     match ids
         .last()
         .and_then(|id| groups.iter().find(|group| group.id == *id))
@@ -1297,7 +982,6 @@ fn next_group_tail_position(
 
 fn assign_group_position(
     groups: &mut [Group],
-    project_id: ProjectId,
     order: &[GroupId],
     index: usize,
 ) -> Result<(), StoreError> {
@@ -1333,7 +1017,7 @@ fn assign_group_position(
     for (group_index, id) in order.iter().enumerate() {
         let target = groups
             .iter_mut()
-            .find(|group| group.project_id == project_id && group.id == *id)
+            .find(|group| group.id == *id)
             .ok_or(StoreError::GroupDomain(GroupError::NotFound))?;
         target.position = PositionKey::rebalanced(group_index)
             .map_err(|_| StoreError::GroupDomain(GroupError::PositionOverflow))?;
@@ -1342,55 +1026,12 @@ fn assign_group_position(
 }
 
 fn next_revision(revision: Revision) -> Result<Revision, StoreError> {
-    revision
-        .next()
-        .ok_or(StoreError::Domain(ProjectError::RevisionOverflow))
+    revision.next().ok_or(StoreError::RevisionOverflow)
 }
 
 fn require_revision(expected: Revision, actual: Revision) -> Result<(), StoreError> {
     if expected != actual {
-        return Err(StoreError::Domain(ProjectError::StaleRevision {
-            expected,
-            actual,
-        }));
-    }
-    Ok(())
-}
-
-fn next_tail_position(projects: &mut [Project]) -> Result<PositionKey, StoreError> {
-    sort_projects(projects);
-    match projects.last() {
-        None => Ok(PositionKey::FIRST),
-        Some(project) => project.position.after().map_err(|_| {
-            StoreError::Domain(ProjectError::Store {
-                code: "position-overflow",
-            })
-        }),
-    }
-}
-
-fn assign_position_at(projects: &mut [Project], index: usize) -> Result<(), StoreError> {
-    let candidate = match (index.checked_sub(1), projects.get(index + 1)) {
-        (None, Some(right)) if right.position.get() > 1 => {
-            Some(PositionKey::new(right.position.get() / 2))
-        }
-        (Some(left_index), Some(right)) => {
-            PositionKey::between(projects[left_index].position, right.position).ok()
-        }
-        (Some(left_index), None) => projects[left_index].position.after().ok(),
-        (None, None) => Some(PositionKey::FIRST),
-        _ => None,
-    };
-    if let Some(position) = candidate {
-        projects[index].position = position;
-        return Ok(());
-    }
-    for (project_index, project) in projects.iter_mut().enumerate() {
-        project.position = PositionKey::rebalanced(project_index).map_err(|_| {
-            StoreError::Domain(ProjectError::Store {
-                code: "position-overflow",
-            })
-        })?;
+        return Err(StoreError::StaleRevision { expected, actual });
     }
     Ok(())
 }
@@ -1399,36 +1040,6 @@ fn io_error(operation: &'static str, error: io::Error) -> StoreError {
     StoreError::Io {
         operation,
         kind: error.kind(),
-    }
-}
-
-fn store_as_domain(error: StoreError) -> ProjectError {
-    match error {
-        StoreError::Domain(error) => error,
-        StoreError::StoreNewer { .. } => ProjectError::Store {
-            code: "newer-format",
-        },
-        StoreError::Corrupt { .. } => ProjectError::Store { code: "corrupt" },
-        StoreError::Io { .. } => ProjectError::Store { code: "io" },
-        StoreError::UnsafeEntry { .. } => ProjectError::Store {
-            code: "unsafe-entry",
-        },
-        StoreError::TooLarge { .. } => ProjectError::Store { code: "too-large" },
-        StoreError::InvalidInstanceId => ProjectError::Store {
-            code: "invalid-instance",
-        },
-        StoreError::PresetDomain(_) => ProjectError::Store {
-            code: "preset-domain",
-        },
-        StoreError::GroupDomain(_) => ProjectError::Store {
-            code: "group-domain",
-        },
-        StoreError::SessionDomain(_) => ProjectError::Store {
-            code: "session-domain",
-        },
-        StoreError::WorktreeDomain(_) => ProjectError::Store {
-            code: "worktree-domain",
-        },
     }
 }
 
@@ -1443,10 +1054,6 @@ mod tests {
 
     const INSTANCE_ID: &str = "00000000-0000-0000-0000-000000000001";
 
-    fn id(value: u128) -> ProjectId {
-        ProjectId::from_uuid(Uuid::from_u128(value))
-    }
-
     fn group_id(value: u128) -> GroupId {
         GroupId::from_uuid(Uuid::from_u128(10_000 + value))
     }
@@ -1455,24 +1062,13 @@ mod tests {
         ManagedWorktreeId::from_uuid(Uuid::from_u128(20_000 + value))
     }
 
-    fn repository(root: &Path) -> ProjectRepository {
-        ProjectRepository::open_with(root, INSTANCE_ID.to_string(), Arc::new(SystemAtomicWriter))
+    fn repository(root: &Path) -> LibraryRepository {
+        LibraryRepository::open_with(root, INSTANCE_ID.to_string(), Arc::new(SystemAtomicWriter))
             .unwrap()
-    }
-
-    fn add_request(id: ProjectId, root: &Path, expected: Revision) -> AddProject {
-        AddProject {
-            id,
-            root: root.to_path_buf(),
-            display_name: None,
-            expected,
-        }
     }
 
     fn worktree_intent(
         id: ManagedWorktreeId,
-        source_project_id: ProjectId,
-        child_project_id: ProjectId,
         repository_root: &Path,
         managed_root: &Path,
         managed_path: &Path,
@@ -1486,8 +1082,6 @@ mod tests {
         WorktreeIntent {
             plan: multiplex_domain::WorktreePlan::new(
                 id,
-                source_project_id,
-                child_project_id,
                 CanonicalPath::resolve(repository_root).unwrap(),
                 canonical_managed_root,
                 multiplex_domain::BaseCandidate {
@@ -1506,7 +1100,7 @@ mod tests {
     }
 
     #[test]
-    fn worktree_registration_is_atomic_persistent_and_project_removal_keeps_evidence() {
+    fn worktree_registration_is_atomic_persistent_and_leaves_the_folder_alone() {
         let fixture = tempfile::tempdir().unwrap();
         let store_root = fixture.path().join("store");
         let repository_root = fixture.path().join("repository");
@@ -1514,44 +1108,34 @@ mod tests {
         fs::create_dir(&repository_root).unwrap();
         fs::create_dir(&managed_root).unwrap();
         let repo = repository(&store_root);
-        let source = repo
-            .add_project(add_request(id(1), &repository_root, Revision::ZERO))
-            .unwrap();
         let managed_path = managed_root.join("child");
         let intent = repo
             .begin_worktree_intent(
                 worktree_intent(
                     worktree_id(1),
-                    source.id,
-                    id(2),
                     &repository_root,
                     &managed_root,
                     &managed_path,
                 ),
-                Revision::new(1),
+                Revision::ZERO,
             )
             .unwrap();
-        assert_eq!(intent.revision, Revision::new(2));
+        assert_eq!(intent.revision, Revision::new(1));
         fs::create_dir(&managed_path).unwrap();
         let sentinel = managed_path.join("KEEP.txt");
         fs::write(&sentinel, "keep").unwrap();
-        let (child, registration) = repo
-            .register_worktree_child(worktree_id(1), Revision::new(2))
+        let registration = repo
+            .register_worktree_child(worktree_id(1), Revision::new(1))
             .unwrap();
-        assert_eq!(child.id, id(2));
-        assert_eq!(registration.child_project_id, child.id);
+        assert_eq!(
+            registration.managed_path.as_path(),
+            CanonicalPath::resolve(&managed_path).unwrap().as_path()
+        );
 
         let reopened = repository(&store_root);
         let snapshot = reopened.load().unwrap();
         assert_eq!(snapshot.worktree_intents.len(), 0);
-        assert_eq!(snapshot.worktrees, vec![registration.clone()]);
-        assert_eq!(snapshot.projects.len(), 2);
-        reopened
-            .remove_project(child.id, snapshot.revision)
-            .unwrap();
-        let after_remove = reopened.load().unwrap();
-        assert_eq!(after_remove.worktrees, vec![registration]);
-        assert_eq!(after_remove.projects.len(), 1);
+        assert_eq!(snapshot.worktrees, vec![registration]);
         assert!(sentinel.exists());
     }
 
@@ -1564,20 +1148,15 @@ mod tests {
         fs::create_dir(&repository_root).unwrap();
         fs::create_dir(&managed_root).unwrap();
         let repo = repository(&store_root);
-        let source = repo
-            .add_project(add_request(id(1), &repository_root, Revision::ZERO))
-            .unwrap();
         let managed_path = managed_root.join("crash-child");
         repo.begin_worktree_intent(
             worktree_intent(
                 worktree_id(2),
-                source.id,
-                id(3),
                 &repository_root,
                 &managed_root,
                 &managed_path,
             ),
-            Revision::new(1),
+            Revision::ZERO,
         )
         .unwrap();
 
@@ -1612,32 +1191,26 @@ mod tests {
         fs::create_dir(&managed_root).unwrap();
         fs::create_dir(&outside).unwrap();
         let repo = repository(&store_root);
-        let source = repo
-            .add_project(add_request(id(1), &repository_root, Revision::ZERO))
-            .unwrap();
         let managed_path = managed_root.join("swapped");
         repo.begin_worktree_intent(
             worktree_intent(
                 worktree_id(3),
-                source.id,
-                id(4),
                 &repository_root,
                 &managed_root,
                 &managed_path,
             ),
-            Revision::new(1),
+            Revision::ZERO,
         )
         .unwrap();
         symlink(&outside, &managed_path).unwrap();
         assert!(matches!(
-            repo.register_worktree_child(worktree_id(3), Revision::new(2)),
+            repo.register_worktree_child(worktree_id(3), Revision::new(1)),
             Err(StoreError::WorktreeDomain(WorktreeError::SymlinkSwap))
         ));
         let snapshot = repo.load().unwrap();
-        assert_eq!(snapshot.revision, Revision::new(2));
+        assert_eq!(snapshot.revision, Revision::new(1));
         assert_eq!(snapshot.worktree_intents.len(), 1);
         assert!(snapshot.worktrees.is_empty());
-        assert_eq!(snapshot.projects.len(), 1);
     }
 
     #[test]
@@ -1649,26 +1222,21 @@ mod tests {
         fs::create_dir(&repository_root).unwrap();
         fs::create_dir(&managed_root).unwrap();
         let normal = repository(&store_root);
-        let source = normal
-            .add_project(add_request(id(1), &repository_root, Revision::ZERO))
-            .unwrap();
         let managed_path = managed_root.join("created-before-store-failure");
         normal
             .begin_worktree_intent(
                 worktree_intent(
                     worktree_id(4),
-                    source.id,
-                    id(5),
                     &repository_root,
                     &managed_root,
                     &managed_path,
                 ),
-                Revision::new(1),
+                Revision::ZERO,
             )
             .unwrap();
         fs::create_dir(&managed_path).unwrap();
-        let prior = fs::read(normal.root().join(PROJECTS_FILE)).unwrap();
-        let failing = ProjectRepository::open_with(
+        let prior = fs::read(normal.root().join(LIBRARY_FILE)).unwrap();
+        let failing = LibraryRepository::open_with(
             &store_root,
             INSTANCE_ID.to_string(),
             Arc::new(DiskFullWriter),
@@ -1676,92 +1244,33 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            failing.register_worktree_child(worktree_id(4), Revision::new(2)),
+            failing.register_worktree_child(worktree_id(4), Revision::new(1)),
             Err(StoreError::Io {
                 kind: io::ErrorKind::StorageFull,
                 ..
             })
         ));
-        assert_eq!(fs::read(normal.root().join(PROJECTS_FILE)).unwrap(), prior);
+        assert_eq!(fs::read(normal.root().join(LIBRARY_FILE)).unwrap(), prior);
         let snapshot = normal.load().unwrap();
-        assert_eq!(snapshot.projects.len(), 1);
         assert_eq!(snapshot.worktree_intents.len(), 1);
         assert!(snapshot.worktrees.is_empty());
         assert!(managed_path.is_dir());
     }
 
     #[test]
-    fn projects_persist_restart_and_removal_never_touches_folder_or_legacy_state() {
-        let fixture = tempfile::tempdir().unwrap();
-        let store_root = fixture.path().join("config/agent-workspace");
-        let project_root = fixture.path().join("user-project");
-        fs::create_dir(&project_root).unwrap();
-        let sentinel = project_root.join("KEEP.txt");
-        fs::write(&sentinel, b"do-not-delete").unwrap();
-        let legacy = fixture.path().join("config/state.json");
-        fs::create_dir_all(legacy.parent().unwrap()).unwrap();
-        fs::write(&legacy, b"legacy-sentinel").unwrap();
-
-        let repo = repository(&store_root);
-        let added = repo
-            .add_project(add_request(id(10), &project_root, Revision::ZERO))
-            .unwrap();
-        drop(repo);
-
-        let reopened = repository(&store_root);
-        let snapshot = reopened.load().unwrap();
-        assert_eq!(snapshot.projects.len(), 1);
-        assert_eq!(snapshot.projects[0].project.id, added.id);
-        reopened
-            .remove_project(added.id, snapshot.revision)
-            .unwrap();
-        assert_eq!(fs::read(&sentinel).unwrap(), b"do-not-delete");
-        assert_eq!(fs::read(&legacy).unwrap(), b"legacy-sentinel");
-        assert!(reopened.load().unwrap().projects.is_empty());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn symlink_duplicate_returns_existing_id_without_alias() {
-        use std::os::unix::fs::symlink;
-
-        let fixture = tempfile::tempdir().unwrap();
-        let project_root = fixture.path().join("real");
-        fs::create_dir(&project_root).unwrap();
-        let alias = fixture.path().join("alias");
-        symlink(&project_root, &alias).unwrap();
-        let repo = repository(&fixture.path().join("store"));
-        repo.add_project(add_request(id(1), &project_root, Revision::ZERO))
-            .unwrap();
-        let error = repo
-            .add_project(add_request(id(2), &alias, Revision::new(1)))
-            .unwrap_err();
-        assert_eq!(
-            error,
-            StoreError::Domain(ProjectError::AlreadyPresent { id: id(1) })
-        );
-        assert_eq!(repo.load().unwrap().projects.len(), 1);
-    }
-
-    #[test]
     fn stale_concurrent_revision_commits_exactly_once() {
         let fixture = tempfile::tempdir().unwrap();
-        let store_root = fixture.path().join("store");
-        let first_root = fixture.path().join("first");
-        let second_root = fixture.path().join("second");
-        fs::create_dir(&first_root).unwrap();
-        fs::create_dir(&second_root).unwrap();
-        let repo = repository(&store_root);
+        let repo = repository(&fixture.path().join("store"));
         let barrier = Arc::new(Barrier::new(3));
 
-        let handles: Vec<_> = [(id(1), first_root), (id(2), second_root)]
+        let handles: Vec<_> = [(group_id(1), "First"), (group_id(2), "Second")]
             .into_iter()
-            .map(|(project_id, root)| {
+            .map(|(id, name)| {
                 let repo = repo.clone();
                 let barrier = barrier.clone();
                 thread::spawn(move || {
                     barrier.wait();
-                    repo.add_project(add_request(project_id, &root, Revision::ZERO))
+                    repo.create_group(id, name, Revision::ZERO)
                 })
             })
             .collect();
@@ -1778,37 +1287,32 @@ mod tests {
         assert_eq!(
             results
                 .iter()
-                .filter(|result| matches!(
-                    result,
-                    Err(StoreError::Domain(ProjectError::StaleRevision { .. }))
-                ))
+                .filter(|result| matches!(result, Err(StoreError::StaleRevision { .. })))
                 .count(),
             1
         );
-        assert_eq!(repo.load().unwrap().projects.len(), 1);
+        assert_eq!(repo.load().unwrap().groups.len(), 1);
     }
 
     #[test]
     fn corrupt_primary_loads_last_good_read_only_and_is_not_overwritten() {
         let fixture = tempfile::tempdir().unwrap();
-        let project_root = fixture.path().join("project");
-        fs::create_dir(&project_root).unwrap();
         let repo = repository(&fixture.path().join("store"));
-        repo.add_project(add_request(id(1), &project_root, Revision::ZERO))
+        repo.create_group(group_id(1), "Build", Revision::ZERO)
             .unwrap();
-        let projects_path = repo.root().join(PROJECTS_FILE);
-        fs::write(&projects_path, b"{broken").unwrap();
-        let corrupt_bytes = fs::read(&projects_path).unwrap();
+        let library_path = repo.root().join(LIBRARY_FILE);
+        fs::write(&library_path, b"{broken").unwrap();
+        let corrupt_bytes = fs::read(&library_path).unwrap();
 
         let recovered = repo.load().unwrap();
         assert_eq!(recovered.health, StoreHealth::RecoveredLastGood);
         assert!(recovered.read_only);
-        assert_eq!(recovered.projects.len(), 1);
+        assert_eq!(recovered.groups.len(), 1);
         assert!(matches!(
-            repo.remove_project(id(1), recovered.revision),
+            repo.rename_group(group_id(1), "Changed", recovered.revision),
             Err(StoreError::Corrupt { .. })
         ));
-        assert_eq!(fs::read(projects_path).unwrap(), corrupt_bytes);
+        assert_eq!(fs::read(library_path).unwrap(), corrupt_bytes);
     }
 
     #[test]
@@ -1845,57 +1349,21 @@ mod tests {
         let fixture = tempfile::tempdir().unwrap();
         let store_root = fixture.path().join("store");
         let normal = repository(&store_root);
-        let prior = fs::read(normal.root().join(PROJECTS_FILE)).unwrap();
-        let failing = ProjectRepository::open_with(
+        let prior = fs::read(normal.root().join(LIBRARY_FILE)).unwrap();
+        let failing = LibraryRepository::open_with(
             &store_root,
             INSTANCE_ID.to_string(),
             Arc::new(DiskFullWriter),
         )
         .unwrap();
-        let project_root = fixture.path().join("project");
-        fs::create_dir(&project_root).unwrap();
         assert!(matches!(
-            failing.add_project(add_request(id(1), &project_root, Revision::ZERO)),
+            failing.create_group(group_id(1), "Build", Revision::ZERO),
             Err(StoreError::Io {
                 kind: io::ErrorKind::StorageFull,
                 ..
             })
         ));
-        assert_eq!(fs::read(normal.root().join(PROJECTS_FILE)).unwrap(), prior);
-    }
-
-    #[test]
-    fn move_rebalances_adjacent_positions_deterministically() {
-        let fixture = tempfile::tempdir().unwrap();
-        let repo = repository(&fixture.path().join("store"));
-        for value in 1..=3 {
-            let root = fixture.path().join(format!("project-{value}"));
-            fs::create_dir(&root).unwrap();
-            repo.add_project(add_request(
-                id(value),
-                &root,
-                Revision::new(value as u64 - 1),
-            ))
-            .unwrap();
-        }
-        repo.move_project_before(id(3), Some(id(1)), Revision::new(3))
-            .unwrap();
-        let ids: Vec<_> = repo
-            .load()
-            .unwrap()
-            .projects
-            .into_iter()
-            .map(|summary| summary.project.id)
-            .collect();
-        assert_eq!(ids, [id(3), id(1), id(2)]);
-
-        let revision = repo.load().unwrap().revision;
-        repo.move_project_before(id(1), Some(id(2)), revision)
-            .unwrap();
-        assert_eq!(repo.load().unwrap().revision, revision);
-        repo.move_project_before(id(1), Some(id(1)), revision)
-            .unwrap();
-        assert_eq!(repo.load().unwrap().revision, revision);
+        assert_eq!(fs::read(normal.root().join(LIBRARY_FILE)).unwrap(), prior);
     }
 
     #[cfg(unix)]
@@ -1904,76 +1372,31 @@ mod tests {
         let fixture = tempfile::tempdir().unwrap();
         let repo = repository(&fixture.path().join("store"));
         let root_mode = fs::metadata(repo.root()).unwrap().permissions().mode() & 0o777;
-        let projects_mode = fs::metadata(repo.root().join(PROJECTS_FILE))
+        let library_mode = fs::metadata(repo.root().join(LIBRARY_FILE))
             .unwrap()
             .permissions()
             .mode()
             & 0o777;
         assert_eq!(root_mode, 0o700);
-        assert_eq!(projects_mode, 0o600);
+        assert_eq!(library_mode, 0o600);
     }
 
     #[test]
     fn oversized_metadata_is_rejected_before_deserialization() {
         let fixture = tempfile::tempdir().unwrap();
         let repo = repository(&fixture.path().join("store"));
-        let oversized = vec![b'x'; usize::try_from(MAX_PROJECTS_BYTES + 1).unwrap()];
-        fs::write(repo.root().join(PROJECTS_FILE), oversized).unwrap();
+        let oversized = vec![b'x'; usize::try_from(MAX_LIBRARY_BYTES + 1).unwrap()];
+        fs::write(repo.root().join(LIBRARY_FILE), oversized).unwrap();
         assert!(matches!(repo.load(), Err(StoreError::TooLarge { .. })));
-    }
-
-    #[test]
-    fn duplicate_identity_and_project_count_limit_fail_validation() {
-        let fixture = tempfile::tempdir().unwrap();
-        let project_root = fixture.path().join("project");
-        fs::create_dir(&project_root).unwrap();
-        let repo = repository(&fixture.path().join("store"));
-        let project = repo
-            .add_project(add_request(id(1), &project_root, Revision::ZERO))
-            .unwrap();
-        let mut duplicate = project.clone();
-        duplicate.id = id(2);
-        let duplicate_document = ProjectsDocument {
-            revision: Revision::new(1),
-            projects: vec![project.clone(), duplicate],
-            groups: Vec::new(),
-            worktree_intents: Vec::new(),
-            worktrees: Vec::new(),
-        };
-        assert_eq!(
-            validate_document(&duplicate_document),
-            Err(ProjectError::Store {
-                code: "duplicate-project"
-            })
-        );
-
-        let over_limit = ProjectsDocument {
-            revision: Revision::new(1),
-            projects: vec![project; MAX_PROJECTS + 1],
-            groups: Vec::new(),
-            worktree_intents: Vec::new(),
-            worktrees: Vec::new(),
-        };
-        assert_eq!(
-            validate_document(&over_limit),
-            Err(ProjectError::ResourceLimit {
-                limit: MAX_PROJECTS
-            })
-        );
     }
 
     #[test]
     fn groups_crud_order_and_collapse_persist_across_restart() {
         let fixture = tempfile::tempdir().unwrap();
         let store_root = fixture.path().join("store");
-        let project_root = fixture.path().join("project");
-        fs::create_dir(&project_root).unwrap();
         let repo = repository(&store_root);
-        let project = repo
-            .add_project(add_request(id(1), &project_root, Revision::ZERO))
-            .unwrap();
         let first = repo
-            .create_group(project.id, group_id(1), "Build", Revision::new(1))
+            .create_group(group_id(1), "Build", Revision::ZERO)
             .unwrap();
         assert_eq!(
             first.inverse,
@@ -1981,18 +1404,18 @@ mod tests {
                 group_id: group_id(1)
             }
         );
-        repo.create_group(project.id, group_id(2), "Review", Revision::new(2))
+        repo.create_group(group_id(2), "Review", Revision::new(1))
             .unwrap();
-        repo.rename_group(group_id(1), "Implement", Revision::new(3))
+        repo.rename_group(group_id(1), "Implement", Revision::new(2))
             .unwrap();
-        repo.set_group_collapsed(group_id(2), true, Revision::new(4))
+        repo.set_group_collapsed(group_id(2), true, Revision::new(3))
             .unwrap();
-        repo.move_group_before(group_id(2), Some(group_id(1)), Revision::new(5))
+        repo.move_group_before(group_id(2), Some(group_id(1)), Revision::new(4))
             .unwrap();
         drop(repo);
 
         let snapshot = repository(&store_root).load().unwrap();
-        assert_eq!(snapshot.revision, Revision::new(6));
+        assert_eq!(snapshot.revision, Revision::new(5));
         assert_eq!(
             snapshot
                 .groups
@@ -2006,143 +1429,34 @@ mod tests {
     }
 
     #[test]
-    fn groups_survive_project_removal_and_atomic_undo() {
-        let fixture = tempfile::tempdir().unwrap();
-        let project_root = fixture.path().join("project");
-        fs::create_dir(&project_root).unwrap();
-        let repo = repository(&fixture.path().join("store"));
-        let project = repo
-            .add_project(add_request(id(1), &project_root, Revision::ZERO))
-            .unwrap();
-        repo.create_group(project.id, group_id(1), "Build", Revision::new(1))
-            .unwrap();
-        repo.create_group(project.id, group_id(2), "Review", Revision::new(2))
-            .unwrap();
-        repo.set_group_collapsed(group_id(2), true, Revision::new(3))
-            .unwrap();
-        let before = repo.load().unwrap();
-
-        let removed = repo.remove_project(project.id, before.revision).unwrap();
-        assert_eq!(removed.groups, before.groups);
-        let after_remove = repo.load().unwrap();
-        assert!(after_remove.projects.is_empty());
-        assert!(after_remove.groups.is_empty());
-
-        let restored = repo
-            .restore_project(removed, after_remove.revision)
-            .unwrap();
-        let after_restore = repo.load().unwrap();
-        assert_eq!(restored.project.id, project.id);
-        assert_eq!(after_restore.projects.len(), 1);
-        assert_eq!(
-            after_restore
-                .groups
-                .iter()
-                .map(|group| (
-                    group.id,
-                    group.name.as_str(),
-                    group.position,
-                    group.collapsed
-                ))
-                .collect::<Vec<_>>(),
-            before
-                .groups
-                .iter()
-                .map(|group| (
-                    group.id,
-                    group.name.as_str(),
-                    group.position,
-                    group.collapsed
-                ))
-                .collect::<Vec<_>>()
-        );
-        assert!(
-            after_restore
-                .groups
-                .iter()
-                .all(|group| group.revision == after_restore.revision)
-        );
-    }
-
-    #[test]
     fn groups_reject_duplicate_names_and_stale_mutations_without_change() {
         let fixture = tempfile::tempdir().unwrap();
-        let project_root = fixture.path().join("project");
-        fs::create_dir(&project_root).unwrap();
         let repo = repository(&fixture.path().join("store"));
-        let project = repo
-            .add_project(add_request(id(1), &project_root, Revision::ZERO))
-            .unwrap();
-        repo.create_group(project.id, group_id(1), "Review", Revision::new(1))
+        repo.create_group(group_id(1), "Review", Revision::ZERO)
             .unwrap();
         assert_eq!(
-            repo.create_group(project.id, group_id(2), "review", Revision::new(2)),
+            repo.create_group(group_id(2), "review", Revision::new(1)),
             Err(StoreError::GroupDomain(GroupError::DuplicateName))
         );
         assert!(matches!(
-            repo.rename_group(group_id(1), "Changed", Revision::new(1)),
-            Err(StoreError::Domain(ProjectError::StaleRevision { .. }))
+            repo.rename_group(group_id(1), "Changed", Revision::ZERO),
+            Err(StoreError::StaleRevision { .. })
         ));
         let snapshot = repo.load().unwrap();
-        assert_eq!(snapshot.revision, Revision::new(2));
+        assert_eq!(snapshot.revision, Revision::new(1));
         assert_eq!(snapshot.groups[0].name.as_str(), "Review");
-    }
-
-    #[test]
-    fn groups_concurrent_creation_from_one_revision_commits_exactly_once() {
-        let fixture = tempfile::tempdir().unwrap();
-        let project_root = fixture.path().join("project");
-        fs::create_dir(&project_root).unwrap();
-        let repo = repository(&fixture.path().join("store"));
-        let project = repo
-            .add_project(add_request(id(1), &project_root, Revision::ZERO))
-            .unwrap();
-        let barrier = Arc::new(Barrier::new(3));
-        let handles = [(group_id(1), "First"), (group_id(2), "Second")]
-            .into_iter()
-            .map(|(group_id, name)| {
-                let repo = repo.clone();
-                let barrier = barrier.clone();
-                thread::spawn(move || {
-                    barrier.wait();
-                    repo.create_group(project.id, group_id, name, Revision::new(1))
-                })
-            })
-            .collect::<Vec<_>>();
-        barrier.wait();
-        let results = handles
-            .into_iter()
-            .map(|handle| handle.join().unwrap())
-            .collect::<Vec<_>>();
-        assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
-        assert_eq!(
-            results
-                .iter()
-                .filter(|result| matches!(
-                    result,
-                    Err(StoreError::Domain(ProjectError::StaleRevision { .. }))
-                ))
-                .count(),
-            1
-        );
-        assert_eq!(repo.load().unwrap().groups.len(), 1);
     }
 
     #[test]
     fn groups_non_empty_removal_requires_valid_explicit_destination_and_restores() {
         let fixture = tempfile::tempdir().unwrap();
-        let project_root = fixture.path().join("project");
-        fs::create_dir(&project_root).unwrap();
         let repo = repository(&fixture.path().join("store"));
-        let project = repo
-            .add_project(add_request(id(1), &project_root, Revision::ZERO))
+        repo.create_group(group_id(1), "Source", Revision::ZERO)
             .unwrap();
-        repo.create_group(project.id, group_id(1), "Source", Revision::new(1))
-            .unwrap();
-        repo.create_group(project.id, group_id(2), "Destination", Revision::new(2))
+        repo.create_group(group_id(2), "Destination", Revision::new(1))
             .unwrap();
         assert_eq!(
-            repo.remove_group(group_id(1), None, true, Revision::new(3)),
+            repo.remove_group(group_id(1), None, true, Revision::new(2)),
             Err(StoreError::GroupDomain(
                 GroupError::NonEmptyDestinationRequired
             ))
@@ -2152,51 +1466,98 @@ mod tests {
                 group_id(1),
                 Some(GroupDestination::Group(group_id(2))),
                 true,
-                Revision::new(3),
+                Revision::new(2),
             )
             .unwrap();
         assert_eq!(removed.value.id, group_id(1));
         assert_eq!(repo.load().unwrap().groups.len(), 1);
-        repo.restore_group(removed.value, Revision::new(4)).unwrap();
+        repo.restore_group(removed.value, Revision::new(3)).unwrap();
         assert_eq!(repo.load().unwrap().groups.len(), 2);
     }
 
     #[test]
     fn groups_missing_removal_destination_preserves_document() {
         let fixture = tempfile::tempdir().unwrap();
-        let project_root = fixture.path().join("project");
-        fs::create_dir(&project_root).unwrap();
         let repo = repository(&fixture.path().join("store"));
-        let project = repo
-            .add_project(add_request(id(1), &project_root, Revision::ZERO))
+        repo.create_group(group_id(1), "Source", Revision::ZERO)
             .unwrap();
-        repo.create_group(project.id, group_id(1), "Source", Revision::new(1))
-            .unwrap();
-        let before = fs::read(repo.root().join(PROJECTS_FILE)).unwrap();
+        let before = fs::read(repo.root().join(LIBRARY_FILE)).unwrap();
         assert_eq!(
             repo.remove_group(
                 group_id(1),
                 Some(GroupDestination::Group(group_id(99))),
                 true,
-                Revision::new(2),
+                Revision::new(1),
             ),
             Err(StoreError::GroupDomain(GroupError::DestinationNotFound))
         );
-        assert_eq!(fs::read(repo.root().join(PROJECTS_FILE)).unwrap(), before);
+        assert_eq!(fs::read(repo.root().join(LIBRARY_FILE)).unwrap(), before);
+    }
+
+    /// A store as 0.0.5 left it: a Project holding a group, and a session naming the Project.
+    fn write_legacy_store(root: &Path, project_folder: &Path) -> String {
+        fs::create_dir_all(root).unwrap();
+        let folder = serde_json::to_value(CanonicalPath::resolve(project_folder).unwrap()).unwrap();
+        let group = group_id(1).to_string();
+        let project = "00000000-0000-0000-0000-00000000000a";
+        let legacy = serde_json::json!({
+            "revision": 4,
+            "projects": [{
+                "id": project,
+                "display_name": "Payments",
+                "canonical_root": folder,
+                "position": 1,
+                "revision": 1
+            }],
+            "groups": [{
+                "id": group,
+                "project_id": project,
+                "name": "Review",
+                "position": 1,
+                "collapsed": false,
+                "revision": 2
+            }],
+            "worktree_intents": [],
+            "worktrees": []
+        });
+        fs::write(
+            root.join(FORMAT_FILE),
+            format!(
+                r#"{{"format_version":{CURRENT_FORMAT_VERSION},"minimum_reader":1,"instance_id":"{INSTANCE_ID}"}}"#
+            ),
+        )
+        .unwrap();
+        fs::write(
+            root.join("projects.json"),
+            serde_json::to_vec_pretty(&legacy).unwrap(),
+        )
+        .unwrap();
+        project.to_owned()
     }
 
     #[test]
-    fn legacy_projects_document_without_groups_loads_as_empty() {
+    fn a_store_from_before_projects_were_removed_keeps_its_groups() {
         let fixture = tempfile::tempdir().unwrap();
-        let repo = repository(&fixture.path().join("store"));
-        fs::write(
-            repo.root().join(PROJECTS_FILE),
-            br#"{"revision":0,"projects":[]}"#,
-        )
-        .unwrap();
+        let store_root = fixture.path().join("store");
+        let project_folder = fixture.path().join("payments");
+        fs::create_dir(&project_folder).unwrap();
+        write_legacy_store(&store_root, &project_folder);
+
+        // Read-only first, as the TUI does: it sees the groups without changing anything.
+        let read_only = LibraryRepository::load_existing_read_only(&store_root).unwrap();
+        assert_eq!(read_only.groups.len(), 1);
+        assert!(store_root.join("projects.json").exists());
+        assert!(!store_root.join(LIBRARY_FILE).exists());
+
+        let repo = repository(&store_root);
         let snapshot = repo.load().unwrap();
-        assert!(snapshot.groups.is_empty());
-        assert!(snapshot.worktree_intents.is_empty());
-        assert!(snapshot.worktrees.is_empty());
+        assert_eq!(snapshot.revision, Revision::new(4));
+        assert_eq!(snapshot.groups.len(), 1);
+        assert_eq!(snapshot.groups[0].name.as_str(), "Review");
+        // The old file is kept under another name, never deleted.
+        assert!(!store_root.join("projects.json").exists());
+        assert!(store_root.join("projects.migrated.json").exists());
+        // Opening again finds nothing left to carry.
+        assert_eq!(repository(&store_root).load().unwrap(), snapshot);
     }
 }

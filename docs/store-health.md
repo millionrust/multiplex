@@ -2,31 +2,32 @@
 
 Multiplex's **Settings > Health** workflow separates diagnosis from repair. A scan is
 explicit and read-only. It checks the store format, authoritative record readability and
-hashes, and the two supported derived indexes.
+hashes, and the supported derived index.
 
 ## Authoritative Data
 
 The health service treats these metadata files as authoritative:
 
 - `format.json`
-- `projects.json`
+- `library.json` (groups and managed worktrees)
 - `sessions.json`
 - `presets.json`
 
-A derived-index repair never writes these files and never reads project contents,
+A derived-index repair never writes these files and never reads the contents of session folders,
 provider output, terminal journals, or session output. A future-format or malformed
 authoritative source disables every repair action.
 
 ## Repairable Indexes
 
-Only these marker-owned files under `derived-indexes/` can be rebuilt:
+Only this marker-owned file under `derived-indexes/` can be rebuilt:
 
-- `project-session-v1.json`
 - `palette-v1.json`
 
-The builders use stable ordering and canonical JSON. The same source revisions and bytes
-therefore produce identical index bytes and SHA-256 digests. The project/session builder
-rejects more than 10,000 sessions in one project.
+The builder uses stable ordering and canonical JSON. The same source revisions and bytes
+therefore produce identical index bytes and SHA-256 digests.
+
+There was a second index, `project-session-v1.json`, while sessions belonged to Projects. It is
+no longer built or read; a copy left behind by an older version is ignored.
 
 ## Atomic Repair
 

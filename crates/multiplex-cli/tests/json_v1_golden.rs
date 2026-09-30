@@ -51,10 +51,6 @@ fn json_v1_golden() {
         json(&mut service, &["status"], &cancellation),
     );
     actual.insert(
-        "project_list".into(),
-        json(&mut service, &["project", "list"], &cancellation),
-    );
-    actual.insert(
         "device_list".into(),
         json(&mut service, &["device", "list"], &cancellation),
     );
@@ -91,11 +87,7 @@ fn json_v1_golden() {
     );
     actual.insert(
         "preset_list".into(),
-        json(
-            &mut service,
-            &["preset", "list", "--project", &PROJECT_ID.to_string()],
-            &cancellation,
-        ),
+        json(&mut service, &["preset", "list"], &cancellation),
     );
     actual.insert(
         "session_list".into(),
@@ -248,8 +240,8 @@ fn json_v1_golden() {
             &[
                 "session",
                 "launch",
-                "--project",
-                &PROJECT_ID.to_string(),
+                "--folder",
+                &seed.folder.display().to_string(),
                 "--preset",
                 &PRESET_ID.to_string(),
             ],

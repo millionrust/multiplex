@@ -111,7 +111,7 @@ impl MultiplexApp {
                 let mut config = self.saved.settings.default_local_shell.clone();
                 if let Some(directory) = self
                     .active_workspace()
-                    .and_then(|workspace| workspace.project_directory.clone())
+                    .and_then(|workspace| workspace.folder.clone())
                 {
                     config.cwd = Some(directory);
                 }

@@ -225,7 +225,7 @@ impl MultiplexApp {
         self.workspaces.push(WorkspaceTab {
             id: workspace_id,
             title: title.clone(),
-            project_directory: None,
+            folder: None,
             pane_ids: Vec::new(),
             active_pane_id: 0,
             unread_events: 0,

@@ -129,7 +129,7 @@ fn immediate_lifecycle_and_activity_matches_are_read_only_and_render_stably() {
     .unwrap();
     assert!(human.contains("Wait condition matched: activity=done"));
     assert!(human.contains(&SESSION_ID.to_string()));
-    assert!(!human.contains(seed.project_root.to_string_lossy().as_ref()));
+    assert!(!human.contains(seed.folder.to_string_lossy().as_ref()));
 
     let json = render_success(
         &activity,

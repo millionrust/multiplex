@@ -1,41 +1,22 @@
-use std::collections::BTreeSet;
-
-pub const MAX_PROJECTS: usize = 1_000;
+pub const MAX_GROUPS: usize = 1_000;
 pub const MAX_VISIBLE_SESSIONS: usize = 10_000;
 pub const MAX_FILTER_SCALARS: usize = 128;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FleetRevision {
-    pub projects: u64,
+    pub library: u64,
     pub sessions: u64,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProjectAvailability {
-    Available,
-    Unavailable,
-    PermissionDenied,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FleetGroup {
     pub id: String,
-    pub project_id: String,
     pub name: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct FleetProject {
-    pub id: String,
-    pub name: String,
-    pub availability: ProjectAvailability,
-    pub groups: Vec<FleetGroup>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FleetSession {
     pub id: String,
-    pub project_id: String,
     pub group_id: Option<String>,
     pub title: String,
     pub state: String,
@@ -56,7 +37,7 @@ pub enum FleetHealth {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FleetSnapshot {
     pub revision: FleetRevision,
-    pub projects: Vec<FleetProject>,
+    pub groups: Vec<FleetGroup>,
     pub sessions: Vec<FleetSession>,
     pub health: FleetHealth,
     pub skipped_records: usize,
@@ -66,10 +47,10 @@ impl FleetSnapshot {
     pub fn empty() -> Self {
         Self {
             revision: FleetRevision {
-                projects: 0,
+                library: 0,
                 sessions: 0,
             },
-            projects: Vec::new(),
+            groups: Vec::new(),
             sessions: Vec::new(),
             health: FleetHealth::Healthy,
             skipped_records: 0,
@@ -90,7 +71,7 @@ pub enum LoadState {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PaneFocus {
-    Projects,
+    Scopes,
     Sessions,
     Inspector,
 }
@@ -98,7 +79,6 @@ pub enum PaneFocus {
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum ScopeId {
     All,
-    Project(String),
     Group(String),
 }
 
@@ -152,7 +132,6 @@ pub struct TuiModel {
     focus: PaneFocus,
     selected_scope: ScopeId,
     selected_session_id: Option<String>,
-    expanded_projects: BTreeSet<String>,
     scope_rows: Vec<ScopeId>,
     session_rows: Vec<usize>,
     filter: String,
@@ -169,10 +148,9 @@ impl Default for TuiModel {
         Self {
             load_state: LoadState::Starting,
             snapshot: None,
-            focus: PaneFocus::Projects,
+            focus: PaneFocus::Scopes,
             selected_scope: ScopeId::All,
             selected_session_id: None,
-            expanded_projects: BTreeSet::new(),
             scope_rows: vec![ScopeId::All],
             session_rows: Vec::new(),
             filter: String::new(),
@@ -205,10 +183,6 @@ impl TuiModel {
 
     pub fn scope_rows(&self) -> &[ScopeId] {
         &self.scope_rows
-    }
-
-    pub fn is_project_expanded(&self, id: &str) -> bool {
-        self.expanded_projects.contains(id)
     }
 
     pub fn visible_sessions(&self) -> impl Iterator<Item = &FleetSession> {
@@ -376,7 +350,7 @@ impl TuiModel {
     fn state_for_snapshot(&self) -> LoadState {
         match self.snapshot.as_ref() {
             None => LoadState::Starting,
-            Some(snapshot) if snapshot.projects.is_empty() && snapshot.sessions.is_empty() => {
+            Some(snapshot) if snapshot.groups.is_empty() && snapshot.sessions.is_empty() => {
                 LoadState::Empty
             }
             Some(snapshot) if snapshot.health == FleetHealth::RecoveredLastGood => {
@@ -391,17 +365,12 @@ impl TuiModel {
         self.scope_rows.clear();
         self.scope_rows.push(ScopeId::All);
         if let Some(snapshot) = &self.snapshot {
-            for project in &snapshot.projects {
-                self.scope_rows.push(ScopeId::Project(project.id.clone()));
-                if self.expanded_projects.contains(&project.id) {
-                    self.scope_rows.extend(
-                        project
-                            .groups
-                            .iter()
-                            .map(|group| ScopeId::Group(group.id.clone())),
-                    );
-                }
-            }
+            self.scope_rows.extend(
+                snapshot
+                    .groups
+                    .iter()
+                    .map(|group| ScopeId::Group(group.id.clone())),
+            );
         }
         if !self.scope_rows.contains(&self.selected_scope) {
             self.selected_scope = ScopeId::All;
@@ -418,7 +387,6 @@ impl TuiModel {
                 .enumerate()
                 .filter(|(_, session)| match &selected_scope {
                     ScopeId::All => true,
-                    ScopeId::Project(id) => &session.project_id == id,
                     ScopeId::Group(id) => session.group_id.as_ref() == Some(id),
                 })
                 .filter(|(_, session)| {
@@ -452,7 +420,7 @@ impl TuiModel {
 
     fn move_selection(&mut self, delta: i8) {
         match self.focus {
-            PaneFocus::Projects => {
+            PaneFocus::Scopes => {
                 let current = self
                     .scope_rows
                     .iter()
@@ -490,54 +458,33 @@ impl TuiModel {
 
     fn next_focus(&self, backwards: bool) -> PaneFocus {
         match (self.focus, backwards, self.inspector_visible) {
-            (PaneFocus::Projects, false, _) => PaneFocus::Sessions,
+            (PaneFocus::Scopes, false, _) => PaneFocus::Sessions,
             (PaneFocus::Sessions, false, true) => PaneFocus::Inspector,
             (PaneFocus::Sessions, false, false) | (PaneFocus::Inspector, false, _) => {
-                PaneFocus::Projects
+                PaneFocus::Scopes
             }
-            (PaneFocus::Projects, true, true) => PaneFocus::Inspector,
-            (PaneFocus::Projects, true, false) => PaneFocus::Sessions,
-            (PaneFocus::Sessions, true, _) => PaneFocus::Projects,
+            (PaneFocus::Scopes, true, true) => PaneFocus::Inspector,
+            (PaneFocus::Scopes, true, false) => PaneFocus::Sessions,
+            (PaneFocus::Sessions, true, _) => PaneFocus::Scopes,
             (PaneFocus::Inspector, true, _) => PaneFocus::Sessions,
         }
     }
 
+    /// The scope list is one level deep now that nothing nests, so expanding a row selects it
+    /// and collapsing returns to every session.
     fn expand_selected(&mut self) {
-        if let ScopeId::Project(id) = &self.selected_scope {
-            self.expanded_projects.insert(id.clone());
-            self.rebuild_scopes();
-        }
+        self.rebuild_sessions();
     }
 
     fn collapse_selected(&mut self) {
-        match &self.selected_scope {
-            ScopeId::Project(id) => {
-                self.expanded_projects.remove(id);
-                self.rebuild_scopes();
-            }
-            ScopeId::Group(group_id) => {
-                if let Some(project) = self.snapshot.as_ref().and_then(|snapshot| {
-                    snapshot
-                        .projects
-                        .iter()
-                        .find(|project| project.groups.iter().any(|group| &group.id == group_id))
-                }) {
-                    self.selected_scope = ScopeId::Project(project.id.clone());
-                    self.rebuild_sessions();
-                }
-            }
-            ScopeId::All => {}
+        if matches!(self.selected_scope, ScopeId::Group(_)) {
+            self.selected_scope = ScopeId::All;
+            self.rebuild_sessions();
         }
     }
 
     fn activate_selected(&mut self) {
-        if let ScopeId::Project(id) = &self.selected_scope {
-            let id = id.clone();
-            if !self.expanded_projects.remove(&id) {
-                self.expanded_projects.insert(id);
-            }
-            self.rebuild_scopes();
-        }
+        self.rebuild_sessions();
     }
 
     fn add_filter_character(&mut self, character: char) {
@@ -569,23 +516,16 @@ mod tests {
     fn snapshot() -> FleetSnapshot {
         FleetSnapshot {
             revision: FleetRevision {
-                projects: 3,
+                library: 3,
                 sessions: 7,
             },
-            projects: vec![FleetProject {
-                id: "project-a".into(),
-                name: "Alpha".into(),
-                availability: ProjectAvailability::Available,
-                groups: vec![FleetGroup {
-                    id: "group-a".into(),
-                    project_id: "project-a".into(),
-                    name: "Review".into(),
-                }],
+            groups: vec![FleetGroup {
+                id: "group-a".into(),
+                name: "Review".into(),
             }],
             sessions: vec![
                 FleetSession {
                     id: "session-a".into(),
-                    project_id: "project-a".into(),
                     group_id: None,
                     title: "Build".into(),
                     state: "live".into(),
@@ -597,7 +537,6 @@ mod tests {
                 },
                 FleetSession {
                     id: "session-b".into(),
-                    project_id: "project-a".into(),
                     group_id: Some("group-a".into()),
                     title: "Review tests".into(),
                     state: "offline".into(),
@@ -660,23 +599,21 @@ mod tests {
     }
 
     #[test]
-    fn group_navigation_expands_collapses_and_returns_to_parent() {
+    fn group_navigation_lists_groups_and_returns_to_every_session() {
         let mut model = TuiModel::default();
         model.reduce(ModelAction::BeginRefresh);
         model.reduce(ModelAction::RefreshSucceeded {
             generation: 1,
             snapshot: snapshot(),
         });
-        model.reduce(ModelAction::Move(1));
-        model.reduce(ModelAction::Expand);
-        assert_eq!(model.scope_rows().len(), 3);
+        // Every session, then each group; nothing nests under anything else.
+        assert_eq!(model.scope_rows().len(), 2);
         model.reduce(ModelAction::Move(1));
         assert_eq!(model.selected_scope(), &ScopeId::Group("group-a".into()));
+        assert_eq!(model.visible_sessions().count(), 1);
         model.reduce(ModelAction::Collapse);
-        assert_eq!(
-            model.selected_scope(),
-            &ScopeId::Project("project-a".into())
-        );
+        assert_eq!(model.selected_scope(), &ScopeId::All);
+        assert_eq!(model.visible_sessions().count(), 2);
     }
 
     #[test]

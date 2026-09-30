@@ -7,14 +7,14 @@ mod local_controller_fixture;
 
 use multiplex_domain::{
     ActivityAggregate, GroupId, HostedSession, HostedSessionId, HostedSessionState, OutputSequence,
-    ProjectId, Revision, SessionMutation, SessionStateError,
+    Revision, SessionMutation, SessionStateError,
 };
 use multiplex_store::{
     SessionRemovalPlan, SessionRepository, SessionSnapshot, StoreError, StoreHealth,
 };
 
 use crate::models::{SavedAppAttachedSession, SavedSessionPlacement, SavedState};
-use crate::storage::{app_dir, project_store_dir};
+use crate::storage::{app_dir, library_store_dir};
 use crate::ui::util::current_unix_millis;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -68,7 +68,7 @@ pub(super) struct SessionLibraryState {
 
 impl SessionLibraryState {
     pub fn open_default(saved: &mut SavedState) -> Self {
-        let Ok(root) = project_store_dir() else {
+        let Ok(root) = library_store_dir() else {
             return Self::failed(SessionLibraryFailure::Unavailable);
         };
         let Ok(data_root) = app_dir().map(|root| root.join("durable-sessions")) else {
@@ -137,15 +137,14 @@ impl SessionLibraryState {
         {
             return Ok(());
         }
+        // A record saved while Projects existed carries no folder. The store gave its session
+        // one when it moved off Projects; one the store no longer has belonged to a Project that
+        // was already gone, so nothing could open it and there is nothing to carry over.
+        saved
+            .app_attached_sessions
+            .retain(|record| !record.folder.is_empty() || self.session(record.id).is_some());
         let mut records = saved.app_attached_sessions.clone();
-        records.sort_by_key(|session| {
-            (
-                session.origin.project_id,
-                session.group_id,
-                session.position,
-                session.id,
-            )
-        });
+        records.sort_by_key(|session| (session.group_id, session.position, session.id));
         for record in records {
             if self.session(record.id).is_some() {
                 continue;
@@ -305,11 +304,7 @@ impl SessionLibraryState {
             .find(|session| session.id == id)
     }
 
-    pub fn visible_sessions(
-        &self,
-        project_id: ProjectId,
-        group_id: Option<GroupId>,
-    ) -> Vec<HostedSession> {
+    pub fn visible_sessions(&self, group_id: Option<GroupId>) -> Vec<HostedSession> {
         let mut sessions = self
             .snapshot
             .as_ref()
@@ -318,8 +313,7 @@ impl SessionLibraryState {
                     .sessions
                     .iter()
                     .filter(|session| {
-                        session.project_id == project_id
-                            && session.group_id == group_id
+                        session.group_id == group_id
                             && match self.view {
                                 SessionLibraryView::Active => session.archived_at.is_none(),
                                 SessionLibraryView::Archive => session.archived_at.is_some(),
@@ -360,14 +354,7 @@ impl SessionLibraryState {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        sessions.sort_by_key(|session| {
-            (
-                session.project_id,
-                !session.pinned,
-                session.position,
-                session.id,
-            )
-        });
+        sessions.sort_by_key(|session| (!session.pinned, session.position, session.id));
         sessions
     }
 
@@ -524,11 +511,10 @@ mod local_controller_conformance_tests {
             id: session.id,
             route: SessionLaunchRoute::DurableHost,
             origin: SessionOrigin {
-                project_id: session.project_id,
                 preset_id: session.preset_id.unwrap(),
             },
             state: session.lifecycle,
-            project_label: "Conformance project".into(),
+            folder: std::env::temp_dir().display().to_string(),
             preset_label: "Conformance preset".into(),
             title: session.title.as_str().into(),
             title_source: TitleSource::Manual,
@@ -589,11 +575,10 @@ mod tests {
             id,
             route: SessionLaunchRoute::DurableHost,
             origin: SessionOrigin {
-                project_id: ProjectId::new(),
                 preset_id: PresetId::new(),
             },
             state,
-            project_label: "Project".to_string(),
+            folder: std::env::temp_dir().display().to_string(),
             preset_label: "Codex".to_string(),
             title: "Investigate parser".to_string(),
             title_source: TitleSource::Manual,
@@ -623,7 +608,6 @@ mod tests {
         let mut saved = SavedState::default();
         let record = record(HostedSessionState::Exited);
         let id = record.id;
-        let project_id = record.origin.project_id;
         saved.app_attached_sessions.push(record);
         let mut library = state_with_repository(&mut saved, fixture.path());
         library
@@ -648,19 +632,46 @@ mod tests {
             )
             .unwrap();
         library.filter = SessionLibraryFilter::Unread;
-        assert_eq!(library.visible_sessions(project_id, None).len(), 1);
+        assert_eq!(library.visible_sessions(None).len(), 1);
         library
             .mutate(&mut saved, id, SessionMutation::Archive { at: 9 })
             .unwrap();
-        assert!(library.visible_sessions(project_id, None).is_empty());
+        assert!(library.visible_sessions(None).is_empty());
         library.view = SessionLibraryView::Archive;
-        assert_eq!(library.visible_sessions(project_id, None).len(), 1);
+        assert_eq!(library.visible_sessions(None).len(), 1);
 
         let reopened = state_with_repository(&mut saved, fixture.path());
         let metadata = reopened.session(id).unwrap();
         assert!(metadata.pinned);
         assert!(metadata.unread());
         assert_eq!(metadata.archived_at, Some(9));
+    }
+
+    #[test]
+    fn records_saved_while_projects_existed_take_their_folder_from_the_store() {
+        let fixture = tempfile::tempdir().unwrap();
+        let mut saved = SavedState::default();
+        let known = record(HostedSessionState::Exited);
+        let known_id = known.id;
+        let folder = multiplex_domain::CanonicalPath::resolve(std::path::Path::new(&known.folder))
+            .unwrap()
+            .as_path()
+            .display()
+            .to_string();
+        saved.app_attached_sessions.push(known);
+        state_with_repository(&mut saved, fixture.path());
+
+        // As 0.0.5 saved them: no folder, because the Project held it.
+        saved.app_attached_sessions[0].folder = String::new();
+        let mut orphan = record(HostedSessionState::Exited);
+        orphan.folder = String::new();
+        saved.app_attached_sessions.push(orphan);
+
+        let library = state_with_repository(&mut saved, fixture.path());
+        assert!(matches!(library.load_state, SessionLibraryLoadState::Ready));
+        assert_eq!(saved.app_attached_sessions.len(), 1);
+        assert_eq!(saved.app_attached_sessions[0].id, known_id);
+        assert_eq!(saved.app_attached_sessions[0].folder, folder);
     }
 
     #[test]
@@ -705,10 +716,8 @@ mod tests {
         let fixture = tempfile::tempdir().unwrap();
         let mut saved = SavedState::default();
         let first = record(HostedSessionState::Exited);
-        let project_id = first.origin.project_id;
         let first_id = first.id;
-        let mut second = record(HostedSessionState::Exited);
-        second.origin.project_id = project_id;
+        let second = record(HostedSessionState::Exited);
         let second_id = second.id;
         saved.app_attached_sessions = vec![first, second];
         let mut library = state_with_repository(&mut saved, fixture.path());
@@ -734,34 +743,32 @@ mod tests {
             )
             .unwrap();
 
-        let visible = library.visible_sessions(project_id, None);
+        let visible = library.visible_sessions(None);
         assert_eq!(visible[0].id, second_id);
         assert_eq!(visible[1].id, first_id);
         library.filter = SessionLibraryFilter::Unread;
-        assert_eq!(library.visible_sessions(project_id, None)[0].id, first_id);
+        assert_eq!(library.visible_sessions(None)[0].id, first_id);
 
         library.filter = SessionLibraryFilter::All;
         library
             .mutate(&mut saved, first_id, SessionMutation::Archive { at: 9 })
             .unwrap();
-        assert_eq!(library.visible_sessions(project_id, None)[0].id, second_id);
+        assert_eq!(library.visible_sessions(None)[0].id, second_id);
         library.view = SessionLibraryView::Archive;
-        assert_eq!(library.visible_sessions(project_id, None)[0].id, first_id);
+        assert_eq!(library.visible_sessions(None)[0].id, first_id);
         assert!(library.session(first_id).unwrap().unread());
     }
 
     #[test]
-    fn unified_sessions_query_spans_projects_and_keeps_archive_orthogonal() {
+    fn unified_sessions_query_spans_every_session_and_keeps_archive_orthogonal() {
         let fixture = tempfile::tempdir().unwrap();
         let mut saved = SavedState::default();
         let first = record(HostedSessionState::Live);
         let first_id = first.id;
-        let first_project = first.origin.project_id;
         let mut second = record(HostedSessionState::RunningAppAttached);
         second.route = SessionLaunchRoute::LegacyAppAttached;
         second.durable_host = None;
         let second_id = second.id;
-        let second_project = second.origin.project_id;
         let mut archived = record(HostedSessionState::Exited);
         archived.archived_at = Some(9);
         let archived_id = archived.id;
@@ -772,7 +779,6 @@ mod tests {
         assert_eq!(active.len(), 2);
         assert!(active.iter().any(|session| session.id == first_id));
         assert!(active.iter().any(|session| session.id == second_id));
-        assert_ne!(first_project, second_project);
 
         library.view = SessionLibraryView::Archive;
         let archived = library.visible_sessions_all();
@@ -794,11 +800,10 @@ mod activity_tests {
             id: HostedSessionId::new(),
             route: SessionLaunchRoute::DurableHost,
             origin: SessionOrigin {
-                project_id: ProjectId::new(),
                 preset_id: PresetId::new(),
             },
             state: HostedSessionState::Live,
-            project_label: "Project".to_string(),
+            folder: std::env::temp_dir().display().to_string(),
             preset_label: "Agent".to_string(),
             title: "Attention fixture".to_string(),
             title_source: TitleSource::Manual,
@@ -906,7 +911,7 @@ mod resume_tests {
     use multiplex_domain::{
         ActivityAggregate, ExecutableFingerprint, HostInstanceId, HostedSessionId,
         HostedSessionState, OccupantGeneration, OccupantOwnership, PositionKey, PresetId,
-        ProcessToken, ProjectId, RecognitionConfidence, ResumeError, Revision, RuntimeCapability,
+        ProcessToken, RecognitionConfidence, ResumeError, Revision, RuntimeCapability,
         RuntimeCapabilitySet, RuntimeId, RuntimeOccupant, RuntimeRecognition, SessionLaunchRoute,
         SessionOrigin, TitleSource,
     };
@@ -921,11 +926,10 @@ mod resume_tests {
             id: HostedSessionId::new(),
             route: SessionLaunchRoute::DurableHost,
             origin: SessionOrigin {
-                project_id: ProjectId::new(),
                 preset_id: PresetId::new(),
             },
             state: lifecycle,
-            project_label: "Project".to_string(),
+            folder: std::env::temp_dir().display().to_string(),
             preset_label: "Agent".to_string(),
             title: "Resume fixture".to_string(),
             title_source: TitleSource::Default,

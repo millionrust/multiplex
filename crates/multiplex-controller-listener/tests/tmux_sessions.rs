@@ -25,7 +25,7 @@ use multiplex_domain::{
     PairingOfferId,
 };
 use multiplex_session_host::{LaunchDescriptor, SessionHostHandle, StopDeadlines};
-use multiplex_store::{JournalLimits, ProjectRepository, SessionRepository};
+use multiplex_store::{JournalLimits, LibraryRepository, SessionRepository};
 use multiplex_tmux::Tmux;
 use tokio::io::DuplexStream;
 use tokio::task::JoinHandle;
@@ -166,9 +166,9 @@ impl Fixture {
         let metadata = self.path().join("metadata");
         let sessions =
             SessionRepository::open(&metadata, self.path().join("session-data")).unwrap();
-        let projects = ProjectRepository::open(&metadata).unwrap();
+        let library = LibraryRepository::open(&metadata).unwrap();
         Arc::new(
-            HostBackendFactory::new(sessions, projects, self.runtime_parent())
+            HostBackendFactory::new(sessions, library, self.runtime_parent())
                 .with_tmux_sessions(source),
         )
     }

@@ -3,10 +3,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::project::MAX_PATH_BYTES;
-use crate::{
-    CanonicalPath, HostedSessionId, ManagedWorktreeId, PresetId, Project, ProjectId, Revision,
-};
+use crate::path::MAX_PATH_BYTES;
+use crate::{CanonicalPath, HostedSessionId, ManagedWorktreeId, PresetId, Revision};
 
 pub const MAX_GIT_REF_BYTES: usize = 1_024;
 pub const MAX_COMMIT_OID_BYTES: usize = 64;
@@ -143,7 +141,6 @@ pub struct BaseCandidate {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorktreeLaunchDraft {
-    pub source_project_id: ProjectId,
     pub requested_base: Option<GitReference>,
     pub fetch: bool,
     pub confirm_current_branch: bool,
@@ -154,8 +151,6 @@ pub struct WorktreeLaunchDraft {
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WorktreePlan {
     pub id: ManagedWorktreeId,
-    pub source_project_id: ProjectId,
-    pub child_project_id: ProjectId,
     pub repository_root: CanonicalPath,
     pub managed_root: CanonicalPath,
     pub selected_base: BaseCandidate,
@@ -167,8 +162,6 @@ impl WorktreePlan {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: ManagedWorktreeId,
-        source_project_id: ProjectId,
-        child_project_id: ProjectId,
         repository_root: CanonicalPath,
         managed_root: CanonicalPath,
         selected_base: BaseCandidate,
@@ -177,8 +170,6 @@ impl WorktreePlan {
     ) -> Result<Self, WorktreeError> {
         let plan = Self {
             id,
-            source_project_id,
-            child_project_id,
             repository_root,
             managed_root,
             selected_base,
@@ -194,8 +185,7 @@ impl WorktreePlan {
         self.selected_base.commit_oid.validate()?;
         self.generated_branch.validate()?;
         self.managed_path.validate()?;
-        if self.source_project_id == self.child_project_id
-            || self.managed_path.as_path() == self.managed_root.as_path()
+        if self.managed_path.as_path() == self.managed_root.as_path()
             || !self
                 .managed_path
                 .as_path()
@@ -216,8 +206,6 @@ impl fmt::Debug for WorktreePlan {
         formatter
             .debug_struct("WorktreePlan")
             .field("id", &self.id)
-            .field("source_project_id", &self.source_project_id)
-            .field("child_project_id", &self.child_project_id)
             .field("repository_root", &"<redacted>")
             .field("managed_root", &"<redacted>")
             .field("selected_base", &self.selected_base)
@@ -257,8 +245,6 @@ impl fmt::Debug for WorktreeIntent {
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WorktreeRegistration {
     pub id: ManagedWorktreeId,
-    pub source_project_id: ProjectId,
-    pub child_project_id: ProjectId,
     pub repository_root: CanonicalPath,
     pub managed_root: CanonicalPath,
     pub managed_path: CanonicalPath,
@@ -272,8 +258,7 @@ impl WorktreeRegistration {
         self.base.ref_name.validate()?;
         self.base.commit_oid.validate()?;
         self.branch.validate()?;
-        if self.source_project_id == self.child_project_id
-            || self.managed_path.as_path() == self.managed_root.as_path()
+        if self.managed_path.as_path() == self.managed_root.as_path()
             || !self
                 .managed_path
                 .as_path()
@@ -294,8 +279,6 @@ impl fmt::Debug for WorktreeRegistration {
         formatter
             .debug_struct("WorktreeRegistration")
             .field("id", &self.id)
-            .field("source_project_id", &self.source_project_id)
-            .field("child_project_id", &self.child_project_id)
             .field("base", &self.base)
             .field("revision", &self.revision)
             .field("paths", &"<redacted>")
@@ -316,7 +299,7 @@ pub enum WorktreeLaunchStage {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorktreeLaunchOutcome {
-    pub child_project: Project,
+    pub child_folder: CanonicalPath,
     pub optional_session: Option<HostedSessionId>,
 }
 
@@ -441,8 +424,6 @@ mod tests {
         };
         let result = WorktreePlan::new(
             ManagedWorktreeId::new(),
-            ProjectId::new(),
-            ProjectId::new(),
             repository,
             managed.clone(),
             base,

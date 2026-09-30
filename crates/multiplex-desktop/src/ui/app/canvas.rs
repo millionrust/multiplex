@@ -63,10 +63,10 @@ use super::canvas_coordinator::{
     CanvasLinkMutationDecision, CanvasLinkMutationRequest, CanvasLinkNodeSummary,
     CanvasPlacementRequest, CanvasRevealRequest, CanvasSelectionDecision, CanvasSelectionRequest,
 };
-use super::project::{
-    CanvasProjectPanelState, git_snapshot as canvas_project_git_snapshot,
-    load_project_directory as load_canvas_project_directory,
-    read_project_file as read_canvas_project_file, write_project_file as write_canvas_project_file,
+use super::folder_panel::{
+    CanvasFolderPanelState, git_snapshot as canvas_folder_git_snapshot,
+    load_folder_directory as load_canvas_folder_directory,
+    read_folder_file as read_canvas_folder_file, write_folder_file as write_canvas_folder_file,
 };
 
 pub(super) const CANVAS_TOOLBAR_HEIGHT: f32 = theme::CANVAS_TOOLBAR_HEIGHT;
@@ -89,7 +89,7 @@ const CANVAS_MINIMAP_WIDTH: f32 = theme::CANVAS_MINIMAP_WIDTH;
 const CANVAS_MINIMAP_HEIGHT: f32 = theme::CANVAS_MINIMAP_HEIGHT;
 const CANVAS_MINIMAP_PADDING: f32 = theme::CANVAS_MINIMAP_PADDING;
 const CANVAS_MINIMAP_MARGIN: f32 = theme::CANVAS_MINIMAP_MARGIN;
-const CANVAS_PROJECT_PANEL_WIDTH: f32 = theme::CANVAS_PROJECT_PANEL_WIDTH;
+const CANVAS_FOLDER_PANEL_WIDTH: f32 = theme::CANVAS_FOLDER_PANEL_WIDTH;
 const CANVAS_NOTE_WIDTH: f32 = theme::CANVAS_NOTE_WIDTH;
 const CANVAS_NOTE_HEIGHT: f32 = theme::CANVAS_NOTE_HEIGHT;
 const CANVAS_GROUP_WIDTH: f32 = theme::CANVAS_GROUP_WIDTH;
@@ -106,9 +106,9 @@ macro_rules! canvas_list_action_button {
     };
 }
 
-fn canvas_project_directory_label(directory: Option<&str>) -> String {
+fn canvas_folder_directory_label(directory: Option<&str>) -> String {
     let Some(directory) = directory else {
-        return "Choose Project Folder".to_string();
+        return "Choose Folder".to_string();
     };
     let name = std::path::Path::new(directory)
         .file_name()
@@ -118,9 +118,9 @@ fn canvas_project_directory_label(directory: Option<&str>) -> String {
     let mut characters = name.chars();
     let shortened = characters.by_ref().take(22).collect::<String>();
     if characters.next().is_some() {
-        format!("Project: {shortened}...")
+        format!("Folder: {shortened}...")
     } else {
-        format!("Project: {shortened}")
+        format!("Folder: {shortened}")
     }
 }
 
@@ -3587,11 +3587,11 @@ impl MultiplexApp {
         cx: &mut Context<Self>,
     ) {
         let mut config = self.saved.settings.default_local_shell.clone();
-        if let Some(project_directory) = self
+        if let Some(folder) = self
             .active_workspace()
-            .and_then(|workspace| workspace.project_directory.clone())
+            .and_then(|workspace| workspace.folder.clone())
         {
-            config.cwd = Some(project_directory);
+            config.cwd = Some(folder);
         }
         let request = ConnectRequest::local_shell_with_config(0, config);
         if self
@@ -3808,11 +3808,11 @@ impl MultiplexApp {
             return;
         };
         let mut config = self.saved.settings.default_local_shell.clone();
-        if let Some(project_directory) = self
+        if let Some(folder) = self
             .active_workspace()
-            .and_then(|workspace| workspace.project_directory.clone())
+            .and_then(|workspace| workspace.folder.clone())
         {
-            config.cwd = Some(project_directory);
+            config.cwd = Some(folder);
         }
         let session_name = format!("tr-local-{workspace_id}-{}", current_unix_millis());
         let request = ConnectRequest::persistent_local_shell_with_config(
@@ -4066,7 +4066,7 @@ impl MultiplexApp {
 
     fn default_agent_working_directory(&self) -> String {
         self.active_workspace()
-            .and_then(|workspace| workspace.project_directory.clone())
+            .and_then(|workspace| workspace.folder.clone())
             .or_else(|| {
                 self.active_workspace()
                     .and_then(|workspace| self.pane(workspace.active_pane_id))
@@ -4086,10 +4086,10 @@ impl MultiplexApp {
             .unwrap_or_default()
     }
 
-    pub(super) fn pick_canvas_project_directory(&mut self, cx: &mut Context<Self>) {
-        if self.canvas_project_editor_is_dirty(cx) {
+    pub(super) fn pick_canvas_folder_directory(&mut self, cx: &mut Context<Self>) {
+        if self.canvas_folder_editor_is_dirty(cx) {
             self.error_message =
-                localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopySaveOrRevertTheOpenProjectFileBeforeChangingFolders).to_string();
+                localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopySaveOrRevertTheOpenFileBeforeChangingFolders).to_string();
             cx.notify();
             return;
         }
@@ -4097,21 +4097,21 @@ impl MultiplexApp {
             rfd::AsyncFileDialog::new(),
             super::DialogChoice::Folder,
             cx,
-            |app, path, cx| app.set_canvas_project_directory(path, cx),
+            |app, path, cx| app.set_canvas_folder_directory(path, cx),
         );
     }
 
-    fn set_canvas_project_directory(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
+    fn set_canvas_folder_directory(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
         // The editor can gain unsaved changes while the folder panel is open.
-        if self.canvas_project_editor_is_dirty(cx) {
+        if self.canvas_folder_editor_is_dirty(cx) {
             self.error_message =
-                localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopySaveOrRevertTheOpenProjectFileBeforeChangingFolders).to_string();
+                localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopySaveOrRevertTheOpenFileBeforeChangingFolders).to_string();
             cx.notify();
             return;
         }
         if !path.is_dir() {
             self.error_message = localization::dynamic_user_data_message(
-                multiplex_ui_contract::MessageId::AgentCanvasDynamicProjectFolderDoesNotExist,
+                multiplex_ui_contract::MessageId::AgentCanvasDynamicFolderDoesNotExist,
                 vec![(path.display()).to_string()],
             );
             cx.notify();
@@ -4120,7 +4120,7 @@ impl MultiplexApp {
 
         let directory = path.display().to_string();
         if let Some(workspace) = self.active_workspace_mut() {
-            workspace.project_directory = Some(directory.clone());
+            workspace.folder = Some(directory.clone());
             let title_is_default = workspace.title
                 == localization::static_message(
                     multiplex_ui_contract::MessageId::AgentCanvasCopyLocalTerminal,
@@ -4134,55 +4134,59 @@ impl MultiplexApp {
                 workspace.title = name.to_string();
             }
         }
-        self.canvas_project_panel = None;
+        self.canvas_folder_panel = None;
         self.persist_runtime_state();
-        self.status_message = localization::dynamic_user_data_message(multiplex_ui_contract::MessageId::AgentCanvasDynamicProjectFolderSetToDirectoryNewLocalTermin, vec![(directory).to_string()]);
+        self.status_message = localization::dynamic_user_data_message(
+            multiplex_ui_contract::MessageId::AgentCanvasDynamicFolderSetToDirectoryNewLocalTermin,
+            vec![(directory).to_string()],
+        );
         self.error_message.clear();
         cx.notify();
     }
 
-    fn canvas_project_editor_is_dirty(&self, cx: &Context<Self>) -> bool {
-        self.canvas_project_panel.as_ref().is_some_and(|panel| {
+    fn canvas_folder_editor_is_dirty(&self, cx: &Context<Self>) -> bool {
+        self.canvas_folder_panel.as_ref().is_some_and(|panel| {
             panel.selected_file.is_some()
-                && self.canvas_project_editor_input.read(cx).value().as_ref()
+                && self.canvas_folder_editor_input.read(cx).value().as_ref()
                     != panel.original_contents
         })
     }
 
-    fn toggle_canvas_project_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.canvas_project_panel.is_some() {
-            if self.canvas_project_editor_is_dirty(cx) {
+    fn toggle_canvas_folder_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.canvas_folder_panel.is_some() {
+            if self.canvas_folder_editor_is_dirty(cx) {
                 self.error_message =
-                    localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopySaveOrRevertTheOpenFileBeforeClosingProjectFiles).to_string();
+                    localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopySaveOrRevertTheOpenFileBeforeClosingFolderFiles).to_string();
                 cx.notify();
                 return;
             }
-            self.canvas_project_panel = None;
+            self.canvas_folder_panel = None;
             cx.notify();
             return;
         }
-        let Some((workspace_id, project_directory)) =
-            self.active_workspace().and_then(|workspace| {
-                workspace
-                    .project_directory
-                    .clone()
-                    .map(|directory| (workspace.id, directory))
-            })
-        else {
+        let Some((workspace_id, folder)) = self.active_workspace().and_then(|workspace| {
+            workspace
+                .folder
+                .clone()
+                .map(|directory| (workspace.id, directory))
+        }) else {
             self.error_message =
-                localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyChooseAProjectFolderBeforeOpeningLocalProjectFiles).to_string();
+                localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyChooseAFolderBeforeOpeningLocalFiles).to_string();
             cx.notify();
             return;
         };
-        let root = match PathBuf::from(project_directory).canonicalize() {
+        let root = match PathBuf::from(folder).canonicalize() {
             Ok(path) => path,
             Err(error) => {
-                self.error_message = localization::dynamic_user_data_message(multiplex_ui_contract::MessageId::AgentCanvasDynamicUnableToOpenProjectFolderError, vec![(error).to_string()]);
+                self.error_message = localization::dynamic_user_data_message(
+                    multiplex_ui_contract::MessageId::AgentCanvasDynamicUnableToOpenFolderError,
+                    vec![(error).to_string()],
+                );
                 cx.notify();
                 return;
             }
         };
-        let entries = match load_canvas_project_directory(&root, &root) {
+        let entries = match load_canvas_folder_directory(&root, &root) {
             Ok(entries) => entries,
             Err(error) => {
                 self.error_message = error.to_string();
@@ -4190,9 +4194,9 @@ impl MultiplexApp {
                 return;
             }
         };
-        let (git_status, git_diff) = canvas_project_git_snapshot(&root, None);
-        Self::set_input_value(&self.canvas_project_editor_input, "", window, cx);
-        self.canvas_project_panel = Some(CanvasProjectPanelState {
+        let (git_status, git_diff) = canvas_folder_git_snapshot(&root, None);
+        Self::set_input_value(&self.canvas_folder_editor_input, "", window, cx);
+        self.canvas_folder_panel = Some(CanvasFolderPanelState {
             workspace_id,
             root: root.clone(),
             current_directory: root,
@@ -4209,17 +4213,17 @@ impl MultiplexApp {
         self.worktree_manager_open = false;
         self.error_message.clear();
         self.status_message = localization::static_message(
-            multiplex_ui_contract::MessageId::AgentCanvasCopyOpenedLocalProjectFiles,
+            multiplex_ui_contract::MessageId::AgentCanvasCopyOpenedLocalFolderFiles,
         )
         .to_string();
         cx.notify();
     }
 
-    fn refresh_canvas_project_panel(&mut self, cx: &mut Context<Self>) {
-        let Some(panel) = self.canvas_project_panel.as_mut() else {
+    fn refresh_canvas_folder_panel(&mut self, cx: &mut Context<Self>) {
+        let Some(panel) = self.canvas_folder_panel.as_mut() else {
             return;
         };
-        match load_canvas_project_directory(&panel.root, &panel.current_directory) {
+        match load_canvas_folder_directory(&panel.root, &panel.current_directory) {
             Ok(entries) => panel.entries = entries,
             Err(error) => {
                 self.error_message = error.to_string();
@@ -4228,39 +4232,39 @@ impl MultiplexApp {
             }
         }
         (panel.git_status, panel.git_diff) =
-            canvas_project_git_snapshot(&panel.root, panel.selected_file.as_deref());
+            canvas_folder_git_snapshot(&panel.root, panel.selected_file.as_deref());
         self.error_message.clear();
         self.status_message = localization::static_message(
-            multiplex_ui_contract::MessageId::AgentCanvasCopyProjectFilesAndGitStatusRefreshed,
+            multiplex_ui_contract::MessageId::AgentCanvasCopyFolderFilesAndGitStatusRefreshed,
         )
         .to_string();
         cx.notify();
     }
 
-    fn open_canvas_project_entry(
+    fn open_canvas_folder_entry(
         &mut self,
         path: PathBuf,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.canvas_project_editor_is_dirty(cx) {
+        if self.canvas_folder_editor_is_dirty(cx) {
             self.error_message =
                 localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopySaveOrRevertTheOpenFileBeforeSelectingAnotherPath).to_string();
             cx.notify();
             return;
         }
-        let Some(panel) = self.canvas_project_panel.as_mut() else {
+        let Some(panel) = self.canvas_folder_panel.as_mut() else {
             return;
         };
         if path.is_dir() {
-            match load_canvas_project_directory(&panel.root, &path) {
+            match load_canvas_folder_directory(&panel.root, &path) {
                 Ok(entries) => {
                     panel.current_directory = path;
                     panel.entries = entries;
                     panel.selected_file = None;
                     panel.original_contents.clear();
                     panel.git_diff.clear();
-                    Self::set_input_value(&self.canvas_project_editor_input, "", window, cx);
+                    Self::set_input_value(&self.canvas_folder_editor_input, "", window, cx);
                     self.error_message.clear();
                 }
                 Err(error) => self.error_message = error.to_string(),
@@ -4268,16 +4272,16 @@ impl MultiplexApp {
             cx.notify();
             return;
         }
-        match read_canvas_project_file(&panel.root, &path) {
+        match read_canvas_folder_file(&panel.root, &path) {
             Ok(contents) => {
                 panel.selected_file = Some(path);
                 panel.original_contents = contents.clone();
                 (panel.git_status, panel.git_diff) =
-                    canvas_project_git_snapshot(&panel.root, panel.selected_file.as_deref());
-                Self::set_input_value(&self.canvas_project_editor_input, contents, window, cx);
+                    canvas_folder_git_snapshot(&panel.root, panel.selected_file.as_deref());
+                Self::set_input_value(&self.canvas_folder_editor_input, contents, window, cx);
                 self.error_message.clear();
                 self.status_message = localization::static_message(
-                    multiplex_ui_contract::MessageId::AgentCanvasCopyOpenedProjectFile,
+                    multiplex_ui_contract::MessageId::AgentCanvasCopyOpenedFolderFile,
                 )
                 .to_string();
             }
@@ -4286,25 +4290,21 @@ impl MultiplexApp {
         cx.notify();
     }
 
-    fn navigate_canvas_project_up(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let parent = self.canvas_project_panel.as_ref().and_then(|panel| {
+    fn navigate_canvas_folder_up(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let parent = self.canvas_folder_panel.as_ref().and_then(|panel| {
             (panel.current_directory != panel.root)
                 .then(|| panel.current_directory.parent().map(Path::to_path_buf))
                 .flatten()
         });
         if let Some(parent) = parent {
-            self.open_canvas_project_entry(parent, window, cx);
+            self.open_canvas_folder_entry(parent, window, cx);
         }
     }
 
-    fn save_canvas_project_file(&mut self, cx: &mut Context<Self>) {
-        let contents = self
-            .canvas_project_editor_input
-            .read(cx)
-            .value()
-            .to_string();
+    fn save_canvas_folder_file(&mut self, cx: &mut Context<Self>) {
+        let contents = self.canvas_folder_editor_input.read(cx).value().to_string();
         let Some((root, path, original_contents)) =
-            self.canvas_project_panel.as_ref().and_then(|panel| {
+            self.canvas_folder_panel.as_ref().and_then(|panel| {
                 panel
                     .selected_file
                     .clone()
@@ -4313,7 +4313,7 @@ impl MultiplexApp {
         else {
             return;
         };
-        match read_canvas_project_file(&root, &path) {
+        match read_canvas_folder_file(&root, &path) {
             Ok(on_disk) if on_disk != original_contents => {
                 self.error_message = localization::dynamic_user_data_message(multiplex_ui_contract::MessageId::AgentCanvasDynamicChangedOnDiskReopenItBeforeSavingSoExter, vec![(path.display()).to_string()]);
                 cx.notify();
@@ -4326,12 +4326,12 @@ impl MultiplexApp {
                 return;
             }
         }
-        match write_canvas_project_file(&root, &path, &contents) {
+        match write_canvas_folder_file(&root, &path, &contents) {
             Ok(()) => {
-                if let Some(panel) = self.canvas_project_panel.as_mut() {
+                if let Some(panel) = self.canvas_folder_panel.as_mut() {
                     panel.original_contents = contents;
                     (panel.git_status, panel.git_diff) =
-                        canvas_project_git_snapshot(&panel.root, panel.selected_file.as_deref());
+                        canvas_folder_git_snapshot(&panel.root, panel.selected_file.as_deref());
                 }
                 self.status_message = localization::dynamic_user_data_message(
                     multiplex_ui_contract::MessageId::AgentCanvasDynamicSaved,
@@ -4344,15 +4344,15 @@ impl MultiplexApp {
         cx.notify();
     }
 
-    fn revert_canvas_project_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn revert_canvas_folder_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(contents) = self
-            .canvas_project_panel
+            .canvas_folder_panel
             .as_ref()
             .map(|panel| panel.original_contents.clone())
         else {
             return;
         };
-        Self::set_input_value(&self.canvas_project_editor_input, contents, window, cx);
+        Self::set_input_value(&self.canvas_folder_editor_input, contents, window, cx);
         self.status_message = localization::static_message(
             multiplex_ui_contract::MessageId::AgentCanvasCopyRevertedUnsavedEditorChanges,
         )
@@ -4361,9 +4361,9 @@ impl MultiplexApp {
         cx.notify();
     }
 
-    fn copy_canvas_project_diff(&mut self, cx: &mut Context<Self>) {
+    fn copy_canvas_folder_diff(&mut self, cx: &mut Context<Self>) {
         let Some(diff) = self
-            .canvas_project_panel
+            .canvas_folder_panel
             .as_ref()
             .map(|panel| panel.git_diff.clone())
             .filter(|diff| !diff.is_empty())
@@ -6426,7 +6426,7 @@ impl MultiplexApp {
             .absolute()
             .top(px(theme::TYPE_NANO_SIZE))
             .left(px(theme::TYPE_CAPTION_SIZE))
-            .w(px(theme::CANVAS_PROJECT_PANEL_WIDTH))
+            .w(px(theme::CANVAS_FOLDER_PANEL_WIDTH))
             .max_w(relative(0.9))
             .max_h(relative(0.92))
             .overflow_hidden()
@@ -6838,17 +6838,17 @@ impl MultiplexApp {
 
     fn toggle_canvas_activity(&mut self, cx: &mut Context<Self>) {
         if !self.canvas_activity_open
-            && self.canvas_project_panel.is_some()
-            && self.canvas_project_editor_is_dirty(cx)
+            && self.canvas_folder_panel.is_some()
+            && self.canvas_folder_editor_is_dirty(cx)
         {
             self.error_message =
-                localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopySaveOrRevertTheOpenProjectFileBeforeOpeningAgentActivity).to_string();
+                localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopySaveOrRevertTheOpenFileBeforeOpeningAgentActivity).to_string();
             cx.notify();
             return;
         }
         self.canvas_activity_open = !self.canvas_activity_open;
         if self.canvas_activity_open {
-            self.canvas_project_panel = None;
+            self.canvas_folder_panel = None;
             self.canvas_add_menu_open = false;
             self.canvas_links_open = false;
             self.canvas_fleet_open = false;
@@ -6929,7 +6929,7 @@ impl MultiplexApp {
         };
         self.pending_canvas_fleet_disconnect = false;
         if self.canvas_fleet_open {
-            self.canvas_project_panel = None;
+            self.canvas_folder_panel = None;
             self.canvas_add_menu_open = false;
             self.canvas_links_open = false;
             self.canvas_activity_open = false;
@@ -8366,7 +8366,7 @@ impl MultiplexApp {
             .absolute()
             .top(px(theme::TYPE_NANO_SIZE))
             .left(px(theme::TYPE_CAPTION_SIZE))
-            .w(px(theme::CANVAS_PROJECT_FILES_WIDTH))
+            .w(px(theme::CANVAS_FOLDER_FILES_WIDTH))
             .max_w(relative(0.9))
             .max_h(relative(0.92))
             .overflow_hidden()
@@ -8553,22 +8553,22 @@ impl MultiplexApp {
             .active_workspace()
             .map(|workspace| (workspace.canvas.transform.zoom * 100.0).round() as i32)
             .unwrap_or(100);
-        let project_directory = self
+        let folder = self
             .active_workspace()
-            .and_then(|workspace| workspace.project_directory.clone());
-        let project_directory_label = if compact_toolbar {
-            if project_directory.is_some() {
-                "Project".to_string()
+            .and_then(|workspace| workspace.folder.clone());
+        let folder_label = if compact_toolbar {
+            if folder.is_some() {
+                "Folder".to_string()
             } else {
-                "Choose Project".to_string()
+                "Choose Folder".to_string()
             }
         } else {
-            canvas_project_directory_label(project_directory.as_deref())
+            canvas_folder_directory_label(folder.as_deref())
         };
-        let project_directory_tooltip = project_directory
+        let folder_tooltip = folder
             .as_deref()
             .map(|directory| {
-                format!("Project folder: {directory}. New local terminals and agents open here.")
+                format!("Folder: {directory}. New local terminals and agents open here.")
             })
             .unwrap_or_else(|| {
                 "Choose where new local terminals and coding agents should open.".to_string()
@@ -8641,8 +8641,8 @@ impl MultiplexApp {
             fleet_summary.errors,
             fleet_summary.persistent,
         );
-        let project_panel_open = self
-            .canvas_project_panel
+        let folder_panel_open = self
+            .canvas_folder_panel
             .as_ref()
             .is_some_and(|panel| self.active_workspace_id == Some(panel.workspace_id));
         h_flex()
@@ -8725,31 +8725,31 @@ impl MultiplexApp {
                         )
                     })
                     .child(
-                        Button::new("canvas-project-directory")
-                            .debug_selector(|| "canvas-project-directory".to_string())
+                        Button::new("canvas-folder-directory")
+                            .debug_selector(|| "canvas-folder-directory".to_string())
                             .small()
                             .ghost()
                             .icon(IconName::FolderOpen)
-                            .label(project_directory_label)
-                            .tooltip(project_directory_tooltip)
+                            .label(folder_label)
+                            .tooltip(folder_tooltip)
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.pick_canvas_project_directory(cx);
+                                this.pick_canvas_folder_directory(cx);
                             })),
                     )
                     .child(
-                        Button::new("canvas-project-files")
-                            .debug_selector(|| "canvas-project-files".to_string())
+                        Button::new("canvas-folder-files")
+                            .debug_selector(|| "canvas-folder-files".to_string())
                             .small()
                             .ghost()
-                            .icon(if project_panel_open {
+                            .icon(if folder_panel_open {
                                 IconName::PanelRightClose
                             } else {
                                 IconName::PanelRightOpen
                             })
                             .label(localization::static_message(multiplex_ui_contract::MessageId::SessionLibraryRemoveFiles))
-                            .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyBrowseEditAndInspectGitChangesInTheProjectFolder))
+                            .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyBrowseEditAndInspectGitChangesInTheFolder))
                             .on_click(cx.listener(|this, _, window, cx| {
-                                this.toggle_canvas_project_panel(window, cx);
+                                this.toggle_canvas_folder_panel(window, cx);
                             })),
                     )
                     .child(
@@ -8950,19 +8950,19 @@ impl MultiplexApp {
             })
     }
 
-    fn render_canvas_project_panel(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+    fn render_canvas_folder_panel(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let Some(panel) = self
-            .canvas_project_panel
+            .canvas_folder_panel
             .as_ref()
             .filter(|panel| self.active_workspace_id == Some(panel.workspace_id))
         else {
             return div().into_any_element();
         };
-        let panel_width = CANVAS_PROJECT_PANEL_WIDTH.min(
+        let panel_width = CANVAS_FOLDER_PANEL_WIDTH.min(
             ((f32::from(window.viewport_size().width) - self.workspace_rail_width()) - 24.0)
                 .max(320.0),
         );
-        let dirty = self.canvas_project_editor_is_dirty(cx);
+        let dirty = self.canvas_folder_editor_is_dirty(cx);
         let can_go_up = panel.current_directory != panel.root;
         let current_label = panel
             .current_directory
@@ -8990,8 +8990,8 @@ impl MultiplexApp {
         };
 
         v_flex()
-            .id("canvas-project-panel")
-            .debug_selector(|| "canvas-project-panel".to_string())
+            .id("canvas-folder-panel")
+            .debug_selector(|| "canvas-folder-panel".to_string())
             .absolute()
             .top(px(theme::TYPE_CAPTION_SIZE))
             .right(px(theme::TYPE_CAPTION_SIZE))
@@ -9034,31 +9034,31 @@ impl MultiplexApp {
                                     .text_size(px(theme::TYPE_CAPTION_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_on_dark())
-                                    .child(localization::dynamic_user_data_message(multiplex_ui_contract::MessageId::AgentCanvasDynamicProjectFilesCurrentLabel, vec![(current_label).to_string()])),
+                                    .child(localization::dynamic_user_data_message(multiplex_ui_contract::MessageId::AgentCanvasDynamicFolderFilesCurrentLabel, vec![(current_label).to_string()])),
                             ),
                     )
                     .child(
                         h_flex()
                             .gap_1()
                             .child(
-                                Button::new("canvas-project-refresh")
+                                Button::new("canvas-folder-refresh")
                                     .xsmall()
                                     .ghost()
                                     .icon(IconName::Redo2)
                                     .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyRefreshFilesAndGitStatus))
                                     .on_click(cx.listener(|this, _, _, cx| {
-                                        this.refresh_canvas_project_panel(cx);
+                                        this.refresh_canvas_folder_panel(cx);
                                     })),
                             )
                             .child(
-                                Button::new("canvas-project-close")
-                                    .debug_selector(|| "canvas-project-close".to_string())
+                                Button::new("canvas-folder-close")
+                                    .debug_selector(|| "canvas-folder-close".to_string())
                                     .xsmall()
                                     .ghost()
                                     .icon(IconName::Close)
-                                    .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyCloseProjectFiles))
+                                    .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyCloseFolderFiles))
                                     .on_click(cx.listener(|this, _, window, cx| {
-                                        this.toggle_canvas_project_panel(window, cx);
+                                        this.toggle_canvas_folder_panel(window, cx);
                                     })),
                             ),
                     ),
@@ -9083,14 +9083,14 @@ impl MultiplexApp {
                                     .border_b_1()
                                     .border_color(theme::border_dark())
                                     .child(
-                                        Button::new("canvas-project-up")
+                                        Button::new("canvas-folder-up")
                                             .xsmall()
                                             .ghost()
                                             .icon(IconName::ChevronUp)
                                             .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyOpenParentFolder))
                                             .disabled(!can_go_up)
                                             .on_click(cx.listener(|this, _, window, cx| {
-                                                this.navigate_canvas_project_up(window, cx);
+                                                this.navigate_canvas_folder_up(window, cx);
                                             })),
                                     )
                                     .child(
@@ -9106,9 +9106,9 @@ impl MultiplexApp {
                                     let selected =
                                         panel.selected_file.as_ref() == Some(&entry.path);
                                     h_flex()
-                                        .id(("canvas-project-entry", index))
+                                        .id(("canvas-folder-entry", index))
                                         .debug_selector(move || {
-                                            format!("canvas-project-entry-{index}")
+                                            format!("canvas-folder-entry-{index}")
                                         })
                                         .h(px(theme::CANVAS_DENSE_ROW_HEIGHT))
                                         .w_full()
@@ -9148,7 +9148,7 @@ impl MultiplexApp {
                                                 .child(entry.name.clone()),
                                         )
                                         .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.open_canvas_project_entry(
+                                            this.open_canvas_folder_entry(
                                                 path.clone(),
                                                 window,
                                                 cx,
@@ -9206,7 +9206,7 @@ impl MultiplexApp {
                                         h_flex()
                                             .gap_1()
                                             .child(
-                                                Button::new("canvas-project-revert")
+                                                Button::new("canvas-folder-revert")
                                                     .xsmall()
                                                     .ghost()
                                                     .icon(IconName::Undo2)
@@ -9214,16 +9214,16 @@ impl MultiplexApp {
                                                     .disabled(!dirty)
                                                     .on_click(cx.listener(
                                                         |this, _, window, cx| {
-                                                            this.revert_canvas_project_editor(
+                                                            this.revert_canvas_folder_editor(
                                                                 window, cx,
                                                             );
                                                         },
                                                     )),
                                             )
                                             .child(
-                                                Button::new("canvas-project-save")
+                                                Button::new("canvas-folder-save")
                                                     .debug_selector(|| {
-                                                        "canvas-project-save".to_string()
+                                                        "canvas-folder-save".to_string()
                                                     })
                                                     .small()
                                                     .custom(Self::action_button_style(
@@ -9236,7 +9236,7 @@ impl MultiplexApp {
                                                         panel.selected_file.is_none() || !dirty,
                                                     )
                                                     .on_click(cx.listener(|this, _, _, cx| {
-                                                        this.save_canvas_project_file(cx);
+                                                        this.save_canvas_folder_file(cx);
                                                     })),
                                             ),
                                     ),
@@ -9248,7 +9248,7 @@ impl MultiplexApp {
                                     .p_2()
                                     .bg(theme::terminal_bg())
                                     .child(
-                                        Input::new(&self.canvas_project_editor_input)
+                                        Input::new(&self.canvas_folder_editor_input)
                                             .h_full()
                                             .disabled(panel.selected_file.is_none()),
                                     ),
@@ -9273,14 +9273,14 @@ impl MultiplexApp {
                                                     .child(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyGitStatusSelectedDiff)),
                                             )
                                             .child(
-                                                Button::new("canvas-project-copy-diff")
+                                                Button::new("canvas-folder-copy-diff")
                                                     .xsmall()
                                                     .ghost()
                                                     .icon(IconName::Copy)
                                                     .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyCopySelectedFileDiff))
                                                     .disabled(panel.git_diff.is_empty())
                                                     .on_click(cx.listener(|this, _, _, cx| {
-                                                        this.copy_canvas_project_diff(cx);
+                                                        this.copy_canvas_folder_diff(cx);
                                                     })),
                                             ),
                                     )
@@ -12335,8 +12335,8 @@ impl MultiplexApp {
         if self.canvas_node_menu_id.is_some() {
             body = body.child(self.render_canvas_node_menu(window, cx));
         }
-        if self.canvas_project_panel.is_some() {
-            body = body.child(self.render_canvas_project_panel(window, cx));
+        if self.canvas_folder_panel.is_some() {
+            body = body.child(self.render_canvas_folder_panel(window, cx));
         }
         if self.canvas_activity_open {
             body = body.child(self.render_canvas_activity(cx));

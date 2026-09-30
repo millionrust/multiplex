@@ -719,8 +719,8 @@ fn management_shortcut(
         return None;
     }
     if key.code == KeyCode::Char('n') {
-        let (project_id, project_name, group_id) = launch_context(model)?;
-        return Some(management.begin_launch(project_id, project_name, group_id));
+        let (folder, group_id) = launch_context(model)?;
+        return Some(management.begin_launch(folder, group_id));
     }
     if model.focus() != crate::PaneFocus::Sessions {
         return None;
@@ -739,27 +739,17 @@ fn management_shortcut(
     Some(management.begin_session(intent, session))
 }
 
-fn launch_context(model: &TuiModel) -> Option<(String, String, Option<String>)> {
-    let snapshot = model.snapshot()?;
-    let (project_id, group_id) = match model.selected_scope() {
-        crate::ScopeId::Project(project_id) => (project_id.clone(), None),
-        crate::ScopeId::Group(group_id) => {
-            let project = snapshot
-                .projects
-                .iter()
-                .find(|project| project.groups.iter().any(|group| &group.id == group_id))?;
-            (project.id.clone(), Some(group_id.clone()))
-        }
-        crate::ScopeId::All => {
-            let session = model.selected_session()?;
-            (session.project_id.clone(), session.group_id.clone())
-        }
+/// Where a new session starts, and which group it joins.
+///
+/// A project used to answer both; the folder is the working directory the TUI was started in,
+/// which is the folder the person is looking at.
+fn launch_context(model: &TuiModel) -> Option<(String, Option<String>)> {
+    let group_id = match model.selected_scope() {
+        crate::ScopeId::Group(group_id) => Some(group_id.clone()),
+        crate::ScopeId::All => model.selected_session().and_then(|s| s.group_id.clone()),
     };
-    let project = snapshot
-        .projects
-        .iter()
-        .find(|project| project.id == project_id)?;
-    Some((project_id, project.name.clone(), group_id))
+    let folder = std::env::current_dir().ok()?.display().to_string();
+    Some((folder, group_id))
 }
 
 fn apply_management_effect(
@@ -774,7 +764,7 @@ fn apply_management_effect(
             model.close();
             Ok(())
         }
-        ManagementEffect::LoadLaunchChoices { project_id } => {
+        ManagementEffect::LoadLaunchChoices => {
             let generation = model.generation();
             let cancellation = model.cancellation();
             let Some(executor) = executor.cloned() else {
@@ -786,7 +776,7 @@ fn apply_management_effect(
                 .name("termirust-tui-management-read".into())
                 .spawn(move || {
                     let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                        executor.launch_choices(&project_id, &cancellation)
+                        executor.launch_choices(&cancellation)
                     }))
                     .unwrap_or_else(|_| Err(ManagementFailure::unavailable()));
                     let _ = sender.send(AppEvent::ManagementChoices { generation, result });

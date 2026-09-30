@@ -14,7 +14,7 @@ use std::os::unix::process::CommandExt as _;
 
 use multiplex_domain::{
     BaseCandidate, BaseSource, CanonicalPath, CommitOid, GitReference, ManagedPath,
-    ManagedWorktreeId, ProjectId, WorktreeError, WorktreeLaunchDraft, WorktreePlan,
+    ManagedWorktreeId, WorktreeError, WorktreeLaunchDraft, WorktreePlan,
 };
 
 const MAX_GIT_OUTPUT_BYTES: usize = 256 * 1024;
@@ -100,16 +100,15 @@ struct GitOutput {
 impl GitRunner {
     pub fn inspect(
         &self,
-        project_root: &Path,
+        repository_root: &Path,
         managed_root: &Path,
         worktree_id: ManagedWorktreeId,
-        child_project_id: ProjectId,
         draft: &WorktreeLaunchDraft,
         cancellation: &WorktreeCancellation,
     ) -> Result<WorktreeInspection, WorktreeError> {
         cancellation_check(cancellation)?;
         let repository_output = self.required(
-            project_root,
+            repository_root,
             ["rev-parse", "--path-format=absolute", "--show-toplevel"],
             self.inspect_timeout,
             cancellation,
@@ -225,8 +224,6 @@ impl GitRunner {
 
         let plan = WorktreePlan::new(
             worktree_id,
-            draft.source_project_id,
-            child_project_id,
             repository_root,
             managed_root,
             selected_base,
@@ -248,8 +245,8 @@ impl GitRunner {
     ) -> Result<(), WorktreeError> {
         plan.validate()?;
         cancellation_check(cancellation)?;
-        if plan.repository_root.status() != multiplex_domain::ProjectStatus::Available
-            || plan.managed_root.status() != multiplex_domain::ProjectStatus::Available
+        if plan.repository_root.status() != multiplex_domain::PathStatus::Available
+            || plan.managed_root.status() != multiplex_domain::PathStatus::Available
         {
             return Err(WorktreeError::SymlinkSwap);
         }
@@ -852,7 +849,6 @@ mod tests {
 
     fn launch_draft(branch: &GitReference) -> WorktreeLaunchDraft {
         WorktreeLaunchDraft {
-            source_project_id: ProjectId::new(),
             requested_base: None,
             fetch: false,
             confirm_current_branch: false,
@@ -886,7 +882,6 @@ mod tests {
                 repository.path(),
                 &managed_root,
                 id,
-                ProjectId::new(),
                 &draft,
                 &WorktreeCancellation::default(),
             )
@@ -915,7 +910,6 @@ mod tests {
             repository.path(),
             managed.path(),
             id,
-            ProjectId::new(),
             &draft,
             &WorktreeCancellation::default(),
         );
@@ -925,14 +919,7 @@ mod tests {
         let cancellation = WorktreeCancellation::default();
         cancellation.cancel();
         assert_eq!(
-            runner.inspect(
-                repository.path(),
-                managed.path(),
-                id,
-                ProjectId::new(),
-                &draft,
-                &cancellation,
-            ),
+            runner.inspect(repository.path(), managed.path(), id, &draft, &cancellation,),
             Err(WorktreeError::Cancelled)
         );
     }
@@ -957,7 +944,6 @@ mod tests {
                 repository.path(),
                 managed.path(),
                 id,
-                ProjectId::new(),
                 &fetch_draft,
                 &WorktreeCancellation::default(),
             ),
@@ -970,7 +956,6 @@ mod tests {
                 repository.path(),
                 managed.path(),
                 id,
-                ProjectId::new(),
                 &draft,
                 &WorktreeCancellation::default(),
             ),
@@ -985,7 +970,6 @@ mod tests {
                 repository.path(),
                 managed.path(),
                 id,
-                ProjectId::new(),
                 &draft,
                 &WorktreeCancellation::default(),
             ),
@@ -998,7 +982,6 @@ mod tests {
                 repository.path(),
                 managed.path(),
                 id,
-                ProjectId::new(),
                 &current_draft,
                 &WorktreeCancellation::default(),
             ),
@@ -1017,7 +1000,6 @@ mod tests {
                 repository.path(),
                 managed.path(),
                 id,
-                ProjectId::new(),
                 &explicit_draft,
                 &WorktreeCancellation::default(),
             ),

@@ -19,7 +19,7 @@ use super::hosted_session::{DurableContinuityCommit, DurableLaunch, DurableSessi
 use super::session_coordinator::SessionStartRequest;
 use super::{AppAttachedPaneState, MultiplexApp, theme};
 use crate::models::{ConnectRequest, LocalShellConfig, SavedAppAttachedSession, SavedDurableHost};
-use crate::storage::{app_dir, project_store_dir, save_saved_state};
+use crate::storage::{app_dir, library_store_dir, save_saved_state};
 use crate::ui::localization;
 use crate::ui::util::current_unix_millis;
 use multiplex_session_host::{
@@ -45,7 +45,7 @@ pub(super) struct SessionResumeState {
     error: Option<ResumeError>,
     spawned_pane_id: Option<u64>,
     source_title: String,
-    project_label: String,
+    folder: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -181,13 +181,12 @@ impl MultiplexApp {
             error: None,
             spawned_pane_id: None,
             source_title: source.title.clone(),
-            project_label: source.project_label.clone(),
+            folder: source.folder.clone(),
         });
         self.error_message.clear();
         cx.notify();
 
         let handle = host.conversation_handle;
-        let canonical_project = source.origin.project_id;
         let permission_policy = host.permission_policy;
         let not_before_millis = source.started_at.saturating_sub(5_000);
         cx.spawn(async move |this, cx| {
@@ -209,7 +208,6 @@ impl MultiplexApp {
                         CodexResumePlanInput {
                             candidate,
                             conversation_root: &conversation_root,
-                            canonical_project,
                             expected_working_directory: &working_directory,
                             permission_policy,
                             executable: &executable,
@@ -307,7 +305,7 @@ impl MultiplexApp {
         {
             return self.fail_session_resume(ResumeError::StaleRevision, cx);
         }
-        let store_root = match project_store_dir() {
+        let store_root = match library_store_dir() {
             Ok(root) => root,
             Err(_) => return self.fail_session_resume(ResumeError::PermissionDenied, cx),
         };
@@ -349,13 +347,13 @@ impl MultiplexApp {
         let now = current_unix_millis();
         let position = self
             .saved
-            .next_app_attached_session_position(source.origin.project_id, source.group_id);
+            .next_app_attached_session_position(source.group_id);
         let record = SavedAppAttachedSession {
             id: plan.replacement_session_id,
             route: SessionLaunchRoute::DurableHost,
             origin: source.origin,
             state: HostedSessionState::Provisioning,
-            project_label: source.project_label.clone(),
+            folder: source.folder.clone(),
             preset_label: source.preset_label.clone(),
             title: source.title.clone(),
             title_source: if source.title_source == TitleSource::Manual {
@@ -603,8 +601,8 @@ impl MultiplexApp {
                                 state.source_title.clone(),
                             ))
                             .child(resume_review_row(
-                                localization::new_session_project_field(),
-                                state.project_label.clone(),
+                                localization::new_session_folder_field(),
+                                super::folder_display_name(&state.folder),
                             ))
                             .when_some(state.plan.as_ref(), |this, plan| {
                                 this.child(resume_review_row(

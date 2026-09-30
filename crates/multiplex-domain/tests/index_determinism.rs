@@ -1,14 +1,14 @@
 use multiplex_domain::{
     ActivityAggregate, CanonicalPath, HostedSession, HostedSessionId, HostedSessionState,
-    IndexSourceRevisions, LocalizedUserText, OutputSequence, PositionKey, Project, ProjectId,
-    Revision, SessionTitle, TitleSource, build_palette_index, build_project_session_index,
+    IndexSourceRevisions, OutputSequence, PositionKey, Revision, SessionTitle, TitleSource,
+    build_palette_index,
 };
 use uuid::Uuid;
 
-fn session(project_id: ProjectId, value: u128, position: PositionKey) -> HostedSession {
+fn session(folder: &CanonicalPath, value: u128, position: PositionKey) -> HostedSession {
     HostedSession {
         id: HostedSessionId::from_uuid(Uuid::from_u128(value)),
-        project_id,
+        folder: folder.clone(),
         group_id: None,
         preset_id: None,
         title: SessionTitle::new(&format!("Session {value}")).unwrap(),
@@ -28,27 +28,19 @@ fn session(project_id: ProjectId, value: u128, position: PositionKey) -> HostedS
 }
 
 #[test]
-fn both_indexes_are_byte_deterministic_for_reordered_inputs_at_ten_thousand_sessions() {
+fn the_palette_index_is_byte_deterministic_for_reordered_inputs_at_ten_thousand_sessions() {
     let fixture = tempfile::tempdir().unwrap();
-    let root = fixture.path().join("project");
+    let root = fixture.path().join("folder");
     std::fs::create_dir(&root).unwrap();
-    let project_id = ProjectId::from_uuid(Uuid::from_u128(1));
-    let project = Project {
-        id: project_id,
-        display_name: LocalizedUserText::new("Deterministic project").unwrap(),
-        canonical_root: CanonicalPath::resolve(&root).unwrap(),
-        position: PositionKey::FIRST,
-        revision: Revision::ZERO,
-    };
+    let folder = CanonicalPath::resolve(&root).unwrap();
     let revisions = IndexSourceRevisions {
-        projects: Revision::new(7),
         sessions: Revision::new(9),
         presets: Revision::new(3),
     };
-    let mut forward = (0..10_000_u128)
+    let forward = (0..10_000_u128)
         .map(|index| {
             session(
-                project_id,
+                &folder,
                 index + 10,
                 PositionKey::rebalanced(index as usize).unwrap(),
             )
@@ -57,39 +49,16 @@ fn both_indexes_are_byte_deterministic_for_reordered_inputs_at_ten_thousand_sess
     let mut reverse = forward.clone();
     reverse.reverse();
 
-    let project_forward =
-        build_project_session_index(revisions, std::slice::from_ref(&project), &forward).unwrap();
-    let project_reverse =
-        build_project_session_index(revisions, std::slice::from_ref(&project), &reverse).unwrap();
-    assert_eq!(
-        serde_json::to_vec(&project_forward).unwrap(),
-        serde_json::to_vec(&project_reverse).unwrap()
-    );
-
-    let palette_forward = build_palette_index(
-        revisions,
-        std::slice::from_ref(&project),
-        &[],
-        &[],
-        &forward,
-    )
-    .unwrap();
-    let palette_reverse = build_palette_index(
-        revisions,
-        std::slice::from_ref(&project),
-        &[],
-        &[],
-        &reverse,
-    )
-    .unwrap();
+    let palette_forward = build_palette_index(revisions, &[], &[], &forward).unwrap();
+    let palette_reverse = build_palette_index(revisions, &[], &[], &reverse).unwrap();
     assert_eq!(
         serde_json::to_vec(&palette_forward).unwrap(),
         serde_json::to_vec(&palette_reverse).unwrap()
     );
-    assert_eq!(palette_forward.documents.len(), 10_001);
+    assert_eq!(palette_forward.documents.len(), 10_000);
 
-    forward.rotate_left(4_321);
-    let rotated =
-        build_project_session_index(revisions, std::slice::from_ref(&project), &forward).unwrap();
-    assert_eq!(project_forward, rotated);
+    let mut rotated_input = forward.clone();
+    rotated_input.rotate_left(4_321);
+    let rotated = build_palette_index(revisions, &[], &[], &rotated_input).unwrap();
+    assert_eq!(palette_forward, rotated);
 }

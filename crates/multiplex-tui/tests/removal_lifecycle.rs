@@ -3,10 +3,10 @@ use std::time::Instant;
 
 use multiplex_cli::Cancellation;
 use multiplex_domain::{
-    ActivityAggregate, AddProject, HostedSession, HostedSessionId, HostedSessionState,
-    OutputSequence, PositionKey, ProjectId, Revision, SessionTitle, TitleSource,
+    ActivityAggregate, CanonicalPath, HostedSession, HostedSessionId, HostedSessionState,
+    OutputSequence, PositionKey, Revision, SessionTitle, TitleSource,
 };
-use multiplex_store::{ProjectRepository, SessionRepository};
+use multiplex_store::SessionRepository;
 use multiplex_tui::{
     CommandProgress, FleetSession, LocalManagementExecutor, ManagementCommand, ManagementEffect,
     ManagementExecutor, ManagementIntent, ManagementModel,
@@ -19,25 +19,15 @@ fn removal_lifecycle_previews_confirms_and_quarantines_exact_session() {
     let config_root = fixture.path().join("config");
     let metadata_root = config_root.join("agent-workspace");
     let session_data_root = config_root.join("durable-sessions");
-    let project_root = fixture.path().join("project");
-    fs::create_dir_all(&project_root).unwrap();
-    let project_id = ProjectId::new();
-    ProjectRepository::open(&metadata_root)
-        .unwrap()
-        .add_project(AddProject {
-            id: project_id,
-            root: project_root,
-            display_name: Some("Removal fixture".into()),
-            expected: Revision::ZERO,
-        })
-        .unwrap();
+    let session_folder = fixture.path().join("folder");
+    fs::create_dir_all(&session_folder).unwrap();
     let sessions = SessionRepository::open(&metadata_root, &session_data_root).unwrap();
     let session_id = HostedSessionId::new();
     let session = sessions
         .create_session(
             HostedSession {
                 id: session_id,
-                project_id,
+                folder: CanonicalPath::resolve(&session_folder).unwrap(),
                 group_id: None,
                 preset_id: None,
                 title: SessionTitle::new("Reviewed removal").unwrap(),
@@ -65,7 +55,6 @@ fn removal_lifecycle_previews_confirms_and_quarantines_exact_session() {
 
     let fleet = FleetSession {
         id: session_id.to_string(),
-        project_id: project_id.to_string(),
         group_id: None,
         title: session.title.as_str().into(),
         state: "exited".into(),

@@ -21,19 +21,19 @@ use multiplex_controller_security::{
     StaticPrivateKey, device_public_key_from_private, host_public_key_from_private,
 };
 use multiplex_domain::{
-    ActivityAggregate, AddProject, CommandId, ControllerCapabilities,
+    ActivityAggregate, CanonicalPath, CommandId, ControllerCapabilities,
     ControllerCapability as DomainCapability, ControllerDeviceAuthority, ControllerDeviceId,
     ControllerProtocolRange, DevicePublicKey, HostIdentityGeneration, HostIdentityPublic,
     HostIdentitySecretRef, HostIdentityState, HostInstanceId, HostPublicKey, HostedSession,
     HostedSessionId, HostedSessionState, OccupantGeneration, OutputSequence, PairedDeviceRecord,
-    PairedDeviceStatus, PairingOfferId, PositionKey, ProjectId, Revision, RuntimeCapability,
+    PairedDeviceStatus, PairingOfferId, PositionKey, Revision, RuntimeCapability,
     RuntimeCapabilitySet, RuntimeDetectionResult, RuntimeDetectionStatus, RuntimeId, SessionTitle,
     TitleSource,
 };
 use multiplex_host_protocol::wire;
 use multiplex_session_host::process_observation::fingerprint_executable;
 use multiplex_session_host::{LaunchDescriptor, StopDeadlines};
-use multiplex_store::{JournalLimits, ProjectRepository, SessionRepository, read_host_metadata};
+use multiplex_store::{JournalLimits, LibraryRepository, SessionRepository, read_host_metadata};
 use tokio::io::DuplexStream;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -179,7 +179,7 @@ fn descriptor(
 
 fn insert_session(
     sessions: &SessionRepository,
-    project_id: ProjectId,
+    folder: &CanonicalPath,
     session_id: HostedSessionId,
     title: &str,
 ) {
@@ -188,7 +188,7 @@ fn insert_session(
         .create_session(
             HostedSession {
                 id: session_id,
-                project_id,
+                folder: folder.clone(),
                 group_id: None,
                 preset_id: None,
                 title: SessionTitle::new(title).unwrap(),
@@ -269,7 +269,7 @@ async fn live_desktop_pane_round_trips_through_authenticated_controller() {
     let metadata_root = fixture.path().join("metadata");
     let sessions =
         SessionRepository::open(&metadata_root, fixture.path().join("session-data")).unwrap();
-    let projects = ProjectRepository::open(&metadata_root).unwrap();
+    let library = LibraryRepository::open(&metadata_root).unwrap();
     let registry = DesktopPaneRegistry::default();
     let session_id = HostedSessionId::new();
     let received_input = Arc::new(Mutex::new(Vec::new()));
@@ -334,7 +334,7 @@ async fn live_desktop_pane_round_trips_through_authenticated_controller() {
         host_private: host_private.clone(),
     });
     let backends = Arc::new(
-        HostBackendFactory::new(sessions, projects, fixture.path().join("runtime"))
+        HostBackendFactory::new(sessions, library, fixture.path().join("runtime"))
             .with_desktop_pane_bridge(Some(bridge.endpoint())),
     );
     let mut controller =
@@ -646,24 +646,15 @@ async fn bundled_desktop_host_controller_golden_run() {
         .prefix("tr-n02-")
         .tempdir_in("/tmp")
         .unwrap();
-    let project_root = fixture.path().join("project");
+    let session_folder = fixture.path().join("folder");
     let metadata_root = fixture.path().join("metadata");
     let session_data_root = fixture.path().join("sessions");
     let runtime_parent = fixture.path().join("runtime");
-    fs::create_dir_all(&project_root).unwrap();
+    fs::create_dir_all(&session_folder).unwrap();
     fs::create_dir_all(&session_data_root).unwrap();
     fs::create_dir_all(&runtime_parent).unwrap();
 
-    let project_id = ProjectId::new();
-    ProjectRepository::open(&metadata_root)
-        .unwrap()
-        .add_project(AddProject {
-            id: project_id,
-            root: project_root,
-            display_name: Some("N02 golden project".to_owned()),
-            expected: Revision::ZERO,
-        })
-        .unwrap();
+    let folder = CanonicalPath::resolve(&session_folder).unwrap();
     let sessions = SessionRepository::open(&metadata_root, &session_data_root).unwrap();
     let local_id = HostedSessionId::new();
     let ssh_id = HostedSessionId::new();
@@ -740,9 +731,9 @@ async fn bundled_desktop_host_controller_golden_run() {
     let mut local_process = HostProcess::spawn(&host_binary, &local);
     let mut ssh_process = HostProcess::spawn(&host_binary, &ssh);
     let mut agent_process = HostProcess::spawn(&host_binary, &agent);
-    insert_session(&sessions, project_id, local_id, "Local PTY");
-    insert_session(&sessions, project_id, ssh_id, "Docker SSH");
-    insert_session(&sessions, project_id, agent_id, "Deterministic agent");
+    insert_session(&sessions, &folder, local_id, "Local PTY");
+    insert_session(&sessions, &folder, ssh_id, "Docker SSH");
+    insert_session(&sessions, &folder, agent_id, "Deterministic agent");
 
     prove_terminal_session(
         LocalEndpoint::new(&local.runtime_root, local_id),
@@ -799,7 +790,7 @@ async fn bundled_desktop_host_controller_golden_run() {
     });
     let backends = Arc::new(HostBackendFactory::new(
         sessions.clone(),
-        ProjectRepository::open(&metadata_root).unwrap(),
+        LibraryRepository::open(&metadata_root).unwrap(),
         &runtime_parent,
     ));
 

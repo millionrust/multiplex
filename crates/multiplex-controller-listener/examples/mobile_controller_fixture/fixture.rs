@@ -19,18 +19,17 @@ use multiplex_controller_listener::{
 };
 use multiplex_controller_security::{StaticPrivateKey, host_public_key_from_private};
 use multiplex_domain::{
-    ActivityAggregate, AddProject, AddressFamily, CommandId, ControllerCapabilities,
+    ActivityAggregate, AddressFamily, CanonicalPath, CommandId, ControllerCapabilities,
     ControllerCapability, ControllerDeviceAuthority, ControllerDeviceId, ControllerListenPolicy,
     ControllerPort, DiscoveryPolicy, HostIdentityGeneration, HostIdentityPublic,
     HostIdentitySecretRef, HostIdentityState, HostInstanceId, HostPublicKey, HostedSession,
     HostedSessionId, HostedSessionState, NetworkInterfaceCandidate, NetworkInterfaceKind,
-    OutputSequence, PairingOfferId, PositionKey, ProjectId, Revision, SessionTitle, TitleSource,
+    OutputSequence, PairingOfferId, PositionKey, Revision, SessionTitle, TitleSource,
 };
 use multiplex_host_protocol::wire;
 use multiplex_session_host::{LaunchDescriptor, StopDeadlines};
 use multiplex_store::{
-    ControllerDeviceRepository, ControllerNetworkRepository, JournalLimits, ProjectRepository,
-    SessionRepository,
+    ControllerDeviceRepository, ControllerNetworkRepository, JournalLimits, SessionRepository,
 };
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
@@ -177,12 +176,12 @@ fn run() -> Result<(), String> {
     let (root, session_host_binary, config_path) = arguments()?;
     prepare_root(&root)?;
     let controller_root = root.join("controller");
-    let project_root = root.join("projects");
+    let store_root = root.join("library");
     let session_data_root = root.join("sessions");
     let runtime_parent = root.join("runtime");
     for path in [
         &controller_root,
-        &project_root,
+        &store_root,
         &session_data_root,
         &runtime_parent,
     ] {
@@ -205,27 +204,18 @@ fn run() -> Result<(), String> {
         .map_err(|_| "controller_network")?;
 
     let workspace_root = root.join("workspace");
-    fs::create_dir_all(&workspace_root).map_err(|_| "project_directory")?;
+    fs::create_dir_all(&workspace_root).map_err(|_| "workspace_directory")?;
     let sessions =
-        SessionRepository::open(&project_root, &session_data_root).map_err(|_| "session_store")?;
-    let project_id = ProjectId::new();
-    ProjectRepository::open(&project_root)
-        .map_err(|_| "project_store")?
-        .add_project(AddProject {
-            id: project_id,
-            root: workspace_root,
-            display_name: Some("Mobile Controller fixture".to_owned()),
-            expected: Revision::ZERO,
-        })
-        .map_err(|_| "project_store")?;
+        SessionRepository::open(&store_root, &session_data_root).map_err(|_| "session_store")?;
+    let folder = CanonicalPath::resolve(&workspace_root).map_err(|_| "workspace_directory")?;
     let session_id = HostedSessionId::new();
     let descriptor = host_descriptor(&root, &runtime_parent, &sessions, session_id);
     let mut host = HostProcess::spawn(&session_host_binary, &descriptor)?;
-    insert_session(&sessions, project_id, session_id)?;
+    insert_session(&sessions, folder, session_id)?;
 
     let launch = ListenerLaunchDescriptor::new(
         controller_root.clone(),
-        project_root,
+        store_root,
         session_data_root,
         runtime_parent,
         saved_network.revision,
@@ -489,7 +479,7 @@ fn host_descriptor(
 
 fn insert_session(
     sessions: &SessionRepository,
-    project_id: ProjectId,
+    folder: CanonicalPath,
     session_id: HostedSessionId,
 ) -> Result<(), String> {
     let expected = sessions.load().map_err(|_| "session_store")?.revision;
@@ -497,7 +487,7 @@ fn insert_session(
         .create_session(
             HostedSession {
                 id: session_id,
-                project_id,
+                folder,
                 group_id: None,
                 preset_id: None,
                 title: SessionTitle::new("Mobile Controller terminal")

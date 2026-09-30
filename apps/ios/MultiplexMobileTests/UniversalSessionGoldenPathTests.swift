@@ -23,7 +23,6 @@ final class UniversalSessionGoldenPathTests: XCTestCase {
             runtime: fixture.session.runtime,
             capabilities: fixture.session.capabilities,
             title: "Golden Session",
-            project: nil,
             group: nil,
             lifecycle: "live",
             activity: "busy",

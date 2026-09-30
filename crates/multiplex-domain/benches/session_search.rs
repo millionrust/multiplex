@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use multiplex_domain::{
-    HostedSessionId, PositionKey, ProjectId, SearchAction, SearchCancellation, SearchDocument,
+    HostedSessionId, PositionKey, SearchAction, SearchCancellation, SearchDocument,
     SearchDocumentId, SearchDocumentInput, SearchIndex, SearchQuery, SearchStatus,
 };
 use uuid::Uuid;
@@ -10,7 +10,6 @@ use uuid::Uuid;
 mod perf_budget;
 
 fn main() {
-    let project = ProjectId::from_uuid(Uuid::from_u128(1));
     let mut index = SearchIndex::default();
     for ordinal in 0..10_000u128 {
         let id = HostedSessionId::from_uuid(Uuid::from_u128(ordinal + 1));
@@ -19,8 +18,6 @@ fn main() {
                 SearchDocument::new(SearchDocumentInput {
                     id: SearchDocumentId::Session(id),
                     title: format!("Session {ordinal:05} parser workspace"),
-                    project_id: Some(project),
-                    project_label: Some(format!("Project {}", ordinal % 100)),
                     group_label: Some(format!("Group {}", ordinal % 32)),
                     preset_label: Some("Codex safe".to_string()),
                     runtime_label: Some("codex".to_string()),
@@ -57,7 +54,7 @@ fn main() {
     for query in queries.iter().cycle().take(70) {
         let started = Instant::now();
         let page = index
-            .search(query, Some(project), &cancellation)
+            .search(query, &cancellation)
             .expect("benchmark search should complete");
         std::hint::black_box(page);
         samples.push(started.elapsed());

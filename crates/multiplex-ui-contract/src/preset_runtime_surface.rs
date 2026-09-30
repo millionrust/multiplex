@@ -204,7 +204,7 @@ pub enum PresetMoveDirection {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum PresetWorkingDirectoryChoice {
-    ProjectRoot,
+    SessionFolder,
     PlatformHome,
     ContainedSubdirectory,
 }

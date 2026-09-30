@@ -23,7 +23,7 @@ fn management_facade_launches_and_applies_revision_scoped_metadata_commands() {
         .execute_management(
             ManagementCommand::Launch {
                 command_id: launch_command_id,
-                project_id: PROJECT_ID,
+                folder: seed.folder.clone(),
                 preset_id: PRESET_ID,
                 group_id: None,
             },
@@ -39,7 +39,7 @@ fn management_facade_launches_and_applies_revision_scoped_metadata_commands() {
         .execute_management(
             ManagementCommand::Launch {
                 command_id: launch_command_id,
-                project_id: PROJECT_ID,
+                folder: seed.folder.clone(),
                 preset_id: PRESET_ID,
                 group_id: None,
             },

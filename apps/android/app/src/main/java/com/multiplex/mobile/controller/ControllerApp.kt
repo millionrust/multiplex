@@ -1151,7 +1151,6 @@ private fun TerminalItem(
     val waiting = session.activity == "needs_input"
     val detail = listOfNotNull(
         session.runtime,
-        session.project,
         stringResource(activityLabelResource(session.activity)),
     ).joinToString(" · ")
     GroupItem(

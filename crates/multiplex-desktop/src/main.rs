@@ -116,7 +116,7 @@ fn run_controller_bridge_mode() -> Result<(), multiplex_controller_listener::Lis
             tokio::io::stdin(),
             tokio::io::stdout(),
             controller_root,
-            crate::storage::project_store_dir()
+            crate::storage::library_store_dir()
                 .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?,
             app_root.join("durable-sessions"),
             runtime_parent.clone(),

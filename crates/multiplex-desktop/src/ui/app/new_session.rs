@@ -12,15 +12,13 @@ use gpui_component::{
     Disableable as _, Icon, IconName, Selectable as _, StyledExt as _, h_flex, v_flex,
 };
 use multiplex_domain::{
-    HostedSessionId, HostedSessionState, LaunchPreset, PermissionPolicy, PresetId, Project,
-    ProjectId, Revision, WorkingDirectoryRule,
+    CanonicalPath, HostedSessionId, HostedSessionState, LaunchPreset, PermissionPolicy, PresetId,
+    Revision, WorkingDirectoryRule,
 };
 use multiplex_store::read_host_metadata;
 
 use super::hosted_session::{DurableLaunch, DurableSessionPaths};
-use super::project_coordinator::{
-    ProjectLaunchResolution, ProjectLaunchReviewError, ProjectLaunchReviewInput,
-};
+use super::launch_coordinator::{LaunchResolution, LaunchReviewError, LaunchReviewInput};
 use super::session_coordinator::SessionStartRequest;
 use super::{AppAttachedPaneState, MultiplexApp, PendingPaste, theme};
 use crate::agents::build_app_attached_launch_config;
@@ -30,12 +28,11 @@ use crate::ui::localization;
 use crate::ui::util::current_unix_millis;
 
 pub(super) struct NewSessionState {
-    pub project_id: ProjectId,
+    pub folder: CanonicalPath,
     pub selected_preset_id: Option<PresetId>,
     pub phase: HostedSessionState,
     pub error: Option<String>,
     pub generation: u64,
-    pub project_store_revision: Revision,
     pub preset_store_revision: Revision,
     pub hosted_session_id: Option<HostedSessionId>,
     pub spawned_pane_id: Option<u64>,
@@ -44,12 +41,12 @@ pub(super) struct NewSessionState {
 impl MultiplexApp {
     pub(super) fn open_new_session_with_preset(
         &mut self,
-        project_id: ProjectId,
+        folder: CanonicalPath,
         preset_id: PresetId,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.open_new_session(project_id, window, cx);
+        self.open_new_session(folder, window, cx);
         if self.new_session.is_some() {
             self.select_new_session_preset(preset_id, cx);
         }
@@ -57,26 +54,12 @@ impl MultiplexApp {
 
     pub(super) fn open_new_session(
         &mut self,
-        project_id: ProjectId,
+        folder: CanonicalPath,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(project_snapshot) = self.project_library.snapshot.as_ref() else {
-            self.error_message = localization::project_store_unavailable();
-            cx.notify();
-            return;
-        };
-        let Some(project) = project_snapshot
-            .projects
-            .iter()
-            .find(|summary| summary.project.id == project_id)
-        else {
-            self.error_message = localization::project_error_stale();
-            cx.notify();
-            return;
-        };
-        if project.status != multiplex_domain::ProjectStatus::Available {
-            self.error_message = localization::project_error_unavailable();
+        if folder.status() != multiplex_domain::PathStatus::Available {
+            self.error_message = localization::folder_unavailable();
             cx.notify();
             return;
         }
@@ -94,14 +77,13 @@ impl MultiplexApp {
             .map(|preset| preset.id);
 
         self.new_session = Some(NewSessionState {
-            project_id,
+            folder,
             selected_preset_id,
             phase: HostedSessionState::Draft,
             error: selected_preset_id
                 .is_none()
                 .then(localization::new_session_preset_required),
             generation: 1,
-            project_store_revision: project_snapshot.revision,
             preset_store_revision: preset_snapshot.revision,
             hosted_session_id: None,
             spawned_pane_id: None,
@@ -187,18 +169,16 @@ impl MultiplexApp {
             return;
         };
         let review = self
-            .project_coordinator
-            .review_session_launch(ProjectLaunchReviewInput {
-                project_id: state.project_id,
+            .launch_coordinator
+            .review_session_launch(LaunchReviewInput {
+                folder: state.folder.clone(),
                 selected_preset_id: state.selected_preset_id,
-                project_store_revision: state.project_store_revision,
                 preset_store_revision: state.preset_store_revision,
-                project_snapshot: self.project_library.snapshot.as_ref(),
                 preset_snapshot: self.preset_library.snapshot.as_ref(),
             });
         let reviewed = match review {
             Ok(reviewed) => reviewed,
-            Err(ProjectLaunchReviewError::PresetRequired) => {
+            Err(LaunchReviewError::PresetRequired) => {
                 if let Some(state) = self.new_session.as_mut() {
                     state.error = Some(localization::new_session_preset_required());
                 }
@@ -206,7 +186,7 @@ impl MultiplexApp {
                 return;
             }
             Err(error) => {
-                return self.fail_new_session(&project_launch_review_error_message(error), cx);
+                return self.fail_new_session(&launch_review_error_message(error), cx);
             }
         };
 
@@ -223,14 +203,14 @@ impl MultiplexApp {
         state.error = None;
         let path_snapshot = explicit_path_snapshot();
         let home = dirs::home_dir();
-        let project_coordinator = self.project_coordinator.clone();
+        let launch_coordinator = self.launch_coordinator.clone();
         cx.notify();
 
         cx.spawn_in(window, async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    project_coordinator.resolve_session_launch(
+                    launch_coordinator.resolve_session_launch(
                         reviewed,
                         hosted_session_id,
                         path_snapshot,
@@ -250,7 +230,7 @@ impl MultiplexApp {
     fn finish_new_session_validation(
         &mut self,
         generation: u64,
-        result: Result<ProjectLaunchResolution, multiplex_domain::LaunchResolutionError>,
+        result: Result<LaunchResolution, multiplex_domain::LaunchResolutionError>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -260,9 +240,9 @@ impl MultiplexApp {
         if state.generation != generation || state.phase != HostedSessionState::Validating {
             return;
         }
-        let ProjectLaunchResolution {
+        let LaunchResolution {
             resolved,
-            project,
+            folder,
             preset,
         } = match result {
             Ok(value) => value,
@@ -274,15 +254,10 @@ impl MultiplexApp {
             }
         };
         if self
-            .project_library
+            .preset_library
             .snapshot
             .as_ref()
-            .is_none_or(|snapshot| snapshot.revision != state.project_store_revision)
-            || self
-                .preset_library
-                .snapshot
-                .as_ref()
-                .is_none_or(|snapshot| snapshot.revision != state.preset_store_revision)
+            .is_none_or(|snapshot| snapshot.revision != state.preset_store_revision)
         {
             return self.fail_new_session(&localization::new_session_review_stale(), cx);
         }
@@ -349,15 +324,13 @@ impl MultiplexApp {
             )
         };
         let now = current_unix_millis();
-        let position = self
-            .saved
-            .next_app_attached_session_position(project.id, None);
+        let position = self.saved.next_app_attached_session_position(None);
         let record = SavedAppAttachedSession {
             id: resolved.session_id,
             route: resolved.route,
             origin: resolved.origin,
             state: HostedSessionState::Provisioning,
-            project_label: project.display_name.as_str().to_string(),
+            folder: folder.as_path().display().to_string(),
             preset_label: preset.label.as_str().to_string(),
             title,
             title_source,
@@ -400,7 +373,7 @@ impl MultiplexApp {
         let pane_id = self.next_session_id();
         let mut request = ConnectRequest::local_shell_with_config(pane_id, config);
         request.title = localization::new_session_workspace_title(
-            project.display_name.as_str(),
+            super::folder_display_name(&folder.as_path().display().to_string()),
             preset.label.as_str(),
         );
         let runtime = self.session_coordinator.start(SessionStartRequest::launch(
@@ -656,7 +629,7 @@ impl MultiplexApp {
         let Some(state) = self.new_session.as_ref() else {
             return div().into_any_element();
         };
-        let project = self.new_session_project(state.project_id);
+        let folder = Some(&state.folder);
         let presets = self
             .preset_library
             .snapshot
@@ -738,10 +711,8 @@ impl MultiplexApp {
                             .p(px(theme::SPACE_5))
                             .child(app_attached_warning())
                             .child(review_row(
-                                localization::new_session_project_field(),
-                                project
-                                    .map(|project| project.display_name.as_str().to_string())
-                                    .unwrap_or_else(localization::new_session_unavailable_value),
+                                localization::new_session_folder_field(),
+                                state.folder.as_path().display().to_string(),
                             ))
                             .child(
                                 v_flex()
@@ -772,7 +743,7 @@ impl MultiplexApp {
                             .when_some(selected, |this, preset| {
                                 this.child(review_row(
                                     localization::new_session_working_directory_field(),
-                                    working_directory_preview(project, preset),
+                                    working_directory_preview(folder, preset),
                                 ))
                                 .child(review_row(
                                     localization::preset_permission_field(),
@@ -854,16 +825,6 @@ impl MultiplexApp {
             )
             .into_any_element()
     }
-
-    fn new_session_project(&self, id: ProjectId) -> Option<&Project> {
-        self.project_library
-            .snapshot
-            .as_ref()?
-            .projects
-            .iter()
-            .find(|summary| summary.project.id == id)
-            .map(|summary| &summary.project)
-    }
 }
 
 fn explicit_path_snapshot() -> Vec<PathBuf> {
@@ -876,18 +837,13 @@ fn explicit_path_snapshot() -> Vec<PathBuf> {
         .unwrap_or_default()
 }
 
-fn project_launch_review_error_message(error: ProjectLaunchReviewError) -> String {
+fn launch_review_error_message(error: LaunchReviewError) -> String {
     match error {
-        ProjectLaunchReviewError::PresetRequired => localization::new_session_preset_required(),
-        ProjectLaunchReviewError::ProjectStoreUnavailable => {
-            localization::project_store_unavailable()
-        }
-        ProjectLaunchReviewError::PresetStoreUnavailable => {
-            localization::preset_store_unavailable()
-        }
-        ProjectLaunchReviewError::ReviewStale => localization::new_session_review_stale(),
-        ProjectLaunchReviewError::ProjectMissing => localization::new_session_project_missing(),
-        ProjectLaunchReviewError::PresetMissing => localization::new_session_preset_missing(),
+        LaunchReviewError::PresetRequired => localization::new_session_preset_required(),
+        LaunchReviewError::PresetStoreUnavailable => localization::preset_store_unavailable(),
+        LaunchReviewError::ReviewStale => localization::new_session_review_stale(),
+        LaunchReviewError::FolderMissing => localization::new_session_folder_missing(),
+        LaunchReviewError::PresetMissing => localization::new_session_preset_missing(),
     }
 }
 
@@ -985,20 +941,13 @@ fn error_banner(error: String) -> AnyElement {
         .into_any_element()
 }
 
-fn working_directory_preview(project: Option<&Project>, preset: &LaunchPreset) -> String {
+fn working_directory_preview(folder: Option<&CanonicalPath>, preset: &LaunchPreset) -> String {
     match &preset.working_directory {
-        WorkingDirectoryRule::ProjectRoot => project
-            .map(|project| project.canonical_root.as_path().display().to_string())
-            .unwrap_or_else(localization::new_session_project_missing),
-        WorkingDirectoryRule::ContainedSubdirectory(relative) => project
-            .map(|project| {
-                project
-                    .canonical_root
-                    .as_path()
-                    .join(relative)
-                    .display()
-                    .to_string()
-            })
+        WorkingDirectoryRule::SessionFolder => folder
+            .map(|folder| folder.as_path().display().to_string())
+            .unwrap_or_else(localization::folder_unavailable),
+        WorkingDirectoryRule::ContainedSubdirectory(relative) => folder
+            .map(|folder| folder.as_path().join(relative).display().to_string())
             .unwrap_or_else(|| relative.clone()),
         WorkingDirectoryRule::PlatformHome => localization::new_session_platform_home(),
     }
@@ -1021,10 +970,8 @@ mod tests {
         AppContext as _, Focusable as _, KeyDownEvent, Keystroke, TestAppContext, WindowHandle,
     };
     use gpui_component::Root;
-    use multiplex_domain::{
-        CanonicalPath, LocalizedUserText, PositionKey, PresetDraft, PresetOrigin, Revision,
-    };
-    use multiplex_store::{Durability, PresetSnapshot, ProjectSnapshot, StoreHealth};
+    use multiplex_domain::{CanonicalPath, PositionKey, PresetDraft, PresetOrigin, Revision};
+    use multiplex_store::{Durability, LibrarySnapshot, PresetSnapshot, StoreHealth};
 
     fn wait_for_app_state<R>(
         cx: &mut TestAppContext,
@@ -1084,24 +1031,16 @@ mod tests {
     }
 
     #[gpui::test]
-    fn projects_mod_n_opens_focused_sheet_and_escape_cancels_without_launch(
-        cx: &mut TestAppContext,
-    ) {
+    fn new_session_opens_focused_sheet_and_escape_cancels_without_launch(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
-        let project_root = tempfile::tempdir().unwrap();
-        let project = Project {
-            id: ProjectId::new(),
-            display_name: LocalizedUserText::new("Synthetic project").unwrap(),
-            canonical_root: CanonicalPath::resolve(project_root.path()).unwrap(),
-            position: PositionKey::FIRST,
-            revision: Revision::new(2),
-        };
+        let folder_root = tempfile::tempdir().unwrap();
+        let folder = CanonicalPath::resolve(folder_root.path()).unwrap();
         let preset = PresetDraft {
             id: PresetId::new(),
             label: "fixture-shell".to_string(),
             executable: std::env::current_exe().unwrap().display().to_string(),
             args: Vec::new(),
-            working_directory: WorkingDirectoryRule::ProjectRoot,
+            working_directory: WorkingDirectoryRule::SessionFolder,
             runtime: None,
             enabled: true,
             favorite: true,
@@ -1116,11 +1055,8 @@ mod tests {
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    app.nav_section = super::super::NavSection::Projects;
-                    app.project_library.selected_id = Some(project.id);
-                    app.project_library.snapshot = Some(ProjectSnapshot {
-                        revision: project.revision,
-                        projects: vec![project.clone().into()],
+                    app.library.snapshot = Some(LibrarySnapshot {
+                        revision: Revision::new(1),
                         groups: Vec::new(),
                         worktree_intents: Vec::new(),
                         worktrees: Vec::new(),
@@ -1135,14 +1071,10 @@ mod tests {
                         read_only: false,
                         durability: Durability::Full,
                     });
-                    let event = KeyDownEvent {
-                        keystroke: Keystroke::parse("secondary-n").unwrap(),
-                        is_held: false,
-                    };
-                    assert!(app.handle_global_key(&event, window, cx));
+                    app.open_new_session(folder.clone(), window, cx);
                     assert_eq!(
-                        app.new_session.as_ref().map(|state| state.project_id),
-                        Some(project.id)
+                        app.new_session.as_ref().map(|state| state.folder.clone()),
+                        Some(folder.clone())
                     );
                     assert!(
                         app.new_session_initial_input
@@ -1172,8 +1104,8 @@ mod tests {
         use std::os::unix::fs::PermissionsExt as _;
 
         let _isolation = TestIsolation::acquire();
-        let project_root = tempfile::tempdir().unwrap();
-        let executable = project_root.path().join("synthetic-agent");
+        let folder_root = tempfile::tempdir().unwrap();
+        let executable = folder_root.path().join("synthetic-agent");
         std::fs::write(
             &executable,
             "#!/bin/sh\nprintf 'SYNTHETIC READY\\n'\nIFS= read -r line\nprintf 'INPUT=[%s]\\n' \"$line\"\nwhile :; do sleep 1; done\n",
@@ -1182,7 +1114,7 @@ mod tests {
         let mut permissions = std::fs::metadata(&executable).unwrap().permissions();
         permissions.set_mode(0o700);
         std::fs::set_permissions(&executable, permissions).unwrap();
-        let injection_marker = project_root.path().join("must-not-exist");
+        let injection_marker = folder_root.path().join("must-not-exist");
         let initial_input = [
             "$(",
             "touch",
@@ -1191,19 +1123,13 @@ mod tests {
             ")",
         ]
         .concat();
-        let project = Project {
-            id: ProjectId::new(),
-            display_name: LocalizedUserText::new("Launch fixture").unwrap(),
-            canonical_root: CanonicalPath::resolve(project_root.path()).unwrap(),
-            position: PositionKey::FIRST,
-            revision: Revision::new(4),
-        };
+        let folder = CanonicalPath::resolve(folder_root.path()).unwrap();
         let preset = PresetDraft {
             id: PresetId::new(),
             label: "fixture-agent".to_string(),
             executable: executable.display().to_string(),
             args: Vec::new(),
-            working_directory: WorkingDirectoryRule::ProjectRoot,
+            working_directory: WorkingDirectoryRule::SessionFolder,
             runtime: None,
             enabled: true,
             favorite: true,
@@ -1218,10 +1144,8 @@ mod tests {
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    app.project_library.selected_id = Some(project.id);
-                    app.project_library.snapshot = Some(ProjectSnapshot {
-                        revision: project.revision,
-                        projects: vec![project.clone().into()],
+                    app.library.snapshot = Some(LibrarySnapshot {
+                        revision: Revision::new(1),
                         groups: Vec::new(),
                         worktree_intents: Vec::new(),
                         worktrees: Vec::new(),
@@ -1236,7 +1160,7 @@ mod tests {
                         read_only: false,
                         durability: Durability::Full,
                     });
-                    app.open_new_session(project.id, window, cx);
+                    app.open_new_session(folder.clone(), window, cx);
                     MultiplexApp::set_input_value(
                         &app.new_session_initial_input,
                         initial_input.clone(),

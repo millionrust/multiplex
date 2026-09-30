@@ -1,10 +1,10 @@
 use multiplex_cli::Cancellation;
 use multiplex_domain::{
-    ActivityAggregate, AddProject, CommandId, HostedSession, HostedSessionId, HostedSessionState,
-    OutputSequence, PermissionPolicy, PositionKey, PresetDraft, PresetId, PresetOrigin, ProjectId,
-    Revision, SessionTitle, TitleSource, WorkingDirectoryRule,
+    ActivityAggregate, CanonicalPath, CommandId, HostedSession, HostedSessionId,
+    HostedSessionState, OutputSequence, PermissionPolicy, PositionKey, PresetDraft, PresetId,
+    PresetOrigin, Revision, SessionTitle, TitleSource, WorkingDirectoryRule,
 };
-use multiplex_store::{PresetRepository, ProjectRepository, SessionRepository};
+use multiplex_store::{PresetRepository, SessionRepository};
 use multiplex_tui::{
     LocalManagementExecutor, ManagementCommand, ManagementExecutor, ManagementFailure,
 };
@@ -14,21 +14,11 @@ fn management_lifecycle_commands_use_typed_revisions_and_preserve_metadata() {
     let fixture = tempfile::tempdir().unwrap();
     let config_root = fixture.path().join("config");
     let metadata_root = config_root.join("agent-workspace");
-    let project_root = fixture.path().join("project");
-    std::fs::create_dir_all(&project_root).unwrap();
-    let project_id = ProjectId::new();
+    let session_folder = fixture.path().join("folder");
+    std::fs::create_dir_all(&session_folder).unwrap();
     let preset_id = PresetId::new();
     let session_id = HostedSessionId::new();
 
-    ProjectRepository::open(&metadata_root)
-        .unwrap()
-        .add_project(AddProject {
-            id: project_id,
-            root: project_root,
-            display_name: Some("Management fixture".into()),
-            expected: Revision::ZERO,
-        })
-        .unwrap();
     PresetRepository::open(&metadata_root)
         .unwrap()
         .save_preset(
@@ -44,7 +34,7 @@ fn management_lifecycle_commands_use_typed_revisions_and_preserve_metadata() {
                 }
                 .into(),
                 args: vec!["-c".into(), "printf ready".into()],
-                working_directory: WorkingDirectoryRule::ProjectRoot,
+                working_directory: WorkingDirectoryRule::SessionFolder,
                 runtime: None,
                 enabled: true,
                 favorite: false,
@@ -61,7 +51,7 @@ fn management_lifecycle_commands_use_typed_revisions_and_preserve_metadata() {
         .create_session(
             HostedSession {
                 id: session_id,
-                project_id,
+                folder: CanonicalPath::resolve(&session_folder).unwrap(),
                 group_id: None,
                 preset_id: Some(preset_id),
                 title: SessionTitle::new("Original").unwrap(),
@@ -87,9 +77,7 @@ fn management_lifecycle_commands_use_typed_revisions_and_preserve_metadata() {
         fixture.path().join("unused-host"),
     );
     let cancellation = Cancellation::default();
-    let choices = executor
-        .launch_choices(&project_id.to_string(), &cancellation)
-        .unwrap();
+    let choices = executor.launch_choices(&cancellation).unwrap();
     assert_eq!(choices.len(), 1);
     assert!(choices[0].enabled && choices[0].safe);
 
