@@ -129,7 +129,7 @@ impl MultiplexApp {
         cx.notify();
     }
 
-    fn save_group_editor(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn save_group_editor(&mut self, cx: &mut Context<Self>) {
         let Some(editor) = self.session_sidebar.editor.as_ref() else {
             return;
         };
@@ -157,7 +157,12 @@ impl MultiplexApp {
         cx.notify();
     }
 
-    fn set_group_collapsed(&mut self, id: GroupId, collapsed: bool, cx: &mut Context<Self>) {
+    pub(super) fn set_group_collapsed(
+        &mut self,
+        id: GroupId,
+        collapsed: bool,
+        cx: &mut Context<Self>,
+    ) {
         let Some(repository) = self.library.repository.clone() else {
             return;
         };
@@ -725,7 +730,7 @@ impl MultiplexApp {
                 .map(|id| HostedSessionId::from_uuid(uuid::Uuid::from_u128(id.value)));
     }
 
-    fn move_session_to(
+    pub(super) fn move_session_to(
         &mut self,
         id: HostedSessionId,
         destination: GroupDestination,

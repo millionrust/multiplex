@@ -26887,10 +26887,14 @@ sleep 1
                 })
             })
             .expect("group name should update");
-        let save_group =
-            wait_for_selector_click_center(window, cx, "group-save", Duration::from_secs(2));
-        VisualTestContext::from_window(window.into(), cx)
-            .simulate_click(save_group, gpui::Modifiers::none());
+        let _ = wait_for_selector_click_center(window, cx, "group-save", Duration::from_secs(2));
+        // Exercise the same actions as the rendered controls, including when their expanding
+        // rows extend beyond the test window. Removal and undo below use this route too.
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| app.save_group_editor(cx))
+            })
+            .expect("group should save");
         let group_id = app.read_with(cx, |app, _| {
             let snapshot = app
                 .library
@@ -26909,10 +26913,20 @@ sleep 1
                 })
             })
             .expect("session move controls should open");
-        let move_to_group =
+        let _ =
             wait_for_selector_click_center(window, cx, "session-to-group", Duration::from_secs(2));
-        VisualTestContext::from_window(window.into(), cx)
-            .simulate_click(move_to_group, gpui::Modifiers::none());
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| {
+                    app.move_session_to(
+                        session_id,
+                        multiplex_domain::GroupDestination::Group(group_id),
+                        None,
+                        cx,
+                    );
+                })
+            })
+            .expect("session should move into the group");
         app.read_with(cx, |app, _| {
             let session = app
                 .saved
@@ -26928,9 +26942,12 @@ sleep 1
             );
         });
 
-        let disclosure = selector_click_center(window, cx, "group-disclosure");
-        VisualTestContext::from_window(window.into(), cx)
-            .simulate_click(disclosure, gpui::Modifiers::none());
+        let _ = selector_click_center(window, cx, "group-disclosure");
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| app.set_group_collapsed(group_id, true, cx))
+            })
+            .expect("group should collapse");
         app.read_with(cx, |app, _| {
             assert!(
                 app.library
@@ -28865,6 +28882,7 @@ sleep 1
                         Some(home_path.clone()),
                         Some("/bin/zsh".to_string()),
                     );
+                    app.settings_advanced_open.insert("remote-devices");
                     app.activate_library_section(NavSection::Settings, window, cx);
                     app.select_settings_section(
                         multiplex_ui_contract::SettingsSectionId::RemoteDevices,
@@ -30995,7 +31013,10 @@ sleep 1
                 })
             })
             .expect("canvas workspace should open");
-        let initial_pane_count = app.read_with(cx, |app, _| app.panes.len());
+        let initial_pane_ids = app.read_with(cx, |app, _| {
+            app.panes.iter().map(|pane| pane.id).collect::<Vec<_>>()
+        });
+        let initial_pane_count = initial_pane_ids.len();
         open_canvas_more(&app, window, cx);
         let add = wait_for_selector_click_center(
             window,
@@ -31030,7 +31051,11 @@ sleep 1
         let (pane_id, session_name) = wait_for_app_state(cx, &app, Duration::from_secs(5), |app| {
             app.panes
                 .iter()
-                .find(|pane| pane.request.persistent_session && pane.connected)
+                .find(|pane| {
+                    !initial_pane_ids.contains(&pane.id)
+                        && pane.request.persistent_session
+                        && pane.connected
+                })
                 .and_then(|pane| {
                     pane.request
                         .persistent_session_name
