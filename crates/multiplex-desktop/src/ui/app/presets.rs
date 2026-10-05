@@ -1191,6 +1191,7 @@ impl MultiplexApp {
             .track_focus(&self.preset_list_focus)
             .flex_1()
             .min_h_0()
+            .overflow_y_scroll()
             .bg(theme::library_bg())
             .child(
                 h_flex()

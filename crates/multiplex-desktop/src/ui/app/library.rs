@@ -85,6 +85,7 @@ impl MultiplexApp {
     fn keychain_tab_control(&self, cx: &Context<Self>) -> Div {
         let tab = self.keychain_tab;
         h_flex()
+            .flex_shrink_0()
             .p(px(theme::SPACE_MICRO))
             .rounded(px(theme::CARD_RADIUS))
             .bg(theme::hover())
@@ -169,6 +170,7 @@ impl MultiplexApp {
 
         v_flex()
             .flex_1()
+            .min_h_0()
             .gap_3()
             .child(
                 h_flex()
@@ -506,6 +508,7 @@ impl MultiplexApp {
 
         v_flex()
             .flex_1()
+            .min_h_0()
             .gap_3()
             .child(
                 h_flex()

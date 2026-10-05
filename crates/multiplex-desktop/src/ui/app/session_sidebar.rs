@@ -1822,7 +1822,6 @@ impl MultiplexApp {
             .min_h_0()
             .bg(theme::library_bg())
             .child(self.render_session_library_controls(cx))
-            .children(self.render_other_terminals(cx))
             .when_some(self.session_library.recovery_state(), |this, recovery| {
                 this.child(
                     div()
@@ -1878,6 +1877,7 @@ impl MultiplexApp {
                     .overflow_y_scrollbar()
                     .p(px(theme::SPACE_4))
                     .gap(px(theme::SPACE_3))
+                    .children(self.render_other_terminals(cx))
                     .child(self.render_session_group(
                         None,
                         localization::group_ungrouped_label(),
@@ -1894,26 +1894,30 @@ impl MultiplexApp {
                             cx,
                         )
                     }))
-                    .when(session_count == 0, |this| {
-                        this.child(
-                            div()
-                                .p(px(theme::SPACE_5))
-                                .text_center()
-                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                                .text_color(theme::text_muted())
-                                .child(
-                                    if self.session_library.filter != SessionLibraryFilter::All {
-                                        localization::session_library_filter_empty()
-                                    } else if self.session_library.view
-                                        == SessionLibraryView::Archive
-                                    {
-                                        localization::session_library_archive_empty()
-                                    } else {
-                                        localization::session_sidebar_empty()
-                                    },
-                                ),
-                        )
-                    }),
+                    .when(
+                        session_count == 0 && self.other_terminals.terminals.is_empty(),
+                        |this| {
+                            this.child(
+                                div()
+                                    .p(px(theme::SPACE_5))
+                                    .text_center()
+                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(
+                                        if self.session_library.filter != SessionLibraryFilter::All
+                                        {
+                                            localization::session_library_filter_empty()
+                                        } else if self.session_library.view
+                                            == SessionLibraryView::Archive
+                                        {
+                                            localization::session_library_archive_empty()
+                                        } else {
+                                            localization::session_sidebar_empty()
+                                        },
+                                    ),
+                            )
+                        },
+                    ),
             )
             .into_any_element()
     }

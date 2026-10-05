@@ -13887,7 +13887,15 @@ impl MultiplexApp {
             .when(sidebar_visible, |this| {
                 this.child(self.render_library_sidebar(cx))
             })
-            .child(self.render_library_content(window, cx))
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .min_h_0()
+                    .h_full()
+                    .overflow_hidden()
+                    .child(self.render_library_content(window, cx)),
+            )
     }
 
     fn status_badge(
@@ -28294,6 +28302,99 @@ sleep 1
         assert!(!audit.contains(destination.to_string_lossy().as_ref()));
         assert!(!audit.contains(&key_blob));
         assert!(!audit.contains("rendered-lifecycle@example.test"));
+    }
+
+    #[gpui::test]
+    fn library_lists_scroll_when_they_exceed_the_window(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.saved.identities = (0..40)
+                        .map(|index| SavedIdentity {
+                            id: format!("scroll-key-{index}"),
+                            label: format!("Key {index}"),
+                            key_path: format!("/tmp/scroll-key-{index}"),
+                            kind: "OpenSSH".to_owned(),
+                            ..SavedIdentity::default()
+                        })
+                        .collect();
+                    app.saved.profiles = (0..40)
+                        .map(|index| HostProfile {
+                            id: format!("scroll-host-{index}"),
+                            label: format!("Host {index}"),
+                            host: "example.test".to_owned(),
+                            username: "ops".to_owned(),
+                            auth_mode: AuthMode::Password,
+                            ..HostProfile::default()
+                        })
+                        .collect();
+                    app.saved.snippets = (0..40)
+                        .map(|index| crate::models::SavedSnippet {
+                            id: format!("scroll-snippet-{index}"),
+                            label: format!("Snippet {index}"),
+                            command: "pwd".to_owned(),
+                            ..crate::models::SavedSnippet::default()
+                        })
+                        .collect();
+                    app.activate_library_section(NavSection::Keychain, window, cx);
+                })
+            })
+            .unwrap();
+        for (section, tab, prefix) in [
+            (
+                NavSection::Keychain,
+                Some(KeychainTab::Keys),
+                "keychain-key",
+            ),
+            (
+                NavSection::Keychain,
+                Some(KeychainTab::Identities),
+                "identity-card",
+            ),
+            (NavSection::Snippets, None, "snippet-card"),
+        ] {
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        app.activate_library_section(section, window, cx);
+                        if let Some(tab) = tab {
+                            app.keychain_tab = tab;
+                        }
+                        cx.notify();
+                    })
+                })
+                .unwrap();
+            let first_selector = format!("{prefix}-0");
+            let before = dynamic_selector_bounds(window, cx, first_selector.clone());
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.simulate_event(ScrollWheelEvent {
+                position: point(
+                    before.left() + px(crate::ui::theme::SPACE_7),
+                    before.top() + px(crate::ui::theme::SPACE_7),
+                ),
+                delta: gpui::ScrollDelta::Pixels(point(
+                    gpui::Pixels::ZERO,
+                    -before.size.height * 40.0,
+                )),
+                ..Default::default()
+            });
+            visual.run_until_parked();
+            let after = dynamic_selector_bounds(window, cx, first_selector);
+            assert!(
+                after.top() < before.top(),
+                "{tab:?} must scroll instead of growing past the window"
+            );
+            let last = dynamic_selector_bounds(window, cx, format!("{prefix}-39"));
+            let viewport = window
+                .update(cx, |_, window, _| window.viewport_size())
+                .unwrap();
+            assert!(
+                last.bottom() <= viewport.height,
+                "the last row is reachable"
+            );
+        }
     }
 
     #[gpui::test]
