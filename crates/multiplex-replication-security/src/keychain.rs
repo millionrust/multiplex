@@ -1,41 +1,11 @@
-//! Moving a stored secret from the service names earlier versions used to this one's.
-//!
-//! The system credential store is keyed by service name, so a secret saved under an old name is
-//! invisible under the new one, and the name is what the operating system shows the person when
-//! it asks to unlock it. Every store here reads through [`password`] or [`secret`], which look
-//! under the current name first, then under each name an earlier version used, and bring what
-//! they find across.
-//!
-//! The copy is written before the original is removed, so a failure in between leaves the secret
-//! readable under one name rather than neither, and a failure to remove the old one is not worth
-//! refusing the secret over: the next read finds it under the new name and never comes back here.
-//! Deleting removes every name, so an item left behind by a failed removal cannot come back.
+//! Access to secrets under the current Multiplex service identifiers only.
+//! Earlier applications' keychain entries are never read, migrated, or removed.
 
 use zeroize::Zeroize as _;
 
 pub use keyring::Error as CredentialError;
 
-/// The service name a secret is stored under now, and the names earlier versions used, newest
-/// first.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ServiceNames {
-    pub current: &'static str,
-    pub legacy: &'static [&'static str],
-}
-
-impl ServiceNames {
-    pub const fn new(current: &'static str, legacy: &'static [&'static str]) -> Self {
-        Self { current, legacy }
-    }
-
-    fn all(&self) -> impl Iterator<Item = &'static str> + '_ {
-        std::iter::once(self.current).chain(self.legacy.iter().copied())
-    }
-}
-
-/// The system credential store, as this module uses it. The tests put secrets in memory instead,
-/// so they never read or write a developer's own store and so the move between names is
-/// exercised rather than assumed.
+/// The system credential store, as this module uses it. Tests use memory instead.
 pub trait CredentialStore {
     fn password(&self, service: &str, account: &str) -> Result<Option<String>, CredentialError>;
     fn set_password(
@@ -51,92 +21,52 @@ pub trait CredentialStore {
     fn delete(&self, service: &str, account: &str) -> Result<bool, CredentialError>;
 }
 
-/// A text secret, brought across from an earlier name if that is where it still is.
+/// Reads a text secret from the requested service only.
 pub fn password(
     store: &impl CredentialStore,
-    names: ServiceNames,
+    service: &str,
     account: &str,
 ) -> Result<Option<String>, CredentialError> {
-    if let Some(value) = store.password(names.current, account)? {
-        return Ok(Some(value));
-    }
-    for legacy in names.legacy {
-        let Some(value) = store.password(legacy, account)? else {
-            continue;
-        };
-        if store.set_password(names.current, account, &value).is_ok() {
-            let _ = store.delete(legacy, account);
-        }
-        return Ok(Some(value));
-    }
-    Ok(None)
+    store.password(service, account)
 }
 
-/// The same for a secret held as bytes rather than text.
+/// Reads a byte secret from the requested service only.
 pub fn secret(
     store: &impl CredentialStore,
-    names: ServiceNames,
+    service: &str,
     account: &str,
 ) -> Result<Option<Vec<u8>>, CredentialError> {
-    if let Some(value) = store.secret(names.current, account)? {
-        return Ok(Some(value));
-    }
-    for legacy in names.legacy {
-        let Some(value) = store.secret(legacy, account)? else {
-            continue;
-        };
-        if store.set_secret(names.current, account, &value).is_ok() {
-            let _ = store.delete(legacy, account);
-        }
-        return Ok(Some(value));
-    }
-    Ok(None)
+    store.secret(service, account)
 }
 
-/// Whether a secret exists under any of the names, for a store that refuses to overwrite one.
+/// Whether a secret exists in the requested service, without retaining its contents.
 pub fn exists(
     store: &impl CredentialStore,
-    names: ServiceNames,
+    service: &str,
     account: &str,
 ) -> Result<bool, CredentialError> {
-    for name in names.all() {
-        match store.secret(name, account) {
-            Ok(Some(mut found)) => {
-                found.zeroize();
-                return Ok(true);
-            }
-            Ok(None) => {}
-            // A stored value that cannot be decoded is still a stored value.
-            Err(CredentialError::BadEncoding(mut bytes)) => {
-                bytes.zeroize();
-                return Ok(true);
-            }
-            Err(error) => return Err(error),
+    match store.secret(service, account) {
+        Ok(Some(mut found)) => {
+            found.zeroize();
+            Ok(true)
         }
+        Ok(None) => Ok(false),
+        // A stored value that cannot be decoded is still a stored value.
+        Err(CredentialError::BadEncoding(mut bytes)) => {
+            bytes.zeroize();
+            Ok(true)
+        }
+        Err(error) => Err(error),
     }
-    Ok(false)
 }
 
-/// Removes the secret under every name. `true` when any of them held one.
+/// Removes a secret from the requested service only.
 pub fn delete(
     store: &impl CredentialStore,
-    names: ServiceNames,
+    service: &str,
     account: &str,
 ) -> Result<bool, CredentialError> {
-    let mut removed = false;
-    let mut failure = None;
-    for name in names.all() {
-        match store.delete(name, account) {
-            Ok(found) => removed |= found,
-            Err(error) => failure = Some(error),
-        }
-    }
-    match failure {
-        // Leaving one name behind would let a deleted secret come back on the next read, so a
-        // removal that failed anywhere is a failure even when another name gave way.
-        Some(error) => Err(error),
-        None => Ok(removed),
-    }
+    store.delete(service, account)
 }
 
 /// The real credential store.
@@ -200,16 +130,12 @@ mod tests {
 
     use super::*;
 
-    const NAMES: ServiceNames = ServiceNames::new(
-        "com.millionrust.multiplex.test",
-        &["com.multiplex.test", "com.termirust.test"],
-    );
+    const SERVICE: &str = "com.millionrust.multiplex.test";
+    const LEGACY: [&str; 2] = ["com.multiplex.test", "com.termirust.test"];
 
     #[derive(Default)]
     struct MemoryStore {
         values: RefCell<HashMap<(String, String), Vec<u8>>>,
-        /// Service names whose writes fail, standing in for a store that refuses one.
-        write_fails: RefCell<Vec<String>>,
         /// Service names whose removals fail, standing in for one left behind.
         delete_fails: RefCell<Vec<String>>,
     }
@@ -256,6 +182,7 @@ mod tests {
         }
 
         fn secret(&self, service: &str, account: &str) -> Result<Option<Vec<u8>>, CredentialError> {
+            assert_eq!(service, SERVICE, "must never read an old service");
             Ok(self
                 .values
                 .borrow()
@@ -269,14 +196,12 @@ mod tests {
             account: &str,
             value: &[u8],
         ) -> Result<(), CredentialError> {
-            if self.write_fails.borrow().iter().any(|name| name == service) {
-                return Err(Self::failure());
-            }
             self.put(service, account, value);
             Ok(())
         }
 
         fn delete(&self, service: &str, account: &str) -> Result<bool, CredentialError> {
+            assert_eq!(service, SERVICE, "must never remove an old service");
             if self
                 .delete_fails
                 .borrow()
@@ -294,102 +219,48 @@ mod tests {
     }
 
     #[test]
-    fn a_secret_under_the_current_name_is_read_as_it_is() {
+    fn legacy_entries_are_not_read_migrated_or_deleted() {
         let store = MemoryStore::default();
-        store.put(NAMES.current, "account", b"here");
+        for legacy in LEGACY {
+            store.put(legacy, "account", b"old");
+        }
+        assert_eq!(password(&store, SERVICE, "account").unwrap(), None);
+        assert_eq!(secret(&store, SERVICE, "account").unwrap(), None);
+        assert!(!exists(&store, SERVICE, "account").unwrap());
+        assert!(!delete(&store, SERVICE, "account").unwrap());
+        assert!(!store.has(SERVICE, "account"));
+        store.set_password(SERVICE, "account", "new").unwrap();
         assert_eq!(
-            password(&store, NAMES, "account").unwrap().as_deref(),
-            Some("here")
+            password(&store, SERVICE, "account").unwrap().as_deref(),
+            Some("new")
         );
-        assert!(!store.has("com.termirust.test", "account"));
-    }
-
-    #[test]
-    fn a_secret_under_an_old_name_is_copied_across_and_the_old_one_removed() {
-        for legacy in NAMES.legacy {
-            let store = MemoryStore::default();
-            store.put(legacy, "account", b"moved");
-            assert_eq!(
-                password(&store, NAMES, "account").unwrap().as_deref(),
-                Some("moved")
-            );
-            assert!(store.has(NAMES.current, "account"));
-            assert!(!store.has(legacy, "account"));
-            // The second read never looks at the old name again.
-            assert_eq!(
-                password(&store, NAMES, "account").unwrap().as_deref(),
-                Some("moved")
-            );
+        assert!(delete(&store, SERVICE, "account").unwrap());
+        for legacy in LEGACY {
+            assert!(store.has(legacy, "account"));
         }
     }
 
     #[test]
-    fn bytes_move_across_the_same_way() {
+    fn current_byte_secrets_can_be_stored_read_and_deleted() {
         let store = MemoryStore::default();
-        store.put("com.termirust.test", "account", &[0, 1, 2, 255]);
+        store
+            .set_secret(SERVICE, "account", &[0, 1, 2, 255])
+            .unwrap();
         assert_eq!(
-            secret(&store, NAMES, "account").unwrap(),
+            secret(&store, SERVICE, "account").unwrap(),
             Some(vec![0, 1, 2, 255])
         );
-        assert!(store.has(NAMES.current, "account"));
-        assert!(!store.has("com.termirust.test", "account"));
+        assert!(exists(&store, SERVICE, "account").unwrap());
+        assert!(delete(&store, SERVICE, "account").unwrap());
+        assert!(!delete(&store, SERVICE, "account").unwrap());
     }
 
     #[test]
-    fn a_copy_that_cannot_be_written_keeps_the_secret_under_the_old_name() {
+    fn deletion_errors_are_returned() {
         let store = MemoryStore::default();
-        store.put("com.termirust.test", "account", b"kept");
-        store
-            .write_fails
-            .borrow_mut()
-            .push(NAMES.current.to_owned());
-        assert_eq!(
-            password(&store, NAMES, "account").unwrap().as_deref(),
-            Some("kept"),
-            "the secret is still returned"
-        );
-        assert!(
-            store.has("com.termirust.test", "account"),
-            "and is still readable next time"
-        );
-    }
-
-    #[test]
-    fn nothing_anywhere_reads_as_nothing() {
-        let store = MemoryStore::default();
-        assert_eq!(password(&store, NAMES, "account").unwrap(), None);
-        assert_eq!(secret(&store, NAMES, "account").unwrap(), None);
-        assert!(!exists(&store, NAMES, "account").unwrap());
-    }
-
-    #[test]
-    fn a_secret_under_any_name_counts_as_existing() {
-        for name in NAMES.all() {
-            let store = MemoryStore::default();
-            store.put(name, "account", b"there");
-            assert!(exists(&store, NAMES, "account").unwrap());
-        }
-    }
-
-    #[test]
-    fn deleting_takes_every_name_and_reports_a_name_left_behind() {
-        let store = MemoryStore::default();
-        for name in NAMES.all() {
-            store.put(name, "account", b"gone");
-        }
-        assert!(delete(&store, NAMES, "account").unwrap());
-        for name in NAMES.all() {
-            assert!(!store.has(name, "account"));
-        }
-        assert!(!delete(&store, NAMES, "account").unwrap());
-
-        let store = MemoryStore::default();
-        store.put(NAMES.current, "account", b"gone");
-        store.put("com.termirust.test", "account", b"stuck");
-        store
-            .delete_fails
-            .borrow_mut()
-            .push("com.termirust.test".to_owned());
-        assert!(delete(&store, NAMES, "account").is_err());
+        store.put(SERVICE, "account", b"kept");
+        store.delete_fails.borrow_mut().push(SERVICE.to_owned());
+        assert!(delete(&store, SERVICE, "account").is_err());
+        assert!(store.has(SERVICE, "account"));
     }
 }

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use gpui_component::Disableable as _;
 use multiplex_tmux::Tmux;
+use multiplex_tmux::cli_shell_integration::CliShellIntegration;
 use multiplex_tmux::shell_integration::{
     ChangePlan, DiffLine, FileChange, IntegrationError, IntegrationStatus, Shell, ShellIntegration,
 };
@@ -91,6 +92,11 @@ pub(super) struct PendingRemoteTerminalChange {
     plan: ChangePlan,
 }
 
+pub(super) struct PendingCliShellChange {
+    enable: bool,
+    plan: ChangePlan,
+}
+
 pub(super) struct RemoteTerminalsState {
     home: Option<PathBuf>,
     login_shell: Option<String>,
@@ -106,6 +112,9 @@ pub(super) struct RemoteTerminalsState {
     profiles: Option<TerminalProfiles>,
     profile_statuses: Vec<(ProfileTarget, ProfileStatus)>,
     pending_profile: Option<PendingProfileChange>,
+    cli_shell: Option<CliShellIntegration>,
+    cli_shell_status: IntegrationStatus,
+    pending_cli_shell: Option<PendingCliShellChange>,
 }
 
 /// The profiles for this machine, pointing at the `multiplex-cli` shipped beside this app.
@@ -126,6 +135,27 @@ fn terminal_profiles(home: Option<&PathBuf>) -> Option<TerminalProfiles> {
 /// Tests never read or write the developer's own terminal settings.
 #[cfg(test)]
 fn terminal_profiles(_: Option<&PathBuf>) -> Option<TerminalProfiles> {
+    None
+}
+
+#[cfg(not(test))]
+fn cli_shell_integration(home: Option<&PathBuf>) -> Option<CliShellIntegration> {
+    if cfg!(windows) {
+        return None;
+    }
+    let launcher = std::env::current_exe()
+        .ok()?
+        .parent()?
+        .join("multiplex-cli");
+    let mut integration = CliShellIntegration::new(home?.clone(), launcher);
+    if let Some(directory) = std::env::var_os("ZDOTDIR").filter(|value| !value.is_empty()) {
+        integration = integration.with_zsh_directory(PathBuf::from(directory));
+    }
+    Some(integration)
+}
+
+#[cfg(test)]
+fn cli_shell_integration(_: Option<&PathBuf>) -> Option<CliShellIntegration> {
     None
 }
 
@@ -159,8 +189,12 @@ impl RemoteTerminalsState {
             profiles: None,
             profile_statuses: Vec::new(),
             pending_profile: None,
+            cli_shell: None,
+            cli_shell_status: IntegrationStatus::Off,
+            pending_cli_shell: None,
         };
         state.profiles = terminal_profiles(state.home.as_ref());
+        state.cli_shell = cli_shell_integration(state.home.as_ref());
         state.refresh();
         state
     }
@@ -169,6 +203,13 @@ impl RemoteTerminalsState {
     pub(super) fn with_service(mut self, service: Box<dyn BackgroundServiceControl>) -> Self {
         self.service = service;
         self.service_status = self.service.status();
+        self
+    }
+
+    #[cfg(test)]
+    pub(super) fn with_cli_shell(mut self, integration: CliShellIntegration) -> Self {
+        self.cli_shell = Some(integration);
+        self.refresh();
         self
     }
 
@@ -191,6 +232,11 @@ impl RemoteTerminalsState {
     /// Re-reads tmux and the user's files. Cheap: one `tmux -V` and a few small reads.
     pub(super) fn refresh(&mut self) {
         self.service_status = self.service.status();
+        self.cli_shell_status = self
+            .cli_shell
+            .as_ref()
+            .map(CliShellIntegration::status)
+            .unwrap_or(IntegrationStatus::Off);
         self.profile_statuses = self
             .profiles
             .as_ref()
@@ -399,6 +445,217 @@ impl MultiplexApp {
         self.remote_terminals.refresh();
         self.sync_remote_tmux_sessions();
         cx.notify();
+    }
+
+    pub(super) fn review_cli_shell_change(&mut self, enable: bool, cx: &mut Context<Self>) {
+        let Some(integration) = self.remote_terminals.cli_shell.as_ref() else {
+            return;
+        };
+        let plan = if enable {
+            integration.plan_enable()
+        } else {
+            integration.plan_disable()
+        };
+        match plan {
+            Ok(plan) => {
+                self.remote_terminals.pending_cli_shell =
+                    Some(PendingCliShellChange { enable, plan });
+                self.error_message.clear();
+            }
+            Err(error) => self.error_message = integration_error_message(&error),
+        }
+        cx.notify();
+    }
+
+    pub(super) fn apply_cli_shell_change(&mut self, cx: &mut Context<Self>) {
+        let Some(pending) = self.remote_terminals.pending_cli_shell.take() else {
+            return;
+        };
+        match pending.plan.apply() {
+            Ok(()) => {
+                self.status_message = localization::static_message(if pending.enable {
+                    MessageId::RemoteTerminalsGlobalApplied
+                } else {
+                    MessageId::RemoteTerminalsGlobalRemoved
+                });
+                self.error_message.clear();
+            }
+            Err(error) => self.error_message = integration_error_message(&error),
+        }
+        self.remote_terminals.refresh();
+        self.refresh_other_terminals();
+        cx.notify();
+    }
+
+    pub(super) fn render_cli_shell_section(&self, cx: &Context<Self>) -> AnyElement {
+        let state = &self.remote_terminals;
+        let installed = !matches!(state.cli_shell_status, IntegrationStatus::Off);
+        let available = state
+            .cli_shell
+            .as_ref()
+            .is_some_and(CliShellIntegration::launcher_available);
+        let text = |id| localization::static_message(id);
+        v_flex()
+            .id("global-cli-terminals")
+            .debug_selector(|| "global-cli-terminals".to_string())
+            .gap_3()
+            .child(self.settings_subhead(
+                text(MessageId::RemoteTerminalsGlobalLabel),
+                text(MessageId::RemoteTerminalsGlobalDescription),
+            ))
+            .child(
+                h_flex()
+                    .items_center()
+                    .justify_between()
+                    .flex_wrap()
+                    .gap_3()
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(match state.cli_shell_status {
+                                IntegrationStatus::Off => {
+                                    localization::remote_terminals_status_off()
+                                }
+                                IntegrationStatus::On(_) => {
+                                    localization::remote_terminals_status_on()
+                                }
+                                IntegrationStatus::Partial => {
+                                    localization::remote_terminals_status_partial()
+                                }
+                            }),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("global-cli-terminals-review-enable")
+                                    .debug_selector(|| {
+                                        "global-cli-terminals-review-enable".to_string()
+                                    })
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    ))
+                                    .disabled(!available)
+                                    .label(text(if installed {
+                                        MessageId::RemoteTerminalsGlobalReviewUpdate
+                                    } else {
+                                        MessageId::RemoteTerminalsGlobalReviewEnable
+                                    }))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.review_cli_shell_change(true, cx);
+                                    })),
+                            )
+                            .when(installed, |this| {
+                                this.child(
+                                    Button::new("global-cli-terminals-review-disable")
+                                        .debug_selector(|| {
+                                            "global-cli-terminals-review-disable".to_string()
+                                        })
+                                        .small()
+                                        .custom(Self::action_button_style(
+                                            theme::ActionTone::Neutral,
+                                            cx,
+                                        ))
+                                        .label(
+                                            localization::remote_terminals_review_disable_action(),
+                                        )
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.review_cli_shell_change(false, cx);
+                                        })),
+                                )
+                            }),
+                    ),
+            )
+            .when(!available, |this| {
+                this.child(
+                    div()
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                        .text_color(theme::text_muted())
+                        .child(text(if cfg!(windows) {
+                            MessageId::RemoteTerminalsGlobalUnsupported
+                        } else {
+                            MessageId::RemoteTerminalsGlobalMissing
+                        })),
+                )
+            })
+            .when_some(state.pending_cli_shell.as_ref(), |this, pending| {
+                this.child(
+                    v_flex()
+                        .debug_selector(|| "global-cli-terminals-preview".to_string())
+                        .gap_3()
+                        .p(px(theme::SPACE_3))
+                        .rounded(px(theme::CONTROL_RADIUS))
+                        .border_1()
+                        .border_color(theme::border())
+                        .child(
+                            div()
+                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                .font_medium()
+                                .text_color(theme::text_main())
+                                .child(localization::remote_terminals_preview_title()),
+                        )
+                        .children(pending.plan.changes.iter().map(|change| {
+                            render_file_change(
+                                change,
+                                theme::current_design_tokens().font_mono_family().0,
+                            )
+                        }))
+                        .when(pending.plan.is_empty(), |this| {
+                            this.child(
+                                div()
+                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(localization::remote_terminals_preview_empty()),
+                            )
+                        })
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .when(!pending.plan.is_empty(), |this| {
+                                    this.child(
+                                        Button::new("global-cli-terminals-apply")
+                                            .debug_selector(|| {
+                                                "global-cli-terminals-apply".to_string()
+                                            })
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                if pending.enable {
+                                                    theme::ActionTone::Accent
+                                                } else {
+                                                    theme::ActionTone::Danger
+                                                },
+                                                cx,
+                                            ))
+                                            .label(if pending.enable {
+                                                localization::remote_terminals_apply_action()
+                                            } else {
+                                                localization::remote_terminals_remove_action()
+                                            })
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.apply_cli_shell_change(cx);
+                                            })),
+                                    )
+                                })
+                                .child(
+                                    Button::new("global-cli-terminals-cancel")
+                                        .small()
+                                        .custom(Self::action_button_style(
+                                            theme::ActionTone::Neutral,
+                                            cx,
+                                        ))
+                                        .label(localization::remote_terminals_cancel_action())
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.remote_terminals.pending_cli_shell = None;
+                                            cx.notify();
+                                        })),
+                                ),
+                        ),
+                )
+            })
+            .into_any_element()
     }
 
     pub(super) fn review_profile_change(

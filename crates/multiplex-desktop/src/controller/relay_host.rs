@@ -16,10 +16,7 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroize;
 
-const RELAY_SECRET_SERVICE: keychain::ServiceNames = keychain::ServiceNames::new(
-    "com.millionrust.multiplex.controller.relay",
-    &["com.termirust.controller.relay"],
-);
+const RELAY_SECRET_SERVICE: &str = "com.millionrust.multiplex.controller.relay";
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct OsRelaySecretStore;
@@ -33,7 +30,7 @@ impl RelaySecretStore for OsRelaySecretStore {
         let mut encoded =
             base64::engine::general_purpose::STANDARD_NO_PAD.encode(secret.expose_for_store());
         let result = SystemCredentials.set_password(
-            RELAY_SECRET_SERVICE.current,
+            RELAY_SECRET_SERVICE,
             reference.expose_for_store(),
             &encoded,
         );
@@ -186,7 +183,7 @@ mod tests {
 
     #[test]
     fn debug_output_never_contains_secret_service_or_endpoint() {
-        assert!(!format!("{:?}", OsRelaySecretStore).contains(RELAY_SECRET_SERVICE.current));
+        assert!(!format!("{:?}", OsRelaySecretStore).contains(RELAY_SECRET_SERVICE));
         assert_eq!(
             map_keyring_error(KeyringError::NoEntry),
             RelaySecretStoreError::Missing

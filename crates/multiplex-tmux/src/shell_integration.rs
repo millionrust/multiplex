@@ -150,7 +150,7 @@ pub struct FileChange {
     /// The path as the user knows it, such as `~/.zshrc`.
     pub path: PathBuf,
     /// The file actually written. Differs from `path` when a dotfile manager symlinks it.
-    write_path: PathBuf,
+    pub(crate) write_path: PathBuf,
     pub before: Option<String>,
     /// `None` deletes the file. Only app-owned init files are ever deleted.
     pub after: Option<String>,
@@ -545,12 +545,24 @@ impl ShellIntegration {
     }
 }
 
-fn shell_single_quote(value: &str) -> String {
+pub(crate) fn shell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 /// Line ranges of complete blocks. `Err` when a start marker has no end marker.
 fn find_blocks(contents: &str) -> Result<Vec<(usize, usize)>, ()> {
+    find_marked_blocks(
+        contents,
+        &[BLOCK_START, LEGACY_BLOCK_START],
+        &[BLOCK_END, LEGACY_BLOCK_END],
+    )
+}
+
+pub(crate) fn find_marked_blocks(
+    contents: &str,
+    starts: &[&str],
+    ends: &[&str],
+) -> Result<Vec<(usize, usize)>, ()> {
     let lines = contents.lines().collect::<Vec<_>>();
     let mut blocks = Vec::new();
     let mut start = None;
@@ -558,12 +570,12 @@ fn find_blocks(contents: &str) -> Result<Vec<(usize, usize)>, ()> {
     // that block is this app's to replace or take away.
     for (index, line) in lines.iter().enumerate() {
         let line = line.trim_end();
-        if line == BLOCK_START || line == LEGACY_BLOCK_START {
+        if starts.contains(&line) {
             if start.is_some() {
                 return Err(());
             }
             start = Some(index);
-        } else if line == BLOCK_END || line == LEGACY_BLOCK_END {
+        } else if ends.contains(&line) {
             match start.take() {
                 Some(first) => blocks.push((first, index)),
                 None => return Err(()),
@@ -578,7 +590,19 @@ fn find_blocks(contents: &str) -> Result<Vec<(usize, usize)>, ()> {
 
 /// Removes every block, plus the one blank line [`append_block`] puts before it.
 fn remove_blocks(contents: &str) -> Result<String, ()> {
-    let blocks = find_blocks(contents)?;
+    remove_marked_blocks(
+        contents,
+        &[BLOCK_START, LEGACY_BLOCK_START],
+        &[BLOCK_END, LEGACY_BLOCK_END],
+    )
+}
+
+pub(crate) fn remove_marked_blocks(
+    contents: &str,
+    starts: &[&str],
+    ends: &[&str],
+) -> Result<String, ()> {
+    let blocks = find_marked_blocks(contents, starts, ends)?;
     if blocks.is_empty() {
         return Ok(contents.to_owned());
     }
@@ -627,7 +651,7 @@ pub(crate) fn read_optional(path: &Path) -> Result<Option<String>, IntegrationEr
 
 /// Follows a symlinked startup file to the file a dotfile manager keeps, so replacing it
 /// never turns the link into a copy.
-fn resolve_write_path(path: &Path) -> Result<PathBuf, IntegrationError> {
+pub(crate) fn resolve_write_path(path: &Path) -> Result<PathBuf, IntegrationError> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_symlink() => match fs::canonicalize(path) {
             Ok(target) => Ok(target),

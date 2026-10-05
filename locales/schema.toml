@@ -12190,3 +12190,36 @@ id = "folder-unavailable"
 context = "Error shown when a folder chosen for a session cannot be read."
 description = "Unavailable folder error"
 
+
+[[messages]]
+id = "remote-terminals-global-label"
+context = "Global external terminal routing in Remote Devices settings."
+description = "remote-terminals-global-label"
+[[messages]]
+id = "remote-terminals-global-description"
+context = "Global external terminal routing in Remote Devices settings."
+description = "remote-terminals-global-description"
+[[messages]]
+id = "remote-terminals-global-review-enable"
+context = "Global external terminal routing in Remote Devices settings."
+description = "remote-terminals-global-review-enable"
+[[messages]]
+id = "remote-terminals-global-review-update"
+context = "Global external terminal routing in Remote Devices settings."
+description = "remote-terminals-global-review-update"
+[[messages]]
+id = "remote-terminals-global-applied"
+context = "Global external terminal routing in Remote Devices settings."
+description = "remote-terminals-global-applied"
+[[messages]]
+id = "remote-terminals-global-removed"
+context = "Global external terminal routing in Remote Devices settings."
+description = "remote-terminals-global-removed"
+[[messages]]
+id = "remote-terminals-global-missing"
+context = "Global external terminal routing in Remote Devices settings."
+description = "remote-terminals-global-missing"
+[[messages]]
+id = "remote-terminals-global-unsupported"
+context = "Global external terminal routing in Remote Devices settings."
+description = "remote-terminals-global-unsupported"

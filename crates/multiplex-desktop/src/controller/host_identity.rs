@@ -16,13 +16,8 @@ use rand::RngCore as _;
 use uuid::Uuid;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-/// Where this computer's remote-access identity lives, and the names earlier versions used. The
-/// name is what macOS shows when it asks to unlock the item, so it carries the app's own
-/// identifier; `keychain` brings a secret across from an older name on first read.
-const IDENTITY_SERVICE: keychain::ServiceNames = keychain::ServiceNames::new(
-    "com.millionrust.multiplex.controller.identity",
-    &["com.termirust.controller.identity"],
-);
+/// The current service for this computer's remote-access identity.
+const IDENTITY_SERVICE: &str = "com.millionrust.multiplex.controller.identity";
 
 #[derive(Clone, Eq, PartialEq, Zeroize, ZeroizeOnDrop)]
 pub struct HostIdentitySecret([u8; 32]);
@@ -108,7 +103,7 @@ impl SecretStore for OsSecretStore {
     ) -> Result<(), SecretStoreError> {
         keychain::SystemCredentials
             .set_password(
-                IDENTITY_SERVICE.current,
+                IDENTITY_SERVICE,
                 reference.expose_reference(),
                 &secret.encode(),
             )

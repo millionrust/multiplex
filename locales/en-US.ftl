@@ -678,7 +678,7 @@ dev-url-confirm-title = Open this local development URL?
 dev-url-confirm-warning = A localhost request can change local application state and will enter browser history. Cancel is the safe default.
 dev-url-confirm-exact = Exact URL: { $url }
 remote-devices-title = Remote Devices
-remote-devices-description = Manage authenticated Controller devices and the public identity of this desktop.
+remote-devices-description = Manage paired devices and this computer’s identity. Enable global external terminal routing through the Multiplex CLI for macOS Terminal and editor shells, visible in Sessions and on your phone.
 remote-devices-route-label = Remote access
 remote-devices-route-off = Off
 remote-devices-route-required = Turn on remote access to pair a phone.
@@ -781,7 +781,7 @@ remote-devices-pairing-tailscale-hint = Over Tailscale, type { $address } on the
 remote-terminals-title = Terminals opened in other apps
 remote-terminals-description = Paired devices can watch and type into tmux sessions, including terminals you open in Terminal, Zed, iTerm2, Ghostty, or WezTerm.
 remote-terminals-profiles-label = Terminal profiles
-remote-terminals-profiles-description = Add a Multiplex profile to the terminal apps you use. Only a terminal you open with it can be reached from your paired devices; every other terminal, script, and program starts its shell as before.
+remote-terminals-profiles-description = Add a Multiplex profile to the terminal apps you use. Terminals opened with it appear in Sessions and on paired devices. On macOS and Linux, global routing above also includes interactive zsh and bash terminals.
 remote-terminals-profiles-none = No supported terminal app was found. Multiplex can add its profile to Windows Terminal, Visual Studio Code, and iTerm2.
 remote-terminals-profile-status-on = Added
 remote-terminals-profile-status-off = Not added
@@ -2592,8 +2592,8 @@ product-private-session-row = Private session
 files-title = Files
 files-description = Browse this computer's files and the files on a connected host.
 other-terminals-heading = Other terminals on this computer
-other-terminals-description = Terminals opened with the Multiplex profile, and tmux sessions, whoever started them.
-other-terminals-profile-origin = Multiplex profile · { $directory }
+other-terminals-description = Terminals routed through the Multiplex CLI, including global routing and terminal profiles, plus tmux sessions.
+other-terminals-profile-origin = Multiplex CLI · { $directory }
 other-terminals-tmux-origin = { $count ->
     [zero] tmux session
     [one] tmux · one window
@@ -2611,3 +2611,12 @@ settings-advanced-show = { $count ->
     }
 remote-devices-advanced-summary = terminal profiles, background service, computers this Mac watches, host identity, reset
 storage-advanced-summary = store health, encrypted backup and mobile vault, encrypted device sync
+
+remote-terminals-global-label = Route external terminals through Multiplex
+remote-terminals-global-description = Open new interactive zsh and bash terminals in macOS Terminal or your editor through Multiplex. They appear in Sessions and on paired devices. Review the shell startup changes before enabling. Existing terminals stay as they are. Set MULTIPLEX_NO_WRAP=1 to skip a terminal.
+remote-terminals-global-review-enable = Review enabling
+remote-terminals-global-review-update = Review setup
+remote-terminals-global-applied = External terminal routing is enabled. Open a new terminal to see it in Sessions and on paired devices.
+remote-terminals-global-removed = External terminal routing is disabled. Running sessions stay available until their shells exit.
+remote-terminals-global-missing = The Multiplex CLI and Session Host must be installed beside the desktop app to enable external terminal routing.
+remote-terminals-global-unsupported = On Windows, use the Multiplex terminal profile below and select it as your terminal app’s default profile.

@@ -1373,6 +1373,8 @@ impl MultiplexApp {
             .child(self.settings_divider())
             .child(self.render_trusted_remote_devices(cx))
             .child(self.settings_divider())
+            .child(self.render_cli_shell_section(cx))
+            .child(self.settings_divider())
             .child(
                 self.settings_advanced(
                     "remote-devices",

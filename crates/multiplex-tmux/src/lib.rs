@@ -14,6 +14,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 pub mod appearance;
+pub mod cli_shell_integration;
 pub mod shell_integration;
 pub mod terminal_profiles;
 

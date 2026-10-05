@@ -828,13 +828,9 @@ mod os_keyring {
     use super::{ReplicationSecretBackend, ReplicationSecretRef, ReplicationSecretStoreError};
     use crate::keychain::{self, SystemCredentials};
 
-    /// Where vault secrets live, and the name an earlier version used. The operating system
-    /// shows this name when it asks to unlock one, so it carries the app's own identifier.
-    const SERVICE: keychain::ServiceNames = keychain::ServiceNames::new(
-        "com.millionrust.multiplex.replication.secrets.v1",
-        &["com.termirust.replication.secrets.v1"],
-    );
-    const SERVICE_NAME: &str = SERVICE.current;
+    /// The current service for vault secrets.
+    const SERVICE: &str = "com.millionrust.multiplex.replication.secrets.v1";
+    const SERVICE_NAME: &str = SERVICE;
 
     #[derive(Clone, Copy, Debug, Default)]
     pub struct OsReplicationSecretBackend;

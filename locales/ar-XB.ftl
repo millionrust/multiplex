@@ -1285,10 +1285,10 @@ notification-toggle-on = ⁧nO⁩
 open-connections-action = ⁧snoitcennoC nepO⁩
 organization-undo-expired = ⁧.dedne sah doirep odnu ehT⁩
 other-terminals-attaching = ⁧…lanimret eht ot gnihcattA⁩
-other-terminals-description = ⁧.meht detrats reveohw ,snoisses xumt dna ,eliforp xelpitluM eht htiw denepo slanimreT⁩
+other-terminals-description = ⁧.snoisses xumt sulp ,seliforp lanimret dna gnituor labolg gnidulcni ,ILC xelpitluM eht hguorht detuor slanimreT⁩
 other-terminals-heading = ⁧retupmoc siht no slanimret rehtO⁩
 other-terminals-open-action = ⁧nepO⁩
-other-terminals-profile-origin = ⁧ · eliforp xelpitluM⁩{ $directory }
+other-terminals-profile-origin = ⁧ · ILC xelpitluM⁩{ $directory }
 other-terminals-tmux-origin = { $count ->
     [many] ⁧ · xumt⁩{ $count }⁧swodniw ⁩
     [one] ⁧wodniw eno · xumt⁩
@@ -1432,7 +1432,7 @@ remote-devices-allow-session-creation-action = ⁧slanimret wen wollA⁩
 remote-devices-allow-watching-action = ⁧gnihctaw wollA⁩
 remote-devices-capabilities-saved = ⁧.detadpu seitilibapac rellortnoC⁩
 remote-devices-copy-action = ⁧ypoC⁩
-remote-devices-description = ⁧.potksed siht fo ytitnedi cilbup eht dna secived rellortnoC detacitnehtua eganaM⁩
+remote-devices-description = ⁧.enohp ruoy no dna snoisseS ni elbisiv ,sllehs rotide dna lanimreT SOcam rof ILC xelpitluM eht hguorht gnituor lanimret lanretxe labolg elbanE .ytitnedi s’retupmoc siht dna secived deriap eganaM⁩
 remote-devices-device-detail = ⁧ yeK⁩{ $suffix }⁧ · ⁩{ $status }
 remote-devices-empty = ⁧.detsurt era secived rellortnoC oN⁩
 remote-devices-fingerprint-copied = ⁧.deipoc tnirpregnif tsoH⁩
@@ -1578,6 +1578,14 @@ remote-terminals-diff-skipped = { $count ->
 remote-terminals-file-created = ⁧elif weN⁩
 remote-terminals-file-deleted = ⁧deteled eb lliW⁩
 remote-terminals-file-edited = ⁧detidE⁩
+remote-terminals-global-applied = ⁧.secived deriap no dna snoisseS ni ti ees ot lanimret wen a nepO .delbane si gnituor lanimret lanretxE⁩
+remote-terminals-global-description = ⁧.lanimret a piks ot 1=PARW_ON_XELPITLUM teS .era yeht sa yats slanimret gnitsixE .gnilbane erofeb segnahc putrats llehs eht weiveR .secived deriap no dna snoisseS ni raeppa yehT .xelpitluM hguorht rotide ruoy ro lanimreT SOcam ni slanimret hsab dna hsz evitcaretni wen nepO⁩
+remote-terminals-global-label = ⁧xelpitluM hguorht slanimret lanretxe etuoR⁩
+remote-terminals-global-missing = ⁧.gnituor lanimret lanretxe elbane ot ppa potksed eht ediseb dellatsni eb tsum tsoH noisseS dna ILC xelpitluM ehT⁩
+remote-terminals-global-removed = ⁧.tixe sllehs rieht litnu elbaliava yats snoisses gninnuR .delbasid si gnituor lanimret lanretxE⁩
+remote-terminals-global-review-enable = ⁧gnilbane weiveR⁩
+remote-terminals-global-review-update = ⁧putes weiveR⁩
+remote-terminals-global-unsupported = ⁧.eliforp tluafed s’ppa lanimret ruoy sa ti tceles dna woleb eliforp lanimret xelpitluM eht esu ,swodniW nO⁩
 remote-terminals-malformed-error = ⁧.niaga yrt neht ,srekram xelpitluM eht neewteb senil eht eteleD .kcolb xelpitluM etelpmocni na sah elif putrats llehs ruoY⁩
 remote-terminals-no-wrap-hint = ⁧.tnemnorivne s'ppa taht ni 1=PARW_ON_XELPITLUM tes ,xumt fo tuo ppa eno peek oT⁩
 remote-terminals-preview-empty = ⁧.egnahc lliw gnihtoN .pu tes ydaerla si gnihtyrevE⁩
@@ -1592,7 +1600,7 @@ remote-terminals-profile-status-off = ⁧dedda toN⁩
 remote-terminals-profile-status-on = ⁧deddA⁩
 remote-terminals-profile-status-outdated = ⁧xelpitluM fo ypoc rehtona ta stnioP⁩
 remote-terminals-profile-update-action = ⁧etadpu weiveR⁩
-remote-terminals-profiles-description = ⁧.erofeb sa llehs sti strats margorp dna ,tpircs ,lanimret rehto yreve ;secived deriap ruoy morf dehcaer eb nac ti htiw nepo uoy lanimret a ylnO .esu uoy sppa lanimret eht ot eliforp xelpitluM a ddA⁩
+remote-terminals-profiles-description = ⁧.slanimret hsab dna hsz evitcaretni sedulcni osla evoba gnituor labolg ,xuniL dna SOcam nO .secived deriap no dna snoisseS ni raeppa ti htiw denepo slanimreT .esu uoy sppa lanimret eht ot eliforp xelpitluM a ddA⁩
 remote-terminals-profiles-label = ⁧seliforp lanimreT⁩
 remote-terminals-profiles-none = ⁧.2mreTi dna ,edoC oidutS lausiV ,lanimreT swodniW ot eliforp sti dda nac xelpitluM .dnuof saw ppa lanimret detroppus oN⁩
 remote-terminals-remove-action = ⁧selif ym morf evomeR⁩

@@ -58,8 +58,7 @@ pub use library::{
 };
 #[cfg(feature = "os-keyring")]
 pub use multiplex_replication_security::OsReplicationSecretBackend;
-/// Only exists with a credential store to talk to; a build without one, such as the mobile
-/// bindings, has no keychain to migrate names in.
+/// Credential-store access is unavailable in builds without an OS keyring, such as mobile bindings.
 #[cfg(feature = "os-keyring")]
 pub use multiplex_replication_security::keychain;
 pub use multiplex_replication_security::{

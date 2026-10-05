@@ -48,6 +48,11 @@ reachable from then on.
   server appears in the phone's session list as a live terminal, including sessions
   Multiplex did not create, on every route. Watching and typing work; a
   tmux session is never resized or ended by the phone. Requires tmux 3.2 or later.
+- **Global external terminal routing** (macOS and Linux): Settings → Remote Devices →
+  **Route external terminals through Multiplex** offers **Review enabling** and an exact startup-file
+  preview. After applying, new interactive zsh/bash terminals in macOS Terminal and editors run
+  through `multiplex-cli shell`. They appear in desktop **Sessions → Other terminals on this
+  computer** and paired devices’ Terminals lists. Sessions refreshes while it is open.
 - **The Multiplex terminal profile**: Devices adds a "Multiplex" profile to Windows Terminal,
   Visual Studio Code, and iTerm2. A terminal opened with it runs `multiplex-cli shell`, which
   starts your shell (PowerShell on Windows, your login shell elsewhere) in a Session Host, in the
@@ -80,12 +85,33 @@ Devices), and nothing touches your files until you have seen the change.
    and comparing an eight-character code remains available under **Other ways to pair**.
    New devices are observe-only; granting input is a separate, explicit toggle per
    device.
-2. **Add the Multiplex profile** to your terminal app under "Terminal profiles", and open new
-   terminals with it.
+2. On macOS or Linux, enable **Route external terminals through Multiplex** in Settings → Remote
+   Devices, review the startup-file diff, and apply it. Open a new terminal in Terminal or your
+   editor. For per-app routing, or on Windows, add the **Multiplex profile** under "Terminal
+   profiles" and open terminals with it.
 
 If an earlier version installed the tmux startup setup, "tmux startup setup (retired)" shows
 **Review removal** and **Check setup**. Until you remove it, new tabs still start inside tmux
 and paired devices still see your tmux sessions; removing it stops both.
+
+## Global external terminal routing
+
+The setting changes `~/.zshrc` (or `$ZDOTDIR/.zshrc`), `~/.bashrc`, and the first existing bash
+login file: `~/.bash_profile`, `~/.bash_login`, or `~/.profile`. If none exists, it creates
+`~/.bash_profile`. Each receives one marked block at the beginning. The CLI starts a detached
+Session Host in the terminal’s current directory and runs the same shell with its original
+interactive/login mode. The hosted shell reads your original startup settings normally.
+
+The hook skips scripts, shells without a terminal, SSH shells, existing tmux sessions, the
+app’s own terminals, and shells already inside Multiplex. It leaves the plain shell available
+when the CLI or Session Host is missing. `MULTIPLEX_NO_WRAP=1` opts an external terminal out.
+The CLI child also sets it, preventing the retired tmux hook from nesting inside the new session.
+
+**Review removal** previews removing only these blocks; running sessions keep running until
+their shells exit. Symlinked dotfiles stay symlinked, and applying refuses files that changed
+since review. This setting is opt-in and does not modify your startup files until you apply.
+Remote access must be on and your phone paired to reach these sessions. Use **Run in background**
+under the advanced remote-device options to keep the listener reachable after the desktop app quits.
 
 ## What the retired tmux setup wrote
 
@@ -201,7 +227,7 @@ No `~/.tmux.conf` change is needed. The phone attaches with
 
 ### The Multiplex terminal profile (every platform)
 
-This is the recommended way, and the only one on Windows. Under **Devices → Terminal profiles**,
+Profiles provide per-app routing, and are the only option on Windows. Under **Devices → Terminal profiles**,
 each terminal app on this computer that can take a profile is listed with **Review adding**.
 Reviewing shows the exact change; applying writes only that.
 

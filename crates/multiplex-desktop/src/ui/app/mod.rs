@@ -1917,6 +1917,8 @@ impl MultiplexApp {
                 cx.notify();
             });
         app._window_activation_subscription = Some(window_activation_subscription);
+        #[cfg(not(test))]
+        app.start_other_terminals_refresh(cx);
 
         cx.spawn_in(window, async move |this, cx| {
             loop {
@@ -28769,6 +28771,80 @@ sleep 1
     }
 
     #[gpui::test]
+    fn global_cli_terminal_settings_preview_enable_and_remove(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let home = tempfile::tempdir().unwrap();
+        let zshrc = home.path().join(".zshrc");
+        let original = "# my shell settings\n";
+        std::fs::write(&zshrc, original).unwrap();
+        let launcher = home.path().join("multiplex-cli");
+        std::fs::write(&launcher, "fixture").unwrap();
+        std::fs::write(home.path().join("multiplex-session-host"), "fixture").unwrap();
+        let integration =
+            multiplex_tmux::cli_shell_integration::CliShellIntegration::new(home.path(), launcher);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.remote_terminals = super::remote_terminals::RemoteTerminalsState::open(
+                        Some(home.path().to_owned()),
+                        Some("/bin/zsh".to_owned()),
+                    )
+                    .with_cli_shell(integration);
+                    app.activate_library_section(NavSection::Settings, window, cx);
+                    app.select_settings_section(
+                        multiplex_ui_contract::SettingsSectionId::RemoteDevices,
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .unwrap();
+        let click = |cx: &mut TestAppContext, selector: &'static str| {
+            scroll_selector_into_view(window, cx, "settings-scroll-viewport", selector);
+            let point = selector_click_center(window, cx, selector);
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.simulate_click(point, gpui::Modifiers::none());
+            visual.run_until_parked();
+        };
+        click(cx, "global-cli-terminals-review-enable");
+        assert_eq!(
+            std::fs::read_to_string(&zshrc).unwrap(),
+            original,
+            "review does not write"
+        );
+        click(cx, "global-cli-terminals-apply");
+        assert!(
+            std::fs::read_to_string(&zshrc)
+                .unwrap()
+                .contains(multiplex_tmux::cli_shell_integration::BLOCK_START)
+        );
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.status_message,
+                localization::static_message(MessageId::RemoteTerminalsGlobalApplied)
+            );
+            assert!(app.error_message.is_empty());
+            assert!(
+                !app.saved.settings.remote_tmux_sessions,
+                "CLI routing requires no retired tmux switch"
+            );
+        });
+        click(cx, "global-cli-terminals-review-disable");
+        click(cx, "global-cli-terminals-apply");
+        assert_eq!(std::fs::read_to_string(&zshrc).unwrap(), original);
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.status_message,
+                localization::static_message(MessageId::RemoteTerminalsGlobalRemoved)
+            );
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
     fn e2e_remote_terminal_setup_previews_applies_and_removes_shell_changes(
         cx: &mut TestAppContext,
     ) {
@@ -31670,7 +31746,13 @@ sleep 1
             "computers this Mac watches are not in the way"
         );
 
-        // Opening it reveals what it hides.
+        // Opening it reveals what it hides. The external terminal routing control sits above it.
+        scroll_selector_into_view(
+            window,
+            cx,
+            "settings-scroll-viewport",
+            "settings-advanced-remote-devices",
+        );
         let click = selector_click_center(window, cx, "settings-advanced-remote-devices");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(click, gpui::Modifiers::none());

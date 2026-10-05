@@ -54,57 +54,56 @@ impl MultiplexApp {
     /// Reads both sources. Cheap enough to run when Sessions is opened and after a refresh: the
     /// console listing is a directory walk, and tmux is asked once with a bounded listing.
     pub(super) fn refresh_other_terminals(&mut self) {
-        let mut terminals = Vec::new();
+        self.other_terminals.terminals =
+            read_other_terminals(crate::storage::app_dir().ok(), self.open_tmux_names());
+    }
 
-        if let Ok(app_root) = crate::storage::app_dir() {
-            let data_root = app_root.join("durable-sessions");
-            let console_root = multiplex_store::console_sessions_root(&data_root);
-            let runtime_parent = crate::controller_runtime_parent(&app_root);
-            for live in multiplex_store::live_console_sessions(&console_root, &runtime_parent) {
-                let session_id = live.record.session_id;
-                terminals.push(OtherTerminal {
-                    title: live.record.title(),
-                    detail: localization::other_terminals_profile_origin(
-                        live.record.working_directory.display().to_string(),
-                    ),
-                    kind: OtherTerminalKind::Console {
-                        session_id,
-                        session_dir: console_root.join(session_id.to_string()),
-                        runtime_root: runtime_parent.join(session_id.to_string()),
-                    },
+    fn open_tmux_names(&self) -> std::collections::HashSet<String> {
+        self.panes
+            .iter()
+            .filter(|pane| pane.request.persistent_session)
+            .filter_map(|pane| pane.request.persistent_session_name.clone())
+            .collect()
+    }
+
+    /// Poll while the Sessions destination is visible, with disk and tmux reads off the UI thread.
+    #[cfg(not(test))]
+    pub(super) fn start_other_terminals_refresh(&self, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_secs(2))
+                    .await;
+                let request = this.update(cx, |app, _| {
+                    (app.nav_section == super::NavSection::Sessions)
+                        .then(|| (crate::storage::app_dir().ok(), app.open_tmux_names()))
                 });
-            }
-        }
-
-        if let Ok(tmux) = multiplex_tmux::Tmux::discover()
-            && let Ok(listing) = tmux.list_sessions()
-        {
-            let open_in_a_pane = self
-                .panes
-                .iter()
-                .filter(|pane| pane.request.persistent_session)
-                .filter_map(|pane| pane.request.persistent_session_name.clone())
-                .collect::<std::collections::HashSet<_>>();
-            for session in listing.sessions {
-                // A session this app started is already in the library above it.
-                if session.name.starts_with("multiplex-") || session.name.starts_with("termirust-")
+                let Ok(request) = request else {
+                    break;
+                };
+                let Some((app_root, open_tmux)) = request else {
+                    continue;
+                };
+                let terminals = cx
+                    .background_executor()
+                    .spawn(async move { read_other_terminals(app_root, open_tmux) })
+                    .await;
+                if this
+                    .update(cx, |app, cx| {
+                        if app.nav_section == super::NavSection::Sessions
+                            && app.other_terminals.terminals != terminals
+                        {
+                            app.other_terminals.terminals = terminals;
+                            cx.notify();
+                        }
+                    })
+                    .is_err()
                 {
-                    continue;
+                    break;
                 }
-                // A pane in this window is already showing it. One the app made and left running
-                // is not skipped: after a restart it is the only way back to it.
-                if open_in_a_pane.contains(&session.name) {
-                    continue;
-                }
-                terminals.push(OtherTerminal {
-                    title: session.name.clone(),
-                    detail: localization::other_terminals_tmux_origin(session.windows as u64),
-                    kind: OtherTerminalKind::Tmux { name: session.name },
-                });
             }
-        }
-
-        self.other_terminals.terminals = terminals;
+        })
+        .detach();
     }
 
     pub(super) fn render_other_terminals(&self, cx: &Context<Self>) -> Option<AnyElement> {
@@ -234,4 +233,54 @@ impl MultiplexApp {
         self.error_message.clear();
         cx.notify();
     }
+}
+
+fn read_other_terminals(
+    app_root: Option<PathBuf>,
+    open_in_a_pane: std::collections::HashSet<String>,
+) -> Vec<OtherTerminal> {
+    let mut terminals = Vec::new();
+
+    if let Some(app_root) = app_root {
+        let data_root = app_root.join("durable-sessions");
+        let console_root = multiplex_store::console_sessions_root(&data_root);
+        let runtime_parent = crate::controller_runtime_parent(&app_root);
+        for live in multiplex_store::live_console_sessions(&console_root, &runtime_parent) {
+            let session_id = live.record.session_id;
+            terminals.push(OtherTerminal {
+                title: live.record.title(),
+                detail: localization::other_terminals_profile_origin(
+                    live.record.working_directory.display().to_string(),
+                ),
+                kind: OtherTerminalKind::Console {
+                    session_id,
+                    session_dir: console_root.join(session_id.to_string()),
+                    runtime_root: runtime_parent.join(session_id.to_string()),
+                },
+            });
+        }
+    }
+
+    if let Ok(tmux) = multiplex_tmux::Tmux::discover()
+        && let Ok(listing) = tmux.list_sessions()
+    {
+        for session in listing.sessions {
+            // A session this app started is already in the library above it.
+            if session.name.starts_with("multiplex-") || session.name.starts_with("termirust-") {
+                continue;
+            }
+            // A pane in this window is already showing it. One the app made and left running
+            // is not skipped: after a restart it is the only way back to it.
+            if open_in_a_pane.contains(&session.name) {
+                continue;
+            }
+            terminals.push(OtherTerminal {
+                title: session.name.clone(),
+                detail: localization::other_terminals_tmux_origin(session.windows as u64),
+                kind: OtherTerminalKind::Tmux { name: session.name },
+            });
+        }
+    }
+
+    terminals
 }

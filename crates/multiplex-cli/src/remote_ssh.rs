@@ -42,10 +42,7 @@ use crate::{
 };
 
 const PROFILE_SCHEMA_VERSION: u16 = 1;
-const SECRET_SERVICE: keychain::ServiceNames = keychain::ServiceNames::new(
-    "com.millionrust.multiplex.controller.client",
-    &["com.termirust.controller.client"],
-);
+const SECRET_SERVICE: &str = "com.millionrust.multiplex.controller.client";
 const PROFILE_DIR: &str = "controller-ssh";
 const PROFILE_MAX_BYTES: u64 = 16 * 1024;
 const INPUT_MAX_BYTES: u64 = 16 * 1024;
@@ -150,7 +147,7 @@ impl StoredControllerProfile {
         let mut encoded = base64::engine::general_purpose::STANDARD_NO_PAD.encode(private_bytes);
         private_bytes.zeroize();
         let secret_result = SystemCredentials
-            .set_password(SECRET_SERVICE.current, &self.secret_ref, &encoded)
+            .set_password(SECRET_SERVICE, &self.secret_ref, &encoded)
             .map_err(map_keyring);
         encoded.zeroize();
         secret_result?;

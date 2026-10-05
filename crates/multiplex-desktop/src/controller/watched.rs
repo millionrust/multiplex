@@ -28,11 +28,7 @@ use serde::{Deserialize, Serialize};
 use zeroize::Zeroize as _;
 
 const SCHEMA_VERSION: u16 = 1;
-const SECRET_SERVICE: multiplex_store::keychain::ServiceNames =
-    multiplex_store::keychain::ServiceNames::new(
-        "com.millionrust.multiplex.controller.client",
-        &["com.termirust.controller.client"],
-    );
+const SECRET_SERVICE: &str = "com.millionrust.multiplex.controller.client";
 const DIRECTORY: &str = "watched-computers";
 const MAX_RECORD_BYTES: u64 = 16 * 1024;
 const PAIRING_TIMEOUT: Duration = Duration::from_secs(30);
@@ -306,7 +302,7 @@ fn save(
     let encoded = base64::engine::general_purpose::STANDARD_NO_PAD.encode(seed);
     multiplex_store::keychain::CredentialStore::set_password(
         &multiplex_store::keychain::SystemCredentials,
-        SECRET_SERVICE.current,
+        SECRET_SERVICE,
         &computer.secret_ref,
         &encoded,
     )
