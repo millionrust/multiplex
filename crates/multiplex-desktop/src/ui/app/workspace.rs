@@ -1351,22 +1351,6 @@ impl MultiplexApp {
                     this.update_pane_drop_target(pane_id, event, cx);
                 }),
             )
-            .on_drag_move(cx.listener(
-                move |this, event: &DragMoveEvent<super::host_rail::RailDrag>, _, cx| {
-                    this.update_rail_drop_target(pane_id, event, cx);
-                },
-            ))
-            .on_drop(
-                cx.listener(move |this, drag: &super::host_rail::RailDrag, window, cx| {
-                    if this.active_workspace().is_some_and(|workspace| {
-                        workspace.layout_mode == WorkspaceLayoutMode::Canvas
-                    }) {
-                        this.drop_rail_item_on_canvas(drag.item.clone(), window, cx);
-                    } else {
-                        this.drop_rail_item_on_pane(drag.item.clone(), pane_id, window, cx);
-                    }
-                }),
-            )
             .on_drop(cx.listener(move |this, drag: &PaneDrag, window, cx| {
                 this.drop_pane_on_pane(drag.pane_id, pane_id, window, cx);
             }))
@@ -1664,18 +1648,12 @@ impl MultiplexApp {
             } else {
                 0.0
             };
-        let body_left = self.workspace_rail_width();
         let targets: Vec<(u64, MotionRect)> = panes
             .iter()
             .map(|rect| {
                 (
                     rect.pane_id,
-                    MotionRect::new(
-                        rect.x + body_left,
-                        rect.y + body_top,
-                        rect.width,
-                        rect.height,
-                    ),
+                    MotionRect::new(rect.x, rect.y + body_top, rect.width, rect.height),
                 )
             })
             .collect();
@@ -1717,7 +1695,7 @@ impl MultiplexApp {
             container = container.child(
                 div()
                     .absolute()
-                    .left(px(frame.rect.x - body_left))
+                    .left(px(frame.rect.x))
                     .top(px(frame.rect.y - body_top))
                     .w(px(frame.rect.width))
                     .h(px(frame.rect.height))
@@ -1805,18 +1783,11 @@ impl MultiplexApp {
                 this.child(search)
             })
             .child(content);
-        // Hosts and new sessions sit in a rail on the left; the body lays itself
-        // out beside it.
-        let rail = self.render_host_rail(window, cx);
-        v_flex().flex_1().bg(theme::terminal_bg()).child(
-            div()
-                .flex()
-                .flex_row()
-                .flex_1()
-                .min_h_0()
-                .when_some(rail, |row, rail| row.child(rail))
-                .child(column),
-        )
+        v_flex()
+            .flex_1()
+            .min_h_0()
+            .bg(theme::terminal_bg())
+            .child(column)
     }
 
     fn render_split_layout_bar(&self, cx: &mut Context<Self>) -> AnyElement {
