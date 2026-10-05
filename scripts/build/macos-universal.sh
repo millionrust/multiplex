@@ -53,6 +53,8 @@ for arm_binary in "$ARM_APP"/Contents/MacOS/*; do
   printf '%s: %s\n' "$name" "$archs"
 done
 
+# lipo replaces executable code, invalidating both architecture bundles' signatures.
+"$ROOT_DIR/scripts/build/sign-macos-app.sh" "$UNIVERSAL_APP"
 "$ROOT_DIR/scripts/verify/release-package.sh" "$UNIVERSAL_APP/Contents/MacOS"
 mkdir -p "$(dirname "$OUTPUT_ZIP")"
 rm -f "$OUTPUT_ZIP"

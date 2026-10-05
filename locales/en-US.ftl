@@ -846,7 +846,7 @@ remote-screens-sharing-description = Only paired devices with screen access can 
 remote-screens-sharing-share = Share
 remote-screens-sharing-hide = Do not share
 remote-screens-sharing-saved = Screen sharing updated.
-remote-screens-permission-hint = macOS asks for Screen Recording the first time a device watches, and for Accessibility before anyone can point or type.
+remote-screens-permission-hint = On macOS, enable Multiplex in System Settings → Privacy & Security → Screen Recording, then quit and reopen Multiplex. A background listener needs its own permission. Accessibility is required for remote keyboard and pointer control.
 remote-screens-watching-none = Nobody is watching this screen.
 remote-screens-watching-now = Watching now: { $devices }
 remote-screens-controlling-now = { $device } can point and type on this computer.
@@ -2620,3 +2620,5 @@ remote-terminals-global-applied = External terminal routing is enabled. Open a n
 remote-terminals-global-removed = External terminal routing is disabled. Running sessions stay available until their shells exit.
 remote-terminals-global-missing = The Multiplex CLI and Session Host must be installed beside the desktop app to enable external terminal routing.
 remote-terminals-global-unsupported = On Windows, use the Multiplex terminal profile below and select it as your terminal app’s default profile.
+
+remote-screens-permission-settings = Open Screen Recording Settings

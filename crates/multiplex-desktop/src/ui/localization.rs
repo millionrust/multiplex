@@ -3019,3 +3019,8 @@ mod tests {
         set_development_locale("en-US").unwrap();
     }
 }
+
+static_message!(
+    remote_screens_permission_settings,
+    RemoteScreensPermissionSettingsArgs
+);

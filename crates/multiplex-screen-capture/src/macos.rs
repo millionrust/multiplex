@@ -16,10 +16,28 @@ use crate::{CaptureConfig, CaptureError, CapturedFrame, Damage, DisplayInfo, Fra
 /// marks the next one as fully damaged.
 const QUEUE_DEPTH: usize = 2;
 
+// Display discovery can itself trigger macOS's recording prompt. Gate every query with the
+// non-prompting preflight, including queries made by background listeners.
+fn with_capture_permission<T>(
+    allowed: bool,
+    operation: impl FnOnce() -> Result<T, CaptureError>,
+) -> Result<T, CaptureError> {
+    if !allowed {
+        return Err(CaptureError::NotPermitted);
+    }
+    operation()
+}
+
+fn shareable_content() -> Result<SCShareableContent, CaptureError> {
+    with_capture_permission(screen_capture_allowed(), || {
+        SCShareableContent::get().map_err(|_| CaptureError::NotPermitted)
+    })
+}
+
 /// Displays that can be captured. Fails with [`CaptureError::NotPermitted`] when Screen
 /// Recording has not been allowed.
 pub fn displays() -> Result<Vec<DisplayInfo>, CaptureError> {
-    let content = SCShareableContent::get().map_err(|_| CaptureError::NotPermitted)?;
+    let content = shareable_content()?;
     content
         .displays()
         .iter()
@@ -43,7 +61,7 @@ pub struct ScreenCaptureKitSource {
 
 impl ScreenCaptureKitSource {
     pub fn start(config: CaptureConfig) -> Result<Self, CaptureError> {
-        let content = SCShareableContent::get().map_err(|_| CaptureError::NotPermitted)?;
+        let content = shareable_content()?;
         let displays = content.displays();
         let display = displays
             .iter()
@@ -62,6 +80,7 @@ impl ScreenCaptureKitSource {
             .with_height(size.height())
             .with_pixel_format(PixelFormat::BGRA)
             .with_shows_cursor(config.show_cursor)
+            .with_captures_audio(false)
             .with_queue_depth(3)
             .with_minimum_frame_interval(&CMTime::new(1, config.max_fps.clamp(1, 120) as i32));
 
@@ -205,4 +224,28 @@ pub fn screen_capture_allowed() -> bool {
 /// prompt from nowhere, so it reports instead and lets the app ask.
 pub fn request_screen_capture() -> bool {
     core_graphics::access::ScreenCaptureAccess.request()
+}
+
+#[cfg(test)]
+mod permission_tests {
+    use super::*;
+
+    #[test]
+    fn missing_permission_never_queries_capture_service() {
+        let result: Result<(), CaptureError> = with_capture_permission(false, || {
+            panic!("a background query must not invoke permission-triggering APIs")
+        });
+        assert_eq!(result, Err(CaptureError::NotPermitted));
+    }
+
+    #[test]
+    fn granted_permission_queries_once_and_preserves_failure() {
+        let mut queries = 0;
+        let result: Result<(), CaptureError> = with_capture_permission(true, || {
+            queries += 1;
+            Err(CaptureError::Unavailable)
+        });
+        assert_eq!(queries, 1);
+        assert_eq!(result, Err(CaptureError::Unavailable));
+    }
 }

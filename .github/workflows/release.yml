@@ -107,6 +107,7 @@ jobs:
           for name in multiplex-cli multiplex-session-host multiplex-mcp multiplex-mcp-authorize multiplex-relay; do
             install -m 755 "target/${{ matrix.target.triple }}/release/$name" "$APP/Contents/MacOS/$name"
           done
+          ./scripts/build/sign-macos-app.sh "$APP"
           ./scripts/verify/release-package.sh "$APP/Contents/MacOS"
           ditto -c -k --keepParent "$APP" "dist/Multiplex-${{ matrix.target.name }}.zip"
           # From inside dist/, so the file names only the download and `shasum -c` works beside it.

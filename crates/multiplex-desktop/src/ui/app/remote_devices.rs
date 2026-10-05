@@ -1023,6 +1023,15 @@ fn unix_seconds() -> u64 {
 impl MultiplexApp {
     /// Saves the screen-sharing choice and applies it to the listener.
     pub(super) fn update_remote_screen_sharing(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        // Only a deliberate Hide → Share action may ask macOS. Startup and listener refreshes
+        // only preflight permission and must never produce another system dialog.
+        #[cfg(all(target_os = "macos", not(test)))]
+        if enabled
+            && !self.saved.settings.remote_screen_sharing
+            && !multiplex_screen_capture::screen_capture_allowed()
+        {
+            multiplex_screen_capture::request_screen_capture();
+        }
         self.saved.settings.remote_screen_sharing = enabled;
         self.save_settings();
         if self
@@ -1079,6 +1088,21 @@ impl MultiplexApp {
                     |this, enabled, _, cx| this.update_remote_screen_sharing(enabled, cx),
                 ),
             ))
+            .when(cfg!(target_os = "macos") && sharing, |this| {
+                this.child(
+                    Self::design_button(
+                        "screen-recording-settings",
+                        theme::ActionTone::Neutral,
+                        cx,
+                    )
+                    .label(localization::remote_screens_permission_settings())
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.open_url(
+                            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+                        );
+                    })),
+                )
+            })
             .when(sharing, |this| this.child(self.render_screen_watchers(cx)))
             .child(
                 div()

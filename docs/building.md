@@ -43,6 +43,17 @@ workspace `target/` directory.
 open target/release/bundle/osx/Multiplex.app
 ```
 
+Release packaging runs `scripts/build/sign-macos-app.sh` after adding helper binaries and
+again after merging the universal executable slices. This binds the bundle's Info.plist and
+resources to `com.millionrust.multiplex`, replacing the linker's binary-only signature.
+It defaults to ad-hoc signing; `MULTIPLEX_CODESIGN_IDENTITY` selects a certificate instead.
+Ad-hoc signing does not preserve macOS permission identity across different app versions.
+
+Screen display discovery and capture startup preflight Screen Recording permission without
+prompting. Settings → Remote Devices requests access when sharing is explicitly enabled and
+provides a link to the macOS privacy pane. After changing the grant, quit and reopen the app.
+The background listener checks its own permission and never requests access automatically.
+
 ### Signed + notarized (distribution)
 
 You need an active Apple Developer Program membership ($99/yr) and a

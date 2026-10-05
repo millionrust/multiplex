@@ -12223,3 +12223,8 @@ description = "remote-terminals-global-missing"
 id = "remote-terminals-global-unsupported"
 context = "Global external terminal routing in Remote Devices settings."
 description = "remote-terminals-global-unsupported"
+
+[[messages]]
+id = "remote-screens-permission-settings"
+context = "Opens the macOS privacy pane from screen sharing settings."
+description = "Screen Recording system settings action"
