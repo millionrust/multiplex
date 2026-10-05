@@ -29383,10 +29383,6 @@ sleep 1
         let mut saved = SavedState::default();
         saved.settings.onboarding_dismissed = true;
         let (app, window) = open_test_app_with_state(cx, saved);
-        // Tall enough that the whole card paints: a scrolled-out row has no bounds to find.
-        cx.simulate_window_resize(*window, size(px(1200.), px(2600.)));
-        cx.run_until_parked();
-
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
@@ -29395,6 +29391,7 @@ sleep 1
             })
             .expect("window update should succeed");
 
+        scroll_selector_into_view(window, cx, "settings-scroll-viewport", "settings-theme-2");
         let theme_click = selector_click_center(window, cx, "settings-theme-2");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(theme_click, gpui::Modifiers::none());
@@ -29403,6 +29400,12 @@ sleep 1
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(terminal_section, gpui::Modifiers::none());
 
+        scroll_selector_into_view(
+            window,
+            cx,
+            "settings-scroll-viewport",
+            "settings-font-size-5",
+        );
         let font_click = selector_click_center(window, cx, "settings-font-size-5");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(font_click, gpui::Modifiers::none());

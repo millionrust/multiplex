@@ -6174,7 +6174,7 @@ impl MultiplexApp {
                 None => menu
                     .bottom(px(theme::SPACE_4 + theme::SPLIT_LAYOUT_BUTTON_SIZE + theme::SPACE_4))
                     .left(relative(0.5))
-                    .ml(px(-theme::CANVAS_COMPACT_PANEL_WIDTH / 2.0)),
+                    .ml(px(theme::CANVAS_COMPACT_PANEL_CENTER_OFFSET)),
             })
             .w(px(theme::CANVAS_COMPACT_PANEL_WIDTH))
             .max_w(relative(0.9))
