@@ -726,6 +726,8 @@ impl MultiplexApp {
             .child(
                 h_flex()
                     .id("chrome-tab-scroll")
+                    .debug_selector(|| "chrome-tab-scroll".to_string())
+                    .flex_1()
                     .track_scroll(&self.tab_strip_scroll)
                     .overflow_x_scroll()
                     .h_full()
@@ -827,41 +829,41 @@ impl MultiplexApp {
                             }),
                         )
                         .into_any_element()
-                    })),
-            )
-            .child(
-                div()
-                    .id("chrome-workspace-drop-tail")
-                    .debug_selector(|| "chrome-workspace-drop-tail".to_string())
-                    .h_full()
-                    .flex_1()
-                    .min_w(px(theme::SHELL_TAB_DROP_MINIMUM))
-                    .drag_over::<WorkspaceTabDrag>(|style, _, _, _| {
-                        style.bg(theme::with_alpha(theme::accent(), 0.08))
-                    })
-                    .on_drop(cx.listener(|this, drag: &WorkspaceTabDrag, _, cx| {
-                        this.reorder_workspace_tabs(drag.workspace_id, None, true);
-                        this.error_message.clear();
-                        cx.notify();
                     }))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|_, event: &MouseDownEvent, window, _| {
-                            // Only a plain single press starts a window drag;
-                            // a double-click is handled on click-up below so
-                            // the native drag loop doesn't swallow it.
-                            if event.click_count == 1 {
-                                crate::platform_mac::start_window_drag();
-                                window.start_window_move();
-                            }
-                        }),
-                    )
-                    .on_click(cx.listener(|this, event: &ClickEvent, window, cx| {
-                        if event.click_count() >= 2 {
-                            this.open_workspace_tab_menu = None;
-                            this.open_local_terminal(window, cx);
-                        }
-                    })),
+                    .child(
+                        div()
+                            .id("chrome-workspace-drop-tail")
+                            .debug_selector(|| "chrome-workspace-drop-tail".to_string())
+                            .h_full()
+                            .flex_1()
+                            .min_w(px(theme::SHELL_TAB_DROP_MINIMUM))
+                            .drag_over::<WorkspaceTabDrag>(|style, _, _, _| {
+                                style.bg(theme::with_alpha(theme::accent(), 0.08))
+                            })
+                            .on_drop(cx.listener(|this, drag: &WorkspaceTabDrag, _, cx| {
+                                this.reorder_workspace_tabs(drag.workspace_id, None, true);
+                                this.error_message.clear();
+                                cx.notify();
+                            }))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|_, event: &MouseDownEvent, window, _| {
+                                    // Only a plain single press starts a window drag;
+                                    // a double-click is handled on click-up below so
+                                    // the native drag loop doesn't swallow it.
+                                    if event.click_count == 1 {
+                                        crate::platform_mac::start_window_drag();
+                                        window.start_window_move();
+                                    }
+                                }),
+                            )
+                            .on_click(cx.listener(|this, event: &ClickEvent, window, cx| {
+                                if event.click_count() >= 2 {
+                                    this.open_workspace_tab_menu = None;
+                                    this.open_local_terminal(window, cx);
+                                }
+                            })),
+                    ),
             )
             .child(
                 div()
