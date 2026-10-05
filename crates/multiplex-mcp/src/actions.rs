@@ -594,6 +594,22 @@ fn map_io(error: std::io::Error) -> SourceError {
     }
 }
 
+/// Whether `folder` is one the grant named.
+///
+/// Both sides are canonicalised before they are compared: the grant is a list of folders a
+/// person approved, and text comparison would let a symlink or a `..` stand in for one of them.
+/// A folder that cannot be resolved is not granted.
+fn folder_is_granted(folder: &str, granted: &[String]) -> bool {
+    let Ok(requested) = multiplex_domain::CanonicalPath::resolve(std::path::Path::new(folder))
+    else {
+        return false;
+    };
+    granted.iter().any(|candidate| {
+        multiplex_domain::CanonicalPath::resolve(std::path::Path::new(candidate))
+            .is_ok_and(|granted| granted.identity() == requested.identity())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -793,20 +809,4 @@ mod tests {
         assert!(!audit.contains("example.com"));
         assert!(!receipts.contains("example.com"));
     }
-}
-
-/// Whether `folder` is one the grant named.
-///
-/// Both sides are canonicalised before they are compared: the grant is a list of folders a
-/// person approved, and text comparison would let a symlink or a `..` stand in for one of them.
-/// A folder that cannot be resolved is not granted.
-fn folder_is_granted(folder: &str, granted: &[String]) -> bool {
-    let Ok(requested) = multiplex_domain::CanonicalPath::resolve(std::path::Path::new(folder))
-    else {
-        return false;
-    };
-    granted.iter().any(|candidate| {
-        multiplex_domain::CanonicalPath::resolve(std::path::Path::new(candidate))
-            .is_ok_and(|granted| granted.identity() == requested.identity())
-    })
 }
