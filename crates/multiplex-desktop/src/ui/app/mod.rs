@@ -28994,8 +28994,8 @@ sleep 1
                 app.status_message,
                 localization::remote_terminals_applied_notice()
             );
-            assert!(app.saved.settings.remote_tmux_sessions);
-            assert!(app.remote_devices.tmux_sessions());
+            assert!(!app.saved.settings.remote_tmux_sessions);
+            assert!(!app.remote_devices.tmux_sessions());
         });
         let installed = std::fs::read_to_string(&zshrc).unwrap();
         assert!(installed.starts_with(original));
@@ -31894,8 +31894,7 @@ sleep 1
         saved.settings.onboarding_dismissed = true;
         let (app, window) = open_test_app_with_state(cx, saved);
 
-        // A terminal started by the Multiplex profile, and a tmux session nobody here created:
-        // the two sources a paired phone has always been shown.
+        // Only terminals started by the Multiplex CLI belong in this external-terminal list.
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
@@ -31903,11 +31902,13 @@ sleep 1
                     // Set after activating: entering Sessions reads the real sources, which on a
                     // test machine find nothing.
                     app.other_terminals.terminals = vec![super::other_terminals::OtherTerminal {
-                        kind: super::other_terminals::OtherTerminalKind::Tmux {
-                            name: "notes".to_owned(),
+                        kind: super::other_terminals::OtherTerminalKind::Console {
+                            session_id: multiplex_domain::HostedSessionId::new(),
+                            session_dir: std::env::temp_dir().join("console-session"),
+                            runtime_root: std::env::temp_dir().join("console-runtime"),
                         },
                         title: "notes".to_owned(),
-                        detail: "tmux · one window".to_owned(),
+                        detail: "Multiplex CLI · /tmp".to_owned(),
                     }];
                     cx.notify();
                 })

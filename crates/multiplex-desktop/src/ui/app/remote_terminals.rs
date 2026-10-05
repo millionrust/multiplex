@@ -358,11 +358,10 @@ impl MultiplexApp {
         let _ = cx;
     }
 
-    /// Paired devices see tmux sessions exactly while the tmux startup setup is on: turning it
-    /// on is the choice to reach terminals through tmux, so there is no second switch for it.
+    /// Retire tmux sharing even when the old startup setup has not yet been removed.
     /// A change restarts the listener, so this only writes when the answer changed.
     pub(super) fn sync_remote_tmux_sessions(&mut self) {
-        let listed = !matches!(self.remote_terminals.status, IntegrationStatus::Off);
+        let listed = false;
         if self.saved.settings.remote_tmux_sessions == listed {
             return;
         }

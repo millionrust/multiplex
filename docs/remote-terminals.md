@@ -4,7 +4,7 @@ Status: **built, awaiting testing on real Windows hardware.** On every platform,
 opened with the **Multiplex profile** (Windows Terminal, Visual Studio Code, iTerm2) runs your
 own shell in a session paired devices can list, watch, and type into, and the session outlives
 its window. The earlier tmux startup setup (macOS and Linux) is retired: where it is still
-installed, its tmux sessions stay listed and it can be removed, but it can no longer be turned
+installed, it can be removed but its tmux sessions are no longer listed. It cannot be turned
 on. On macOS and Windows the listener can keep
 running after you quit the app.
 
@@ -44,10 +44,6 @@ reachable from then on.
 - Live desktop panes (the terminals in the desktop window) are published to the
   Controller and are attachable on every route. The SSH and relay routes find them through
   a user-only pointer file the running app publishes.
-- **tmux sessions**, while "Open new terminals in tmux" is on: every session on your default tmux
-  server appears in the phone's session list as a live terminal, including sessions
-  Multiplex did not create, on every route. Watching and typing work; a
-  tmux session is never resized or ended by the phone. Requires tmux 3.2 or later.
 - **Global external terminal routing** (macOS and Linux): Settings → Remote Devices →
   **Route external terminals through Multiplex** offers **Review enabling** and an exact startup-file
   preview. After applying, new interactive zsh/bash terminals in macOS Terminal and editors run
@@ -91,8 +87,9 @@ Devices), and nothing touches your files until you have seen the change.
    profiles" and open terminals with it.
 
 If an earlier version installed the tmux startup setup, "tmux startup setup (retired)" shows
-**Review removal** and **Check setup**. Until you remove it, new tabs still start inside tmux
-and paired devices still see your tmux sessions; removing it stops both.
+**Review removal** and **Check setup**. Until you remove it, new tabs still start inside tmux,
+but tmux sessions are no longer shown in desktop Sessions or offered to paired devices.
+Remove the old setup and enable global CLI routing or a Multiplex terminal profile.
 
 ## Global external terminal routing
 

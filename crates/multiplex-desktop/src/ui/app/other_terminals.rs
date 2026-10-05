@@ -1,10 +1,8 @@
 //! The terminals on this computer that the app did not open.
 //!
 //! The Sessions library shows what the app owns: panes it opened and durable Sessions it started.
-//! A paired phone has always been shown more than that — the Controller listener also publishes
-//! terminals started by `multiplex-cli shell` through the Multiplex terminal profile, and tmux
-//! sessions nobody here created. This reads the same two sources so the computer's own window is
-//! not the last to know.
+//! External terminals are Session Hosts started by `multiplex-cli shell`, either through global
+//! shell routing or a Multiplex terminal profile. Only these CLI terminals are listed here.
 //!
 //! What cannot be listed: a terminal started by another app without the profile. There is no way
 //! to attach to another program's pseudo-terminal, so a row for it could only ever be a claim we
@@ -16,8 +14,7 @@ use gpui::{
     AnyElement, Context, InteractiveElement as _, IntoElement as _, ParentElement as _, Styled,
     Window, div, px,
 };
-use gpui_component::button::Button;
-use gpui_component::{Icon, IconName, Sizable as _, StyledExt as _, h_flex, v_flex};
+use gpui_component::{Icon, IconName, StyledExt as _, h_flex, v_flex};
 use multiplex_domain::HostedSessionId;
 
 use super::hosted_session::DurableSessionPaths;
@@ -34,8 +31,6 @@ pub(super) enum OtherTerminalKind {
         session_dir: PathBuf,
         runtime_root: PathBuf,
     },
-    /// A tmux session, reached by attaching a local shell to it.
-    Tmux { name: String },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -51,22 +46,12 @@ pub(super) struct OtherTerminalsState {
 }
 
 impl MultiplexApp {
-    /// Reads both sources. Cheap enough to run when Sessions is opened and after a refresh: the
-    /// console listing is a directory walk, and tmux is asked once with a bounded listing.
+    /// Reads the live CLI Session Host records when Sessions opens or is refreshed.
     pub(super) fn refresh_other_terminals(&mut self) {
-        self.other_terminals.terminals =
-            read_other_terminals(crate::storage::app_dir().ok(), self.open_tmux_names());
+        self.other_terminals.terminals = read_other_terminals(crate::storage::app_dir().ok());
     }
 
-    fn open_tmux_names(&self) -> std::collections::HashSet<String> {
-        self.panes
-            .iter()
-            .filter(|pane| pane.request.persistent_session)
-            .filter_map(|pane| pane.request.persistent_session_name.clone())
-            .collect()
-    }
-
-    /// Poll while the Sessions destination is visible, with disk and tmux reads off the UI thread.
+    /// Poll while the Sessions destination is visible, with disk reads off the UI thread.
     #[cfg(not(test))]
     pub(super) fn start_other_terminals_refresh(&self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
@@ -75,22 +60,24 @@ impl MultiplexApp {
                     .timer(std::time::Duration::from_secs(2))
                     .await;
                 let request = this.update(cx, |app, _| {
-                    (app.nav_section == super::NavSection::Sessions)
-                        .then(|| (crate::storage::app_dir().ok(), app.open_tmux_names()))
+                    (app.active_workspace_id.is_none()
+                        && app.nav_section == super::NavSection::Sessions)
+                        .then(|| crate::storage::app_dir().ok())
                 });
                 let Ok(request) = request else {
                     break;
                 };
-                let Some((app_root, open_tmux)) = request else {
+                let Some(app_root) = request else {
                     continue;
                 };
                 let terminals = cx
                     .background_executor()
-                    .spawn(async move { read_other_terminals(app_root, open_tmux) })
+                    .spawn(async move { read_other_terminals(app_root) })
                     .await;
                 if this
                     .update(cx, |app, cx| {
-                        if app.nav_section == super::NavSection::Sessions
+                        if app.active_workspace_id.is_none()
+                            && app.nav_section == super::NavSection::Sessions
                             && app.other_terminals.terminals != terminals
                         {
                             app.other_terminals.terminals = terminals;
@@ -166,13 +153,18 @@ impl MultiplexApp {
                                     ),
                             )
                             .child(
-                                Button::new(("other-terminal-open", index))
-                                    .debug_selector(move || format!("other-terminal-open-{index}"))
-                                    .small()
-                                    .label(localization::other_terminals_open_action())
-                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                Self::design_button(
+                                    ("other-terminal-open", index),
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                )
+                                .debug_selector(move || format!("other-terminal-open-{index}"))
+                                .label(localization::other_terminals_open_action())
+                                .on_click(cx.listener(
+                                    move |this, _, window, cx| {
                                         this.open_other_terminal(index, window, cx);
-                                    })),
+                                    },
+                                )),
                             )
                     },
                 ))
@@ -180,8 +172,7 @@ impl MultiplexApp {
         )
     }
 
-    /// Opens one in a pane: a console session is attached the way a durable Session is, and a
-    /// tmux session gets a local shell that attaches to it.
+    /// Attaches a CLI terminal in a pane through the durable Session Host protocol.
     fn open_other_terminal(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(terminal) = self.other_terminals.terminals.get(index).cloned() else {
             return;
@@ -215,30 +206,13 @@ impl MultiplexApp {
                 }
                 self.status_message = localization::other_terminals_attaching();
             }
-            OtherTerminalKind::Tmux { name } => {
-                let mut request = crate::models::ConnectRequest::local_shell_with_config(
-                    self.next_session_id(),
-                    self.saved.settings.default_local_shell.clone(),
-                );
-                request.title = name.clone();
-                request.persistent_session = true;
-                request.persistent_session_name = Some(name);
-                request.persistent_session_detach_others = false;
-                if self.open_request_workspace(request, window, cx).is_none() {
-                    return;
-                }
-                self.status_message = localization::other_terminals_attaching();
-            }
         }
         self.error_message.clear();
         cx.notify();
     }
 }
 
-fn read_other_terminals(
-    app_root: Option<PathBuf>,
-    open_in_a_pane: std::collections::HashSet<String>,
-) -> Vec<OtherTerminal> {
+fn read_other_terminals(app_root: Option<PathBuf>) -> Vec<OtherTerminal> {
     let mut terminals = Vec::new();
 
     if let Some(app_root) = app_root {
@@ -257,27 +231,6 @@ fn read_other_terminals(
                     session_dir: console_root.join(session_id.to_string()),
                     runtime_root: runtime_parent.join(session_id.to_string()),
                 },
-            });
-        }
-    }
-
-    if let Ok(tmux) = multiplex_tmux::Tmux::discover()
-        && let Ok(listing) = tmux.list_sessions()
-    {
-        for session in listing.sessions {
-            // A session this app started is already in the library above it.
-            if session.name.starts_with("multiplex-") || session.name.starts_with("termirust-") {
-                continue;
-            }
-            // A pane in this window is already showing it. One the app made and left running
-            // is not skipped: after a restart it is the only way back to it.
-            if open_in_a_pane.contains(&session.name) {
-                continue;
-            }
-            terminals.push(OtherTerminal {
-                title: session.name.clone(),
-                detail: localization::other_terminals_tmux_origin(session.windows as u64),
-                kind: OtherTerminalKind::Tmux { name: session.name },
             });
         }
     }

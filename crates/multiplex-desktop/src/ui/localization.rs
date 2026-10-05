@@ -877,9 +877,7 @@ pub fn other_terminals_profile_origin(directory: impl Into<String>) -> String {
         directory,
     )))
 }
-pub fn other_terminals_tmux_origin(count: u64) -> String {
-    text(&OtherTerminalsTmuxOriginArgs::new(Count(count)))
-}
+
 static_message!(files_description, FilesDescriptionArgs);
 static_message!(devices_add_computer_action, DevicesAddComputerActionArgs);
 static_message!(devices_settings_action, DevicesSettingsActionArgs);

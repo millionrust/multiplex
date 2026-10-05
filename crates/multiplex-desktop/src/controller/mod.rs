@@ -19,9 +19,7 @@ pub mod windows_tray;
 
 use std::path::Path;
 
-use multiplex_controller_listener::{
-    DesktopPaneBridgeEndpoint, RepositoryBridgeSources, TmuxSessionSource,
-};
+use multiplex_controller_listener::{DesktopPaneBridgeEndpoint, RepositoryBridgeSources};
 
 /// Where the desktop app's live pane bridge listens, under the Controller runtime parent.
 pub fn desktop_pane_bridge_root(runtime_parent: &Path) -> std::path::PathBuf {
@@ -29,7 +27,7 @@ pub fn desktop_pane_bridge_root(runtime_parent: &Path) -> std::path::PathBuf {
 }
 
 /// The live sessions a Controller bridge process offers: the running desktop app's panes,
-/// when it published them, tmux sessions, and this computer's screens, each when the user
+/// when it published them, and this computer's screens when the user
 /// turned that sharing on. Read at each connection so a settings change applies to the next
 /// device that connects.
 pub fn remote_bridge_sources(runtime_parent: &Path) -> RepositoryBridgeSources {
@@ -49,16 +47,14 @@ pub fn remote_bridge_sources(runtime_parent: &Path) -> RepositoryBridgeSources {
 
 fn bridge_sources(
     runtime_parent: &Path,
-    tmux_sessions: bool,
+    _legacy_tmux_sessions: bool,
     screen_sharing: bool,
 ) -> RepositoryBridgeSources {
     RepositoryBridgeSources {
         desktop_pane_bridge: DesktopPaneBridgeEndpoint::discover(&desktop_pane_bridge_root(
             runtime_parent,
         )),
-        tmux_sessions: tmux_sessions
-            .then(|| TmuxSessionSource::system(runtime_parent).ok())
-            .flatten(),
+        tmux_sessions: None,
         screens: screen_sharing.then(|| {
             std::sync::Arc::new(screen_sharing::ScreenSharing::enabled())
                 as std::sync::Arc<dyn multiplex_controller_listener::ScreenSessionFactory>
@@ -101,7 +97,10 @@ mod tests {
         server.publish().unwrap();
         let both = bridge_sources(runtime_parent, true, true);
         assert!(both.desktop_pane_bridge == Some(server.endpoint()));
-        assert!(both.tmux_sessions.is_some());
+        assert!(
+            both.tmux_sessions.is_none(),
+            "legacy tmux sharing is ignored"
+        );
         assert!(both.screens.is_some());
 
         drop(server);
