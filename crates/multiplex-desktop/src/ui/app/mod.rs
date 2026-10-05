@@ -11443,7 +11443,7 @@ impl MultiplexApp {
         let input_authorized = self
             .pane(pane_id)
             .is_some_and(SessionPane::input_authorized);
-        if input_authorized && self.pane_uses_mouse_reporting(pane_id) {
+        if input_authorized && !event.modifiers.shift && self.pane_uses_mouse_reporting(pane_id) {
             if let Some(data) = self.mouse_report_bytes(
                 pane_id,
                 event.position,
@@ -11491,7 +11491,12 @@ impl MultiplexApp {
         if self.divider_drag.is_some() {
             return;
         }
-        if self.pane_uses_mouse_reporting(pane_id) {
+        if !event.modifiers.shift
+            && !self
+                .pane(pane_id)
+                .is_some_and(|pane| pane.dragging_selection)
+            && self.pane_uses_mouse_reporting(pane_id)
+        {
             if let Some(data) = self.mouse_report_bytes(
                 pane_id,
                 event.position,
@@ -11535,7 +11540,12 @@ impl MultiplexApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.pane_uses_mouse_reporting(pane_id) {
+        if !event.modifiers.shift
+            && !self
+                .pane(pane_id)
+                .is_some_and(|pane| pane.dragging_selection)
+            && self.pane_uses_mouse_reporting(pane_id)
+        {
             if let Some(data) = self.mouse_report_bytes(
                 pane_id,
                 event.position,
@@ -14950,6 +14960,127 @@ mod tests {
             })
             .unwrap();
         assert_eq!(sent(&mut command_rx), b"\x1b[200~'/tmp/a b.txt' \x1b[201~");
+    }
+
+    #[gpui::test]
+    fn durable_pane_supports_selection_and_context_menu(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let pane_id = window
+            .update(cx, |_, _window, cx| {
+                app.update(cx, |app, cx| {
+                    let pane_id = app.next_session_id();
+                    let request = ConnectRequest::local_shell_with_config(
+                        pane_id,
+                        LocalShellConfig::default(),
+                    );
+                    let (command_tx, _command_rx) = tokio::sync::mpsc::unbounded_channel();
+                    app.register_pane(
+                        request.clone(),
+                        SessionRuntimeHandle { command_tx },
+                        cx.focus_handle().tab_stop(true),
+                        cx.focus_handle().tab_stop(true),
+                        cx,
+                    );
+                    app.open_spawned_pane_workspace(&request, pane_id);
+                    let session_id = multiplex_domain::HostedSessionId::new();
+                    if let Some(pane) = app.pane_mut(pane_id) {
+                        pane.connected = true;
+                        pane.terminal.process_bytes(b"select this terminal output");
+                        pane.app_attached = Some(super::AppAttachedPaneState {
+                            hosted_session_id: session_id,
+                            route: multiplex_domain::SessionLaunchRoute::DurableHost,
+                            origin: multiplex_domain::SessionOrigin {
+                                preset_id: multiplex_domain::PresetId::new(),
+                            },
+                            pending_initial_input: None,
+                            cancel_requested: false,
+                            last_sequence: 0,
+                            has_writer_lease: true,
+                            dev_urls: multiplex_client::DevUrlProjection::new(session_id),
+                        });
+                    }
+                    cx.notify();
+                    pane_id
+                })
+            })
+            .expect("test window should remain open");
+
+        for mode in [WorkspaceLayoutMode::Split, WorkspaceLayoutMode::Canvas] {
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        app.pane_context_menu = None;
+                        app.pane_mut(pane_id).unwrap().selection = None;
+                        app.set_workspace_layout_mode(mode, window, cx);
+                        if mode == WorkspaceLayoutMode::Canvas {
+                            app.fit_canvas(window, cx);
+                        }
+                    })
+                })
+                .unwrap();
+            for (has_writer, mouse_reporting) in [(true, false), (true, true), (false, true)] {
+                window
+                    .update(cx, |_, _, cx| {
+                        app.update(cx, |app, cx| {
+                            app.pane_context_menu = None;
+                            let pane = app.pane_mut(pane_id).unwrap();
+                            pane.selection = None;
+                            pane.app_attached.as_mut().unwrap().has_writer_lease = has_writer;
+                            pane.terminal.process_bytes(if mouse_reporting {
+                                b"\x1b[?1000h"
+                            } else {
+                                b"\x1b[?1000l"
+                            });
+                            cx.notify();
+                        })
+                    })
+                    .unwrap();
+                let modifiers = gpui::Modifiers {
+                    shift: mouse_reporting && has_writer,
+                    ..gpui::Modifiers::none()
+                };
+                let mut visual = VisualTestContext::from_window(window.into(), cx);
+                visual.run_until_parked();
+                let layout = window
+                    .update(cx, |_, window, cx| {
+                        app.update(cx, |app, cx| {
+                            app.pane_layout_for(pane_id, window, cx).unwrap()
+                        })
+                    })
+                    .unwrap();
+                let start = point(
+                    px(layout.cell_x + layout.char_width / 2.0),
+                    px(layout.cell_y + layout.line_height * 4.5),
+                );
+                let end = point(start.x + px(layout.char_width * 5.0), start.y);
+                visual.simulate_mouse_down(start, MouseButton::Left, modifiers);
+                visual.simulate_mouse_move(end, Some(MouseButton::Left), modifiers);
+                visual.simulate_mouse_up(end, MouseButton::Left, gpui::Modifiers::none());
+                visual.run_until_parked();
+                app.read_with(cx, |app, _| {
+                    assert!(
+                        app.pane(pane_id).unwrap().selection.is_some(),
+                        "reattached terminal allows selection: {mode:?}, writer={has_writer}, reporting={mouse_reporting}, layout={layout:?}"
+                    )
+                });
+                visual.simulate_mouse_down(end, MouseButton::Right, gpui::Modifiers::none());
+                visual.run_until_parked();
+                app.read_with(cx, |app, _| {
+                    assert_eq!(app.pane_context_menu.map(|(id, _)| id), Some(pane_id))
+                });
+                let menu = visual
+                    .debug_bounds(Box::leak(
+                        format!("pane-context-menu-{pane_id}").into_boxed_str(),
+                    ))
+                    .expect("terminal context menu is visible");
+                assert!(menu.origin.x >= Pixels::ZERO && menu.origin.y >= Pixels::ZERO);
+                let viewport = window
+                    .update(cx, |_, window, _| window.viewport_size())
+                    .unwrap();
+                assert!(menu.right() <= viewport.width && menu.bottom() <= viewport.height);
+            }
+        }
     }
 
     #[gpui::test]

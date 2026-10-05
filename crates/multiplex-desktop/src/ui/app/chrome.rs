@@ -327,12 +327,7 @@ impl MultiplexApp {
         cx.notify();
     }
 
-    fn render_pane_context_menu(
-        &self,
-        pane_id: u64,
-        position: Point<Pixels>,
-        cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
+    fn render_pane_context_menu(&self, pane_id: u64, cx: &mut Context<Self>) -> Stateful<Div> {
         let closed = self.pane(pane_id).map(|pane| pane.closed).unwrap_or(false);
         let zoomed = self.zoomed_pane() == Some(pane_id);
         let can_zoom = zoomed
@@ -345,9 +340,7 @@ impl MultiplexApp {
             });
         v_flex()
             .id(("pane-context-menu", pane_id))
-            .absolute()
-            .top(position.y)
-            .left(position.x)
+            .debug_selector(move || format!("pane-context-menu-{pane_id}"))
             .w(px(theme::SHELL_PANE_MENU_WIDTH))
             .p(px(theme::SHELL_SPACE_DENSE))
             .gap(px(theme::SPACE_1))
@@ -513,7 +506,12 @@ impl MultiplexApp {
                     cx.notify();
                 }),
             )
-            .child(self.render_pane_context_menu(pane_id, position, cx))
+            .child(
+                gpui::anchored()
+                    .position(position)
+                    .snap_to_window_with_margin(px(theme::SPACE_2))
+                    .child(self.render_pane_context_menu(pane_id, cx)),
+            )
     }
 
     pub(super) fn duplicate_workspace_in_new_window(
