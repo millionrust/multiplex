@@ -3752,6 +3752,8 @@ impl MultiplexApp {
                     .child(
                         v_flex()
                             .id("settings-scroll")
+                            .flex_1()
+                            .min_h_0()
                             .w_full()
                             .max_w(px(theme::SETTINGS_CONTENT_MAX_WIDTH))
                             .gap_4()
@@ -3865,7 +3867,8 @@ impl MultiplexApp {
                                 )
                                 .child(about_card)
                             })
-                            .overflow_y_scrollbar(),
+                            .overflow_y_scroll()
+                            .vertical_scrollbar(&self.settings_scroll),
                     ),
             )
     }
