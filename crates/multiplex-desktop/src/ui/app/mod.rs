@@ -4886,20 +4886,8 @@ impl MultiplexApp {
     }
 
     fn activate_library(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.active_workspace_id = None;
-        self.nav_section = NavSection::Hosts;
         self.set_terminal_search_input("", window, cx);
-        self.set_command_palette_input("", window, cx);
-        self.close_palette_overlay_contract();
-        self.show_command_palette = false;
-        self.selected_command_palette_index = 0;
-        self.palette_presentation.reset();
-        self.command_palette_origin_focus = None;
-        self.global_search.cancel();
-        self.status_message = localization::static_message(MessageId::HostsStateReady);
-        self.error_message.clear();
-        self.persist_runtime_state();
-        cx.notify();
+        self.activate_library_section(self.nav_section, window, cx);
     }
 
     fn activate_library_section(
@@ -6969,7 +6957,6 @@ impl MultiplexApp {
         self.active_workspace_id = Some(workspace_id);
         self.pending_canvas_fleet_disconnect = false;
         self.reset_workspace_activity(workspace_id);
-        self.nav_section = NavSection::Hosts;
         self.set_terminal_search_input(search_query, window, cx);
         if let Some(pane) = self.pane(active_pane_id) {
             pane.terminal_focus.focus(window);
@@ -31729,6 +31716,58 @@ sleep 1
                 && workspace.id != first_workspace_id)
                 .then_some(())
         });
+    }
+
+    #[gpui::test]
+    fn home_returns_to_the_last_library_section(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let workspace_id = window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| {
+                    let pane_id = app.next_session_id();
+                    let request = ConnectRequest::local_shell_with_config(
+                        pane_id,
+                        LocalShellConfig::default(),
+                    );
+                    let (command_tx, _command_rx) = tokio::sync::mpsc::unbounded_channel();
+                    app.register_pane(
+                        request.clone(),
+                        SessionRuntimeHandle { command_tx },
+                        cx.focus_handle().tab_stop(true),
+                        cx.focus_handle().tab_stop(true),
+                        cx,
+                    );
+                    app.open_spawned_pane_workspace(&request, pane_id);
+                    app.active_workspace_id.unwrap()
+                })
+            })
+            .unwrap();
+        for section in [
+            NavSection::Sessions,
+            NavSection::Settings,
+            NavSection::Activity,
+            NavSection::Presets,
+            NavSection::Sftp,
+            NavSection::Logs,
+        ] {
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        app.activate_library_section(section, window, cx);
+                        app.activate_workspace(workspace_id, window, cx);
+                    })
+                })
+                .unwrap();
+            let click = selector_click_center(window, cx, "chrome-home");
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.simulate_click(click, gpui::Modifiers::none());
+            visual.run_until_parked();
+            app.read_with(cx, |app, _| {
+                assert_eq!(app.active_workspace_id, None);
+                assert_eq!(app.nav_section, section);
+            });
+        }
     }
 
     #[gpui::test]
