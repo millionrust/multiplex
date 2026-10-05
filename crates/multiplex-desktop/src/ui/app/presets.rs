@@ -6,11 +6,9 @@ use gpui::{
     AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement, StatefulInteractiveElement as _, Styled, Window, div, px,
 };
-use gpui_component::button::{Button, ButtonVariants as _};
+use gpui_component::button::ButtonVariants as _;
 use gpui_component::input::{Input, InputState};
-use gpui_component::{
-    Disableable as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt as _, h_flex, v_flex,
-};
+use gpui_component::{Disableable as _, Icon, IconName, StyledExt as _, h_flex, v_flex};
 use multiplex_domain::{
     ExecutableSpec, LaunchPreset, PermissionPolicy, PresetDraft, PresetError, PresetId,
     PresetOrigin, RuntimeDetectionStatus, WorkingDirectoryRule, classify_argument_strings,
@@ -1176,7 +1174,7 @@ impl MultiplexApp {
                         .unwrap_or_else(localization::preset_store_unavailable),
                 )
                 .child(
-                    Button::new("presets-store-retry")
+                    Self::design_button("presets-store-retry", theme::ActionTone::Neutral, cx)
                         .icon(IconName::Redo2)
                         .label(localization::common_retry())
                         .on_click(cx.listener(|this, _, window, cx| {
@@ -1226,27 +1224,38 @@ impl MultiplexApp {
                             .gap(px(theme::SPACE_3))
                             .when(scanning, |this| {
                                 this.child(
-                                    Button::new("presets-scan-cancel")
-                                        .label(localization::common_cancel())
-                                        .on_click(cx.listener(|this, _, _, cx| {
+                                    Self::design_button(
+                                        "presets-scan-cancel",
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    )
+                                    .label(localization::common_cancel())
+                                    .on_click(cx.listener(
+                                        |this, _, _, cx| {
                                             this.cancel_preset_scan(cx);
-                                        })),
+                                        },
+                                    )),
                                 )
                             })
                             .when(!scanning, |this| {
                                 this.child(
-                                    Button::new("presets-scan")
-                                        .icon(IconName::Redo2)
-                                        .label(localization::presets_scan_action())
-                                        .disabled(read_only)
-                                        .on_click(cx.listener(|this, _, window, cx| {
+                                    Self::design_button(
+                                        "presets-scan",
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    )
+                                    .icon(IconName::Redo2)
+                                    .label(localization::presets_scan_action())
+                                    .disabled(read_only)
+                                    .on_click(cx.listener(
+                                        |this, _, window, cx| {
                                             this.start_preset_scan(true, window, cx);
-                                        })),
+                                        },
+                                    )),
                                 )
                             })
                             .child(
-                                Button::new("presets-add")
-                                    .primary()
+                                Self::design_button("presets-add", theme::ActionTone::Accent, cx)
                                     .icon(IconName::Plus)
                                     .label(localization::presets_add_action())
                                     .disabled(read_only)
@@ -1395,14 +1404,19 @@ impl MultiplexApp {
                                     ),
                             )
                             .child(
-                                Button::new(("accept-detected-preset", index))
-                                    .small()
-                                    .icon(IconName::Plus)
-                                    .label(localization::preset_accept_action())
-                                    .disabled(!accept)
-                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                Self::design_button(
+                                    ("accept-detected-preset", index),
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                )
+                                .icon(IconName::Plus)
+                                .label(localization::preset_accept_action())
+                                .disabled(!accept)
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
                                         this.accept_detected_preset(candidate.clone(), cx);
-                                    })),
+                                    },
+                                )),
                             )
                             .into_any_element()
                     }),
@@ -1644,8 +1658,7 @@ impl MultiplexApp {
                     .flex_wrap()
                     .gap(px(theme::SPACE_2))
                     .child(
-                        Button::new(("preset-up", key))
-                            .small()
+                        Self::design_button(("preset-up", key), theme::ActionTone::Neutral, cx)
                             .icon(IconName::ChevronUp)
                             .label(localization::preset_move_up_action())
                             .disabled(index == 0)
@@ -1654,8 +1667,7 @@ impl MultiplexApp {
                             })),
                     )
                     .child(
-                        Button::new(("preset-down", key))
-                            .small()
+                        Self::design_button(("preset-down", key), theme::ActionTone::Neutral, cx)
                             .icon(IconName::ChevronDown)
                             .label(localization::preset_move_down_action())
                             .disabled(index + 1 == count)
@@ -1664,36 +1676,39 @@ impl MultiplexApp {
                             })),
                     )
                     .child(
-                        Button::new(("preset-enabled", key))
-                            .small()
-                            .label(localization::preset_enabled_field())
-                            .selected(enabled)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.update_preset_flags(id, Some(!enabled), None, cx);
-                            })),
+                        Self::design_button(
+                            ("preset-enabled", key),
+                            theme::ActionTone::Neutral,
+                            cx,
+                        )
+                        .label(localization::preset_enabled_field())
+                        .custom(Self::segmented_button_style(enabled, cx))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.update_preset_flags(id, Some(!enabled), None, cx);
+                        })),
                     )
                     .child(
-                        Button::new(("preset-favorite", key))
-                            .small()
-                            .icon(IconName::Star)
-                            .label(localization::preset_favorite_field())
-                            .selected(favorite)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.update_preset_flags(id, None, Some(!favorite), cx);
-                            })),
+                        Self::design_button(
+                            ("preset-favorite", key),
+                            theme::ActionTone::Neutral,
+                            cx,
+                        )
+                        .icon(IconName::Star)
+                        .label(localization::preset_favorite_field())
+                        .custom(Self::segmented_button_style(favorite, cx))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.update_preset_flags(id, None, Some(!favorite), cx);
+                        })),
                     )
                     .child(
-                        Button::new(("preset-edit", key))
-                            .small()
+                        Self::design_button(("preset-edit", key), theme::ActionTone::Neutral, cx)
                             .label(localization::preset_edit_action())
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.edit_preset(id, window, cx);
                             })),
                     )
                     .child(
-                        Button::new(("preset-delete", key))
-                            .small()
-                            .danger()
+                        Self::design_button(("preset-delete", key), theme::ActionTone::Danger, cx)
                             .icon(IconName::Delete)
                             .label(localization::preset_delete_action())
                             .on_click(cx.listener(move |this, _, _, cx| {
@@ -1759,19 +1774,23 @@ impl MultiplexApp {
                                 .gap(px(theme::SPACE_2))
                                 .child(div().flex_1().child(Input::new(input)))
                                 .child(
-                                    Button::new(("remove-preset-argument", index))
-                                        .small()
-                                        .icon(IconName::Close)
-                                        .label(localization::preset_argument_remove())
-                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                    Self::design_button(
+                                        ("remove-preset-argument", index),
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    )
+                                    .icon(IconName::Close)
+                                    .label(localization::preset_argument_remove())
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| {
                                             this.remove_preset_argument(index, cx);
-                                        })),
+                                        },
+                                    )),
                                 )
                         },
                     ))
                     .child(
-                        Button::new("add-preset-argument")
-                            .small()
+                        Self::design_button("add-preset-argument", theme::ActionTone::Neutral, cx)
                             .icon(IconName::Plus)
                             .label(localization::preset_argument_add())
                             .on_click(cx.listener(|this, _, window, cx| {
@@ -1799,17 +1818,23 @@ impl MultiplexApp {
                     .into_iter()
                     .enumerate()
                     .map(|(index, (choice, label))| {
-                        Button::new(("preset-working-choice", index))
-                            .small()
-                            .label(label)
-                            .selected(editor.working_choice == choice)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                if let Some(editor) = &mut this.preset_library.editor {
-                                    editor.working_choice = choice;
-                                }
-                                cx.notify();
-                            }))
-                            .into_any_element()
+                        Self::design_button(
+                            ("preset-working-choice", index),
+                            theme::ActionTone::Neutral,
+                            cx,
+                        )
+                        .label(label)
+                        .custom(Self::segmented_button_style(
+                            editor.working_choice == choice,
+                            cx,
+                        ))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if let Some(editor) = &mut this.preset_library.editor {
+                                editor.working_choice = choice;
+                            }
+                            cx.notify();
+                        }))
+                        .into_any_element()
                     }),
                 )
                 .when(
@@ -1841,17 +1866,23 @@ impl MultiplexApp {
                 .into_iter()
                 .enumerate()
                 .map(|(index, (policy, label))| {
-                    Button::new(("preset-permission", index))
-                        .small()
-                        .label(label)
-                        .selected(editor.permission_policy == policy)
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if let Some(editor) = &mut this.preset_library.editor {
-                                editor.permission_policy = policy;
-                            }
-                            cx.notify();
-                        }))
-                        .into_any_element()
+                    Self::design_button(
+                        ("preset-permission", index),
+                        theme::ActionTone::Neutral,
+                        cx,
+                    )
+                    .label(label)
+                    .custom(Self::segmented_button_style(
+                        editor.permission_policy == policy,
+                        cx,
+                    ))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(editor) = &mut this.preset_library.editor {
+                            editor.permission_policy = policy;
+                        }
+                        cx.notify();
+                    }))
+                    .into_any_element()
                 }),
             ))
             .child(
@@ -1862,6 +1893,7 @@ impl MultiplexApp {
                         "preset-editor-enabled",
                         localization::preset_enabled_field(),
                         editor.enabled,
+                        cx,
                         cx.listener(|this, _, _, cx| {
                             if let Some(editor) = &mut this.preset_library.editor {
                                 editor.enabled = !editor.enabled;
@@ -1873,6 +1905,7 @@ impl MultiplexApp {
                         "preset-editor-favorite",
                         localization::preset_favorite_field(),
                         editor.favorite,
+                        cx,
                         cx.listener(|this, _, _, cx| {
                             if let Some(editor) = &mut this.preset_library.editor {
                                 editor.favorite = !editor.favorite;
@@ -1899,6 +1932,7 @@ impl MultiplexApp {
                             "preset-risk-confirm",
                             localization::preset_risk_confirm_field(),
                             editor.confirm_risky_favorite,
+                            cx,
                             cx.listener(|this, _, _, cx| {
                                 if let Some(editor) = &mut this.preset_library.editor {
                                     editor.confirm_risky_favorite = !editor.confirm_risky_favorite;
@@ -1918,8 +1952,7 @@ impl MultiplexApp {
                 h_flex()
                     .gap(px(theme::SPACE_3))
                     .child(
-                        Button::new("preset-save")
-                            .primary()
+                        Self::design_button("preset-save", theme::ActionTone::Accent, cx)
                             .label(localization::preset_save_action())
                             .disabled(
                                 risk.is_risky()
@@ -1931,7 +1964,7 @@ impl MultiplexApp {
                             })),
                     )
                     .child(
-                        Button::new("preset-cancel")
+                        Self::design_button("preset-cancel", theme::ActionTone::Neutral, cx)
                             .label(localization::common_cancel())
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.cancel_preset_editor(cx);
@@ -2132,17 +2165,17 @@ fn toggle_button(
     id: &'static str,
     label: String,
     selected: bool,
+    cx: &gpui::App,
     listener: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
 ) -> impl IntoElement {
-    Button::new(id)
-        .small()
+    MultiplexApp::design_button(id, theme::ActionTone::Neutral, cx)
         .icon(if selected {
             IconName::Check
         } else {
             IconName::Close
         })
         .label(label)
-        .selected(selected)
+        .custom(MultiplexApp::segmented_button_style(selected, cx))
         .on_click(listener)
 }
 
