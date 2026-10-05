@@ -1086,7 +1086,6 @@ impl MultiplexApp {
             .child(
                 v_flex().gap(px(theme::SPACE_1)).children(
                     [
-                        NavSection::Activity,
                         NavSection::Hosts,
                         NavSection::Sessions,
                         NavSection::Sftp,
@@ -1120,12 +1119,17 @@ impl MultiplexApp {
                         NavSection::Snippets,
                         NavSection::KnownHosts,
                         NavSection::Logs,
+                        NavSection::Activity,
                     ]
                     .into_iter()
                     .map(|section| {
                         let active = self.nav_section == section;
                         self.nav_card(("nav-card", nav_section_key(section)), section, active, cx)
-                            .on_click(cx.listener(move |this, _, _, cx| {
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                if section == NavSection::Activity {
+                                    this.activate_library_section(section, window, cx);
+                                    return;
+                                }
                                 if this.nav_section != section {
                                     this.show_editor_panel = false;
                                 }

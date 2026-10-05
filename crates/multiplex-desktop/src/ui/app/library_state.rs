@@ -9,10 +9,10 @@ use std::path::PathBuf;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, Context, InteractiveElement as _, IntoElement as _, ParentElement, Styled, Window,
-    div, px,
+    px,
 };
 use gpui_component::button::Button;
-use gpui_component::{Icon, IconName, StyledExt as _, h_flex, v_flex};
+use gpui_component::{Icon, IconName, h_flex, v_flex};
 use multiplex_domain::{CanonicalPath, PresetId};
 use multiplex_store::{LibraryRepository, LibrarySnapshot, StoreError, StoreHealth};
 
@@ -136,28 +136,7 @@ impl MultiplexApp {
             .flex_1()
             .min_h_0()
             .bg(theme::library_bg())
-            .child(
-                v_flex()
-                    .flex_none()
-                    .gap(px(theme::SPACE_2))
-                    .px(px(theme::SPACE_6))
-                    .py(px(theme::SPACE_5))
-                    .border_b_1()
-                    .border_color(theme::border())
-                    .child(
-                        div()
-                            .text_size(px(theme::TYPE_HEADING_SIZE))
-                            .font_semibold()
-                            .text_color(theme::text_main())
-                            .child(localization::session_sidebar_title()),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                            .text_color(theme::text_muted())
-                            .child(localization::session_sidebar_subtitle()),
-                    ),
-            )
+            .child(self.render_sessions_header(cx))
             // A worktree that was being made when the app stopped is kept as an intent; this is the
             // one place that offers to finish or forget it.
             .when_some(

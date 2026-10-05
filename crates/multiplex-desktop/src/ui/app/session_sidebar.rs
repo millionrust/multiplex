@@ -1743,6 +1743,68 @@ impl MultiplexApp {
         }
     }
 
+    pub(super) fn render_sessions_header(&self, cx: &Context<Self>) -> AnyElement {
+        h_flex()
+            .justify_between()
+            .items_center()
+            .flex_wrap()
+            .gap(px(theme::SPACE_4))
+            .px(px(theme::SPACE_6))
+            .py(px(theme::SPACE_5))
+            .border_b_1()
+            .border_color(theme::border())
+            .child(
+                v_flex()
+                    .gap(px(theme::SPACE_2))
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_HEADING_SIZE))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child(localization::session_sidebar_title()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(localization::session_sidebar_subtitle()),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .items_center()
+                    .flex_wrap()
+                    .gap(px(theme::SPACE_2))
+                    .child(
+                        Self::design_button("worktree-new", theme::ActionTone::Accent, cx)
+                            .disabled(!matches!(
+                                self.library.load_state,
+                                super::library_state::LibraryLoadState::Ready
+                            ))
+                            .debug_selector(|| "worktree-new".to_string())
+                            .icon(IconName::Plus)
+                            .label(localization::worktree_new_action())
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.start_worktree_in_a_folder(window, cx);
+                            })),
+                    )
+                    .child(
+                        Self::design_button("group-new", theme::ActionTone::Neutral, cx)
+                            .disabled(!matches!(
+                                self.library.load_state,
+                                super::library_state::LibraryLoadState::Ready
+                            ))
+                            .debug_selector(|| "group-new".to_string())
+                            .icon(IconName::Plus)
+                            .label(localization::group_new_action())
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.open_group_editor(None, window, cx);
+                            })),
+                    ),
+            )
+            .into_any_element()
+    }
+
     /// The Sessions page: sessions outside any group, then each group with its own.
     pub(super) fn render_session_sidebar(&self, cx: &Context<Self>) -> AnyElement {
         let groups = self.library_groups();
@@ -1759,58 +1821,6 @@ impl MultiplexApp {
             .min_w_0()
             .min_h_0()
             .bg(theme::library_bg())
-            .child(
-                h_flex()
-                    .justify_between()
-                    .items_center()
-                    .gap(px(theme::SPACE_4))
-                    .px(px(theme::SPACE_5))
-                    .py(px(theme::SPACE_4))
-                    .border_b_1()
-                    .border_color(theme::border())
-                    .child(
-                        v_flex()
-                            .gap(px(theme::SPACE_2))
-                            .child(
-                                div()
-                                    .text_size(px(theme::TYPE_HEADING_SMALL_SIZE))
-                                    .font_semibold()
-                                    .text_color(theme::text_main())
-                                    .child(localization::session_sidebar_title()),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                    .text_color(theme::text_muted())
-                                    .child(localization::session_sidebar_subtitle()),
-                            ),
-                    )
-                    .child(
-                        h_flex()
-                            .gap(px(theme::SPACE_2))
-                            .child(
-                                Button::new("worktree-new")
-                                    .debug_selector(|| "worktree-new".to_string())
-                                    .small()
-                                    .icon(IconName::Plus)
-                                    .label(localization::worktree_new_action())
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.start_worktree_in_a_folder(window, cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("group-new")
-                                    .debug_selector(|| "group-new".to_string())
-                                    .small()
-                                    .primary()
-                                    .icon(IconName::Plus)
-                                    .label(localization::group_new_action())
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.open_group_editor(None, window, cx);
-                                    })),
-                            ),
-                    ),
-            )
             .child(self.render_session_library_controls(cx))
             .children(self.render_other_terminals(cx))
             .when_some(self.session_library.recovery_state(), |this, recovery| {
@@ -1908,77 +1918,54 @@ impl MultiplexApp {
             .into_any_element()
     }
 
-    fn render_session_filter_button(
-        &self,
-        filter: SessionLibraryFilter,
-        id: &'static str,
-        label: String,
-        cx: &Context<Self>,
-    ) -> Button {
-        Button::new(id)
-            .debug_selector(move || id.to_string())
-            .small()
-            .selected(self.session_library.filter == filter)
-            .label(label)
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.set_session_library_filter(filter, cx);
-            }))
-    }
-
     fn render_session_library_controls(&self, cx: &Context<Self>) -> AnyElement {
-        v_flex()
-            .px(px(theme::SPACE_5))
+        h_flex()
+            .items_center()
+            .justify_between()
+            .flex_wrap()
+            .px(px(theme::SPACE_6))
             .py(px(theme::SPACE_3))
-            .gap(px(theme::SPACE_2))
+            .gap(px(theme::SPACE_3))
             .border_b_1()
             .border_color(theme::border())
-            .child(
-                h_flex()
-                    .gap(px(theme::SPACE_2))
-                    .child(
-                        Button::new("session-view-active")
-                            .debug_selector(|| "session-view-active".to_string())
-                            .small()
-                            .selected(self.session_library.view == SessionLibraryView::Active)
-                            .label(localization::session_library_active_view())
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.set_session_library_view(SessionLibraryView::Active, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("session-view-archive")
-                            .debug_selector(|| "session-view-archive".to_string())
-                            .small()
-                            .selected(self.session_library.view == SessionLibraryView::Archive)
-                            .label(localization::session_library_archive_view())
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.set_session_library_view(SessionLibraryView::Archive, cx);
-                            })),
+            .child(self.segmented_control(
+                "session-view",
+                [
+                    (
+                        SessionLibraryView::Active,
+                        localization::session_library_active_view(),
                     ),
-            )
-            .child(
-                h_flex()
-                    .flex_wrap()
-                    .gap(px(theme::SPACE_2))
-                    .child(self.render_session_filter_button(
+                    (
+                        SessionLibraryView::Archive,
+                        localization::session_library_archive_view(),
+                    ),
+                ],
+                self.session_library.view,
+                false,
+                cx,
+                |this, view, _, cx| this.set_session_library_view(view, cx),
+            ))
+            .child(self.segmented_control(
+                "session-filter",
+                [
+                    (
                         SessionLibraryFilter::All,
-                        "session-filter-all",
                         localization::session_library_filter_all(),
-                        cx,
-                    ))
-                    .child(self.render_session_filter_button(
+                    ),
+                    (
                         SessionLibraryFilter::Unread,
-                        "session-filter-unread",
                         localization::session_library_filter_unread(),
-                        cx,
-                    ))
-                    .child(self.render_session_filter_button(
+                    ),
+                    (
                         SessionLibraryFilter::Pinned,
-                        "session-filter-pinned",
                         localization::session_library_filter_pinned(),
-                        cx,
-                    )),
-            )
+                    ),
+                ],
+                self.session_library.filter,
+                false,
+                cx,
+                |this, filter, _, cx| this.set_session_library_filter(filter, cx),
+            ))
             .into_any_element()
     }
 

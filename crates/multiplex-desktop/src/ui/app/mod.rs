@@ -13929,6 +13929,17 @@ impl MultiplexApp {
             .child(label.into())
     }
 
+    /// Shared Slate geometry and colors for page actions on the current GPUI component stack.
+    fn design_button(id: impl Into<gpui::ElementId>, tone: theme::ActionTone, cx: &App) -> Button {
+        Button::new(id)
+            .small()
+            .h(px(theme::CONTROL_HEIGHT_DEFAULT))
+            .px(px(theme::SPACE_3))
+            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+            .rounded(px(theme::CONTROL_RADIUS))
+            .custom(Self::action_button_style(tone, cx))
+    }
+
     fn action_button_style(tone: theme::ActionTone, cx: &App) -> ButtonCustomVariant {
         ButtonCustomVariant::new(cx)
             .color(theme::action_fill(tone))
@@ -26460,7 +26471,7 @@ sleep 1
         assert!(visual.debug_bounds("session-origin-preset").is_some());
         assert!(visual.debug_bounds("session-origin-ownership").is_some());
 
-        let archive_tab = selector_click_center(window, cx, "session-view-archive");
+        let archive_tab = selector_click_center(window, cx, "session-view-1");
         VisualTestContext::from_window(window.into(), cx)
             .simulate_click(archive_tab, gpui::Modifiers::none());
         app.read_with(cx, |app, _| {
