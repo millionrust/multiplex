@@ -9538,7 +9538,9 @@ impl MultiplexApp {
             0.0
         };
         let body_width = viewport_width.max(320.0);
-        let body_height = (viewport_height - theme::CHROME_HEIGHT - search_height).max(180.0);
+        let body_height =
+            (viewport_height - theme::CHROME_HEIGHT - theme::STATUS_BAR_HEIGHT - search_height)
+                .max(180.0);
         if let Some(pane_id) = self.zoomed_pane_in(workspace.id) {
             panes.push(PaneRect {
                 pane_id,
@@ -15074,7 +15076,7 @@ mod tests {
                         format!("pane-context-menu-{pane_id}").into_boxed_str(),
                     ))
                     .expect("terminal context menu is visible");
-                assert!(menu.origin.x >= Pixels::ZERO && menu.origin.y >= Pixels::ZERO);
+                assert!(menu.origin.x >= gpui::Pixels::ZERO && menu.origin.y >= gpui::Pixels::ZERO);
                 let viewport = window
                     .update(cx, |_, window, _| window.viewport_size())
                     .unwrap();

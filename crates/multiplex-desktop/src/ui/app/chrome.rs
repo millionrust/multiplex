@@ -7,11 +7,9 @@ use gpui::{
     Point, SharedString, Stateful, StatefulInteractiveElement as _, Styled, TitlebarOptions,
     Window, WindowBounds, WindowOptions, div, point, px, size,
 };
-use gpui_component::button::{Button, ButtonVariants as _};
 use gpui_component::input::Input;
 use gpui_component::{Icon, IconName, Root, Sizable as _, StyledExt as _, h_flex, v_flex};
 
-use crate::models::WorkspaceLayoutMode;
 use crate::ui::app::{
     MultiplexApp, NavSection, WorkspaceIndicators, WorkspaceTab, WorkspaceTabDrag,
     WorkspaceTabDragPreview, nav_section_key,
@@ -659,9 +657,6 @@ impl MultiplexApp {
 
     pub(super) fn render_top_chrome(&self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         let library_active = self.active_workspace_id.is_none();
-        let active_layout_mode = self
-            .active_workspace()
-            .map(|workspace| workspace.layout_mode);
 
         h_flex()
             .h(px(theme::CHROME_HEIGHT))
@@ -868,54 +863,6 @@ impl MultiplexApp {
                         }
                     })),
             )
-            .when_some(active_layout_mode, |this, layout_mode| {
-                this.child(
-                    h_flex()
-                        .flex_shrink_0()
-                        .gap(px(theme::SPACE_1))
-                        .p(px(theme::SPACE_1))
-                        .rounded(px(theme::CONTROL_RADIUS))
-                        .border_1()
-                        .border_color(theme::with_alpha(theme::border_dark(), 0.7))
-                        .bg(theme::terminal_panel())
-                        .child(
-                            Button::new("chrome-layout-split")
-                                .xsmall()
-                                .custom(Self::segmented_button_style(
-                                    layout_mode == WorkspaceLayoutMode::Split,
-                                    cx,
-                                ))
-                                .icon(IconName::LayoutDashboard)
-                                .label(localization::shell_layout_split_label())
-                                .tooltip(localization::shell_layout_split_tooltip())
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.set_workspace_layout_mode(
-                                        WorkspaceLayoutMode::Split,
-                                        window,
-                                        cx,
-                                    );
-                                })),
-                        )
-                        .child(
-                            Button::new("chrome-layout-canvas")
-                                .xsmall()
-                                .custom(Self::segmented_button_style(
-                                    layout_mode == WorkspaceLayoutMode::Canvas,
-                                    cx,
-                                ))
-                                .icon(IconName::Map)
-                                .label(localization::shell_layout_canvas_label())
-                                .tooltip(localization::shell_layout_canvas_tooltip())
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.set_workspace_layout_mode(
-                                        WorkspaceLayoutMode::Canvas,
-                                        window,
-                                        cx,
-                                    );
-                                })),
-                        ),
-                )
-            })
             .child(
                 div()
                     .id("chrome-local-btn")

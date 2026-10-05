@@ -2564,7 +2564,9 @@ impl MultiplexApp {
         if let Some(selected) = selected.as_ref() {
             let viewport = window.viewport_size();
             let viewport_width = f32::from(viewport.width);
-            let viewport_height = (f32::from(viewport.height) - theme::CHROME_HEIGHT).max(1.0);
+            let viewport_height =
+                (f32::from(viewport.height) - theme::CHROME_HEIGHT - theme::STATUS_BAR_HEIGHT)
+                    .max(1.0);
             if let Some(workspace) = self.active_workspace_mut()
                 && let Some(node) = workspace.canvas.node(selected)
             {
@@ -2752,7 +2754,7 @@ impl MultiplexApp {
         let viewport_height: f32 = viewport.height.into();
         let screen_center = CanvasPoint::new(
             viewport_width / 2.0,
-            (viewport_height - theme::CHROME_HEIGHT).max(1.0) / 2.0,
+            (viewport_height - theme::CHROME_HEIGHT - theme::STATUS_BAR_HEIGHT).max(1.0) / 2.0,
         );
         let canvas_coordinator = self.canvas_coordinator.clone();
         // Each pane glides from where this layout drew it to its place in the other.
@@ -2965,7 +2967,8 @@ impl MultiplexApp {
         };
         let viewport = window.viewport_size();
         let viewport_width = f32::from(viewport.width);
-        let viewport_height = (f32::from(viewport.height) - theme::CHROME_HEIGHT).max(1.0);
+        let viewport_height =
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - theme::STATUS_BAR_HEIGHT).max(1.0);
         let pane_id = self
             .workspace(workspace_id)
             .and_then(|workspace| workspace.canvas.node(&node_id))
@@ -3356,7 +3359,7 @@ impl MultiplexApp {
         let viewport = window.viewport_size();
         let center = CanvasPoint::new(
             (f32::from(viewport.width)) / 2.0,
-            (f32::from(viewport.height) - theme::CHROME_HEIGHT) / 2.0,
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - theme::STATUS_BAR_HEIGHT) / 2.0,
         );
         let origin = self.canvas_camera_origin();
         if let Some(workspace) = self.active_workspace_mut() {
@@ -3493,7 +3496,7 @@ impl MultiplexApp {
         let viewport = window.viewport_size();
         let center = CanvasPoint::new(
             (f32::from(viewport.width)) / 2.0,
-            (f32::from(viewport.height) - theme::CHROME_HEIGHT) / 2.0,
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - theme::STATUS_BAR_HEIGHT) / 2.0,
         );
         let origin = self.canvas_camera_origin();
         if let Some(workspace) = self.active_workspace_mut() {
@@ -3513,7 +3516,8 @@ impl MultiplexApp {
         if let Some(workspace) = self.active_workspace_mut() {
             workspace.canvas.fit_to_content(
                 body_width,
-                (f32::from(viewport.height) - theme::CHROME_HEIGHT).max(1.0),
+                (f32::from(viewport.height) - theme::CHROME_HEIGHT - theme::STATUS_BAR_HEIGHT)
+                    .max(1.0),
                 &canvas_coordinator,
             );
         }
@@ -3543,7 +3547,7 @@ impl MultiplexApp {
         let viewport = window.viewport_size();
         let screen_center = CanvasPoint::new(
             (f32::from(viewport.width)) / 2.0,
-            (f32::from(viewport.height) - theme::CHROME_HEIGHT) / 2.0,
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - theme::STATUS_BAR_HEIGHT) / 2.0,
         );
         let placement = self.canvas_add_anchor.map(|(_, world)| world);
         let canvas_coordinator = self.canvas_coordinator.clone();
@@ -3644,7 +3648,7 @@ impl MultiplexApp {
         let viewport = window.viewport_size();
         let screen_center = CanvasPoint::new(
             (f32::from(viewport.width)) / 2.0,
-            (f32::from(viewport.height) - theme::CHROME_HEIGHT) / 2.0,
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - theme::STATUS_BAR_HEIGHT) / 2.0,
         );
         self.active_workspace()
             .map(|workspace| workspace.canvas.transform.screen_to_world(screen_center))
@@ -4935,7 +4939,7 @@ impl MultiplexApp {
         let viewport = window.viewport_size();
         let screen_center = CanvasPoint::new(
             (f32::from(viewport.width)) / 2.0,
-            (f32::from(viewport.height) - theme::CHROME_HEIGHT) / 2.0,
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - theme::STATUS_BAR_HEIGHT) / 2.0,
         );
         let canvas_coordinator = self.canvas_coordinator.clone();
         let placement = self.canvas_add_anchor.map(|(_, world)| world);
@@ -9455,7 +9459,8 @@ impl MultiplexApp {
         self.interrupt_canvas_camera();
         let viewport = window.viewport_size();
         let viewport_width = f32::from(viewport.width);
-        let viewport_height = (f32::from(viewport.height) - theme::CHROME_HEIGHT).max(1.0);
+        let viewport_height =
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - theme::STATUS_BAR_HEIGHT).max(1.0);
         let local = self.canvas_local_point(position);
         let map_point = CanvasPoint::new(
             local.x - (viewport_width - CANVAS_MINIMAP_WIDTH - CANVAS_MINIMAP_MARGIN),
@@ -9497,7 +9502,8 @@ impl MultiplexApp {
         };
         let viewport = window.viewport_size();
         let viewport_width = f32::from(viewport.width);
-        let viewport_height = (f32::from(viewport.height) - theme::CHROME_HEIGHT).max(1.0);
+        let viewport_height =
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - theme::STATUS_BAR_HEIGHT).max(1.0);
         let transform = self.displayed_canvas_transform(workspace);
         let Some(geometry) = canvas_minimap_geometry(
             &workspace.canvas.nodes,
@@ -10217,7 +10223,8 @@ impl MultiplexApp {
     ) {
         let viewport = window.viewport_size();
         let width = f32::from(viewport.width);
-        let height = (f32::from(viewport.height) - theme::CHROME_HEIGHT).max(1.0);
+        let height =
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - theme::STATUS_BAR_HEIGHT).max(1.0);
         let origin = self.canvas_camera_origin();
         let Some(workspace) = self.active_workspace_mut() else {
             return;
@@ -12235,7 +12242,8 @@ impl MultiplexApp {
         let workspace_id = workspace.id;
         let viewport = window.viewport_size();
         let viewport_width = f32::from(viewport.width);
-        let viewport_height = (f32::from(viewport.height) - theme::CHROME_HEIGHT).max(1.0);
+        let viewport_height =
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - theme::STATUS_BAR_HEIGHT).max(1.0);
         let transform = self.displayed_canvas_transform(workspace);
         let now = Instant::now();
         let transition = self.layout_transition.as_ref().filter(|transition| {

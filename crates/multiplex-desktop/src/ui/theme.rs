@@ -550,6 +550,12 @@ pub const SETTINGS_NAV_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
 pub const SETTINGS_CONTENT_MAX_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
     .layout_settings_content_max_width()
     .0;
+pub const STATUS_BAR_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_status_height()
+    .0;
+pub const CONTROL_HEIGHT_COMPACT: f32 = DesignTokens::new(ThemeKind::System)
+    .control_height_compact()
+    .0;
 pub const CONTROL_HEIGHT_DEFAULT: f32 = DesignTokens::new(ThemeKind::System)
     .control_height_default()
     .0;

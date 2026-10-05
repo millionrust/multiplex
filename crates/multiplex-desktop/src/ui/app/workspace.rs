@@ -1763,6 +1763,7 @@ impl MultiplexApp {
         let column = v_flex()
             .flex_1()
             .min_w_0()
+            .min_h_0()
             .bg(theme::terminal_bg())
             .when_some(self.render_snippet_prompts_panel(cx), |this, panel| {
                 this.child(panel)
@@ -1788,6 +1789,99 @@ impl MultiplexApp {
             .min_h_0()
             .bg(theme::terminal_bg())
             .child(column)
+            .when(
+                self.active_workspace()
+                    .is_some_and(|workspace| workspace.view_mode == WorkspaceViewMode::Terminal),
+                |shell| shell.child(self.render_workspace_status_bar(cx)),
+            )
+    }
+
+    fn render_workspace_status_bar(&self, cx: &Context<Self>) -> Stateful<Div> {
+        let layout_mode = self
+            .active_workspace()
+            .map(|workspace| workspace.layout_mode)
+            .unwrap_or_default();
+        h_flex()
+            .id("workspace-status-bar")
+            .debug_selector(|| "workspace-status-bar".to_string())
+            .h(px(theme::STATUS_BAR_HEIGHT))
+            .flex_shrink_0()
+            .w_full()
+            .items_center()
+            .justify_between()
+            .gap(px(theme::SPACE_3))
+            .px(px(theme::SPACE_3))
+            .border_t_1()
+            .border_color(theme::border_dark())
+            .bg(theme::terminal_panel())
+            .text_size(px(theme::TYPE_CAPTION_SIZE))
+            .text_color(theme::text_muted_dark())
+            .when_some(self.active_pane(), |bar, pane| {
+                bar.child(
+                    h_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .items_center()
+                        .gap(px(theme::SPACE_2))
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .size(px(PANE_STATUS_DOT))
+                                .rounded_full()
+                                .bg(if pane.connected {
+                                    theme::success()
+                                } else if pane.closed {
+                                    theme::text_muted_dark()
+                                } else {
+                                    theme::accent()
+                                }),
+                        )
+                        .child(div().flex_shrink_0().child(pane.status.clone()))
+                        .child(
+                            div()
+                                .min_w_0()
+                                .truncate()
+                                .child(pane.request.endpoint_label()),
+                        ),
+                )
+            })
+            .child(
+                h_flex()
+                    .flex_shrink_0()
+                    .items_center()
+                    .gap(px(theme::SPACE_MICRO))
+                    .children(
+                        [
+                            (
+                                WorkspaceLayoutMode::Split,
+                                "workspace-layout-split",
+                                IconName::LayoutDashboard,
+                                localization::shell_layout_split_label(),
+                                localization::shell_layout_split_tooltip(),
+                            ),
+                            (
+                                WorkspaceLayoutMode::Canvas,
+                                "workspace-layout-canvas",
+                                IconName::Map,
+                                localization::shell_layout_canvas_label(),
+                                localization::shell_layout_canvas_tooltip(),
+                            ),
+                        ]
+                        .into_iter()
+                        .map(|(mode, id, icon, label, tooltip)| {
+                            Self::design_button(id, theme::ActionTone::Neutral, cx)
+                                .debug_selector(move || id.to_string())
+                                .h(px(theme::CONTROL_HEIGHT_COMPACT))
+                                .custom(Self::segmented_button_style(layout_mode == mode, cx))
+                                .icon(icon)
+                                .label(label)
+                                .tooltip(tooltip)
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.set_workspace_layout_mode(mode, window, cx)
+                                }))
+                        }),
+                    ),
+            )
     }
 
     fn render_split_layout_bar(&self, cx: &mut Context<Self>) -> AnyElement {
