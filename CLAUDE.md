@@ -162,7 +162,12 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   the prototypes these follow, and `multiplex-mobile-flow.html` the shape and palette both apps
   draw themselves with: SwiftUI's `FlowUI.swift` and Compose's Slate-mapped theme, not the
   platforms' own look.
-  their FFI libraries are built by `scripts/build/` and copied in by `scripts/sync/`.
+  The iPhone uses an in-app keyboard with an ephemeral typing preview; it leaves the shared
+  picture's frame fixed. Terminal tabs switch their own connection and are cleared when the
+  screen viewer closes. Permissions and session metadata refresh every two seconds through a
+  separate authenticated connection. Shared screens can continue in system Picture in Picture
+  when the app enters the background; terminal input remains covered and suspended.
+  Their FFI libraries are built by `scripts/build/` and copied in by `scripts/sync/`.
 - `tests/` is shared cross-crate test material only: `fixtures/`, the `support/`
   module included via `#[path]`, `ui/` audit inventories, and `swift/` runners.
   Rust integration tests live inside each crate.

@@ -22,6 +22,7 @@ struct FlowKeyboard: View {
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundStyle(typed.isEmpty ? Flow.muted : Flow.text)
                     .lineLimit(1)
+                    .truncationMode(.head)
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .accessibilityLabel(typed.isEmpty ? "Input preview" : "Typed: \(typed)")
                 key("⌄", label: "Hide keyboard", action: onHide)
@@ -84,7 +85,7 @@ struct FlowKeyboard: View {
             Text(title)
                 .font(.system(size: 15, weight: .medium, design: .monospaced))
                 .foregroundStyle(selected ? Flow.accent : Flow.text)
-                .frame(maxWidth: .infinity, minHeight: 36)
+                .frame(maxWidth: .infinity, minHeight: 44)
                 .background(selected ? Flow.selection : Flow.raised)
                 .clipShape(RoundedRectangle(cornerRadius: Flow.radiusSmall))
         }

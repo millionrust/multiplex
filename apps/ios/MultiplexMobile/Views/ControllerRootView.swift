@@ -481,45 +481,53 @@ private struct ControllerScreenViewerSheet: View {
         //
         // The picture starts under the status bar. A title bar over it would name the computer
         // that is already on screen, and push what the person came to see down by its height.
-        VStack(spacing: 0) {
-            RemoteScreenView(
-                model: model,
-                onRequestControl: model.requestControl,
-                onReleaseControl: model.releaseControl,
-                reconnecting: screens.reconnecting,
-                routeName: routeName,
-                fitsPicture: showTerminals,
-                onClose: onClose,
-                embedsKeyboard: !showTerminals,
-                onKeyboardVisibility: { showingScreenKeyboard = $0 }
-            )
-            if showTerminals {
-                ScreenTerminalTabs(
-                    terminals: terminals,
-                    attachedID: attached?.sessionID,
-                    onSelect: onSelectTerminal,
-                    onClose: onCloseTerminal
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                RemoteScreenView(
+                    model: model,
+                    onRequestControl: model.requestControl,
+                    onReleaseControl: model.releaseControl,
+                    reconnecting: screens.reconnecting,
+                    routeName: routeName,
+                    fitsPicture: showTerminals,
+                    onClose: onClose,
+                    embedsKeyboard: !showTerminals,
+                    onKeyboardVisibility: { showingScreenKeyboard = $0 }
                 )
-                if let attached {
-                    ControllerReadOnlyTerminalView(
-                        viewModel: attached,
-                        onClose: onCloseTerminal,
-                        chromeless: true
+                .frame(height: showTerminals
+                    ? min(geometry.size.height * 0.55, model.size.width > 0
+                        ? geometry.size.width * model.size.height / model.size.width + 54
+                        : geometry.size.height * 0.4)
+                    : nil)
+                if showTerminals {
+                    ScreenTerminalTabs(
+                        terminals: terminals,
+                        attachedID: attached?.sessionID,
+                        onSelect: onSelectTerminal,
+                        onClose: onCloseTerminal
                     )
-                    .id(attached.id)
-                } else {
-                    Text("Choose a terminal to watch it here.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Flow.muted)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Flow.canvas)
+                    if let attached {
+                        ControllerReadOnlyTerminalView(
+                            viewModel: attached,
+                            onClose: onCloseTerminal,
+                            chromeless: true
+                        )
+                        .id(attached.id)
+                    } else {
+                        Text("Choose a terminal to watch it here.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Flow.muted)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(Flow.canvas)
+                    }
                 }
-            }
-            if showTerminals, showingScreenKeyboard, model.isDriving {
-                RemoteScreenKeyboard(model: model) { showingScreenKeyboard = false }
+                if showTerminals, showingScreenKeyboard, model.isDriving {
+                    RemoteScreenKeyboard(model: model) { showingScreenKeyboard = false }
+                }
             }
         }
         .background(Flow.canvas)
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .onAppear {
             model.pictureInPicture.onEnd = { [weak controller] in
                 if UIApplication.shared.applicationState != .active {
