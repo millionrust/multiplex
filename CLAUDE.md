@@ -12,7 +12,7 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   from `projects.json`, each session is given its Project's folder, and `projects.json` is renamed
   to `projects.migrated.json` rather than deleted.
 - Workflow navigation surfaces Activity, Connections, Sessions, Files, Devices, and Settings
-  (Cmd+1 to Cmd+6) as primary destinations; specialized presets, vaults, keys,
+  (Cmd+1 to Cmd+6) as primary destinations; specialized vaults and keys,
   known hosts and logs remain available as advanced tools.
 - Sessions presents the authoritative active or archived typed Session library across
   both app-attached and durable ownership routes, organized by group, with folder, preset,

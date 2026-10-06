@@ -313,7 +313,6 @@ enum NavSection {
     Activity,
     Sessions,
     Devices,
-    Presets,
     Hosts,
     Sftp,
     Vaults,
@@ -336,7 +335,6 @@ impl NavSection {
             Self::Activity => localization::activity_center_nav_label(),
             Self::Sessions => localization::session_sidebar_title(),
             Self::Devices => localization::remote_devices_title(),
-            Self::Presets => localization::presets_nav_label(),
             Self::Hosts => "Connections".to_string(),
             Self::Sftp => "Files".to_string(),
             Self::Vaults => "Vaults".to_string(),
@@ -352,7 +350,6 @@ impl NavSection {
             Self::Activity => IconName::Bell.into(),
             Self::Sessions => IconName::SquareTerminal.into(),
             Self::Devices => IconName::Globe.into(),
-            Self::Presets => IconName::SquareTerminal.into(),
             Self::Hosts => IconName::SquareTerminal.into(),
             Self::Sftp => IconName::Folder.into(),
             Self::Vaults => app_icon(ICON_VAULT),
@@ -2019,12 +2016,6 @@ impl MultiplexApp {
                     );
                 }
                 ShellAccessibilityCommand::PresetRuntime(command) => match self.nav_section {
-                    NavSection::Presets => self.handle_preset_runtime_accessibility_command(
-                        command,
-                        event.value,
-                        window,
-                        cx,
-                    ),
                     NavSection::Sessions
                         if matches!(
                             command,
@@ -4448,7 +4439,6 @@ impl MultiplexApp {
             NavSection::Activity => localization::static_message(MessageId::ActivitySectionReady),
             NavSection::Sessions => localization::static_message(MessageId::SessionsSectionReady),
             NavSection::Devices => localization::static_message(MessageId::DevicesSectionReady),
-            NavSection::Presets => localization::presets_ready_status(),
             NavSection::Hosts => localization::static_message(MessageId::HostsStateReady),
             NavSection::Sftp => localization::static_message(MessageId::SftpStateReady),
             NavSection::Vaults | NavSection::Keychain => {
@@ -13215,7 +13205,6 @@ impl MultiplexApp {
             NavSection::Activity => self.render_activity_center_view(cx).into_any_element(),
             NavSection::Sessions => self.render_sessions_view(cx).into_any_element(),
             NavSection::Devices => self.render_devices_view(cx).into_any_element(),
-            NavSection::Presets => self.render_presets_view(cx).into_any_element(),
             NavSection::Hosts => self.render_hosts_view(window, cx).into_any_element(),
             NavSection::Sftp => self.render_files_view(cx),
             NavSection::Vaults => self.render_vaults_view(cx).into_any_element(),
@@ -13386,7 +13375,6 @@ impl Render for MultiplexApp {
             .flatten();
         let preset_runtime = background_surface_available
             .then(|| match self.nav_section {
-                NavSection::Presets => Some(self.preset_runtime_semantic_snapshot(cx)),
                 NavSection::Sessions => self.runtime_inspector_semantic_snapshot(),
                 _ => None,
             })
@@ -13918,7 +13906,6 @@ fn nav_section_key(section: NavSection) -> u64 {
         NavSection::Sessions => 11,
         NavSection::Devices => 12,
         NavSection::Sftp => 13,
-        NavSection::Presets => 9,
         NavSection::Hosts => 1,
         NavSection::Vaults => 2,
         NavSection::Keychain => 3,
@@ -24935,14 +24922,16 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_preset_form_persists_literal_arguments_and_renders_row(cx: &mut TestAppContext) {
+    fn e2e_session_preset_persists_literal_arguments_without_a_library_page(
+        cx: &mut TestAppContext,
+    ) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
 
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    app.activate_library_section(NavSection::Presets, window, cx);
+                    app.activate_library_section(NavSection::Sessions, window, cx);
                     let activate = |action| {
                         multiplex_ui_contract::PresetRuntimeAccessibilityCommand::ActivateControl(
                             action,
@@ -25007,8 +24996,8 @@ sleep 1
         });
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.run_until_parked();
-        assert!(visual.debug_bounds("presets-view").is_some());
-        assert!(visual.debug_bounds("preset-row").is_some());
+        assert!(visual.debug_bounds("presets-view").is_none());
+        assert!(visual.debug_bounds("nav-card-9").is_none());
     }
 
     #[gpui::test]
@@ -25019,7 +25008,7 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    app.activate_library_section(NavSection::Presets, window, cx);
+                    app.activate_library_section(NavSection::Sessions, window, cx);
                     app.open_new_preset(window, cx);
                     let label = app.preset_label_input.clone();
                     let executable = app.preset_executable_input.clone();
@@ -25227,7 +25216,6 @@ sleep 1
             ("nav-card-13", NavSection::Sftp),
             ("nav-card-12", NavSection::Devices),
             ("nav-card-5", NavSection::Settings),
-            ("nav-card-9", NavSection::Presets),
             ("nav-card-2", NavSection::Vaults),
             ("nav-card-3", NavSection::Keychain),
             ("nav-card-6", NavSection::KnownHosts),
@@ -30684,7 +30672,6 @@ sleep 1
             NavSection::Sessions,
             NavSection::Settings,
             NavSection::Activity,
-            NavSection::Presets,
             NavSection::Sftp,
             NavSection::Logs,
         ] {

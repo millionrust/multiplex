@@ -1064,7 +1064,6 @@ impl MultiplexApp {
             .child(
                 v_flex().gap(px(theme::SPACE_1)).children(
                     [
-                        NavSection::Presets,
                         NavSection::Vaults,
                         NavSection::Keychain,
                         NavSection::KnownHosts,
