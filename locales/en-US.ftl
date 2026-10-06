@@ -2646,3 +2646,5 @@ other-terminals-close-heading = Close this terminal?
 other-terminals-close-description = This stops the shell and the processes running inside it, including in other apps or devices viewing this terminal.
 other-terminals-closed = Terminal closed.
 other-terminals-close-failed = Unable to close this terminal. Check whether it is still running and try again.
+
+chrome-new-window = New window

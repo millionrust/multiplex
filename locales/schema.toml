@@ -12328,3 +12328,8 @@ description = "Other terminal closed"
 id = "other-terminals-close-failed"
 context = "Confirmation and result for stopping a CLI terminal from Sessions."
 description = "Other terminal close-failed"
+
+[[messages]]
+id = "chrome-new-window"
+context = "Empty chrome area context menu and new window shortcut."
+description = "Chrome new window"

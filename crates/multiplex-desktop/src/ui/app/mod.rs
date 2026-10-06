@@ -13803,6 +13803,10 @@ impl MultiplexApp {
                 cx.notify();
                 return true;
             }
+            AppShortcut::NewWindow => {
+                self.new_application_window(cx);
+                return true;
+            }
             AppShortcut::NewHostOrSession => {
                 if self.active_workspace_id.is_none() {
                     if self.nav_section == NavSection::Sessions {
@@ -23781,6 +23785,25 @@ sleep 1
         app.read_with(cx, |app, _| {
             assert!(app.workspace(workspace_id).is_none());
         });
+    }
+
+    #[gpui::test]
+    fn new_window_opens_without_a_terminal_and_preserves_the_source_navigation(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Devices, window, cx);
+                    app.new_application_window(cx);
+                    assert_eq!(app.nav_section, NavSection::Devices);
+                    assert!(app.workspaces.is_empty());
+                });
+            })
+            .unwrap();
+        wait_for_window_count(cx, 2, Duration::from_secs(10));
     }
 
     #[gpui::test]

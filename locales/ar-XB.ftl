@@ -507,6 +507,7 @@ certificate-file-choose-status = ⁧.elif etacifitrec resu HSSnepO na esoohC⁩
 certificate-file-selected-status = ⁧.detceles etacifitrec resu HSSnepO⁩
 chrome-home-tooltip = ⁧emoH⁩
 chrome-new-terminal = ⁧lanimret weN⁩
+chrome-new-window = ⁧wodniw weN⁩
 chrome-tabs-to-left = ⁧tfel eht ot sbat evoM⁩
 chrome-tabs-to-top = ⁧pot eht ot sbat evoM⁩
 cli-settings-copy-path = ⁧htaP ypoC⁩

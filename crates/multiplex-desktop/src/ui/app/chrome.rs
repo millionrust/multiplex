@@ -548,11 +548,27 @@ impl MultiplexApp {
         else {
             return;
         };
+        self.open_application_window(Some(request), cx);
+    }
+
+    pub(super) fn new_application_window(&mut self, cx: &mut Context<Self>) {
+        self.chrome_context_menu = None;
+        self.open_application_window(None, cx);
+    }
+
+    fn open_application_window(
+        &mut self,
+        request: Option<crate::models::ConnectRequest>,
+        cx: &mut Context<Self>,
+    ) {
+        let section = self.nav_section;
         let mut initial_state = self.saved.clone();
         initial_state.settings.restore_workspaces_on_launch = false;
         let mut request_for_window = request.clone();
-        if request_for_window.is_local_shell() {
-            request_for_window.persistent_session_name = None;
+        if let Some(request) = request_for_window.as_mut()
+            && request.is_local_shell()
+        {
+            request.persistent_session_name = None;
         }
         let bounds = Bounds::centered(
             None,
@@ -582,8 +598,10 @@ impl MultiplexApp {
                 let request = request_for_window.clone();
                 let view = cx.new(|cx| {
                     let mut app = MultiplexApp::new(state, window, cx);
-                    if let Some((_, pane_id)) =
-                        app.open_request_workspace(request.clone(), window, cx)
+                    app.activate_library_section(section, window, cx);
+                    if let Some(request) = request
+                        && let Some((_, pane_id)) =
+                            app.open_request_workspace(request.clone(), window, cx)
                     {
                         app.status_message = localization::status_connecting(request.address());
                         app.error_message.clear();
@@ -599,8 +617,14 @@ impl MultiplexApp {
         ) {
             Ok(_) => {
                 self.open_workspace_tab_menu = None;
-                self.status_message =
-                    localization::shell_duplicate_window_progress(request.address());
+                self.status_message = request.as_ref().map_or_else(
+                    || {
+                        localization::static_message(
+                            multiplex_ui_contract::MessageId::ChromeNewWindow,
+                        )
+                    },
+                    |request| localization::shell_duplicate_window_progress(request.address()),
+                );
                 self.error_message.clear();
                 cx.notify();
             }
@@ -900,6 +924,18 @@ impl MultiplexApp {
                             cx,
                         )
                         .debug_selector(|| "chrome-menu-new-terminal".into()),
+                    )
+                    .child(
+                        self.workspace_tab_menu_item(
+                            "chrome-menu-new-window",
+                            IconName::PanelRight,
+                            localization::static_message(
+                                multiplex_ui_contract::MessageId::ChromeNewWindow,
+                            ),
+                            |this, _, cx| this.new_application_window(cx),
+                            cx,
+                        )
+                        .debug_selector(|| "chrome-menu-new-window".into()),
                     )
                     .child(
                         self.workspace_tab_menu_item(

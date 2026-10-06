@@ -28,7 +28,9 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 - Flat, borderless workspace tabs scroll horizontally when they overflow. Double-click to
   rename; Enter or clicking outside saves, and Escape cancels. Right-click a tab for Duplicate / Duplicate in a new window / Rename / Split / Close.
   Right-click the empty top chrome for New terminal or to move the tabs into a scrolling left
-  sidebar (and back to the top). The placement is saved in desktop settings.
+  sidebar (and back to the top). New window is available from the same menu or Cmd+Shift+N
+  (Ctrl+Shift+N on Windows/Linux); each window keeps its own navigation and viewers.
+  The placement is saved in desktop settings.
 - Each workspace tab can contain split panes arranged as a recursive binary tree: dropping a tab onto a pane splits that pane, with arbitrary nesting and resizable dividers.
   Each split pane has a header (status, title, address, zoom, close); dragging it onto another
   pane moves it to that edge or, in the middle, swaps the two, with a sliding drop preview that

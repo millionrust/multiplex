@@ -507,6 +507,7 @@ certificate-file-choose-status = ⟦Çĥøøšé åñ ØþéñŠŠĤ ûšéŕ ç
 certificate-file-selected-status = ⟦ØþéñŠŠĤ ûšéŕ çéŕţîƒîçåţé šéļéçţéð.~~~~~~~~~~~~⟧
 chrome-home-tooltip = ⟦Ĥøɱé⟧
 chrome-new-terminal = ⟦Ñéŵ ţéŕɱîñåļ~~~⟧
+chrome-new-window = ⟦Ñéŵ ŵîñðøŵ~~⟧
 chrome-tabs-to-left = ⟦Ṁøṽé ţåƀš ţø ţĥé ļéƒţ~~~~~~~⟧
 chrome-tabs-to-top = ⟦Ṁøṽé ţåƀš ţø ţĥé ţøþ~~~~~~⟧
 cli-settings-copy-path = ⟦Çøþý Þåţĥ~~⟧

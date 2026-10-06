@@ -244,6 +244,7 @@ pub enum AppShortcut {
     Settings,
     LogsOrHostSearch,
     NewHostOrSession,
+    NewWindow,
     DuplicatePane,
     /// Split the active pane with a new one below it.
     SplitDown,
@@ -314,6 +315,7 @@ pub fn app_shortcut(keystroke: &Keystroke) -> Option<AppShortcut> {
             return Some(AppShortcut::FocusPane(direction));
         }
         return match key {
+            "n" => Some(AppShortcut::NewWindow),
             "f" => Some(AppShortcut::OpenFiles),
             "t" => Some(AppShortcut::ToggleFilesAndTerminal),
             "b" => Some(AppShortcut::BroadcastInput),
@@ -679,6 +681,7 @@ mod tests {
             AppShortcut::Settings => "settings".to_owned(),
             AppShortcut::LogsOrHostSearch => "logs_or_host_search".to_owned(),
             AppShortcut::NewHostOrSession => "new_host_or_session".to_owned(),
+            AppShortcut::NewWindow => "new_window".to_owned(),
             AppShortcut::DuplicatePane => "duplicate_pane".to_owned(),
             AppShortcut::SplitDown => "split_down".to_owned(),
             AppShortcut::FocusPane(direction) => {
