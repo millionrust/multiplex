@@ -991,8 +991,30 @@ pub(super) fn pane_recent_output_lines(pane: &SessionPane, limit: usize) -> Vec<
     lines
 }
 
+/// Submit through the same Enter byte as keyboard input. In ConPTY, a bare LF can
+/// be echoed without accepting the command in an interactive shell.
+pub(super) fn command_submission_bytes(command: &str) -> Vec<u8> {
+    let mut bytes = command.trim_end_matches(['\r', '\n']).as_bytes().to_vec();
+    bytes.push(b'\r');
+    bytes
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn command_submission_uses_enter_and_preserves_literal_command_content() {
+        for ending in ["", "\n", "\r", "\r\n"] {
+            assert_eq!(
+                super::command_submission_bytes(&format!("echo palette-replay-ok{ending}")),
+                b"echo palette-replay-ok\r"
+            );
+        }
+        assert_eq!(
+            String::from_utf8(super::command_submission_bytes("printf 'héllo\\n'\n")).unwrap(),
+            "printf 'héllo\\n'\r"
+        );
+    }
+
     use super::*;
     use multiplex_domain::{
         HostedSessionId, PositionKey, ScoreTuple, SearchAction, SearchCategory, SearchDocumentId,

@@ -3317,10 +3317,7 @@ impl MultiplexApp {
             return false;
         };
 
-        let mut bytes = command.as_bytes().to_vec();
-        if !command.ends_with('\n') {
-            bytes.push(b'\n');
-        }
+        let bytes = palette::command_submission_bytes(command);
 
         let broadcasting = self
             .workspace_id_for_pane(pane_id)
