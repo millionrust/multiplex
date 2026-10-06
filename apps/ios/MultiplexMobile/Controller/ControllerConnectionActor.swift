@@ -1685,7 +1685,7 @@ actor ControllerConnectionActor: ControllerConnecting {
               opened.revocationEpoch == host.revocationEpoch else {
             throw ControllerConnectionError.malformedResponse
         }
-        let ticket = try ControllerScreenResponse.ticket(from: opened.payload)
+        let ticket = try ControllerScreenResponse.ticket(from: opened.payload, commandID: commandID)
         guard ticket.commandId == commandID else {
             throw ControllerConnectionError.malformedResponse
         }

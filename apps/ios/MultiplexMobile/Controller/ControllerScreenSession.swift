@@ -44,7 +44,20 @@ enum ControllerScreenResponse {
     static let ticketBytes = 32
 
     /// Parses a `screen_opened` response, rejecting anything with unexpected fields.
-    static func ticket(from data: Data) throws -> ControllerScreenTicket {
+    static func ticket(from data: Data, commandID: UUID? = nil) throws -> ControllerScreenTicket {
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           object["kind"] as? String == "error" {
+            guard Set(object.keys) == ["kind", "command_id", "code", "completion_unknown"],
+                  let id = object["command_id"] as? String, let answered = UUID(uuidString: id),
+                  let code = object["code"] as? String,
+                  !code.isEmpty, code.utf8.count <= 64,
+                  code.utf8.allSatisfy({ (97...122).contains($0) || $0 == 95 }),
+                  object["completion_unknown"] is Bool,
+                  commandID == nil || commandID == answered else {
+                throw ControllerScreenError.malformedResponse
+            }
+            throw ControllerConnectionError.hostError(code)
+        }
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               Set(object.keys) == [
                   "kind", "command_id", "ticket", "can_control_pointer", "can_control_keyboard",

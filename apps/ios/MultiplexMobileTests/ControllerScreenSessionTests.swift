@@ -38,6 +38,20 @@ final class ControllerScreenSessionTests: XCTestCase {
         XCTAssertTrue(opened.canControl)
     }
 
+    func testSharingOffIsReportedAndBoundToTheRequestedCommand() throws {
+        let command = UUID()
+        let data = try JSONSerialization.data(withJSONObject: [
+            "kind": "error", "command_id": command.uuidString,
+            "code": "screen_sharing_off", "completion_unknown": false,
+        ])
+        XCTAssertThrowsError(try ControllerScreenResponse.ticket(from: data, commandID: command)) {
+            XCTAssertEqual($0 as? ControllerConnectionError, .hostError("screen_sharing_off"))
+        }
+        XCTAssertThrowsError(try ControllerScreenResponse.ticket(from: data, commandID: UUID())) {
+            XCTAssertEqual($0 as? ControllerScreenError, .malformedResponse)
+        }
+    }
+
     func testAResponseThatIsNotAScreenTicketIsRefused() throws {
         // A ticket is exactly 32 bytes.
         XCTAssertThrowsError(
