@@ -71,7 +71,7 @@ verify_elf_alignment() {
 
 for target in "${TARGETS[@]}"; do
   RUSTFLAGS="${RUSTFLAGS:-} $ANDROID_PAGE_SIZE_RUSTFLAGS" \
-    cargo build -p multiplex-mobile-ffi --release --target "$target"
+    cargo build --locked -p multiplex-mobile-ffi --release --target "$target"
 
   case "$target" in
     aarch64-linux-android) abi="arm64-v8a" ;;

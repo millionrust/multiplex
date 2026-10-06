@@ -15,7 +15,7 @@ for target in "${IOS_TARGETS[@]}"; do
 done
 
 for target in "${IOS_TARGETS[@]}"; do
-  cargo build -p multiplex-mobile-ffi --release --target "$target"
+  cargo build --locked -p multiplex-mobile-ffi --release --target "$target"
 done
 
 DIST_DIR="$ROOT_DIR/dist/mobile/ios"
