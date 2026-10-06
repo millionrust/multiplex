@@ -325,6 +325,26 @@ mod tests {
             .validate()
             .expect("the Host creates the runtime root and its parent");
 
+        let mut inherited = descriptor(fixture.path().join("runtime"));
+        inherited.environment = (0..150)
+            .map(|index| (format!("RUNNER_{index}"), "1".into()))
+            .collect();
+        inherited
+            .environment
+            .insert("ProgramFiles(x86)".into(), "C:/Programs".into());
+        inherited
+            .environment
+            .insert("BASH_FUNC_module%%".into(), "() { :; }".into());
+        LaunchDescriptor::read(serde_json::to_vec(&inherited).unwrap().as_slice())
+            .expect("hosted CI and OS-native environment names fit the bounded descriptor");
+        inherited.environment = (0..=MAX_ENVIRONMENT_ENTRIES)
+            .map(|index| (format!("RUNNER_{index}"), "1".into()))
+            .collect();
+        assert_eq!(
+            inherited.validate().unwrap_err().code,
+            HostErrorCode::DescriptorInvalid
+        );
+
         let file = fixture.path().join("a-file");
         std::fs::write(&file, b"").unwrap();
         assert_eq!(
