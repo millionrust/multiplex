@@ -3022,6 +3022,7 @@ impl MultiplexApp {
                         ),
                         ("Cmd+L", library_copy(MessageId::SettingsShortcutFocusHosts)),
                         ("Cmd+N", library_copy(MessageId::SettingsShortcutNewHost)),
+                        ("Cmd+Shift+N", library_copy(MessageId::ChromeNewWindow)),
                     ],
                 ))
                 .child(self.settings_divider())
