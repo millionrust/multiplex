@@ -91,9 +91,15 @@ struct ControllerReadOnlyTerminalView: View {
             if keyboardPresented, viewModel.canSendInput, !viewModel.privacyCovered {
                 FlowKeyboard(
                     onText: { text, modifiers in
+                        var modifiers = modifiers
+                        modifiers.control = modifiers.control || controlLatched
+                        controlLatched = false
                         viewModel.sendKeyboardBytes(TerminalInteraction.encodeCommittedText(text, modifiers: modifiers))
                     },
                     onKey: { key, modifiers in
+                        var modifiers = modifiers
+                        modifiers.control = modifiers.control || controlLatched
+                        controlLatched = false
                         if let bytes = TerminalInteraction.encode(key, text: nil, modifiers: modifiers, applicationCursor: viewModel.screen.applicationCursor) {
                             viewModel.sendKeyboardBytes(bytes)
                         }
