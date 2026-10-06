@@ -169,8 +169,7 @@ struct ControllerRootView: View {
                         screens: viewModel.screens,
                         routeName: viewModel.selectedRoute.map(ControllerPresentation.routeTitle),
                         onClose: viewModel.closeScreen,
-                        terminals: ControllerPresentation.openTerminals(viewModel.state.sessions),
-                        attached: viewModel.activeTerminal,
+                        controller: viewModel,
                         onSelectTerminal: viewModel.openReadOnlyTerminal,
                         onCloseTerminal: viewModel.closeReadOnlyTerminal
                     )
@@ -461,8 +460,11 @@ private struct ControllerScreenViewerSheet: View {
     let routeName: String?
     let onClose: () -> Void
     /// The computer's terminals, for the strip under the picture in portrait.
-    var terminals: [ControllerSessionSummary] = []
-    var attached: ControllerTerminalViewModel?
+    @ObservedObject var controller: ControllerViewModel
+    private var terminals: [ControllerSessionSummary] {
+        ControllerPresentation.openTerminals(controller.state.sessions)
+    }
+    private var attached: ControllerTerminalViewModel? { controller.activeTerminal }
     var onSelectTerminal: (ControllerSessionSummary) -> Void = { _ in }
     var onCloseTerminal: () -> Void = {}
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -501,6 +503,7 @@ private struct ControllerScreenViewerSheet: View {
                         onClose: onCloseTerminal,
                         chromeless: true
                     )
+                    .id(attached.id)
                 } else {
                     Text("Choose a terminal to watch it here.")
                         .font(.system(size: 13))

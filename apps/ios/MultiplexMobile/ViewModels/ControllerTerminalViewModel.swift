@@ -328,7 +328,9 @@ final class ControllerTerminalViewModel: ObservableObject, Identifiable {
         )
     }
 
-    func detach() {
+    @discardableResult
+    func detach() -> Task<Void, Never>? {
+        guard !intentionallyDetached else { return nil }
         intentionallyDetached = true
         reacquireControlOnResume = false
         privacyCovered = false
@@ -344,7 +346,7 @@ final class ControllerTerminalViewModel: ObservableObject, Identifiable {
         operationID = UUID()
         operation?.cancel()
         operation = nil
-        Task { [connection, host, identity] in
+        let cleanup = Task { [connection, host, identity] in
             if held {
                 try? await connection.releaseWriter(
                     host: host,
@@ -359,6 +361,7 @@ final class ControllerTerminalViewModel: ObservableObject, Identifiable {
         inputInFlight = nil
         reducer.detach()
         attachState = .detached
+        return cleanup
     }
 
     private func launch(interactive: Bool, cancelExisting: Bool) {

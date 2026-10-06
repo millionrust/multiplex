@@ -36,6 +36,7 @@ final class ControllerViewModel: ObservableObject {
     private var hostRecords: [PairedHostRecord] = []
     private var cache = ControllerFleetCache()
     private let deviceID: UUID
+    private var terminalSelection: Task<Void, Never>?
     private var operation: Task<Void, Never>?
     let computerBrowser: ControllerComputerBrowser
     /// The phone's one screen session: the preview on a computer's page and the viewer it opens.
@@ -280,6 +281,10 @@ final class ControllerViewModel: ObservableObject {
 
     func selectHost(id: String?) {
         guard state.selectedHostID != id else { return }
+        terminalSelection?.cancel()
+        activeTerminal?.detach()
+        activeTerminal = nil
+        screens.stop()
         operation?.cancel()
         if let id {
             defaults.set(id, forKey: Self.selectedHostDefaultsKey)
@@ -436,6 +441,7 @@ final class ControllerViewModel: ObservableObject {
             syncRouteProjections()
             operation?.cancel()
             operation = nil
+            terminalSelection?.cancel()
             activeTerminal?.suspend()
             activeTerminal = nil
             let cached = state.selectedHostID.flatMap { cache.hosts[$0] }
@@ -468,6 +474,7 @@ final class ControllerViewModel: ObservableObject {
     }
 
     func suspend() {
+        terminalSelection?.cancel()
         activeTerminal?.suspend()
         operation?.cancel()
         operation = nil
@@ -495,7 +502,7 @@ final class ControllerViewModel: ObservableObject {
     }
 
     func openReadOnlyTerminal(_ session: ControllerSessionSummary) {
-        guard activeTerminal == nil,
+        guard activeTerminal?.sessionID != session.id.uuidString,
               !state.isCachedReadOnly,
               state.connection == .readyReadOnly,
               let host = selectedHost,
@@ -503,11 +510,22 @@ final class ControllerViewModel: ObservableObject {
               host.capabilityBits & (1 << 1) != 0,
               session.capabilities.isEmpty || session.capabilities.contains(.attachOutput),
               session.occupantGeneration != nil else { return }
-        activeTerminal = try? ControllerTerminalViewModel(
+        guard let next = try? ControllerTerminalViewModel(
             host: host,
             session: session,
             connection: connectionActor
-        )
+        ) else { return }
+        let previousSelection = terminalSelection
+        previousSelection?.cancel()
+        let cleanup = activeTerminal?.detach()
+        activeTerminal = nil
+        terminalSelection = Task { [weak self] in
+            // A stale view's onDisappear must never cancel the next terminal's connection.
+            await previousSelection?.value
+            await cleanup?.value
+            guard !Task.isCancelled, let self else { return }
+            activeTerminal = next
+        }
     }
 
     /// Whether the selected computer has granted this phone the right to start a terminal.
@@ -548,9 +566,10 @@ final class ControllerViewModel: ObservableObject {
     }
 
     func closeReadOnlyTerminal() {
+        terminalSelection?.cancel()
         activeTerminal?.detach()
         activeTerminal = nil
-        retry()
+        if screens.viewer == nil { retry() }
     }
 
     /// Whether the selected computer has given this phone screen access.
@@ -590,6 +609,10 @@ final class ControllerViewModel: ObservableObject {
     }
 
     func closeScreen() {
+        // The terminal beneath the viewer belongs to this presentation, not another cover.
+        terminalSelection?.cancel()
+        activeTerminal?.detach()
+        activeTerminal = nil
         screens.stop()
         retry()
     }

@@ -97,6 +97,46 @@ final class AppleControllerRouteViewModelTests: XCTestCase {
         )
     }
 
+    func testTerminalTabsSwitchAndLeavingScreenClearsTheEmbeddedTerminal() async throws {
+        let fixture = try RouteViewModelFixture.make()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        _ = try await fixture.hostStore.upsert(fixture.host)
+        let connection = RouteFixtureConnection()
+        let viewModel = ControllerViewModel(
+            connectionActor: connection,
+            hostStore: fixture.hostStore,
+            cacheStore: fixture.cacheStore,
+            defaults: UserDefaults(suiteName: UUID().uuidString)!,
+            retryPolicy: .singleAttempt
+        )
+        try await waitUntil { viewModel.state.connection == .readyReadOnly }
+        let first = ControllerSessionSummary(
+            id: UUID(), title: "First", group: nil, lifecycle: "live", activity: "idle",
+            occupantGeneration: 1, lastOutputSequence: 0, hasWriter: false, unreadCount: 0
+        )
+        let second = ControllerSessionSummary(
+            id: UUID(), title: "Second", group: nil, lifecycle: "live", activity: "idle",
+            occupantGeneration: 1, lastOutputSequence: 0, hasWriter: false, unreadCount: 0
+        )
+        viewModel.openReadOnlyTerminal(first)
+        try await waitUntil { viewModel.activeTerminal?.sessionID == first.id.uuidString }
+        let old = try XCTUnwrap(viewModel.activeTerminal)
+        viewModel.openReadOnlyTerminal(second)
+        try await waitUntil { viewModel.activeTerminal?.sessionID == second.id.uuidString }
+        let cancellations = await connection.cancellations()
+        old.detach() // SwiftUI removes the old view after the next tab has appeared.
+        await Task.yield()
+        let afterDisappear = await connection.cancellations()
+        XCTAssertEqual(afterDisappear, cancellations)
+        viewModel.openReadOnlyTerminal(first)
+        viewModel.openReadOnlyTerminal(second)
+        try await waitUntil { viewModel.activeTerminal?.sessionID == second.id.uuidString }
+        viewModel.closeScreen()
+        XCTAssertNil(viewModel.activeTerminal)
+        await Task.yield()
+        XCTAssertNil(viewModel.activeTerminal)
+    }
+
     private func waitUntil(
         timeout: Duration = .seconds(2),
         condition: @escaping @MainActor () async -> Bool
