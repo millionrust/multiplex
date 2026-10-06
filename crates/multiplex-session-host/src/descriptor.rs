@@ -20,7 +20,9 @@ use crate::{HostError, HostErrorCode};
 pub const MAX_DESCRIPTOR_BYTES: u64 = 64 * 1024;
 const MAX_ARGUMENTS: usize = 128;
 const MAX_ARGUMENT_BYTES: usize = 4096;
-const MAX_ENVIRONMENT_ENTRIES: usize = 128;
+// Hosted CI and editor terminals inherit substantially more than 128 variables.
+// The serialized descriptor still has a hard 64 KiB bound.
+const MAX_ENVIRONMENT_ENTRIES: usize = 1024;
 const MAX_ENVIRONMENT_VALUE_BYTES: usize = 16 * 1024;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -218,11 +220,10 @@ impl LaunchDescriptor {
 }
 
 fn valid_environment_name(name: &str) -> bool {
-    let mut bytes = name.bytes();
-    bytes
-        .next()
-        .is_some_and(|value| value == b'_' || value.is_ascii_alphabetic())
-        && bytes.all(|value| value == b'_' || value.is_ascii_alphanumeric())
+    // Process environments are not shell assignments: Windows commonly supplies
+    // ProgramFiles(x86), and Unix can supply exported function names. CommandBuilder
+    // passes these as separate OS strings, without evaluating shell syntax.
+    !name.is_empty() && !name.as_bytes().contains(&0) && !name.contains('=')
 }
 
 fn validate_directory_parent(path: &Path) -> Result<(), HostError> {
@@ -381,7 +382,11 @@ mod tests {
                 .code,
             HostErrorCode::DescriptorTooLarge
         );
-        assert!(!valid_environment_name("1BAD"));
+        assert!(!valid_environment_name(""));
+        assert!(!valid_environment_name("BAD=NAME"));
+        assert!(!valid_environment_name("BAD\0NAME"));
+        assert!(valid_environment_name("ProgramFiles(x86)"));
+        assert!(valid_environment_name("BASH_FUNC_module%%"));
         assert!(valid_environment_name("MULTIPLEX_TEST"));
     }
 }
