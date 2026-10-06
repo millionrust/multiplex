@@ -351,7 +351,7 @@
   },
   "status": {
     "data": {
-      "cli_version": "0.0.9",
+      "cli_version": "0.0.10",
       "host_control": "host_unavailable",
       "json_schema_version": 1,
       "protocol_maximum": "1.0",
