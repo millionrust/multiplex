@@ -140,10 +140,8 @@ struct RemoteScreenView: View {
     private func stage(in size: CGSize) -> some View {
         ZStack {
             if let image = model.image {
-                Image(decorative: image, scale: 1, orientation: .up)
-                    .resizable()
-                    .interpolation(.none)
-                    .aspectRatio(contentMode: .fit)
+                SharedScreenPicture(image: image, model: model)
+                    .aspectRatio(CGFloat(image.width) / CGFloat(image.height), contentMode: .fit)
                     .scaleEffect(model.zoom)
                     .offset(x: model.pan.width, y: model.pan.height)
                     .clipped()
@@ -249,6 +247,11 @@ struct RemoteScreenView: View {
                     systemImage: "cursorarrow.slash",
                     enabled: false
                 ) {}
+            }
+            if model.pictureInPicture.supported {
+                FlowPill(label: "PiP", systemImage: "pip.enter", enabled: model.image != nil) {
+                    model.pictureInPicture.start()
+                }
             }
             if model.canControlKeyboard {
                 FlowPill(

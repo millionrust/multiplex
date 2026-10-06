@@ -89,6 +89,7 @@ final class ControllerScreenCoordinator: ObservableObject {
 
     /// Ends whatever session is running and keeps the last picture.
     func stop() {
+        viewer?.pictureInPicture.stop()
         session?.cancel()
         session = nil
         watchingHost = nil
@@ -107,6 +108,7 @@ final class ControllerScreenCoordinator: ObservableObject {
         generation += 1
         self.watchingHost = host
         if !Self.mayWatch(host) {
+            viewer?.apply(events: [.closed(reason: "Screen access was removed on this computer.")])
             unavailable = .notGranted
             reconnecting = false
             return

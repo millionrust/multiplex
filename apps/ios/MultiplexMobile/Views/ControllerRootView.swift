@@ -520,6 +520,13 @@ private struct ControllerScreenViewerSheet: View {
             }
         }
         .background(Flow.canvas)
+        .onAppear {
+            model.pictureInPicture.onEnd = { [weak controller] in
+                if UIApplication.shared.applicationState != .active {
+                    controller?.suspend(allowPictureInPicture: false)
+                }
+            }
+        }
         .onChange(of: attached?.id) { _, _ in showingScreenKeyboard = false }
     }
 }

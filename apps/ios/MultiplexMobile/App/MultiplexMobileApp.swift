@@ -50,7 +50,10 @@ private struct UnifiedMobileRootView: View {
             case .active:
                 connectionViewModel.resume()
                 controllerViewModel.resume()
-            case .background, .inactive:
+            case .inactive:
+                connectionViewModel.suspend()
+                controllerViewModel.coverTerminalForPrivacy()
+            case .background:
                 connectionViewModel.suspend()
                 controllerViewModel.suspend()
             @unknown default:

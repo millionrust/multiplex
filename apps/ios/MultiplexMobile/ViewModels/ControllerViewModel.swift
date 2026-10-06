@@ -481,7 +481,11 @@ final class ControllerViewModel: ObservableObject {
         }
     }
 
-    func suspend() {
+    func coverTerminalForPrivacy() { activeTerminal?.suspend() }
+
+    func suspend(allowPictureInPicture: Bool = true) {
+        activeTerminal?.suspend()
+        if allowPictureInPicture, let viewer = screens.viewer, viewer.pictureInPicture.start() { return }
         stopLiveSettingsRefresh()
         terminalSelection?.cancel()
         activeTerminal?.suspend()
@@ -502,6 +506,10 @@ final class ControllerViewModel: ObservableObject {
     }
 
     func resume() {
+        if screens.viewer?.pictureInPicture.active == true {
+            activeTerminal?.resume()
+            return
+        }
         if let activeTerminal {
             activeTerminal.resume()
             return
@@ -622,6 +630,7 @@ final class ControllerViewModel: ObservableObject {
         terminalSelection?.cancel()
         activeTerminal?.detach()
         activeTerminal = nil
+        screens.viewer?.pictureInPicture.stop()
         screens.stop()
         retry()
     }

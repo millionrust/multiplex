@@ -1,4 +1,6 @@
 import CoreGraphics
+import CoreMedia
+import CoreVideo
 import XCTest
 
 @testable import MultiplexMobile
@@ -21,6 +23,32 @@ final class RemoteScreenViewModelTests: XCTestCase {
             surface: 1,
             ticket: ticket(pointer: pointer)
         )
+    }
+
+    func testSharedScreenFrameCanRenderInlineAndInPictureInPicture() throws {
+        let context = try XCTUnwrap(CGContext(data: nil, width: 16, height: 9, bitsPerComponent: 8,
+                                             bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 16, height: 9))
+        let image = try XCTUnwrap(context.makeImage())
+        let sample = try XCTUnwrap(SharedScreenPictureSurface.sampleBuffer(image: image))
+        let pixel = try XCTUnwrap(CMSampleBufferGetImageBuffer(sample))
+        XCTAssertEqual(CVPixelBufferGetWidth(pixel), 16)
+        XCTAssertEqual(CVPixelBufferGetHeight(pixel), 9)
+        XCTAssertTrue(CMSampleBufferDataIsReady(sample))
+        XCTAssertTrue(CMSampleBufferGetPresentationTimeStamp(sample).isValid)
+    }
+
+    func testLiveGrantChangesUpdateScreenControlsWithoutReplacingItsModel() {
+        let screen = model(pointer: false)
+        screen.replaceConnection(viewer: ScreenViewer(cacheBytes: 1 << 20), ticket: ticket(pointer: false, keyboard: true))
+        screen.apply(events: [.control(holder: .you)])
+        XCTAssertTrue(screen.canControlKeyboard)
+        XCTAssertTrue(screen.isDriving, "keyboard-only control must work")
+        screen.restrictCapabilities(1 << 5)
+        XCTAssertFalse(screen.canControlKeyboard)
+        XCTAssertFalse(screen.isDriving)
     }
 
     func testNothingIsDrawnBeforeAnyPixelsArrive() {

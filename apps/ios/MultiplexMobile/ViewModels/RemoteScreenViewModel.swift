@@ -87,6 +87,8 @@ final class RemoteScreenViewModel: ObservableObject {
     /// still screen sends nothing, so this is deliberately longer than a pause in the work.
     static let weakAfter: TimeInterval = 4
 
+    let pictureInPicture = ScreenPictureInPicture()
+
     private var viewer: ScreenViewer
     /// A preview is the computer's thumbnail profile: about one small picture a second.
     private let preview: Bool
@@ -151,6 +153,7 @@ final class RemoteScreenViewModel: ObservableObject {
             case let .control(holder):
                 control = holder
             case let .closed(reason):
+                pictureInPicture.stop()
                 state = .closed(reason: reason)
             case .motionRegion, .panes:
                 continue
