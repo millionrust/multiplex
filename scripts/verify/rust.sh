@@ -30,6 +30,12 @@ verify_versions() {
   fi
 }
 
+build_terminal_helpers() {
+  # nextest builds test harnesses, not every standalone binary. Native pane tests launch
+  # the same desktop/CLI/Host executables the release ships; never reuse cached old copies.
+  cargo build -p multiplex -p multiplex-cli -p multiplex-session-host --bins --all-features --locked
+}
+
 focused() {
   cargo fmt --all -- --check
   python3 scripts/verify/gpui-boundaries.py
@@ -38,8 +44,9 @@ focused() {
   ./scripts/verify/browser-capability.sh
   cargo check -p multiplex --all-targets --all-features --locked
   python3 scripts/dev/clippy-changed.py
-  cargo test -p multiplex local::tests::local_tmux_session_survives_disconnect_and_reattaches -- --exact --nocapture
-  cargo test -p multiplex ui::app::tests::canvas_persistent_local_terminal_opens_or_explains_missing_tmux -- --exact --nocapture
+  build_terminal_helpers
+  cargo test -p multiplex local::tests::cli_console_survives_native_disconnect_and_restores_the_same_shell -- --exact --nocapture
+  cargo test -p multiplex ui::app::tests::canvas_saved_host_request_preserves_ssh_without_legacy_tmux -- --exact --nocapture
 }
 
 policy() {
@@ -90,6 +97,7 @@ workspace() {
   # Clippy type-checks everything `cargo check` would, so a separate check pass only repeated it.
   cargo clippy --workspace --all-targets --all-features --locked
   python3 scripts/dev/clippy-changed.py
+  build_terminal_helpers
   # Runs every test binary even after one fails, so a red run reports all of its failures
   # instead of the first one and hides the rest behind it. With nextest installed (CI installs
   # it), this is `cargo test --all-targets` split in two, as on Windows: nextest runs the test

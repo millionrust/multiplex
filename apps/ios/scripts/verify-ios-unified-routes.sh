@@ -56,7 +56,7 @@ grep -Eq 'ContentView\(viewModel: connectionViewModel\)' MultiplexMobile/App/Mul
   printf 'Unified navigation does not expose saved Connections.\n' >&2
   exit 1
 }
-grep -Eq 'ControllerRootView\(viewModel: controllerViewModel\)' MultiplexMobile/App/MultiplexMobileApp.swift || {
+grep -Eq 'ControllerRootView\(viewModel: controllerViewModel([[:space:]]*,|[[:space:]]*\))' MultiplexMobile/App/MultiplexMobileApp.swift || {
   printf 'Unified navigation does not expose paired Devices.\n' >&2
   exit 1
 }

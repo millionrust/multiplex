@@ -284,6 +284,9 @@ jobs:
       # run a bench whose harness prints its own report, so it takes every other kind of target and
       # the benches run under cargo test. What each test assumes about sharing a process with
       # others is in .config/nextest.toml.
+      - name: Build terminal test helper executables
+        run: cargo build -p multiplex -p multiplex-cli -p multiplex-session-host --bins --all-features --locked
+
       - name: Compile and test Windows workspace
         run: >-
           cargo nextest run --workspace --lib --bins --tests --examples --all-features --locked
