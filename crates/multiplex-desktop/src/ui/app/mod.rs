@@ -159,7 +159,7 @@ use crate::storage::{
     import_portable_data_bundle, inspect_identity_file, library_store_dir,
     load_local_ssh_identities, save_saved_state,
 };
-use crate::terminal::{TerminalSize, TerminalState};
+use crate::terminal::{TerminalSelectionSnapshot, TerminalSize, TerminalState};
 use crate::ui::accessibility::shell::ShellAccessibilityAdapter;
 use crate::ui::autocomplete::{AutocompleteCandidate, AutocompleteSource};
 use crate::ui::keys::{
@@ -844,6 +844,7 @@ struct SessionPane {
     connect_log: Vec<String>,
     show_connect_log: bool,
     selection: Option<SelectionRange>,
+    selection_snapshot: Option<TerminalSelectionSnapshot>,
     dragging_selection: bool,
     /// Trackpad scroll distance not yet large enough to move one line.
     scroll_remainder: f32,
@@ -7648,6 +7649,7 @@ impl MultiplexApp {
             pane.user_closed = false;
             pane.status = "Attaching to durable Host".to_string();
             pane.selection = None;
+            pane.selection_snapshot = None;
             pane.terminal_focus_mode = TerminalFocusMode::Chrome;
             pane.set_accessible_lifecycle(TerminalLifecycle::Connecting);
             if let Some(attached) = pane.app_attached.as_mut() {
@@ -7730,6 +7732,7 @@ impl MultiplexApp {
             connect_log: Vec::new(),
             show_connect_log: false,
             selection: None,
+            selection_snapshot: None,
             dragging_selection: false,
             scroll_remainder: 0.0,
             log_id,
@@ -8667,13 +8670,16 @@ impl MultiplexApp {
             }
         }
         match projection.selection {
+            _ if pane.selection.is_some() && pane.selection_snapshot.is_some() => {}
             HostedSelectionAction::Preserve => {}
             HostedSelectionAction::ClearIfSelected if pane.selection.is_some() => {
                 pane.selection = None;
+                pane.selection_snapshot = None;
                 pane.dragging_selection = false;
             }
             HostedSelectionAction::Clear => {
                 pane.selection = None;
+                pane.selection_snapshot = None;
                 pane.dragging_selection = false;
             }
             HostedSelectionAction::ClearIfSelected => {}
@@ -8833,8 +8839,9 @@ impl MultiplexApp {
                             });
                         }
                         pane.append_accessible_output(&data, None);
-                        if pane.selection.is_some() {
+                        if pane.selection.is_some() && pane.selection_snapshot.is_none() {
                             pane.selection = None;
+                            pane.selection_snapshot = None;
                             pane.dragging_selection = false;
                         }
                         panes_to_refresh.push(session_id);
@@ -10119,6 +10126,7 @@ impl MultiplexApp {
         if let Some(pane) = self.pane_mut(pane_id) {
             pane.terminal.reset_scrollback();
             pane.selection = None;
+            pane.selection_snapshot = None;
         }
         if !self
             .pane(pane_id)
@@ -10377,6 +10385,11 @@ impl MultiplexApp {
         }
 
         let mut notify = false;
+        if pane.selection.take().is_some() {
+            pane.selection_snapshot = None;
+            pane.dragging_selection = false;
+            notify = true;
+        }
         if pane.terminal.scrollback() > 0 {
             pane.terminal.reset_scrollback();
             notify = true;
@@ -10396,6 +10409,7 @@ impl MultiplexApp {
         self.record_command_input(pane_id, &data);
         self.error_message.clear();
         if notify {
+            self.sync_terminal_grid(pane_id, cx);
             cx.notify();
         }
         true
@@ -11006,6 +11020,7 @@ impl MultiplexApp {
         let scrollback = max_scrollback.saturating_sub(desired_start);
         pane.terminal.set_scrollback(scrollback);
         pane.selection = None;
+        pane.selection_snapshot = None;
         pane.dragging_selection = false;
         self.sync_terminal_grid(pane_id, cx);
     }
@@ -11020,12 +11035,21 @@ impl MultiplexApp {
         let Some(selection) = normalized_selection(selection) else {
             return false;
         };
-        let text = pane.terminal.contents_between(
-            selection.anchor.row,
-            selection.anchor.col,
-            selection.head.row,
-            selection.head.col,
-        );
+        let text = if let Some(snapshot) = &pane.selection_snapshot {
+            snapshot.contents_between(
+                selection.anchor.row,
+                selection.anchor.col,
+                selection.head.row,
+                selection.head.col,
+            )
+        } else {
+            pane.terminal.contents_between(
+                selection.anchor.row,
+                selection.anchor.col,
+                selection.head.row,
+                selection.head.col,
+            )
+        };
         if text.is_empty() {
             return false;
         }
@@ -11426,6 +11450,7 @@ impl MultiplexApp {
         }
 
         if let Some(pane) = self.pane_mut(pane_id) {
+            pane.selection_snapshot = Some(pane.terminal.capture_selection());
             pane.selection = Some(SelectionRange {
                 anchor: pos,
                 head: pos,
@@ -11522,15 +11547,25 @@ impl MultiplexApp {
                 && selection.anchor == selection.head
             {
                 pane.selection = None;
+                pane.selection_snapshot = None;
             }
             if copy_on_select && let Some(selection) = pane.selection.and_then(normalized_selection)
             {
-                let text = pane.terminal.contents_between(
-                    selection.anchor.row,
-                    selection.anchor.col,
-                    selection.head.row,
-                    selection.head.col,
-                );
+                let text = if let Some(snapshot) = &pane.selection_snapshot {
+                    snapshot.contents_between(
+                        selection.anchor.row,
+                        selection.anchor.col,
+                        selection.head.row,
+                        selection.head.col,
+                    )
+                } else {
+                    pane.terminal.contents_between(
+                        selection.anchor.row,
+                        selection.anchor.col,
+                        selection.head.row,
+                        selection.head.col,
+                    )
+                };
                 if !text.is_empty() {
                     copy_text = Some(text);
                 }
@@ -11602,6 +11637,9 @@ impl MultiplexApp {
 
         if let Some(pane) = self.pane_mut(pane_id) {
             pane.terminal.scroll_scrollback(lines);
+            pane.selection = None;
+            pane.selection_snapshot = None;
+            pane.dragging_selection = false;
         }
         self.sync_terminal_grid(pane_id, cx);
         cx.notify();
@@ -11647,6 +11685,7 @@ impl MultiplexApp {
         }
 
         if let Some(pane) = self.pane_mut(pane_id) {
+            pane.selection_snapshot = Some(pane.terminal.capture_selection());
             pane.selection = Some(SelectionRange {
                 anchor: TerminalCellPos {
                     row: pos.row,
@@ -11694,7 +11733,12 @@ impl MultiplexApp {
         let Some(pane) = self.pane(pane_id) else {
             return;
         };
-        let snapshot = pane.terminal.snapshot().clone();
+        let snapshot = pane
+            .selection_snapshot
+            .as_ref()
+            .filter(|_| pane.selection.is_some())
+            .map(|capture| capture.screen.clone())
+            .unwrap_or_else(|| pane.terminal.snapshot());
         let selection = pane.selection;
         let visible_matches = self
             .active_workspace()
@@ -14744,7 +14788,8 @@ mod tests {
                     let session_id = multiplex_domain::HostedSessionId::new();
                     if let Some(pane) = app.pane_mut(pane_id) {
                         pane.connected = true;
-                        pane.terminal.process_bytes(b"select this terminal output");
+                        pane.terminal
+                            .process_bytes(b"\x1b[5;1Hcopy this terminal output");
                         pane.app_attached = Some(super::AppAttachedPaneState {
                             hosted_session_id: session_id,
                             route: multiplex_domain::SessionLaunchRoute::DurableHost,
@@ -14784,6 +14829,9 @@ mod tests {
                             app.pane_context_menu = None;
                             let pane = app.pane_mut(pane_id).unwrap();
                             pane.selection = None;
+                            pane.selection_snapshot = None;
+                            pane.terminal
+                                .process_bytes(b"\x1b[5;1Hcopy this terminal output");
                             pane.app_attached.as_mut().unwrap().has_writer_lease = has_writer;
                             pane.terminal.process_bytes(if mouse_reporting {
                                 b"\x1b[?1000h"
@@ -14822,6 +14870,37 @@ mod tests {
                         "reattached terminal allows selection: {mode:?}, writer={has_writer}, reporting={mouse_reporting}, layout={layout:?}"
                     )
                 });
+                app.update(cx, |app, cx| {
+                    app.event_tx
+                        .send(SshEvent::Output {
+                            session_id: pane_id,
+                            data: b"\x1b[5;1Hchanged live output".to_vec(),
+                        })
+                        .unwrap();
+                    app.process_events(cx);
+                    assert!(app.copy_active_selection(cx));
+                });
+                assert_eq!(
+                    cx.read_from_clipboard().unwrap().text().as_deref(),
+                    Some("copy t")
+                );
+                app.update(cx, |app, cx| {
+                    let projection = super::SessionCoordinator::project_hosted_stream(
+                        super::HostedStreamInput::Snapshot {
+                            pane_id,
+                            host_instance_id: multiplex_domain::HostInstanceId::new(),
+                            boundary_sequence: multiplex_domain::OutputSequence::new(1),
+                            data: b"\x1b[2J\x1b[Hnew snapshot".to_vec(),
+                        },
+                    );
+                    app.apply_hosted_stream_projection(projection, &mut Vec::new());
+                    app.sync_terminal_grid(pane_id, cx);
+                    assert!(app.copy_active_selection(cx));
+                });
+                assert_eq!(
+                    cx.read_from_clipboard().unwrap().text().as_deref(),
+                    Some("copy t")
+                );
                 visual.simulate_mouse_down(end, MouseButton::Right, gpui::Modifiers::none());
                 visual.run_until_parked();
                 app.read_with(cx, |app, _| {

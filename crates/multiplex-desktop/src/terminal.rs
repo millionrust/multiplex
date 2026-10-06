@@ -161,6 +161,61 @@ struct TerminalSnapshotCache {
     snapshot: Arc<TerminalSnapshot>,
 }
 
+/// A bounded capture of the visible screen while a person selects text. Output may keep
+/// arriving in the emulator; neither the displayed selection nor its clipboard text changes.
+#[derive(Clone)]
+pub struct TerminalSelectionSnapshot {
+    pub screen: Arc<TerminalSnapshot>,
+    wrapped: Vec<bool>,
+}
+
+impl TerminalSelectionSnapshot {
+    pub fn contents_between(
+        &self,
+        start_row: u16,
+        start_col: u16,
+        end_row: u16,
+        end_col: u16,
+    ) -> String {
+        let mut text = String::new();
+        for index in usize::from(start_row)..=usize::from(end_row) {
+            let Some(row) = self.screen.rows.get(index) else {
+                break;
+            };
+            let start = if index == usize::from(start_row) {
+                start_col
+            } else {
+                0
+            };
+            let end = if index == usize::from(end_row) {
+                end_col
+            } else {
+                self.screen.columns
+            };
+            let wrapped = self.wrapped.get(index).copied().unwrap_or(false);
+            let occupied_end = if wrapped {
+                self.screen.columns
+            } else {
+                row.cells
+                    .iter()
+                    .rev()
+                    .find(|cell| !cell.is_blank())
+                    .map_or(0, |cell| cell.column + if cell.wide { 2 } else { 1 })
+            };
+            for cell in &row.cells {
+                let width = if cell.wide { 2 } else { 1 };
+                if cell.column + width > start && cell.column < end.min(occupied_end) {
+                    cell.push_text(&mut text);
+                }
+            }
+            if index < usize::from(end_row) && !wrapped {
+                text.push('\n');
+            }
+        }
+        text
+    }
+}
+
 /// Collects what the emulator asks of its host while bytes are processed.
 #[derive(Clone, Default)]
 struct TerminalEvents {
@@ -539,6 +594,21 @@ impl TerminalState {
         self.term.bounds_to_string(start, end)
     }
 
+    pub fn capture_selection(&self) -> TerminalSelectionSnapshot {
+        let screen = self.snapshot();
+        let columns = self.term.grid().columns();
+        let wrapped = (0..screen.rows.len())
+            .map(|row| {
+                columns > 0
+                    && self.term.grid()
+                        [Point::new(self.visible_line(row as u16), Column(columns - 1))]
+                    .flags
+                    .contains(Flags::WRAPLINE)
+            })
+            .collect();
+        TerminalSelectionSnapshot { screen, wrapped }
+    }
+
     /// The visible screen. Unchanged output returns the same shared snapshot.
     pub fn snapshot(&self) -> Arc<TerminalSnapshot> {
         let theme_key = (theme::terminal_default_fg(), theme::terminal_default_bg());
@@ -850,6 +920,28 @@ fn rgb_color(r: u8, g: u8, b: u8) -> Hsla {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn captured_selection_keeps_unicode_and_wrapped_text_while_output_changes() {
+        let mut terminal = super::TerminalState::new(super::TerminalSize::new(4, 3, 0, 0), 20);
+        terminal.process_bytes(b"abcdef");
+        let captured = terminal.capture_selection();
+        assert_eq!(
+            captured.contents_between(0, 0, 1, 2),
+            terminal.contents_between(0, 0, 1, 2)
+        );
+        assert_eq!(captured.contents_between(0, 0, 1, 2), "abcdef");
+        terminal.process_bytes(b"\x1b[2J\x1b[Hnew output");
+        assert_eq!(captured.contents_between(0, 0, 1, 2), "abcdef");
+        let mut terminal = super::TerminalState::new(super::TerminalSize::new(12, 3, 0, 0), 20);
+        terminal.process_bytes("你好e\u{301}".as_bytes());
+        let captured = terminal.capture_selection();
+        assert_eq!(
+            captured.contents_between(0, 0, 0, 5),
+            terminal.contents_between(0, 0, 0, 5)
+        );
+        assert_eq!(captured.contents_between(0, 0, 0, 5), "你好e\u{301}");
+    }
+
     use std::time::{Duration, Instant};
 
     use serde::Deserialize;
