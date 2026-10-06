@@ -2622,3 +2622,12 @@ remote-terminals-global-missing = The Multiplex CLI and Session Host must be ins
 remote-terminals-global-unsupported = On Windows, use the Multiplex terminal profile below and select it as your terminal app’s default profile.
 
 remote-screens-permission-settings = Open Screen Recording Settings
+
+logs-column-session = Session
+logs-column-status = Status
+logs-column-started = Started
+logs-column-duration = Duration
+logs-status-connected = Connected
+logs-status-connecting = Connecting
+logs-status-closed = Closed
+logs-status-error = Error

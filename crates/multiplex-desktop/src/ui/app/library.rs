@@ -1308,209 +1308,71 @@ impl MultiplexApp {
             )
     }
 
-    pub(super) fn render_logs_view(&self, _cx: &Context<Self>) -> Div {
+    pub(super) fn render_logs_view(&self, cx: &Context<Self>) -> Div {
         let logs: Vec<&SessionLogEntry> = self.saved.session_logs.iter().rev().collect();
-
+        let metadata_width = theme::SPACE_9 + theme::SPACE_9;
         v_flex()
-            .size_full()
-            .flex_1()
-            .min_h_0()
-            .gap_3()
-            .p_5()
+            .size_full().flex_1().min_h_0()
+            .gap(px(theme::SPACE_4)).p(px(theme::SPACE_5))
             .bg(theme::library_bg())
-            .child(
-                h_flex()
-                    .justify_between()
-                    .items_center()
-                    .child(
-                        div()
-                            .text_size(px(theme::TYPE_TITLE_SIZE))
-                            .font_semibold()
-                            .text_color(theme::text_main())
-                            .child(localization::session_history_title()),
-                    )
-                    .when(!logs.is_empty(), |this| {
-                        this.child(
-                            h_flex().gap_2().items_center().child(
-                                div()
-                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                                    .text_color(theme::text_muted())
-                                    .child(localization::session_history_count(logs.len())),
-                            ),
-                        )
-                    }),
-            )
-            .child(
-                v_flex()
-                    .flex_1()
-                    .min_h_0()
-                    .gap_2()
-                    .overflow_y_scrollbar()
-                    .children(self.panes.iter().filter(|p| p.connected).map(|pane| {
-                        h_flex()
-                            .justify_between()
-                            .items_center()
-                            .p_4()
-                            .rounded(px(theme::CARD_RADIUS))
-                            .bg(theme::library_card())
-                            .border_1()
-                            .border_color(theme::with_alpha(theme::success(), 0.3))
-                            .child(
-                                h_flex()
-                                    .gap_3()
-                                    .items_center()
-                                    .child(
-                                        crate::ui::status::status_glyph(multiplex_ui_contract::StatusKind::Done),
-                                    )
-                                    .child(
-                                        v_flex()
-                                            .gap(px(theme::SPACE_1))
-                                            .child(
-                                                div()
-                                                    .text_size(px(theme::TYPE_HEADING_SIZE))
-                                                    .font_semibold()
-                                                    .text_color(theme::text_main())
-                                                    .child(pane.title.clone()),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                                    .text_color(theme::text_muted())
-                                                    .child(pane.endpoint.clone()),
-                                            ),
-                                    ),
-                            )
-                            .child(self.status_badge(
-                                localization::session_history_active_status(),
-                                theme::library_bg(),
-                                theme::success(),
-                            ))
-                            .into_any_element()
-                    }))
-                    .children(logs.iter().map(|entry| {
-                        let (status, status_label) = match entry.status {
-                            SessionLogStatus::Connected => {
-                                (multiplex_ui_contract::StatusKind::Done, "Connected")
-                            }
-                            SessionLogStatus::Connecting => {
-                                (multiplex_ui_contract::StatusKind::Busy, "Connecting")
-                            }
-                            SessionLogStatus::Disconnected => {
-                                (multiplex_ui_contract::StatusKind::Idle, "Closed")
-                            }
-                            SessionLogStatus::Error => {
-                                (multiplex_ui_contract::StatusKind::Error, "Error")
-                            }
-                        };
-                        let status_color = crate::ui::status::status_color(status);
-
-                        h_flex()
-                            .justify_between()
-                            .items_center()
-                            .p_4()
-                            .rounded(px(theme::CARD_RADIUS))
-                            .bg(theme::library_card())
-                            .border_1()
-                            .border_color(theme::border())
-                            .child(
-                                h_flex()
-                                    .gap_3()
-                                    .items_center()
-                                    .child(crate::ui::status::status_glyph(status))
-                                    .child(
-                                        v_flex()
-                                            .gap(px(theme::SPACE_1))
-                                            .child(
-                                                h_flex()
-                                                    .gap_2()
-                                                    .items_center()
-                                                    .child(
-                                                        div()
-                                                            .text_size(px(theme::TYPE_HEADING_SIZE))
-                                                            .font_semibold()
-                                                            .text_color(theme::text_main())
-                                                            .child(entry.title.clone()),
-                                                    )
-                                                    .child(self.status_badge(
-                                                        status_label,
-                                                        theme::library_bg(),
-                                                        status_color,
-                                                    )),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                                    .text_color(theme::text_muted())
-                                                    .child(format!(
-                                                        "{}  {}@{}",
-                                                        entry.endpoint(),
-                                                        entry.username,
-                                                        entry.host,
-                                                    )),
-                                            )
-                                            .child(
-                                                h_flex().gap_2().child(
-                                                    div()
-                                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                                        .text_color(theme::text_muted())
-                                                        .child(localization::session_history_started_duration(
-                                                            entry.started_display(),
-                                                            entry.duration_display(),
-                                                        )),
-                                                ),
-                                            )
-                                            .when_some(
-                                                entry.error_message.as_ref(),
-                                                |this, msg| {
-                                                    this.child(
-                                                        div()
-                                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                                            .text_color(theme::danger())
-                                                            .child(msg.clone()),
-                                                    )
-                                                },
-                                            ),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                    .text_color(theme::text_muted())
-                                    .child(entry.duration_display()),
-                            )
-                            .into_any_element()
-                    }))
-                    .when(logs.is_empty() && self.panes.is_empty(), |this| {
-                        this.child(
-                            self.render_library_empty_state(
-                                Icon::new(IconName::BookOpen)
-                                    .size(px(theme::ICON_SIZE_LARGE))
-                                    .text_color(theme::accent()),
-                                "No session history yet",
-                                "Connection history appears here after you open your first SSH workspace.",
-                            )
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .justify_center()
-                                    .child(
-                                        Button::new("logs-open-hosts")
-                                            .debug_selector(|| "logs-open-hosts".to_string())
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Accent,
-                                                _cx,
-                                            ))
-                                            .label(localization::open_connections_action())
-                                            .on_click(_cx.listener(|this, _, _, cx| {
-                                                this.nav_section = NavSection::Hosts;
-                                                cx.notify();
-                                            })),
-                                    ),
-                            ),
-                        )
-                    }),
-            )
+            .child(h_flex().items_center().justify_between()
+                .child(div().text_size(px(theme::TYPE_TITLE_SIZE)).font_semibold()
+                    .text_color(theme::text_main()).child(localization::session_history_title()))
+                .child(div().text_size(px(theme::TYPE_CAPTION_SIZE)).text_color(theme::text_muted())
+                    .child(localization::session_history_count(logs.len()))))
+            .when(!logs.is_empty(), |this| this.child(h_flex()
+                .px(px(theme::SPACE_3)).gap(px(theme::SPACE_4))
+                .text_size(px(theme::TYPE_CAPTION_SIZE)).text_color(theme::text_muted())
+                .child(div().flex_1().min_w_0().child(library_copy(MessageId::LogsColumnSession)))
+                .child(div().w(px(metadata_width)).child(library_copy(MessageId::LogsColumnStatus)))
+                .child(div().w(px(metadata_width)).child(library_copy(MessageId::LogsColumnStarted)))
+                .child(div().w(px(metadata_width)).text_right().child(library_copy(MessageId::LogsColumnDuration)))))
+            .child(v_flex().flex_1().min_h_0().overflow_y_scrollbar()
+                .children(logs.into_iter().map(|entry| {
+                    let live = self.panes.iter().find(|pane| pane.connected && pane.log_id == entry.id);
+                    let (status, label) = if live.is_some() {
+                        (multiplex_ui_contract::StatusKind::Done, localization::session_history_active_status())
+                    } else { match entry.status {
+                        SessionLogStatus::Connected => (multiplex_ui_contract::StatusKind::Done, library_copy(MessageId::LogsStatusConnected)),
+                        SessionLogStatus::Connecting => (multiplex_ui_contract::StatusKind::Busy, library_copy(MessageId::LogsStatusConnecting)),
+                        SessionLogStatus::Disconnected => (multiplex_ui_contract::StatusKind::Idle, library_copy(MessageId::LogsStatusClosed)),
+                        SessionLogStatus::Error => (multiplex_ui_contract::StatusKind::Error, library_copy(MessageId::LogsStatusError)),
+                    }};
+                    let title = live.map(|pane| pane.title.clone()).unwrap_or_else(|| entry.title.clone());
+                    let endpoint = live.map(|pane| pane.endpoint.clone()).unwrap_or_else(|| {
+                        if entry.port == 0 { library_copy(MessageId::SettingsLocalShellTitle) }
+                        else { format!("{}@{}", entry.username, entry.endpoint()) }
+                    });
+                    v_flex().id(gpui::SharedString::from(format!("log-row-{}", entry.id)))
+                        .debug_selector({ let id = entry.id.clone(); move || format!("log-row-{id}") })
+                        .flex_none().gap(px(theme::SPACE_2))
+                        .px(px(theme::SPACE_3)).py(px(theme::SPACE_3))
+                        .border_b_1().border_color(theme::border())
+                        .hover(|style| style.bg(theme::hover()))
+                        .child(h_flex().items_center().gap(px(theme::SPACE_4))
+                            .child(h_flex().flex_1().min_w_0().gap(px(theme::SPACE_3)).items_center()
+                                .child(crate::ui::status::status_glyph(status))
+                                .child(v_flex().flex_1().min_w_0().gap(px(theme::SPACE_1))
+                                    .child(div().text_size(px(theme::TYPE_BODY_SMALL_SIZE)).font_semibold()
+                                        .text_color(theme::text_main()).truncate().child(title))
+                                    .child(div().text_size(px(theme::TYPE_CAPTION_SIZE)).text_color(theme::text_muted()).truncate().child(endpoint))))
+                            .child(div().w(px(metadata_width)).child(self.status_badge(label, theme::control_bg(), crate::ui::status::status_color(status))))
+                            .child(div().w(px(metadata_width)).text_size(px(theme::TYPE_CAPTION_SIZE))
+                                .text_color(theme::text_secondary()).child(entry.started_display()))
+                            .child(div().w(px(metadata_width)).text_right().text_size(px(theme::TYPE_CAPTION_SIZE))
+                                .text_color(theme::text_muted()).child(entry.duration_display())))
+                        .when_some(entry.error_message.as_ref(), |row, message| row.child(div()
+                            .pl(px(theme::ICON_SIZE_SMALL + theme::SPACE_3))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE)).text_color(theme::danger()).child(message.clone())))
+                        .into_any_element()
+                }))
+                .when(self.saved.session_logs.is_empty(), |this| this.child(
+                    self.render_library_empty_state(Icon::new(IconName::BookOpen)
+                        .size(px(theme::ICON_SIZE_LARGE)).text_color(theme::accent()),
+                        "No session history yet", "Connection history appears here after you open your first SSH workspace.")
+                        .child(h_flex().justify_center().child(Self::design_button("logs-open-hosts", theme::ActionTone::Accent, cx)
+                            .debug_selector(|| "logs-open-hosts".to_string()).label(localization::open_connections_action())
+                            .on_click(cx.listener(|this, _, window, cx| this.activate_library_section(NavSection::Hosts, window, cx))))))))
     }
 
     // termirust-ui-surface:vault-keys-snippets:start
