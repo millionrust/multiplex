@@ -36,6 +36,10 @@ final class ControllerViewModel: ObservableObject {
     private var hostRecords: [PairedHostRecord] = []
     private var cache = ControllerFleetCache()
     private let deviceID: UUID
+    private var liveSettingsRefresh: Task<Void, Never>?
+    private var settingsConnection: (any ControllerConnecting)?
+    private var liveSettingsHost: String?
+    private var liveSettingsRoute: ControllerRemoteRouteKind?
     private var terminalSelection: Task<Void, Never>?
     private var operation: Task<Void, Never>?
     let computerBrowser: ControllerComputerBrowser
@@ -121,6 +125,8 @@ final class ControllerViewModel: ObservableObject {
     }
 
     deinit {
+        liveSettingsRefresh?.cancel()
+        terminalSelection?.cancel()
         operation?.cancel()
     }
 
@@ -281,6 +287,7 @@ final class ControllerViewModel: ObservableObject {
 
     func selectHost(id: String?) {
         guard state.selectedHostID != id else { return }
+        stopLiveSettingsRefresh()
         terminalSelection?.cancel()
         activeTerminal?.detach()
         activeTerminal = nil
@@ -437,6 +444,7 @@ final class ControllerViewModel: ObservableObject {
                 explicitlyConfirmed: explicitlyConfirmed
             )
             routeSelectionError = nil
+            stopLiveSettingsRefresh()
             defaults.set(target.rawValue, forKey: Self.selectedRouteDefaultsKey)
             syncRouteProjections()
             operation?.cancel()
@@ -474,6 +482,7 @@ final class ControllerViewModel: ObservableObject {
     }
 
     func suspend() {
+        stopLiveSettingsRefresh()
         terminalSelection?.cancel()
         activeTerminal?.suspend()
         operation?.cancel()
@@ -679,6 +688,65 @@ final class ControllerViewModel: ObservableObject {
         }
     }
 
+    private func stopLiveSettingsRefresh() {
+        liveSettingsRefresh?.cancel()
+        liveSettingsRefresh = nil
+        settingsConnection = nil
+        liveSettingsHost = nil
+        liveSettingsRoute = nil
+    }
+
+    private func startLiveSettingsRefresh() {
+        guard let hostID = state.selectedHostID, let route = selectedRoute else { return }
+        if liveSettingsRefresh != nil, liveSettingsHost == hostID, liveSettingsRoute == route { return }
+        stopLiveSettingsRefresh()
+        liveSettingsHost = hostID
+        liveSettingsRoute = route
+        liveSettingsRefresh = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled, let self else { return }
+                await refreshLiveSettings()
+            }
+        }
+    }
+
+    /// Uses a separate authenticated connection, so checking settings never cancels a viewer.
+    func refreshLiveSettings() async {
+        guard state.connection == .readyReadOnly, !state.isCachedReadOnly,
+              let host = selectedHost, let route = selectedRoute,
+              let selectedConnection else { return }
+        do {
+            if settingsConnection == nil {
+                settingsConnection = try await selectedConnection.independentConnection()
+            }
+            guard let settingsConnection else { return }
+            let snapshot = try await settingsConnection.fetchSessions(host: host) { _ in }
+            guard !Task.isCancelled, state.selectedHostID == host.id, selectedRoute == route else { return }
+            let updated = try host.replacing(capabilityBits: snapshot.capabilityBits)
+            if updated != host {
+                if let hostStore { hostRecords = try await hostStore.upsert(updated) }
+                activeTerminal?.updateCapabilities(snapshot.capabilityBits)
+                screens.updateCapabilities(host: updated, connection: selectedConnection)
+            }
+            guard !Task.isCancelled, state.selectedHostID == host.id, selectedRoute == route else { return }
+            if cache.hosts[host.id]?.revision != snapshot.revision
+                || cache.hosts[host.id]?.updateSequence != snapshot.updateSequence {
+                try cache.replace(
+                    hostFingerprint: host.id, revision: snapshot.revision,
+                    updateSequence: snapshot.updateSequence, sessions: snapshot.sessions,
+                    selectedHostFingerprint: host.id, now: .now
+                )
+                if let cacheStore { try await cacheStore.save(cache) }
+            }
+            state = makeState(selectedHostID: host.id, sessions: snapshot.sessions,
+                              connection: .readyReadOnly, cacheUpdatedAt: .now, isCached: false)
+        } catch {
+            // The live viewer reports its own failures. A temporary metadata failure does not
+            // replace it or silently select another connection route.
+        }
+    }
+
     private func refresh(host: PairedHostRecord) async {
         guard let route = selectedRoute,
               let connectionActor = routeConnections.connection(for: route),
@@ -746,6 +814,7 @@ final class ControllerViewModel: ObservableObject {
                     cacheUpdatedAt: stored?.updatedAt,
                     isCached: false
                 )
+                startLiveSettingsRefresh()
                 return
             } catch {
                 guard !Task.isCancelled, state.selectedHostID == host.id else { return }

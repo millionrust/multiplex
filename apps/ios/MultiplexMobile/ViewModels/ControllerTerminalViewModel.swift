@@ -30,7 +30,7 @@ final class ControllerTerminalViewModel: ObservableObject, Identifiable {
     @Published private(set) var privacyCovered = false
     @Published private(set) var writerViewportReady = false
 
-    private let host: PairedHostRecord
+    private var host: PairedHostRecord
     private let identity: ReadOnlyAttachIdentity
     private let connection: any ControllerConnecting
     private var viewport: TerminalViewportState
@@ -95,6 +95,20 @@ final class ControllerTerminalViewModel: ObservableObject, Identifiable {
         resizeTask?.cancel()
     }
 
+    func updateCapabilities(_ bits: UInt16) {
+        guard bits != host.capabilityBits,
+              let updated = try? host.replacing(capabilityBits: bits) else { return }
+        objectWillChange.send()
+        host = updated
+        guard !intentionallyDetached else { return }
+        acquireAfterAttach = false
+        writerReducer.releaseLocally()
+        publishWriterState()
+        if attachState == .live {
+            launch(interactive: false, cancelExisting: true)
+        }
+    }
+
     var supportsWriterControl: Bool {
         let required: UInt16 = (1 << 1) | (1 << 2)
         let hostAllows = host.capabilityBits & required == required
@@ -141,7 +155,8 @@ final class ControllerTerminalViewModel: ObservableObject, Identifiable {
     }
 
     var canSendInput: Bool {
-        writerLease == .held
+        supportsWriterControl
+            && writerLease == .held
             && writerViewportReady
             && !privacyCovered
             && attachState == .live

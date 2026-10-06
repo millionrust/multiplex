@@ -87,7 +87,7 @@ final class RemoteScreenViewModel: ObservableObject {
     /// still screen sends nothing, so this is deliberately longer than a pause in the work.
     static let weakAfter: TimeInterval = 4
 
-    private let viewer: ScreenViewer
+    private var viewer: ScreenViewer
     /// A preview is the computer's thumbnail profile: about one small picture a second.
     private let preview: Bool
     private var surface: UInt32?
@@ -107,6 +107,21 @@ final class RemoteScreenViewModel: ObservableObject {
         self.preview = preview
         canControlPointer = ticket.canControlPointer
         canControlKeyboard = ticket.canControlKeyboard
+    }
+
+    var selectedSurface: UInt32? { surface }
+
+    func replaceConnection(viewer: ScreenViewer, ticket: ControllerScreenTicket) {
+        self.viewer = viewer
+        canControlPointer = ticket.canControlPointer
+        canControlKeyboard = ticket.canControlKeyboard
+        control = .nobody
+    }
+
+    func restrictCapabilities(_ bits: UInt16) {
+        canControlPointer = canControlPointer && bits & (1 << 6) != 0
+        canControlKeyboard = canControlKeyboard && bits & (1 << 7) != 0
+        if !canControlPointer && !canControlKeyboard { control = .nobody }
     }
 
     /// The size of the computer's screen, in its own pixels.
@@ -245,7 +260,7 @@ final class RemoteScreenViewModel: ObservableObject {
     }
 
     /// Whether this device may send anything at all right now.
-    var isDriving: Bool { !preview && canControlPointer && control == .you }
+    var isDriving: Bool { !preview && (canControlPointer || canControlKeyboard) && control == .you }
 
     /// Asks the computer for the writer lease. It answers with who holds control.
     func requestControl() {
@@ -263,7 +278,7 @@ final class RemoteScreenViewModel: ObservableObject {
     /// In trackpad mode the finger has already moved the pointer, so a tap clicks where the
     /// pointer is rather than where the finger landed.
     func tap(at point: CGPoint, in viewSize: CGSize) {
-        guard isDriving, let surface else { return }
+        guard isDriving, canControlPointer, let surface else { return }
         let target: (x: UInt32, y: UInt32)
         switch pointerMode {
         case .direct:
@@ -284,7 +299,7 @@ final class RemoteScreenViewModel: ObservableObject {
 
     /// Moves the pointer the way a trackpad does: by how far the finger went, not where it is.
     func movePointer(by translation: CGSize, in viewSize: CGSize) {
-        guard isDriving, pointerMode == .trackpad, let surface else { return }
+        guard isDriving, canControlPointer, pointerMode == .trackpad, let surface else { return }
         let scale = scale(in: viewSize)
         guard scale > 0 else { return }
         let moved = CGPoint(
@@ -304,7 +319,7 @@ final class RemoteScreenViewModel: ObservableObject {
 
     /// Scrolls the computer under the pointer, in its own pixels.
     func scroll(by translation: CGSize, at point: CGPoint, in viewSize: CGSize) {
-        guard isDriving, let surface else { return }
+        guard isDriving, canControlPointer, let surface else { return }
         let scale = scale(in: viewSize)
         guard scale > 0 else { return }
         let target = pointerMode == .trackpad

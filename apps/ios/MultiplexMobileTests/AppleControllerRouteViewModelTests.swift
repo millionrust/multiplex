@@ -137,6 +137,29 @@ final class AppleControllerRouteViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.activeTerminal)
     }
 
+    func testLivePermissionsUpdateWithoutCancellingTheViewerConnection() async throws {
+        let fixture = try RouteViewModelFixture.make()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        _ = try await fixture.hostStore.upsert(fixture.host)
+        let metadata = RouteFixtureConnection()
+        let viewing = RouteFixtureConnection(metadata: metadata)
+        let model = ControllerViewModel(
+            connectionActor: viewing, hostStore: fixture.hostStore, cacheStore: fixture.cacheStore,
+            defaults: UserDefaults(suiteName: UUID().uuidString)!, retryPolicy: .singleAttempt
+        )
+        try await waitUntil { model.state.connection == .readyReadOnly }
+        await metadata.setCapabilities(0b11)
+        await model.refreshLiveSettings()
+        XCTAssertEqual(model.selectedHost?.capabilityBits, 0b11)
+        await metadata.setCapabilities(0b1_1111)
+        await model.refreshLiveSettings()
+        XCTAssertEqual(model.selectedHost?.capabilityBits, 0b1_1111)
+        let cancellations = await viewing.cancellations()
+        let refreshes = await metadata.fetches()
+        XCTAssertEqual(cancellations, 0)
+        XCTAssertEqual(refreshes, 2)
+    }
+
     private func waitUntil(
         timeout: Duration = .seconds(2),
         condition: @escaping @MainActor () async -> Bool
@@ -155,10 +178,16 @@ private actor RouteFixtureConnection: ControllerConnecting {
     private var fetchCount = 0
     private var cancelCount = 0
     private let failure: (any Error)?
+    private let metadata: RouteFixtureConnection?
+    private var capabilityBits: UInt16 = 0b1_1111
 
-    init(failure: (any Error)? = nil) {
+    init(failure: (any Error)? = nil, metadata: RouteFixtureConnection? = nil) {
+        self.metadata = metadata
         self.failure = failure
     }
+
+    func independentConnection() -> (any ControllerConnecting)? { metadata }
+    func setCapabilities(_ bits: UInt16) { capabilityBits = bits }
 
     func beginPairing(
         offerText: String,
@@ -184,7 +213,7 @@ private actor RouteFixtureConnection: ControllerConnecting {
         return ControllerFleetSnapshot(
             revision: 1,
             updateSequence: 1,
-            capabilityBits: host.capabilityBits,
+            capabilityBits: capabilityBits,
             sessions: []
         )
     }

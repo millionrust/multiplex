@@ -98,6 +98,24 @@ final class ControllerScreenCoordinator: ObservableObject {
         reconnectAttempt = 0
     }
 
+    func updateCapabilities(host: PairedHostRecord, connection: any ControllerConnecting) {
+        guard let watchingHost, watchingHost.id == host.id,
+              watchingHost.capabilityBits != host.capabilityBits else { return }
+        let wantsPreview = viewer == nil
+        (viewer ?? preview)?.restrictCapabilities(host.capabilityBits)
+        session?.cancel()
+        generation += 1
+        self.watchingHost = host
+        if !Self.mayWatch(host) {
+            unavailable = .notGranted
+            reconnecting = false
+            return
+        }
+        reconnecting = true
+        run(host: host, connection: connection, preview: wantsPreview,
+            surface: (viewer ?? preview)?.selectedSurface, token: generation)
+    }
+
     private func start(
         host: PairedHostRecord,
         connection: any ControllerConnecting,
@@ -229,16 +247,13 @@ final class ControllerScreenCoordinator: ObservableObject {
         token: Int
     ) {
         guard token == generation else { return }
-        let model = RemoteScreenViewModel(
-            viewer: screenViewer,
-            surface: nil,
-            ticket: ticket,
-            preview: wantsPreview
-        )
-        if wantsPreview {
-            preview = model
+        if let current = wantsPreview ? preview : viewer {
+            current.replaceConnection(viewer: screenViewer, ticket: ticket)
         } else {
-            viewer = model
+            let model = RemoteScreenViewModel(
+                viewer: screenViewer, surface: nil, ticket: ticket, preview: wantsPreview
+            )
+            if wantsPreview { preview = model } else { viewer = model }
         }
     }
 

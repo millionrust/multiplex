@@ -147,6 +147,7 @@ struct CreatedControllerSession: Equatable, Sendable {
 }
 
 protocol ControllerConnecting: Sendable {
+    func independentConnection() async throws -> (any ControllerConnecting)?
     func beginPairing(
         offerText: String,
         hostName: String,
@@ -292,6 +293,7 @@ final class AppleControllerRouteConnections: @unchecked Sendable {
 }
 
 extension ControllerConnecting {
+    func independentConnection() async throws -> (any ControllerConnecting)? { nil }
     /// Only a transport that chooses between a Host's addresses has advice to give.
     func lastRouteAdvice(hostID: String) async -> ControllerRouteAdvice? {
         _ = hostID
@@ -622,6 +624,7 @@ actor ControllerConnectionActor: ControllerConnecting {
     private static let codePairingShareBytes = 32
     private static let codePairingOfferBytes = 84
 
+    private let blobStore: any SecureBlobStore
     private let securityEngine: ControllerSecurityEngine
     private let transportFactory: ControllerTransportFactory
     private let discovery: (any ControllerComputerLookup)?
@@ -639,6 +642,7 @@ actor ControllerConnectionActor: ControllerConnecting {
         discovery: (any ControllerComputerLookup)? = nil,
         networkProvider: (any ControllerPhoneNetworkProviding)? = nil
     ) throws {
+        self.blobStore = blobStore
         self.securityEngine = try ControllerSecurityEngine(blobs: blobStore)
         self.transportFactory = transportFactory
         self.discovery = discovery
@@ -646,6 +650,15 @@ actor ControllerConnectionActor: ControllerConnecting {
         self.networkProvider = networkProvider ?? (transportFactory.openEndpoint == nil
             ? ControllerFixedPhoneNetwork(network: PhoneNetwork(link: .other, addresses: [], fingerprint: nil))
             : ControllerPhoneNetworkMonitor())
+    }
+
+    func independentConnection() throws -> (any ControllerConnecting)? {
+        try ControllerConnectionActor(
+            blobStore: blobStore,
+            transportFactory: transportFactory,
+            discovery: discovery,
+            networkProvider: networkProvider
+        )
     }
 
     func lastRouteAdvice(hostID: String) -> ControllerRouteAdvice? {
