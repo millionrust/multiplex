@@ -11,11 +11,12 @@
 use std::path::PathBuf;
 
 use gpui::{
-    AnyElement, Context, InteractiveElement as _, IntoElement as _, ParentElement as _, Styled,
-    Window, div, px,
+    AnyElement, AppContext as _, Context, InteractiveElement as _, IntoElement, ParentElement as _,
+    Render, StatefulInteractiveElement as _, Styled, Window, div, px,
 };
 use gpui_component::{Icon, IconName, StyledExt as _, h_flex, v_flex};
-use multiplex_domain::HostedSessionId;
+use multiplex_domain::{HostedSessionId, OutputSequence};
+use multiplex_ui_contract::MessageId;
 
 use super::hosted_session::DurableSessionPaths;
 use super::session_coordinator::SessionStartRequest;
@@ -120,6 +121,13 @@ impl MultiplexApp {
                 )
                 .children(self.other_terminals.terminals.iter().enumerate().map(
                     |(index, terminal)| {
+                        let preview_terminal = terminal.clone();
+                        let preview_font = self
+                            .saved
+                            .settings
+                            .terminal_font_family
+                            .clone()
+                            .unwrap_or_else(|| "monospace".into());
                         h_flex()
                             .id(("other-terminal", index))
                             .debug_selector(move || format!("other-terminal-{index}"))
@@ -130,6 +138,21 @@ impl MultiplexApp {
                             .border_1()
                             .border_color(theme::soft_border())
                             .bg(theme::library_card())
+                            .cursor_pointer()
+                            .hover(|style| style.bg(theme::chrome_tab()))
+                            .tooltip(move |_, cx| {
+                                cx.new(|cx| {
+                                    TerminalHoverPreview::new(
+                                        preview_terminal.clone(),
+                                        preview_font.clone(),
+                                        cx,
+                                    )
+                                })
+                                .into()
+                            })
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.open_other_terminal(index, window, cx);
+                            }))
                             .child(
                                 Icon::new(IconName::SquareTerminal)
                                     .size(px(theme::ICON_SIZE_DEFAULT))
@@ -162,6 +185,7 @@ impl MultiplexApp {
                                 .label(localization::other_terminals_open_action())
                                 .on_click(cx.listener(
                                     move |this, _, window, cx| {
+                                        cx.stop_propagation();
                                         this.open_other_terminal(index, window, cx);
                                     },
                                 )),
@@ -244,4 +268,188 @@ fn read_other_terminals(app_root: Option<PathBuf>) -> Vec<OtherTerminal> {
     }
 
     terminals
+}
+
+/// A transient read-only viewer. It requests neither a writer lease nor a PTY resize,
+/// and its output stays in memory only while the tooltip is visible.
+struct TerminalHoverPreview {
+    terminal: OtherTerminal,
+    font: String,
+    lines: Option<Result<Vec<String>, ()>>,
+}
+
+impl TerminalHoverPreview {
+    fn new(terminal: OtherTerminal, font: String, cx: &mut Context<Self>) -> Self {
+        let kind = terminal.kind.clone();
+        cx.spawn(async move |this, cx| {
+            loop {
+                let kind = kind.clone();
+                let lines = cx
+                    .background_executor()
+                    .spawn(async move { read_terminal_preview(&kind) })
+                    .await;
+                if this
+                    .update(cx, |view, cx| {
+                        view.lines = Some(lines);
+                        cx.notify();
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+                cx.background_executor()
+                    .timer(std::time::Duration::from_secs(1))
+                    .await;
+            }
+        })
+        .detach();
+        Self {
+            terminal,
+            font,
+            lines: None,
+        }
+    }
+}
+
+impl Render for TerminalHoverPreview {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let lines = match &self.lines {
+            None => vec![localization::static_message(
+                MessageId::OtherTerminalsPreviewLoading,
+            )],
+            Some(Err(())) => vec![localization::static_message(
+                MessageId::OtherTerminalsPreviewUnavailable,
+            )],
+            Some(Ok(lines)) if lines.is_empty() => vec![localization::static_message(
+                MessageId::OtherTerminalsPreviewEmpty,
+            )],
+            Some(Ok(lines)) => lines.clone(),
+        };
+        v_flex()
+            .id("other-terminal-preview")
+            .debug_selector(|| "other-terminal-preview".into())
+            .w(px(theme::DIALOG_MAX_WIDTH))
+            .max_w_full()
+            .p(px(theme::SPACE_4))
+            .gap(px(theme::SPACE_3))
+            .rounded(px(theme::CONTROL_RADIUS))
+            .bg(theme::library_card())
+            .shadow(theme::popover_shadow())
+            .child(
+                div()
+                    .font_medium()
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                    .truncate()
+                    .child(self.terminal.title.clone()),
+            )
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                    .text_color(theme::text_muted())
+                    .child(localization::static_message(
+                        MessageId::OtherTerminalsPreviewHeading,
+                    )),
+            )
+            .child(
+                v_flex()
+                    .w_full()
+                    .min_w_0()
+                    .p(px(theme::SPACE_3))
+                    .bg(theme::terminal_default_bg())
+                    .rounded(px(theme::CONTROL_RADIUS))
+                    .font_family(self.font.clone())
+                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                    .text_color(theme::terminal_default_fg())
+                    .children(
+                        lines
+                            .into_iter()
+                            .map(|line| div().w_full().truncate().child(line)),
+                    ),
+            )
+    }
+}
+
+fn read_terminal_preview(kind: &OtherTerminalKind) -> Result<Vec<String>, ()> {
+    use multiplex_client::{ConnectOptions, HostClient, LocalEndpoint};
+    use rand::RngCore as _;
+    use tokio_util::sync::CancellationToken;
+    let OtherTerminalKind::Console {
+        session_id,
+        runtime_root,
+        ..
+    } = kind;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|_| ())?;
+    runtime.block_on(async {
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            let cancel = CancellationToken::new();
+            let mut nonce = [0; 32];
+            rand::rngs::OsRng.fill_bytes(&mut nonce);
+            let mut client = HostClient::connect(
+                LocalEndpoint::new(runtime_root, *session_id),
+                ConnectOptions::local_read_only(*session_id, nonce),
+                &cancel,
+            )
+            .await
+            .map_err(|_| ())?;
+            let state = client.get_state(&cancel).await.map_err(|_| ())?;
+            let from = OutputSequence::new(state.latest_sequence.saturating_sub(64));
+            let outputs = client
+                .attach(from, 160, 48, &cancel)
+                .await
+                .map_err(|_| ())?;
+            let mut terminal =
+                crate::terminal::TerminalState::new(crate::terminal::TerminalSize::default(), 0);
+            if let Some(snapshot) = client.take_last_snapshot() {
+                terminal.process_bytes(&snapshot.terminal_bytes);
+            }
+            for output in outputs {
+                terminal.process_bytes(&output.bytes);
+            }
+            client.disconnect();
+            Ok(preview_lines(&terminal))
+        })
+        .await
+        .map_err(|_| ())?
+    })
+}
+
+fn preview_lines(terminal: &crate::terminal::TerminalState) -> Vec<String> {
+    let mut lines: Vec<String> = terminal
+        .snapshot()
+        .rows
+        .iter()
+        .map(|row| {
+            let mut line = String::new();
+            for cell in &row.cells {
+                cell.push_text(&mut line);
+            }
+            line.trim_end().to_owned()
+        })
+        .collect();
+    while lines.last().is_some_and(|line| line.is_empty()) {
+        lines.pop();
+    }
+    lines.drain(..lines.len().saturating_sub(14));
+    lines
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn preview_emulates_terminal_control_sequences_and_keeps_recent_lines() {
+        let mut terminal =
+            crate::terminal::TerminalState::new(crate::terminal::TerminalSize::default(), 0);
+        terminal.process_bytes(b"\x1b[31mjob running\x1b[0m\r\nprogress 1\rprogress 2");
+        assert_eq!(
+            super::preview_lines(&terminal),
+            ["job running", "progress 2"]
+        );
+        for _ in 0..30 {
+            terminal.process_bytes(b"\r\nnext");
+        }
+        assert_eq!(super::preview_lines(&terminal).len(), 14);
+    }
 }

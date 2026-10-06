@@ -2631,3 +2631,8 @@ logs-status-connected = Connected
 logs-status-connecting = Connecting
 logs-status-closed = Closed
 logs-status-error = Error
+
+other-terminals-preview-heading = Recent terminal output
+other-terminals-preview-loading = Loading preview…
+other-terminals-preview-unavailable = Preview unavailable. The terminal may have closed.
+other-terminals-preview-empty = No terminal output yet.

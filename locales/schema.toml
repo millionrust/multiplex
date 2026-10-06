@@ -12268,3 +12268,23 @@ description = "Session history table label"
 id = "logs-status-error"
 context = "Compact session history table."
 description = "Session history table label"
+
+[[messages]]
+id = "other-terminals-preview-heading"
+context = "Hover preview of recent CLI terminal output."
+description = "Terminal preview heading"
+
+[[messages]]
+id = "other-terminals-preview-loading"
+context = "Hover preview of recent CLI terminal output."
+description = "Terminal preview loading"
+
+[[messages]]
+id = "other-terminals-preview-unavailable"
+context = "Hover preview of recent CLI terminal output."
+description = "Terminal preview unavailable"
+
+[[messages]]
+id = "other-terminals-preview-empty"
+context = "Hover preview of recent CLI terminal output."
+description = "Terminal preview empty"

@@ -1296,6 +1296,10 @@ other-terminals-attaching = ⟦Åţţåçĥîñĝ ţø ţĥé ţéŕɱîñåļ�
 other-terminals-description = ⟦Ļøçåļ åþþ ţéŕɱîñåļš åñð éẋţéŕñåļ ţéŕɱîñåļš ŕøûţéð ţĥŕøûĝĥ ţĥé Ṁûļţîþļéẋ ÇĻÎ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 other-terminals-heading = ⟦Øţĥéŕ ţéŕɱîñåļš øñ ţĥîš çøɱþûţéŕ~~~~~~~~~~~⟧
 other-terminals-open-action = ⟦Øþéñ⟧
+other-terminals-preview-empty = ⟦Ñø ţéŕɱîñåļ øûţþûţ ýéţ.~~~~~~~~⟧
+other-terminals-preview-heading = ⟦Ŕéçéñţ ţéŕɱîñåļ øûţþûţ~~~~~~~⟧
+other-terminals-preview-loading = ⟦Ļøåðîñĝ þŕéṽîéŵ…~~~~~⟧
+other-terminals-preview-unavailable = ⟦Þŕéṽîéŵ ûñåṽåîļåƀļé. Ţĥé ţéŕɱîñåļ ɱåý ĥåṽé çļøšéð.~~~~~~~~~~~~~~~~~~⟧
 other-terminals-profile-origin = ⟦Ṁûļţîþļéẋ ÇĻÎ · ~~~~~⟧{ $directory }
 other-terminals-tmux-origin = { $count ->
     [many] ⟦ţɱûẋ · ~⟧{ $count }⟦ ŵîñðøŵš~~⟧

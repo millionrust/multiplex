@@ -1296,6 +1296,10 @@ other-terminals-attaching = ⁧…lanimret eht ot gnihcattA⁩
 other-terminals-description = ⁧.ILC xelpitluM eht hguorht detuor slanimret lanretxe dna slanimret ppa lacoL⁩
 other-terminals-heading = ⁧retupmoc siht no slanimret rehtO⁩
 other-terminals-open-action = ⁧nepO⁩
+other-terminals-preview-empty = ⁧.tey tuptuo lanimret oN⁩
+other-terminals-preview-heading = ⁧tuptuo lanimret tneceR⁩
+other-terminals-preview-loading = ⁧…weiverp gnidaoL⁩
+other-terminals-preview-unavailable = ⁧.desolc evah yam lanimret ehT .elbaliavanu weiverP⁩
 other-terminals-profile-origin = ⁧ · ILC xelpitluM⁩{ $directory }
 other-terminals-tmux-origin = { $count ->
     [many] ⁧ · xumt⁩{ $count }⁧swodniw ⁩
