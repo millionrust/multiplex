@@ -8,6 +8,9 @@
 //! to attach to another program's pseudo-terminal, so a row for it could only ever be a claim we
 //! could not honour.
 
+use gpui::prelude::FluentBuilder as _;
+use gpui_component::Disableable as _;
+use gpui_component::scroll::ScrollableElement as _;
 use std::path::PathBuf;
 
 use gpui::{
@@ -44,6 +47,8 @@ pub(super) struct OtherTerminal {
 #[derive(Debug, Default)]
 pub(super) struct OtherTerminalsState {
     pub terminals: Vec<OtherTerminal>,
+    pub(super) close_pending: Option<OtherTerminal>,
+    pub(super) stopping: bool,
 }
 
 impl MultiplexApp {
@@ -190,10 +195,161 @@ impl MultiplexApp {
                                     },
                                 )),
                             )
+                            .child(
+                                Self::design_button(
+                                    ("other-terminal-close", index),
+                                    theme::ActionTone::Danger,
+                                    cx,
+                                )
+                                .debug_selector(move || format!("other-terminal-close-{index}"))
+                                .label(localization::static_message(
+                                    MessageId::OtherTerminalsCloseAction,
+                                ))
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        cx.stop_propagation();
+                                        this.other_terminals.close_pending =
+                                            this.other_terminals.terminals.get(index).cloned();
+                                        this.error_message.clear();
+                                        cx.notify();
+                                    },
+                                )),
+                            )
                     },
                 ))
                 .into_any_element(),
         )
+    }
+
+    pub(super) fn render_other_terminal_close_dialog(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let pending = self.other_terminals.close_pending.as_ref()?;
+        Some(
+            div()
+                .id("other-terminal-close-overlay")
+                .absolute()
+                .inset_0()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .p(px(theme::SPACE_4))
+                .bg(theme::modal_scrim())
+                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_mouse_down(gpui::MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                .child(
+                    v_flex()
+                        .id("other-terminal-close-dialog")
+                        .debug_selector(|| "other-terminal-close-dialog".into())
+                        .w(px(theme::DIALOG_MAX_WIDTH))
+                        .max_w_full()
+                        .max_h_full()
+                        .overflow_y_scrollbar()
+                        .p(px(theme::SPACE_5))
+                        .gap(px(theme::SPACE_4))
+                        .rounded(px(theme::CONTROL_RADIUS))
+                        .bg(theme::library_card())
+                        .shadow(theme::popover_shadow())
+                        .child(div().font_medium().child(localization::static_message(
+                            MessageId::OtherTerminalsCloseHeading,
+                        )))
+                        .child(div().truncate().child(pending.title.clone()))
+                        .child(
+                            div()
+                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                .text_color(theme::text_muted())
+                                .child(localization::static_message(
+                                    MessageId::OtherTerminalsCloseDescription,
+                                )),
+                        )
+                        .when(!self.error_message.is_empty(), |this| {
+                            this.child(
+                                div()
+                                    .text_color(theme::danger())
+                                    .child(self.error_message.clone()),
+                            )
+                        })
+                        .child(
+                            h_flex()
+                                .justify_end()
+                                .gap(px(theme::SPACE_3))
+                                .child(
+                                    Self::design_button(
+                                        "other-terminal-close-cancel",
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    )
+                                    .debug_selector(|| "other-terminal-close-cancel".into())
+                                    .label(localization::common_cancel())
+                                    .disabled(self.other_terminals.stopping)
+                                    .on_click(cx.listener(
+                                        |this, _, _, cx| {
+                                            this.other_terminals.close_pending = None;
+                                            cx.notify();
+                                        },
+                                    )),
+                                )
+                                .child(
+                                    Self::design_button(
+                                        "other-terminal-close-confirm",
+                                        theme::ActionTone::Danger,
+                                        cx,
+                                    )
+                                    .debug_selector(|| "other-terminal-close-confirm".into())
+                                    .label(localization::static_message(
+                                        MessageId::OtherTerminalsCloseAction,
+                                    ))
+                                    .disabled(self.other_terminals.stopping)
+                                    .on_click(cx.listener(
+                                        |this, _, _, cx| this.confirm_other_terminal_close(cx),
+                                    )),
+                                ),
+                        ),
+                )
+                .into_any_element(),
+        )
+    }
+
+    fn confirm_other_terminal_close(&mut self, cx: &mut Context<Self>) {
+        if self.other_terminals.stopping {
+            return;
+        }
+        let Some(pending) = self.other_terminals.close_pending.clone() else {
+            return;
+        };
+        self.other_terminals.stopping = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let kind = pending.kind.clone();
+            let stopped = cx
+                .background_executor()
+                .spawn(async move { stop_other_terminal(&kind) })
+                .await;
+            let refreshed = if stopped.is_ok() {
+                cx.background_executor()
+                    .spawn(async { read_other_terminals(crate::storage::app_dir().ok()) })
+                    .await
+            } else {
+                Vec::new()
+            };
+            let _ = this.update(cx, |app, cx| {
+                app.other_terminals.stopping = false;
+                if stopped.is_ok() {
+                    app.other_terminals.close_pending = None;
+                    app.other_terminals.terminals = refreshed;
+                    app.error_message.clear();
+                    app.status_message =
+                        localization::static_message(MessageId::OtherTerminalsClosed);
+                } else {
+                    app.error_message =
+                        localization::static_message(MessageId::OtherTerminalsCloseFailed);
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     /// Attaches a CLI terminal in a pane through the durable Session Host protocol.
@@ -436,8 +592,132 @@ fn preview_lines(terminal: &crate::terminal::TerminalState) -> Vec<String> {
     lines
 }
 
+fn stop_other_terminal(kind: &OtherTerminalKind) -> Result<(), ()> {
+    use multiplex_client::{ConnectOptions, HostClient, LocalEndpoint};
+    use multiplex_domain::CommandId;
+    use multiplex_host_protocol::wire;
+    use rand::RngCore as _;
+    use tokio_util::sync::CancellationToken;
+    let OtherTerminalKind::Console {
+        session_id,
+        session_dir,
+        runtime_root,
+    } = kind;
+    let expected = multiplex_store::read_host_metadata(session_dir)
+        .map_err(|_| ())?
+        .host_instance_id;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|_| ())?;
+    runtime.block_on(async {
+        tokio::time::timeout(std::time::Duration::from_secs(8), async {
+            let cancel = CancellationToken::new();
+            let mut nonce = [0; 32];
+            rand::rngs::OsRng.fill_bytes(&mut nonce);
+            let mut client = HostClient::connect(
+                LocalEndpoint::new(runtime_root, *session_id),
+                ConnectOptions::local_read_only(*session_id, nonce),
+                &cancel,
+            )
+            .await
+            .map_err(|_| ())?;
+            if client.host_instance_id() != Some(expected) {
+                return Err(());
+            }
+            client
+                .stop(CommandId::new(), wire::StopMode::Graceful, &cancel)
+                .await
+                .map_err(|_| ())?;
+            client.disconnect();
+            Ok(())
+        })
+        .await
+        .map_err(|_| ())?
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn preview_preserves_writer_control_and_close_stops_the_owned_host() {
+        use multiplex_client::{ConnectOptions, HostClient, LocalEndpoint};
+        use multiplex_domain::{HostInstanceId, HostedSessionId};
+        use multiplex_session_host::{LaunchDescriptor, StopDeadlines};
+        use std::collections::BTreeMap;
+        use tokio_util::sync::CancellationToken;
+        let fixture = tempfile::Builder::new()
+            .prefix("multiplex-preview-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let root = std::fs::canonicalize(fixture.path()).unwrap();
+        let session_id = HostedSessionId::new();
+        let session_dir = root.join("session");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        let runtime_root = root.join("runtime");
+        let descriptor = LaunchDescriptor {
+            format_version: LaunchDescriptor::FORMAT_VERSION,
+            session_id,
+            host_instance_id: HostInstanceId::new(),
+            expected_occupant_generation: None,
+            runtime_root: runtime_root.clone(),
+            session_dir: session_dir.clone(),
+            executable: std::fs::canonicalize("/bin/sh").unwrap(),
+            runtime_detection: None,
+            arguments: vec![
+                "-c".into(),
+                "printf 'preview-job-ready\\r\\n'; sleep 30".into(),
+            ],
+            environment: BTreeMap::new(),
+            cwd: Some(root),
+            columns: 93,
+            rows: 27,
+            journal_limits: multiplex_store::JournalLimits::default(),
+            stop_deadlines: StopDeadlines::default(),
+        };
+        let host = multiplex_session_host::start(descriptor).await.unwrap();
+        let cancel = CancellationToken::new();
+        let mut writer = HostClient::connect(
+            LocalEndpoint::new(&runtime_root, session_id),
+            ConnectOptions::local(session_id, [11; 32]),
+            &cancel,
+        )
+        .await
+        .unwrap();
+        let kind = super::OtherTerminalKind::Console {
+            session_id,
+            session_dir,
+            runtime_root,
+        };
+        let mut found = false;
+        for _ in 0..20 {
+            let request = kind.clone();
+            let lines = tokio::task::spawn_blocking(move || super::read_terminal_preview(&request))
+                .await
+                .unwrap()
+                .unwrap();
+            if lines.iter().any(|line| line.contains("preview-job-ready")) {
+                found = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(
+                super::theme::current_design_tokens()
+                    .motion_hosted_connect_poll(false)
+                    .0 as u64,
+            ))
+            .await;
+        }
+        assert!(found);
+        assert!(writer.get_state(&cancel).await.unwrap().has_writer_lease);
+        let request = kind.clone();
+        tokio::task::spawn_blocking(move || super::stop_other_terminal(&request))
+            .await
+            .unwrap()
+            .unwrap();
+        host.wait().await.unwrap();
+    }
+
     #[test]
     fn preview_emulates_terminal_control_sequences_and_keeps_recent_lines() {
         let mut terminal =

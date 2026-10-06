@@ -2636,3 +2636,10 @@ other-terminals-preview-heading = Recent terminal output
 other-terminals-preview-loading = Loading preview…
 other-terminals-preview-unavailable = Preview unavailable. The terminal may have closed.
 other-terminals-preview-empty = No terminal output yet.
+
+
+other-terminals-close-action = Close terminal
+other-terminals-close-heading = Close this terminal?
+other-terminals-close-description = This stops the shell and the processes running inside it, including in other apps or devices viewing this terminal.
+other-terminals-closed = Terminal closed.
+other-terminals-close-failed = Unable to close this terminal. Check whether it is still running and try again.

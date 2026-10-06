@@ -12288,3 +12288,28 @@ description = "Terminal preview unavailable"
 id = "other-terminals-preview-empty"
 context = "Hover preview of recent CLI terminal output."
 description = "Terminal preview empty"
+
+[[messages]]
+id = "other-terminals-close-action"
+context = "Confirmation and result for stopping a CLI terminal from Sessions."
+description = "Other terminal close-action"
+
+[[messages]]
+id = "other-terminals-close-heading"
+context = "Confirmation and result for stopping a CLI terminal from Sessions."
+description = "Other terminal close-heading"
+
+[[messages]]
+id = "other-terminals-close-description"
+context = "Confirmation and result for stopping a CLI terminal from Sessions."
+description = "Other terminal close-description"
+
+[[messages]]
+id = "other-terminals-closed"
+context = "Confirmation and result for stopping a CLI terminal from Sessions."
+description = "Other terminal closed"
+
+[[messages]]
+id = "other-terminals-close-failed"
+context = "Confirmation and result for stopping a CLI terminal from Sessions."
+description = "Other terminal close-failed"

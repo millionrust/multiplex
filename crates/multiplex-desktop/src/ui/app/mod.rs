@@ -13511,6 +13511,10 @@ impl Render for MultiplexApp {
             .when_some(self.pane_context_menu, |this, (pane_id, position)| {
                 this.child(self.render_pane_context_menu_layer(pane_id, position, cx))
             })
+            .when_some(
+                self.render_other_terminal_close_dialog(cx),
+                |this, dialog| this.child(dialog),
+            )
             .when(self.new_session.is_some(), |this| {
                 this.child(self.render_new_session_sheet(cx))
             })
@@ -13590,6 +13594,13 @@ impl MultiplexApp {
         }
 
         if event.keystroke.key.as_str() == "escape" {
+            if self.other_terminals.close_pending.is_some() {
+                if !self.other_terminals.stopping {
+                    self.other_terminals.close_pending = None;
+                    cx.notify();
+                }
+                return true;
+            }
             if self.session_resume.is_some() {
                 self.cancel_session_resume(cx);
                 return true;
@@ -30846,6 +30857,29 @@ sleep 1
             "the section is shown when something outside the app is running"
         );
         assert!(visual.debug_bounds("other-terminal-open-0").is_some());
+        let close = visual
+            .debug_bounds("other-terminal-close-0")
+            .unwrap()
+            .center();
+        visual.simulate_click(close, gpui::Modifiers::none());
+        visual.run_until_parked();
+        assert!(visual.debug_bounds("other-terminal-close-dialog").is_some());
+        app.read_with(cx, |app, _| {
+            assert!(
+                app.active_workspace_id.is_none(),
+                "Close must not open the row"
+            );
+            assert!(
+                !app.other_terminals.stopping,
+                "Closing requires confirmation"
+            );
+        });
+        let cancel = selector_click_center(window, cx, "other-terminal-close-cancel");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(cancel, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            assert!(app.other_terminals.close_pending.is_none())
+        });
     }
 
     #[gpui::test]
