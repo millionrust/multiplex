@@ -370,3 +370,28 @@ private struct RoutePlanFixture: Decodable {
         return try decoder.decode(Self.self, from: Data(contentsOf: url))
     }
 }
+
+@MainActor
+final class ConnectionStartGateTests: XCTestCase {
+    func testCancellationBeforeInstallingTheWaiterCompletesImmediately() async {
+        let gate = ConnectionStartGate<Int>()
+        gate.complete(.failure(CancellationError()))
+        do {
+            let _: Int = try await withCheckedThrowingContinuation { continuation in
+                XCTAssertFalse(gate.install(continuation))
+            }
+            XCTFail("cancelled startup succeeded")
+        } catch { XCTAssertTrue(error is CancellationError) }
+    }
+
+    func testReadyAndCancellationCanOnlyCompleteTheWaiterOnce() async throws {
+        let gate = ConnectionStartGate<Int>()
+        let value: Int = try await withCheckedThrowingContinuation { continuation in
+            XCTAssertTrue(gate.install(continuation))
+            gate.complete(.success(7))
+            gate.complete(.failure(CancellationError()))
+            gate.complete(.success(9))
+        }
+        XCTAssertEqual(value, 7)
+    }
+}

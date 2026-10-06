@@ -70,29 +70,27 @@ private final class NWControllerDuplexConnection: ControllerDuplexConnection, @u
 
     static func open(endpoint: NWEndpoint) async throws -> NWControllerDuplexConnection {
         let connection = NWConnection(to: endpoint, using: .tcp)
+        let gate = ConnectionStartGate<NWControllerDuplexConnection>()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                let gate = ConnectionStartGate()
+                guard gate.install(continuation) else { return }
                 connection.stateUpdateHandler = { state in
                     switch state {
                     case .ready:
-                        if gate.claim() {
-                            continuation.resume(returning: NWControllerDuplexConnection(connection))
-                        }
+                        gate.complete(.success(NWControllerDuplexConnection(connection)))
                     case .failed(let error):
-                        if gate.claim() { continuation.resume(throwing: error) }
+                        gate.complete(.failure(error))
                     case .waiting(let error):
                         // Waiting will not change a refusal or a missing route, and the route
                         // race moves on to the next address as soon as this one fails.
                         if case .posix(let code) = error,
-                           [.ECONNREFUSED, .ENETUNREACH, .EHOSTUNREACH].contains(code),
-                           gate.claim() {
+                           [.ECONNREFUSED, .ENETUNREACH, .EHOSTUNREACH].contains(code) {
                             connection.stateUpdateHandler = nil
                             connection.cancel()
-                            continuation.resume(throwing: error)
+                            gate.complete(.failure(error))
                         }
                     case .cancelled:
-                        if gate.claim() { continuation.resume(throwing: CancellationError()) }
+                        gate.complete(.failure(CancellationError()))
                     default:
                         break
                     }
@@ -100,6 +98,7 @@ private final class NWControllerDuplexConnection: ControllerDuplexConnection, @u
                 connection.start(queue: DispatchQueue(label: "com.multiplex.controller.connection"))
             }
         } onCancel: {
+            gate.complete(.failure(CancellationError()))
             connection.cancel()
         }
     }
@@ -2304,16 +2303,39 @@ actor ControllerConnectionActor: ControllerConnecting {
     }
 }
 
-private final class ConnectionStartGate: @unchecked Sendable {
+/// A cancellation may arrive before Network installs its state handler. Always resume the
+/// waiter exactly once, including that ordering, instead of waiting on an already-cancelled NWConnection.
+final class ConnectionStartGate<Value: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
     private var completed = false
+    private var installed = false
+    private var continuation: CheckedContinuation<Value, Error>?
+    private var pending: Result<Value, Error>?
 
-    func claim() -> Bool {
+    func install(_ continuation: CheckedContinuation<Value, Error>) -> Bool {
         lock.lock()
-        defer { lock.unlock() }
-        guard !completed else { return false }
-        completed = true
+        precondition(!installed)
+        installed = true
+        if let pending {
+            self.pending = nil
+            lock.unlock()
+            continuation.resume(with: pending)
+            return false
+        }
+        self.continuation = continuation
+        lock.unlock()
         return true
+    }
+
+    func complete(_ result: Result<Value, Error>) {
+        lock.lock()
+        guard !completed else { lock.unlock(); return }
+        completed = true
+        let continuation = self.continuation
+        self.continuation = nil
+        if continuation == nil { pending = result }
+        lock.unlock()
+        continuation?.resume(with: result)
     }
 }
 
