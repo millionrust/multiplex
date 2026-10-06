@@ -28435,6 +28435,64 @@ sleep 1
     }
 
     #[gpui::test]
+    fn e2e_about_values_and_update_controls_fit_the_settings_card(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.settings_section = multiplex_ui_contract::SettingsSectionId::About;
+                    app.updates.status = super::updates::UpdateStatus::UpToDate;
+                    app.activate_library_section(NavSection::Settings, window, cx);
+                })
+            })
+            .unwrap();
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        for width in [1120., 1600.] {
+            visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(720.)));
+            visual.run_until_parked();
+            let body = visual.debug_bounds("about-details").unwrap();
+            assert!(body.size.width > gpui::px(300.));
+            for selector in [
+                "about-version-value",
+                "about-build-value",
+                "about-platform-value",
+                "about-license-value",
+                "about-source-value",
+            ] {
+                let value = visual.debug_bounds(selector).unwrap();
+                assert!(
+                    value.size.width > gpui::px(160.),
+                    "{selector} must have room for readable text"
+                );
+                assert!(
+                    value.size.height < gpui::px(crate::ui::theme::CONTROL_HEIGHT_DEFAULT * 2.0),
+                    "{selector} must not wrap vertically"
+                );
+                assert!(value.right() <= body.right());
+            }
+            let button = visual.debug_bounds("about-copy-details").unwrap();
+            assert!(
+                button.bottom() <= gpui::px(720.),
+                "update controls remain reachable without oversized metadata rows"
+            );
+        }
+        let point = visual.debug_bounds("about-copy-details").unwrap().center();
+        visual.simulate_click(point, gpui::Modifiers::none());
+        visual.update(|_, cx| {
+            assert!(
+                cx.read_from_clipboard()
+                    .unwrap()
+                    .text()
+                    .unwrap()
+                    .starts_with("Multiplex ")
+            )
+        });
+    }
+
+    #[gpui::test]
     fn e2e_settings_sidebar_shows_one_section_and_search_spans_all(cx: &mut TestAppContext) {
         use multiplex_ui_contract::{SettingId, SettingsAccessibilityCommand, SettingsSectionId};
 

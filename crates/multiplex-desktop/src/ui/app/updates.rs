@@ -237,6 +237,8 @@ impl MultiplexApp {
         };
         let off = matches!(status, UpdateStatus::Off);
         v_flex()
+            .w_full()
+            .min_w_0()
             .gap_2()
             .pt_2()
             .when_some(message, |this, message| {

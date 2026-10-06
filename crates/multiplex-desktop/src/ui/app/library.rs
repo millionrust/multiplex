@@ -1334,8 +1334,10 @@ impl MultiplexApp {
     ) -> Div {
         let title: SharedString = title.into();
         let description: SharedString = description.into();
+        let show_heading = !title.is_empty() || !description.is_empty();
         v_flex()
             .w_full()
+            .min_w_0()
             .gap(px(theme::SPACE_5))
             .px(px(theme::SPACE_6))
             .py(px(theme::SPACE_5))
@@ -1344,24 +1346,26 @@ impl MultiplexApp {
             .border_1()
             .border_color(theme::soft_border())
             .shadow_sm()
-            .child(
-                v_flex()
-                    .gap(px(theme::SPACE_2))
-                    .child(
-                        div()
-                            .text_size(px(theme::TYPE_HEADING_SMALL_SIZE))
-                            .font_semibold()
-                            .text_color(theme::text_main())
-                            .child(title),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                            .line_height(relative(1.5))
-                            .text_color(theme::text_muted())
-                            .child(description),
-                    ),
-            )
+            .when(show_heading, |this| {
+                this.child(
+                    v_flex()
+                        .gap(px(theme::SPACE_2))
+                        .child(
+                            div()
+                                .text_size(px(theme::TYPE_HEADING_SMALL_SIZE))
+                                .font_semibold()
+                                .text_color(theme::text_main())
+                                .child(title),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                .line_height(relative(1.5))
+                                .text_color(theme::text_muted())
+                                .child(description),
+                        ),
+                )
+            })
             .child(body)
     }
 

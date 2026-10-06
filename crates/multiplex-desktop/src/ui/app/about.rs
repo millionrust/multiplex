@@ -35,24 +35,31 @@ fn details() -> String {
 
 impl MultiplexApp {
     pub(super) fn render_about_settings_card(&self, cx: &Context<Self>) -> Div {
-        let row = |label: String, value: String, mono: bool| {
+        let row = |id: &'static str, label: String, value: String, mono: bool| {
             h_flex()
                 .w_full()
-                .items_center()
-                .justify_between()
+                .min_w_0()
+                .flex_none()
+                .items_start()
                 .gap_3()
                 .py_1()
                 .border_t_1()
                 .border_color(theme::soft_border())
                 .child(
                     div()
+                        .flex_none()
+                        .w(px(theme::SPACE_9 + theme::SPACE_8))
                         .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                         .text_color(theme::text_muted())
                         .child(label),
                 )
                 .child(
                     div()
+                        .debug_selector(move || id.to_owned())
+                        .flex_1()
                         .min_w_0()
+                        .truncate()
+                        .text_right()
                         .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                         .text_color(theme::text_main())
                         .when(mono, |this| {
@@ -62,27 +69,39 @@ impl MultiplexApp {
                 )
         };
         self.settings_section_card(
-            localization::settings_section_about(),
-            localization::settings_section_about_description(),
+            "",
+            "",
             v_flex()
+                .debug_selector(|| "about-details".to_owned())
+                .w_full()
+                .min_w_0()
                 .gap_1()
                 .child(row(
+                    "about-version-value",
                     localization::about_version_label(),
                     env!("CARGO_PKG_VERSION").to_owned(),
                     false,
                 ))
                 .child(row(
+                    "about-build-value",
                     localization::about_build_label(),
                     build_commit().to_owned(),
                     true,
                 ))
-                .child(row(localization::about_platform_label(), platform(), false))
                 .child(row(
+                    "about-platform-value",
+                    localization::about_platform_label(),
+                    platform(),
+                    false,
+                ))
+                .child(row(
+                    "about-license-value",
                     localization::about_license_label(),
                     LICENSE.to_owned(),
                     false,
                 ))
                 .child(row(
+                    "about-source-value",
                     localization::about_source_label(),
                     SOURCE_URL.to_owned(),
                     false,
