@@ -5,7 +5,7 @@ use gpui::{
     AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement, SharedString, Styled, Window, div, px, relative,
 };
-use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::button::Button;
 use gpui_component::input::{Input, InputState};
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Disableable, IconName, Sizable, StyledExt as _, h_flex, v_flex};
@@ -854,9 +854,8 @@ impl MultiplexApp {
             .border_color(theme::border())
             .when(matches!(dialog, KeyLifecycleDialog::Generate), |this| {
                 this.child(
-                    Button::new("key-lifecycle-generate")
+                    Self::design_button("key-lifecycle-generate", theme::ActionTone::Accent, cx)
                         .debug_selector(|| "key-lifecycle-generate".to_string())
-                        .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                         .icon(IconName::Plus)
                         .label(key_copy(MessageId::KeyChooseDestinationAction))
                         .on_click(cx.listener(|this, _, window, cx| {
@@ -871,18 +870,23 @@ impl MultiplexApp {
                 },
                 |this, identity_id| {
                     this.child(
-                        Button::new("key-lifecycle-deploy-generated")
-                            .debug_selector(|| "key-lifecycle-deploy-generated".to_string())
-                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                            .label(key_copy(MessageId::KeyDeployAction))
-                            .on_click(cx.listener(move |this, _, window, cx| {
+                        Self::design_button(
+                            "key-lifecycle-deploy-generated",
+                            theme::ActionTone::Accent,
+                            cx,
+                        )
+                        .debug_selector(|| "key-lifecycle-deploy-generated".to_string())
+                        .label(key_copy(MessageId::KeyDeployAction))
+                        .on_click(cx.listener(
+                            move |this, _, window, cx| {
                                 this.open_key_host_picker(
                                     identity_id.clone(),
                                     AuthorizedKeyAction::Add,
                                     window,
                                     cx,
                                 );
-                            })),
+                            },
+                        )),
                     )
                 },
             )
@@ -897,24 +901,24 @@ impl MultiplexApp {
                         }
                     );
                     this.child(
-                        Button::new("key-lifecycle-confirm")
-                            .debug_selector(|| "key-lifecycle-confirm".to_string())
-                            .custom(Self::action_button_style(
-                                if destructive {
-                                    theme::ActionTone::Danger
-                                } else {
-                                    theme::ActionTone::Accent
-                                },
-                                cx,
-                            ))
-                            .label(if destructive {
-                                key_copy(MessageId::KeyRemoveExactAction)
+                        Self::design_button(
+                            "key-lifecycle-confirm",
+                            if destructive {
+                                theme::ActionTone::Danger
                             } else {
-                                key_copy(MessageId::KeyInstallVerifyAction)
-                            })
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.start_key_operation(window, cx);
-                            })),
+                                theme::ActionTone::Accent
+                            },
+                            cx,
+                        )
+                        .debug_selector(|| "key-lifecycle-confirm".to_string())
+                        .label(if destructive {
+                            key_copy(MessageId::KeyRemoveExactAction)
+                        } else {
+                            key_copy(MessageId::KeyInstallVerifyAction)
+                        })
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.start_key_operation(window, cx);
+                        })),
                     )
                 },
             )
@@ -922,13 +926,16 @@ impl MultiplexApp {
                 matches!(dialog, KeyLifecycleDialog::Running { .. }),
                 |this| {
                     this.child(
-                        Button::new("key-lifecycle-cancel-operation")
-                            .debug_selector(|| "key-lifecycle-cancel-operation".to_string())
-                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                            .label(localization::common_cancel())
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.cancel_key_operation(cx);
-                            })),
+                        Self::design_button(
+                            "key-lifecycle-cancel-operation",
+                            theme::ActionTone::Neutral,
+                            cx,
+                        )
+                        .debug_selector(|| "key-lifecycle-cancel-operation".to_string())
+                        .label(localization::common_cancel())
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.cancel_key_operation(cx);
+                        })),
                     )
                 },
             )
@@ -936,9 +943,8 @@ impl MultiplexApp {
                 matches!(dialog, KeyLifecycleDialog::Result { .. }),
                 |this| {
                     this.child(
-                        Button::new("key-lifecycle-done")
+                        Self::design_button("key-lifecycle-done", theme::ActionTone::Accent, cx)
                             .debug_selector(|| "key-lifecycle-done".to_string())
-                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                             .label(key_copy(MessageId::CommonDone))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.close_key_lifecycle(window, cx);

@@ -617,9 +617,8 @@ impl MultiplexApp {
             .w_full()
             .gap_2()
             .child(
-                Button::new("editor-connect")
+                Self::design_button("editor-connect", theme::ActionTone::Accent, cx)
                     .w_full()
-                    .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                     .label(localization::common_connect())
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.connect_from_editor(window, cx);
@@ -630,9 +629,7 @@ impl MultiplexApp {
                     .w_full()
                     .gap_2()
                     .child(
-                        Button::new("editor-save")
-                            .small()
-                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                        Self::design_button("editor-save", theme::ActionTone::Neutral, cx)
                             .icon(IconName::Check)
                             .label(localization::common_save())
                             .on_click(cx.listener(|this, _, window, cx| {

@@ -539,15 +539,17 @@ impl MultiplexApp {
                     )
                     .when(configured, |this| {
                         this.child(
-                            Button::new("settings-secure-sync-refresh-devices")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label(localization::static_message(
-                                    MessageId::SettingsSecureSyncRefreshAction,
-                                ))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.refresh_replication_lifecycle(cx);
-                                })),
+                            Self::design_button(
+                                "settings-secure-sync-refresh-devices",
+                                theme::ActionTone::Neutral,
+                                cx,
+                            )
+                            .label(localization::static_message(
+                                MessageId::SettingsSecureSyncRefreshAction,
+                            ))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.refresh_replication_lifecycle(cx);
+                            })),
                         )
                     }),
             )
@@ -565,32 +567,35 @@ impl MultiplexApp {
                         .gap_2()
                         .flex_wrap()
                         .child(
-                            Button::new("settings-secure-sync-prepare-enrollment")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                                .label(localization::static_message(if pending_enrollment {
-                                    MessageId::SettingsSecureSyncResumeEnrollmentAction
-                                } else {
-                                    MessageId::SettingsSecureSyncPrepareEnrollmentAction
-                                }))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.prepare_replication_enrollment(cx);
-                                })),
+                            Self::design_button(
+                                "settings-secure-sync-prepare-enrollment",
+                                theme::ActionTone::Accent,
+                                cx,
+                            )
+                            .label(localization::static_message(if pending_enrollment {
+                                MessageId::SettingsSecureSyncResumeEnrollmentAction
+                            } else {
+                                MessageId::SettingsSecureSyncPrepareEnrollmentAction
+                            }))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.prepare_replication_enrollment(cx);
+                            })),
                         )
                         .when(pending_enrollment, |this| {
                             this.child(
-                                Button::new("settings-secure-sync-cancel-enrollment")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Danger,
-                                        cx,
-                                    ))
-                                    .label(localization::static_message(
-                                        MessageId::SettingsSecureSyncCancelEnrollmentAction,
-                                    ))
-                                    .on_click(cx.listener(|this, _, _, cx| {
+                                Self::design_button(
+                                    "settings-secure-sync-cancel-enrollment",
+                                    theme::ActionTone::Danger,
+                                    cx,
+                                )
+                                .label(localization::static_message(
+                                    MessageId::SettingsSecureSyncCancelEnrollmentAction,
+                                ))
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
                                         this.cancel_replication_enrollment(cx);
-                                    })),
+                                    },
+                                )),
                             )
                         }),
                 )
@@ -611,22 +616,23 @@ impl MultiplexApp {
                                         )),
                                 )
                                 .child(
-                                    Button::new("settings-secure-sync-copy-request")
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Neutral,
-                                            cx,
-                                        ))
-                                        .label(localization::static_message(
-                                            MessageId::SettingsSecureSyncCopyRequestAction,
-                                        ))
-                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                    Self::design_button(
+                                        "settings-secure-sync-copy-request",
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    )
+                                    .label(localization::static_message(
+                                        MessageId::SettingsSecureSyncCopyRequestAction,
+                                    ))
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| {
                                             this.copy_replication_payload(
                                                 Some(request.clone()),
                                                 MessageId::SettingsSecureSyncRequestCopied,
                                                 cx,
                                             );
-                                        })),
+                                        },
+                                    )),
                                 ),
                         )
                     },
@@ -634,16 +640,18 @@ impl MultiplexApp {
                 .child(Input::new(&self.replication_inputs.joining_bundle))
                 .child(Input::new(&self.replication_inputs.verification_code))
                 .child(
-                    Button::new("settings-secure-sync-accept-enrollment")
-                        .small()
-                        .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                        .label(localization::static_message(
-                            MessageId::SettingsSecureSyncAcceptEnrollmentAction,
-                        ))
-                        .disabled(!pending_enrollment)
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.accept_replication_enrollment(window, cx);
-                        })),
+                    Self::design_button(
+                        "settings-secure-sync-accept-enrollment",
+                        theme::ActionTone::Accent,
+                        cx,
+                    )
+                    .label(localization::static_message(
+                        MessageId::SettingsSecureSyncAcceptEnrollmentAction,
+                    ))
+                    .disabled(!pending_enrollment)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.accept_replication_enrollment(window, cx);
+                    })),
                 )
             })
             .when(configured, |this| {
@@ -697,21 +705,22 @@ impl MultiplexApp {
                             )
                             .when(owner && device.active && !device.local, |this| {
                                 this.child(
-                                    Button::new(("settings-secure-sync-revoke-device", index))
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Danger,
-                                            cx,
-                                        ))
-                                        .label(localization::static_message(
-                                            MessageId::SettingsSecureSyncRevokeAction,
-                                        ))
-                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                    Self::design_button(
+                                        ("settings-secure-sync-revoke-device", index),
+                                        theme::ActionTone::Danger,
+                                        cx,
+                                    )
+                                    .label(localization::static_message(
+                                        MessageId::SettingsSecureSyncRevokeAction,
+                                    ))
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| {
                                             this.stage_replication_device_revoke(
                                                 device_id.clone(),
                                                 cx,
                                             );
-                                        })),
+                                        },
+                                    )),
                                 )
                             })
                     },
@@ -724,32 +733,34 @@ impl MultiplexApp {
                                 .gap_2()
                                 .flex_wrap()
                                 .child(
-                                    Button::new("settings-secure-sync-confirm-revoke")
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Danger,
-                                            cx,
-                                        ))
-                                        .label(localization::static_message(
-                                            MessageId::SettingsSecureSyncConfirmRevokeAction,
-                                        ))
-                                        .on_click(cx.listener(|this, _, _, cx| {
+                                    Self::design_button(
+                                        "settings-secure-sync-confirm-revoke",
+                                        theme::ActionTone::Danger,
+                                        cx,
+                                    )
+                                    .label(localization::static_message(
+                                        MessageId::SettingsSecureSyncConfirmRevokeAction,
+                                    ))
+                                    .on_click(cx.listener(
+                                        |this, _, _, cx| {
                                             this.confirm_replication_device_revoke(cx);
-                                        })),
+                                        },
+                                    )),
                                 )
                                 .child(
-                                    Button::new("settings-secure-sync-cancel-revoke")
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Neutral,
-                                            cx,
-                                        ))
-                                        .label(localization::static_message(
-                                            MessageId::SettingsSecureSyncCancelAction,
-                                        ))
-                                        .on_click(cx.listener(|this, _, _, cx| {
+                                    Self::design_button(
+                                        "settings-secure-sync-cancel-revoke",
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    )
+                                    .label(localization::static_message(
+                                        MessageId::SettingsSecureSyncCancelAction,
+                                    ))
+                                    .on_click(cx.listener(
+                                        |this, _, _, cx| {
                                             this.cancel_replication_device_revoke(cx);
-                                        })),
+                                        },
+                                    )),
                                 ),
                         )
                     },
@@ -761,37 +772,39 @@ impl MultiplexApp {
                                 .gap_2()
                                 .flex_wrap()
                                 .child(
-                                    Button::new("settings-secure-sync-enroll-device")
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Accent,
-                                            cx,
-                                        ))
-                                        .label(localization::static_message(
-                                            MessageId::SettingsSecureSyncAddDeviceAction,
-                                        ))
-                                        .on_click(cx.listener(|this, _, window, cx| {
+                                    Self::design_button(
+                                        "settings-secure-sync-enroll-device",
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    )
+                                    .label(localization::static_message(
+                                        MessageId::SettingsSecureSyncAddDeviceAction,
+                                    ))
+                                    .on_click(cx.listener(
+                                        |this, _, window, cx| {
                                             this.enroll_replication_device(window, cx);
-                                        })),
+                                        },
+                                    )),
                                 )
                                 .child(
-                                    Button::new("settings-secure-sync-rotate-keys")
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Neutral,
-                                            cx,
-                                        ))
-                                        .label(localization::static_message(
-                                            MessageId::SettingsSecureSyncRotateKeysAction,
-                                        ))
-                                        .disabled(
-                                            self.replication_lifecycle
-                                                .pending_authority_revision
-                                                .is_some(),
-                                        )
-                                        .on_click(cx.listener(|this, _, _, cx| {
+                                    Self::design_button(
+                                        "settings-secure-sync-rotate-keys",
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    )
+                                    .label(localization::static_message(
+                                        MessageId::SettingsSecureSyncRotateKeysAction,
+                                    ))
+                                    .disabled(
+                                        self.replication_lifecycle
+                                            .pending_authority_revision
+                                            .is_some(),
+                                    )
+                                    .on_click(cx.listener(
+                                        |this, _, _, cx| {
                                             this.rotate_replication_keys(cx);
-                                        })),
+                                        },
+                                    )),
                                 ),
                         )
                 })
@@ -803,22 +816,23 @@ impl MultiplexApp {
                                 .gap_2()
                                 .flex_wrap()
                                 .child(
-                                    Button::new("settings-secure-sync-copy-bundle")
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Accent,
-                                            cx,
-                                        ))
-                                        .label(localization::static_message(
-                                            MessageId::SettingsSecureSyncCopyBundleAction,
-                                        ))
-                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                    Self::design_button(
+                                        "settings-secure-sync-copy-bundle",
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    )
+                                    .label(localization::static_message(
+                                        MessageId::SettingsSecureSyncCopyBundleAction,
+                                    ))
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| {
                                             this.copy_replication_payload(
                                                 Some(bundle.clone()),
                                                 MessageId::SettingsSecureSyncBundleCopied,
                                                 cx,
                                             );
-                                        })),
+                                        },
+                                    )),
                                 )
                                 .when_some(
                                     self.replication_lifecycle.verification_code.clone(),
@@ -833,22 +847,23 @@ impl MultiplexApp {
                                                 )),
                                         )
                                         .child(
-                                            Button::new("settings-secure-sync-copy-code")
-                                                .small()
-                                                .custom(Self::action_button_style(
-                                                    theme::ActionTone::Neutral,
-                                                    cx,
-                                                ))
-                                                .label(localization::static_message(
-                                                    MessageId::SettingsSecureSyncCopyCodeAction,
-                                                ))
-                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                            Self::design_button(
+                                                "settings-secure-sync-copy-code",
+                                                theme::ActionTone::Neutral,
+                                                cx,
+                                            )
+                                            .label(localization::static_message(
+                                                MessageId::SettingsSecureSyncCopyCodeAction,
+                                            ))
+                                            .on_click(
+                                                cx.listener(move |this, _, _, cx| {
                                                     this.copy_replication_payload(
                                                         Some(code.clone()),
                                                         MessageId::SettingsSecureSyncCodeCopied,
                                                         cx,
                                                     );
-                                                })),
+                                                }),
+                                            ),
                                         )
                                     },
                                 ),
@@ -863,36 +878,38 @@ impl MultiplexApp {
                                 .gap_2()
                                 .flex_wrap()
                                 .child(
-                                    Button::new("settings-secure-sync-copy-authority-update")
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Accent,
-                                            cx,
-                                        ))
-                                        .label(localization::static_message(
-                                            MessageId::SettingsSecureSyncCopyAuthorityUpdateAction,
-                                        ))
-                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                    Self::design_button(
+                                        "settings-secure-sync-copy-authority-update",
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    )
+                                    .label(localization::static_message(
+                                        MessageId::SettingsSecureSyncCopyAuthorityUpdateAction,
+                                    ))
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| {
                                             this.copy_replication_payload(
                                                 Some(update.clone()),
                                                 MessageId::SettingsSecureSyncAuthorityUpdateCopied,
                                                 cx,
                                             );
-                                        })),
+                                        },
+                                    )),
                                 )
                                 .child(
-                                    Button::new("settings-secure-sync-ack-authority-update")
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Neutral,
-                                            cx,
-                                        ))
-                                        .label(localization::static_message(
-                                            MessageId::SettingsSecureSyncAcknowledgeDeliveryAction,
-                                        ))
-                                        .on_click(cx.listener(|this, _, _, cx| {
+                                    Self::design_button(
+                                        "settings-secure-sync-ack-authority-update",
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    )
+                                    .label(localization::static_message(
+                                        MessageId::SettingsSecureSyncAcknowledgeDeliveryAction,
+                                    ))
+                                    .on_click(cx.listener(
+                                        |this, _, _, cx| {
                                             this.acknowledge_replication_authority_update(cx);
-                                        })),
+                                        },
+                                    )),
                                 ),
                         )
                     },
@@ -900,30 +917,36 @@ impl MultiplexApp {
                 .when(!owner, |this| {
                     this.child(Input::new(&self.replication_inputs.authority_update))
                         .child(
-                            Button::new("settings-secure-sync-apply-authority-update")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label(localization::static_message(
-                                    MessageId::SettingsSecureSyncApplyAuthorityUpdateAction,
-                                ))
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            Self::design_button(
+                                "settings-secure-sync-apply-authority-update",
+                                theme::ActionTone::Neutral,
+                                cx,
+                            )
+                            .label(localization::static_message(
+                                MessageId::SettingsSecureSyncApplyAuthorityUpdateAction,
+                            ))
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.apply_replication_authority_update(window, cx);
-                                })),
+                                },
+                            )),
                         )
                 })
                 .when(
                     self.replication_lifecycle.deletion_review.is_none(),
                     |this| {
                         this.child(
-                            Button::new("settings-secure-sync-review-delete")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Danger, cx))
-                                .label(localization::static_message(
-                                    MessageId::SettingsSecureSyncDeleteLocalAction,
-                                ))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.review_replication_deletion(cx);
-                                })),
+                            Self::design_button(
+                                "settings-secure-sync-review-delete",
+                                theme::ActionTone::Danger,
+                                cx,
+                            )
+                            .label(localization::static_message(
+                                MessageId::SettingsSecureSyncDeleteLocalAction,
+                            ))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.review_replication_deletion(cx);
+                            })),
                         )
                     },
                 )
@@ -956,33 +979,35 @@ impl MultiplexApp {
                             h_flex()
                                 .gap_2()
                                 .child(
-                                    Button::new("settings-secure-sync-confirm-delete")
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Danger,
-                                            cx,
-                                        ))
-                                        .label(localization::static_message(
-                                            MessageId::SettingsSecureSyncConfirmDeleteAction,
-                                        ))
-                                        .disabled(!exact_delete)
-                                        .on_click(cx.listener(|this, _, window, cx| {
+                                    Self::design_button(
+                                        "settings-secure-sync-confirm-delete",
+                                        theme::ActionTone::Danger,
+                                        cx,
+                                    )
+                                    .label(localization::static_message(
+                                        MessageId::SettingsSecureSyncConfirmDeleteAction,
+                                    ))
+                                    .disabled(!exact_delete)
+                                    .on_click(cx.listener(
+                                        |this, _, window, cx| {
                                             this.delete_local_replication(window, cx);
-                                        })),
+                                        },
+                                    )),
                                 )
                                 .child(
-                                    Button::new("settings-secure-sync-cancel-delete")
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Neutral,
-                                            cx,
-                                        ))
-                                        .label(localization::static_message(
-                                            MessageId::SettingsSecureSyncCancelAction,
-                                        ))
-                                        .on_click(cx.listener(|this, _, _, cx| {
+                                    Self::design_button(
+                                        "settings-secure-sync-cancel-delete",
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    )
+                                    .label(localization::static_message(
+                                        MessageId::SettingsSecureSyncCancelAction,
+                                    ))
+                                    .on_click(cx.listener(
+                                        |this, _, _, cx| {
                                             this.cancel_replication_deletion(cx);
-                                        })),
+                                        },
+                                    )),
                                 ),
                         )
                     },

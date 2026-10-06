@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "173664600dbad102c2d6f5f6e6d998e674f24c76ce3f9e94e90c4055fec87e78",
+  "sourceSha256": "599e318c45920eec85235207403c8342ec965bf5f16d817dc6d34bc506d75590",
   "statuses": [
     {
       "color": "color.status.attention",
@@ -2697,6 +2697,20 @@
         "light": "3",
         "recording_friendly": "3",
         "system": "3"
+      }
+    },
+    {
+      "allowedUse": "Primary desktop action buttons; no shadow in high contrast.",
+      "category": "shadow",
+      "description": "Subtle elevation for the selected raised button treatment.",
+      "key": "shadow.button",
+      "reducedMotion": null,
+      "values": {
+        "dark": "0/1/2/0/#00000040",
+        "high_contrast": "none",
+        "light": "0/1/2/0/#1A1D221A",
+        "recording_friendly": "0/1/2/0/#00000040",
+        "system": "0/1/2/0/#00000040"
       }
     },
     {

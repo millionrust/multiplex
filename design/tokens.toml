@@ -1845,3 +1845,10 @@ color = "color.status.error"
 icon = "icon.status.permission_denied"
 text = "text.status.permission_denied"
 shape = "hollow_square"
+
+[[tokens]]
+key = "shadow.button"
+category = "shadow"
+description = "Subtle elevation for the selected raised button treatment."
+allowed_use = "Primary desktop action buttons; no shadow in high contrast."
+values = { system = "0/1/2/0/#00000040", light = "0/1/2/0/#1A1D221A", dark = "0/1/2/0/#00000040", high_contrast = "none", recording_friendly = "0/1/2/0/#00000040" }

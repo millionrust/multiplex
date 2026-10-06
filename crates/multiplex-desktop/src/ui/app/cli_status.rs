@@ -3,8 +3,7 @@ use std::path::Path;
 use gpui::{
     ClipboardItem, Context, Div, InteractiveElement as _, ParentElement as _, Styled as _, div, px,
 };
-use gpui_component::button::{Button, ButtonVariants as _};
-use gpui_component::{Disableable as _, IconName, Sizable as _, StyledExt as _, h_flex, v_flex};
+use gpui_component::{Disableable as _, IconName, StyledExt as _, h_flex, v_flex};
 use multiplex_cli::{CLI_JSON_SCHEMA_VERSION, cli_installation_status};
 
 use super::MultiplexApp;
@@ -142,17 +141,17 @@ impl MultiplexApp {
                                         .child(display_path),
                                 )
                                 .child(
-                                    Button::new("settings-cli-copy-path")
-                                        .debug_selector(|| "settings-cli-copy-path".to_string())
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Neutral,
-                                            cx,
-                                        ))
-                                        .icon(IconName::Copy)
-                                        .label(localization::cli_settings_copy_path())
-                                        .disabled(path.is_none())
-                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                    Self::design_button(
+                                        "settings-cli-copy-path",
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    )
+                                    .debug_selector(|| "settings-cli-copy-path".to_string())
+                                    .icon(IconName::Copy)
+                                    .label(localization::cli_settings_copy_path())
+                                    .disabled(path.is_none())
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| {
                                             if let Some(path) = path.as_ref() {
                                                 cx.write_to_clipboard(ClipboardItem::new_string(
                                                     path.clone(),
@@ -162,7 +161,8 @@ impl MultiplexApp {
                                                 this.error_message.clear();
                                                 cx.notify();
                                             }
-                                        })),
+                                        },
+                                    )),
                                 ),
                         ),
                 )
@@ -183,18 +183,18 @@ impl MultiplexApp {
                                     .into_iter()
                                     .enumerate()
                                     .map(|(index, example)| {
-                                        Button::new(("settings-cli-copy-example", index))
-                                            .debug_selector(move || {
-                                                CLI_EXAMPLE_SELECTORS[index].to_string()
-                                            })
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Neutral,
-                                                cx,
-                                            ))
-                                            .icon(IconName::Copy)
-                                            .label(localization::cli_settings_example(example))
-                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                        Self::design_button(
+                                            ("settings-cli-copy-example", index),
+                                            theme::ActionTone::Neutral,
+                                            cx,
+                                        )
+                                        .debug_selector(move || {
+                                            CLI_EXAMPLE_SELECTORS[index].to_string()
+                                        })
+                                        .icon(IconName::Copy)
+                                        .label(localization::cli_settings_example(example))
+                                        .on_click(
+                                            cx.listener(move |this, _, _, cx| {
                                                 cx.write_to_clipboard(ClipboardItem::new_string(
                                                     example.to_string(),
                                                 ));
@@ -202,7 +202,8 @@ impl MultiplexApp {
                                                     localization::cli_settings_example_copied();
                                                 this.error_message.clear();
                                                 cx.notify();
-                                            }))
+                                            }),
+                                        )
                                     }),
                             ),
                         )

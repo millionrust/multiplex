@@ -62,16 +62,17 @@ impl MultiplexApp {
                         )
                         .when(policy.mode == NotificationMode::Os, |this| {
                             this.child(
-                                Button::new("notification-refresh-permission")
-                                    .small()
-                                    .label(localization::notification_refresh_action())
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    ))
-                                    .on_click(cx.listener(|this, _, _, cx| {
+                                Self::design_button(
+                                    "notification-refresh-permission",
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                )
+                                .label(localization::notification_refresh_action())
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
                                         this.refresh_notification_permission(cx);
-                                    })),
+                                    },
+                                )),
                             )
                         })
                         .when(
@@ -79,16 +80,17 @@ impl MultiplexApp {
                                 == Some(activity_center::ActivityCenterFailure::Corrupt),
                             |this| {
                                 this.child(
-                                    Button::new("notification-reset-store")
-                                        .small()
-                                        .label(localization::notification_reset_action())
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Danger,
-                                            cx,
-                                        ))
-                                        .on_click(cx.listener(|this, _, _, cx| {
+                                    Self::design_button(
+                                        "notification-reset-store",
+                                        theme::ActionTone::Danger,
+                                        cx,
+                                    )
+                                    .label(localization::notification_reset_action())
+                                    .on_click(cx.listener(
+                                        |this, _, _, cx| {
                                             this.reset_notification_store(cx);
-                                        })),
+                                        },
+                                    )),
                                 )
                             },
                         ),

@@ -190,7 +190,6 @@ pub fn apply_to_components(window: Option<&mut gpui::Window>, cx: &mut gpui::App
 pub enum ActionTone {
     Accent,
     AccentSoft,
-    Success,
     Danger,
     Neutral,
 }
@@ -431,35 +430,61 @@ pub fn terminal_search_active_match_bg() -> Hsla {
     with_alpha(accent(), 0.52)
 }
 
+/// Raised neutral buttons chosen in design review variation 08. Accent remains reserved for
+/// links, focus and selected controls, rather than filling action surfaces.
 pub fn action_fill(tone: ActionTone) -> Hsla {
     match tone {
-        ActionTone::Accent => accent(),
-        ActionTone::AccentSoft => accent_soft(),
-        ActionTone::Success => success(),
-        ActionTone::Danger => danger(),
-        ActionTone::Neutral => hover(),
-    }
-}
-
-pub fn action_foreground(tone: ActionTone) -> Hsla {
-    match tone {
-        ActionTone::Accent => token_color(current_design_tokens().color_action_primary_text()),
-        ActionTone::AccentSoft | ActionTone::Success | ActionTone::Danger | ActionTone::Neutral => {
-            text_main()
+        ActionTone::Accent | ActionTone::AccentSoft => control_bg(),
+        ActionTone::Danger | ActionTone::Neutral => {
+            token_color(current_design_tokens().color_bg_elevated())
         }
     }
 }
-
+pub fn action_foreground(tone: ActionTone) -> Hsla {
+    match tone {
+        ActionTone::Danger => danger(),
+        ActionTone::Neutral => text_secondary(),
+        _ => text_main(),
+    }
+}
 pub fn action_border(tone: ActionTone) -> Hsla {
-    with_alpha(action_fill(tone), 0.4)
+    match tone {
+        ActionTone::Accent | ActionTone::AccentSoft => border_strong(),
+        _ => border(),
+    }
 }
-
-pub fn action_hover(tone: ActionTone) -> Hsla {
-    with_alpha(action_fill(tone), 0.92)
+pub fn action_hover(_tone: ActionTone) -> Hsla {
+    token_color(current_design_tokens().color_bg_control_hover())
 }
-
-pub fn action_active(tone: ActionTone) -> Hsla {
-    with_alpha(action_fill(tone), 0.8)
+pub fn action_active(_tone: ActionTone) -> Hsla {
+    token_color(current_design_tokens().color_bg_selected())
+}
+pub fn action_background(tone: ActionTone) -> gpui::Background {
+    if current_theme_kind() == ThemeKind::HighContrast
+        || matches!(tone, ActionTone::Danger | ActionTone::Neutral)
+    {
+        return action_fill(tone).into();
+    }
+    gpui::linear_gradient(
+        180.0,
+        gpui::linear_color_stop(action_hover(tone), 0.0),
+        gpui::linear_color_stop(action_fill(tone), 1.0),
+    )
+}
+pub fn button_shadow(tone: ActionTone) -> Vec<BoxShadow> {
+    if matches!(tone, ActionTone::Danger | ActionTone::Neutral) {
+        return Vec::new();
+    }
+    let shadow = current_design_tokens().shadow_button();
+    if !shadow.visible {
+        return Vec::new();
+    }
+    vec![BoxShadow {
+        color: token_color(shadow.color),
+        offset: point(px(shadow.x), px(shadow.y)),
+        blur_radius: px(shadow.blur),
+        spread_radius: px(shadow.spread),
+    }]
 }
 
 pub fn with_alpha(color: Hsla, alpha: f32) -> Hsla {

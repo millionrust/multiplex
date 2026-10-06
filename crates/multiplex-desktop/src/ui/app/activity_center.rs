@@ -5,9 +5,8 @@ use gpui::{
     Context, Div, Hsla, InteractiveElement as _, IntoElement as _, ParentElement as _, Styled as _,
     Window, div, px,
 };
-use gpui_component::button::{Button, ButtonVariants as _};
 use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::{Icon, IconName, Sizable as _, StyledExt as _, h_flex, v_flex};
+use gpui_component::{Icon, IconName, StyledExt as _, h_flex, v_flex};
 
 use multiplex_domain::{
     ActivityState, DeepLinkSessionState, HostedSession, HostedSessionId, NotificationActivity,
@@ -502,14 +501,16 @@ impl MultiplexApp {
                             ),
                     )
                     .child(
-                        Button::new("activity-center-settings")
-                            .small()
-                            .icon(IconName::Settings)
-                            .label(localization::activity_center_settings_action())
-                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.activate_library_section(NavSection::Settings, window, cx);
-                            })),
+                        Self::design_button(
+                            "activity-center-settings",
+                            theme::ActionTone::Neutral,
+                            cx,
+                        )
+                        .icon(IconName::Settings)
+                        .label(localization::activity_center_settings_action())
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.activate_library_section(NavSection::Settings, window, cx);
+                        })),
                     ),
             )
             .child(
@@ -636,29 +637,31 @@ impl MultiplexApp {
                                     ),
                             )
                             .child(
-                                Button::new(("activity-open", index))
-                                    .small()
-                                    .label(localization::common_open())
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
-                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                Self::design_button(
+                                    ("activity-open", index),
+                                    theme::ActionTone::Accent,
+                                    cx,
+                                )
+                                .label(localization::common_open())
+                                .on_click(cx.listener(
+                                    move |this, _, window, cx| {
                                         this.open_activity_record(open_link, window, cx);
-                                    })),
+                                    },
+                                )),
                             )
                             .child(
-                                Button::new(("activity-dismiss", index))
-                                    .small()
-                                    .icon(IconName::Close)
-                                    .label(localization::activity_center_dismiss_action())
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    ))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                Self::design_button(
+                                    ("activity-dismiss", index),
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                )
+                                .icon(IconName::Close)
+                                .label(localization::activity_center_dismiss_action())
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
                                         this.dismiss_activity_record(dismiss_link, cx);
-                                    })),
+                                    },
+                                )),
                             )
                             .into_any_element()
                     })),

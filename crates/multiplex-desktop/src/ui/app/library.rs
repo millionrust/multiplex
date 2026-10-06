@@ -52,25 +52,26 @@ impl MultiplexApp {
                         .flex_wrap()
                         .children(shells.into_iter().enumerate().map(|(index, shell)| {
                             let selected = shell.program.eq_ignore_ascii_case(&current);
-                            Button::new(("settings-local-shell-detected", index))
-                                .small()
-                                .custom(Self::action_button_style(
-                                    if selected {
-                                        theme::ActionTone::Accent
-                                    } else {
-                                        theme::ActionTone::Neutral
-                                    },
-                                    cx,
-                                ))
-                                .label(shell.label)
-                                .on_click(cx.listener(move |this, _, window, cx| {
+                            Self::design_button(
+                                ("settings-local-shell-detected", index),
+                                if selected {
+                                    theme::ActionTone::Accent
+                                } else {
+                                    theme::ActionTone::Neutral
+                                },
+                                cx,
+                            )
+                            .label(shell.label)
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
                                     this.choose_local_shell(
                                         shell.program.clone(),
                                         shell.args.clone(),
                                         window,
                                         cx,
                                     );
-                                }))
+                                },
+                            ))
                         })),
                 ),
         )
@@ -203,13 +204,9 @@ impl MultiplexApp {
                                 )
                             })
                             .child(
-                                Button::new("keychain-generate")
+                                Self::design_button("keychain-generate", theme::ActionTone::Accent,
+                                        cx)
                                     .debug_selector(|| "keychain-generate".to_string())
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
                                     .icon(IconName::Plus)
                                     .label(library_copy(MessageId::KeyGenerateAction))
                                     .on_click(cx.listener(|this, _, window, cx| {
@@ -217,10 +214,8 @@ impl MultiplexApp {
                                     })),
                             )
                             .child(
-                                Button::new("keychain-browse")
+                                Self::design_button("keychain-browse", theme::ActionTone::Neutral, cx)
                                     .debug_selector(|| "keychain-browse".to_string())
-                                    .small()
-                                    .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
                                     .icon(IconName::FolderOpen)
                                     .label(library_copy(MessageId::KeyAddFileAction))
                                     .on_click(cx.listener(|this, _, window, cx| {
@@ -376,15 +371,11 @@ impl MultiplexApp {
                                             let deploy_identity_id = button_identity.id.clone();
                                             let remove_identity_id = button_identity.id.clone();
                                             this.child(
-                                                Button::new(("keychain-deploy", index))
+                                                Self::design_button(("keychain-deploy", index), theme::ActionTone::Neutral,
+                                                        cx)
                                                     .debug_selector(move || {
                                                         format!("keychain-deploy-{index}")
                                                     })
-                                                    .small()
-                                                    .custom(Self::action_button_style(
-                                                        theme::ActionTone::Accent,
-                                                        cx,
-                                                    ))
                                                     .label(library_copy(MessageId::KeyDeployAction))
                                                     .on_click(cx.listener(
                                                         move |this, _, window, cx| {
@@ -398,15 +389,11 @@ impl MultiplexApp {
                                                     )),
                                             )
                                             .child(
-                                                Button::new(("keychain-remove-remote", index))
+                                                Self::design_button(("keychain-remove-remote", index), theme::ActionTone::Danger,
+                                                        cx)
                                                     .debug_selector(move || {
                                                         format!("keychain-remove-remote-{index}")
                                                     })
-                                                    .small()
-                                                    .custom(Self::action_button_style(
-                                                        theme::ActionTone::Neutral,
-                                                        cx,
-                                                    ))
                                                     .label(library_copy(MessageId::KeyRemoveRemoteAction))
                                                     .on_click(cx.listener(
                                                         move |this, _, window, cx| {
@@ -421,15 +408,11 @@ impl MultiplexApp {
                                             )
                                         })
                                         .child(
-                                            Button::new(("keychain-use", index))
+                                            Self::design_button(("keychain-use", index), theme::ActionTone::AccentSoft,
+                                                    cx)
                                                 .debug_selector(move || {
                                                     format!("keychain-use-{index}")
                                                 })
-                                                .small()
-                                                .custom(Self::action_button_style(
-                                                    theme::ActionTone::AccentSoft,
-                                                    cx,
-                                                ))
                                                 .label(library_copy(MessageId::KeyUseAction))
                                                 .on_click(cx.listener(
                                                     move |this, _, window, cx| {
@@ -459,15 +442,11 @@ impl MultiplexApp {
                                     .gap_2()
                                     .justify_center()
                                     .child(
-                                        Button::new("keys-empty-generate")
+                                        Self::design_button("keys-empty-generate", theme::ActionTone::Accent,
+                                                cx)
                                             .debug_selector(|| {
                                                 "keys-empty-generate".to_string()
                                             })
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Accent,
-                                                cx,
-                                            ))
                                             .icon(IconName::Plus)
                                             .label(library_copy(MessageId::KeyGenerateAction))
                                             .on_click(cx.listener(|this, _, window, cx| {
@@ -475,13 +454,9 @@ impl MultiplexApp {
                                             })),
                                     )
                                     .child(
-                                        Button::new("keys-empty-add")
+                                        Self::design_button("keys-empty-add", theme::ActionTone::Accent,
+                                                cx)
                                             .debug_selector(|| "keys-empty-add".to_string())
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Accent,
-                                                cx,
-                                            ))
                                             .icon(IconName::FolderOpen)
                                             .label(library_copy(MessageId::KeyAddFileAction))
                                             .on_click(cx.listener(|this, _, window, cx| {
@@ -628,19 +603,18 @@ impl MultiplexApp {
                             )
                             .child(
                                 h_flex().gap_2().justify_center().child(
-                                    Button::new("password-identities-open-hosts")
-                                        .debug_selector(|| {
-                                            "password-identities-open-hosts".to_string()
-                                        })
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Accent,
-                                            cx,
-                                        ))
-                                        .label(library_copy(MessageId::KeychainNewHostAction))
-                                        .on_click(cx.listener(|this, _, window, cx| {
+                                    Self::design_button(
+                                        "password-identities-open-hosts",
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    )
+                                    .debug_selector(|| "password-identities-open-hosts".to_string())
+                                    .label(library_copy(MessageId::KeychainNewHostAction))
+                                    .on_click(cx.listener(
+                                        |this, _, window, cx| {
                                             this.open_editor_for_new_host(window, cx);
-                                        })),
+                                        },
+                                    )),
                                 ),
                             ),
                         )
@@ -868,46 +842,42 @@ impl MultiplexApp {
                                                 h_flex()
                                                     .gap_2()
                                                     .child(
-                                                        Button::new("vault-member-clear")
-                                                            .debug_selector(|| {
-                                                                "vault-member-clear".to_string()
-                                                            })
-                                                            .small()
-                                                            .custom(Self::action_button_style(
-                                                                theme::ActionTone::Neutral,
-                                                                cx,
-                                                            ))
-                                                            .label(library_copy(
-                                                                MessageId::VaultMemberClearAction,
-                                                            ))
-                                                            .on_click(cx.listener(
-                                                                |this, _, window, cx| {
-                                                                    this.clear_vault_member_form(
-                                                                        window, cx,
-                                                                    );
-                                                                },
-                                                            )),
+                                                        Self::design_button(
+                                                            "vault-member-clear",
+                                                            theme::ActionTone::Neutral,
+                                                            cx,
+                                                        )
+                                                        .debug_selector(|| {
+                                                            "vault-member-clear".to_string()
+                                                        })
+                                                        .label(library_copy(
+                                                            MessageId::VaultMemberClearAction,
+                                                        ))
+                                                        .on_click(cx.listener(
+                                                            |this, _, window, cx| {
+                                                                this.clear_vault_member_form(
+                                                                    window, cx,
+                                                                );
+                                                            },
+                                                        )),
                                                     )
                                                     .child(
-                                                        Button::new("vault-member-save")
-                                                            .debug_selector(|| {
-                                                                "vault-member-save".to_string()
-                                                            })
-                                                            .small()
-                                                            .custom(Self::action_button_style(
-                                                                theme::ActionTone::Accent,
-                                                                cx,
-                                                            ))
-                                                            .label(library_copy(
-                                                                MessageId::VaultMemberSaveAction,
-                                                            ))
-                                                            .on_click(cx.listener(
-                                                                |this, _, window, cx| {
-                                                                    this.save_vault_member(
-                                                                        window, cx,
-                                                                    );
-                                                                },
-                                                            )),
+                                                        Self::design_button(
+                                                            "vault-member-save",
+                                                            theme::ActionTone::Accent,
+                                                            cx,
+                                                        )
+                                                        .debug_selector(|| {
+                                                            "vault-member-save".to_string()
+                                                        })
+                                                        .label(library_copy(
+                                                            MessageId::VaultMemberSaveAction,
+                                                        ))
+                                                        .on_click(cx.listener(
+                                                            |this, _, window, cx| {
+                                                                this.save_vault_member(window, cx);
+                                                            },
+                                                        )),
                                                     ),
                                             ),
                                     )
@@ -1017,26 +987,16 @@ impl MultiplexApp {
                         h_flex()
                             .gap_2()
                             .child(
-                                Button::new("vault-new")
+                                Self::design_button("vault-new", theme::ActionTone::Neutral, cx)
                                     .debug_selector(|| "vault-new".to_string())
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    ))
                                     .label(library_copy(MessageId::VaultNewAction))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.clear_vault_form(window, cx);
                                     })),
                             )
                             .child(
-                                Button::new("vault-save")
+                                Self::design_button("vault-save", theme::ActionTone::Accent, cx)
                                     .debug_selector(|| "vault-save".to_string())
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
                                     .label(localization::common_save())
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.save_vault(window, cx);
@@ -1283,13 +1243,9 @@ impl MultiplexApp {
                                     .gap_2()
                                     .justify_center()
                                     .child(
-                                        Button::new("known-hosts-open-hosts")
+                                        Self::design_button("known-hosts-open-hosts", theme::ActionTone::Accent,
+                                                cx)
                                             .debug_selector(|| "known-hosts-open-hosts".to_string())
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Accent,
-                                                cx,
-                                            ))
                                             .label(localization::open_connections_action())
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 this.nav_section = NavSection::Hosts;
@@ -1726,13 +1682,17 @@ impl MultiplexApp {
                     .when(!revoked, |this| {
                         let revoke_id = device_id.clone();
                         this.child(
-                            Button::new(("settings-revoke-mobile-device", index))
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Danger, cx))
-                                .label(library_copy(MessageId::SettingsMobileRevokeAction))
-                                .on_click(cx.listener(move |this, _, _, cx| {
+                            Self::design_button(
+                                ("settings-revoke-mobile-device", index),
+                                theme::ActionTone::Danger,
+                                cx,
+                            )
+                            .label(library_copy(MessageId::SettingsMobileRevokeAction))
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
                                     this.revoke_mobile_device(&revoke_id, cx);
-                                })),
+                                },
+                            )),
                         )
                     })
             }))
@@ -2032,27 +1992,33 @@ impl MultiplexApp {
                         .gap_2()
                         .items_center()
                         .child(
-                            Button::new("settings-terminal-font-family-save")
-                                .debug_selector(|| "settings-terminal-font-family-save".to_string())
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                                .label(library_copy(MessageId::SettingsSaveFontFamilyAction))
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            Self::design_button(
+                                "settings-terminal-font-family-save",
+                                theme::ActionTone::Accent,
+                                cx,
+                            )
+                            .debug_selector(|| "settings-terminal-font-family-save".to_string())
+                            .label(library_copy(MessageId::SettingsSaveFontFamilyAction))
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.save_terminal_font_family(window, cx);
-                                })),
+                                },
+                            )),
                         )
                         .child(
-                            Button::new("settings-terminal-font-family-reset")
-                                .debug_selector(|| {
-                                    "settings-terminal-font-family-reset".to_string()
-                                })
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label(library_copy(MessageId::SettingsResetAction))
-                                .disabled(self.saved.settings.terminal_font_family.is_none())
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            Self::design_button(
+                                "settings-terminal-font-family-reset",
+                                theme::ActionTone::Neutral,
+                                cx,
+                            )
+                            .debug_selector(|| "settings-terminal-font-family-reset".to_string())
+                            .label(library_copy(MessageId::SettingsResetAction))
+                            .disabled(self.saved.settings.terminal_font_family.is_none())
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.clear_terminal_font_family(window, cx);
-                                })),
+                                },
+                            )),
                         )
                         .child(
                             div()
@@ -2090,19 +2056,21 @@ impl MultiplexApp {
                         .gap_2()
                         .items_center()
                         .child(
-                            Button::new("settings-reset-onboarding")
-                                .debug_selector(|| "settings-reset-onboarding".to_string())
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label(library_copy(if onboarding_dismissed {
-                                    MessageId::SettingsShowWelcomeAction
-                                } else {
-                                    MessageId::SettingsWelcomeVisible
-                                }))
-                                .disabled(!onboarding_dismissed)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.reset_onboarding_panel(cx);
-                                })),
+                            Self::design_button(
+                                "settings-reset-onboarding",
+                                theme::ActionTone::Neutral,
+                                cx,
+                            )
+                            .debug_selector(|| "settings-reset-onboarding".to_string())
+                            .label(library_copy(if onboarding_dismissed {
+                                MessageId::SettingsShowWelcomeAction
+                            } else {
+                                MessageId::SettingsWelcomeVisible
+                            }))
+                            .disabled(!onboarding_dismissed)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.reset_onboarding_panel(cx);
+                            })),
                         )
                         .child(
                             div()
@@ -2157,25 +2125,31 @@ impl MultiplexApp {
                         .gap_2()
                         .items_center()
                         .child(
-                            Button::new("settings-default-ssh-dir-save")
-                                .debug_selector(|| "settings-default-ssh-dir-save".to_string())
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                                .label(library_copy(MessageId::SettingsSaveDefaultDirectoryAction))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.save_default_ssh_startup_directory(cx);
-                                })),
+                            Self::design_button(
+                                "settings-default-ssh-dir-save",
+                                theme::ActionTone::Accent,
+                                cx,
+                            )
+                            .debug_selector(|| "settings-default-ssh-dir-save".to_string())
+                            .label(library_copy(MessageId::SettingsSaveDefaultDirectoryAction))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.save_default_ssh_startup_directory(cx);
+                            })),
                         )
                         .child(
-                            Button::new("settings-default-ssh-dir-clear")
-                                .debug_selector(|| "settings-default-ssh-dir-clear".to_string())
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label(library_copy(MessageId::SettingsClearAction))
-                                .disabled(!has_default_ssh_dir)
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            Self::design_button(
+                                "settings-default-ssh-dir-clear",
+                                theme::ActionTone::Neutral,
+                                cx,
+                            )
+                            .debug_selector(|| "settings-default-ssh-dir-clear".to_string())
+                            .label(library_copy(MessageId::SettingsClearAction))
+                            .disabled(!has_default_ssh_dir)
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.clear_default_ssh_startup_directory(window, cx);
-                                })),
+                                },
+                            )),
                         )
                         .child(
                             div()
@@ -2269,14 +2243,18 @@ impl MultiplexApp {
                         .gap_2()
                         .items_center()
                         .child(
-                            Button::new("settings-local-shell-save")
-                                .debug_selector(|| "settings-local-shell-save".to_string())
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                                .label(library_copy(MessageId::SettingsSaveShellAction))
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            Self::design_button(
+                                "settings-local-shell-save",
+                                theme::ActionTone::Accent,
+                                cx,
+                            )
+                            .debug_selector(|| "settings-local-shell-save".to_string())
+                            .label(library_copy(MessageId::SettingsSaveShellAction))
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.save_local_shell_settings(window, cx);
-                                })),
+                                },
+                            )),
                         )
                         .child(
                             div()
@@ -2375,47 +2353,54 @@ impl MultiplexApp {
                         .gap_2()
                         .flex_wrap()
                         .child(
-                            Button::new("settings-diagnostics-clear")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Danger, cx))
-                                .label(localization::diagnostics_clear_action())
-                                .disabled(!diagnostics_model.can_clear)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.clear_diagnostics(cx);
-                                })),
+                            Self::design_button(
+                                "settings-diagnostics-clear",
+                                theme::ActionTone::Danger,
+                                cx,
+                            )
+                            .label(localization::diagnostics_clear_action())
+                            .disabled(!diagnostics_model.can_clear)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.clear_diagnostics(cx);
+                            })),
                         )
                         .child(
-                            Button::new("settings-diagnostics-preview")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label(localization::diagnostics_preview_action())
-                                .disabled(!diagnostics_model.can_preview)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.preview_diagnostics_export(cx);
-                                })),
+                            Self::design_button(
+                                "settings-diagnostics-preview",
+                                theme::ActionTone::Neutral,
+                                cx,
+                            )
+                            .label(localization::diagnostics_preview_action())
+                            .disabled(!diagnostics_model.can_preview)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.preview_diagnostics_export(cx);
+                            })),
                         )
                         .child(
-                            Button::new("settings-diagnostics-export")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                                .label(localization::diagnostics_export_action())
-                                .disabled(!diagnostics_model.can_export)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.export_previewed_diagnostics(cx);
-                                })),
+                            Self::design_button(
+                                "settings-diagnostics-export",
+                                theme::ActionTone::Accent,
+                                cx,
+                            )
+                            .label(localization::diagnostics_export_action())
+                            .disabled(!diagnostics_model.can_export)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.export_previewed_diagnostics(cx);
+                            })),
                         )
                         .when(diagnostics_busy, |this| {
                             this.child(
-                                Button::new("settings-diagnostics-cancel")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Danger,
-                                        cx,
-                                    ))
-                                    .label(localization::common_cancel())
-                                    .on_click(cx.listener(|this, _, _, cx| {
+                                Self::design_button(
+                                    "settings-diagnostics-cancel",
+                                    theme::ActionTone::Danger,
+                                    cx,
+                                )
+                                .label(localization::common_cancel())
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
                                         this.cancel_diagnostics_operation(cx);
-                                    })),
+                                    },
+                                )),
                             )
                         }),
                 )
@@ -2443,231 +2428,233 @@ impl MultiplexApp {
                 }),
         );
 
-        let health_card = self.settings_section_card(
-            localization::health_settings_title(),
-            localization::health_settings_description(),
-            v_flex()
-                .gap_3()
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .items_center()
-                        .child(
-                            Icon::new(
-                                if self
-                                    .health_report
-                                    .as_ref()
-                                    .is_some_and(multiplex_store::HealthReport::is_healthy)
-                                {
-                                    IconName::CircleCheck
-                                } else {
-                                    IconName::TriangleAlert
-                                },
-                            )
-                            .size(px(theme::ICON_SIZE_COMPACT))
-                            .text_color(theme::text_muted()),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                                .font_semibold()
-                                .text_color(theme::text_main())
-                                .child(health_model.status.clone()),
-                        ),
-                )
-                .children(
-                    health_model
-                        .findings
-                        .iter()
-                        .enumerate()
-                        .map(|(index, finding)| {
-                            let kind = finding.kind;
-                            let can_rebuild = finding.can_rebuild;
-                            let action_label = match kind {
-                                multiplex_store::HealthCheckKind::PaletteIndex => {
-                                    localization::health_rebuild_palette_action()
-                                }
-                                _ => String::new(),
-                            };
-                            h_flex()
-                                .id(("settings-health-finding", index))
-                                .gap_3()
-                                .items_center()
-                                .justify_between()
-                                .p(px(theme::SPACE_COMPACT))
-                                .rounded(px(theme::CONTROL_RADIUS))
-                                .bg(theme::hover())
-                                .child(
-                                    v_flex()
-                                        .min_w_0()
-                                        .gap_1()
-                                        .child(
-                                            div()
-                                                .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                                .font_semibold()
-                                                .text_color(theme::text_main())
-                                                .child(finding.label.clone()),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                                .text_color(theme::text_muted())
-                                                .child(finding.state.clone()),
-                                        ),
-                                )
-                                .when(can_rebuild, |this| {
-                                    this.child(
-                                        Button::new(("settings-health-rebuild", index))
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Accent,
-                                                cx,
-                                            ))
-                                            .label(action_label)
-                                            .on_click(cx.listener(
-                                                move |app, _, _, cx| {
-                                                    if kind
-                                                        == multiplex_store::HealthCheckKind::PaletteIndex
-                                                    {
-                                                        app.rebuild_derived_index(
-                                                            multiplex_store::IndexRepairKind::PaletteIndex,
-                                                            cx,
-                                                        );
-                                                    }
-                                                },
-                                            )),
-                                    )
-                                })
-                                .into_any_element()
-                        }),
-                )
-                .when(recovery_model.visible, |this| {
-                    this.child(
-                        v_flex()
-                            .id("settings-metadata-recovery")
+        let health_card =
+            self.settings_section_card(
+                localization::health_settings_title(),
+                localization::health_settings_description(),
+                v_flex()
+                    .gap_3()
+                    .child(
+                        h_flex()
                             .gap_2()
-                            .p_3()
-                            .rounded(px(theme::CONTROL_RADIUS))
-                            .border_1()
-                            .border_color(theme::with_alpha(theme::warning(), 0.55))
-                            .bg(theme::with_alpha(theme::warning(), 0.08))
+                            .items_center()
+                            .child(
+                                Icon::new(
+                                    if self
+                                        .health_report
+                                        .as_ref()
+                                        .is_some_and(multiplex_store::HealthReport::is_healthy)
+                                    {
+                                        IconName::CircleCheck
+                                    } else {
+                                        IconName::TriangleAlert
+                                    },
+                                )
+                                .size(px(theme::ICON_SIZE_COMPACT))
+                                .text_color(theme::text_muted()),
+                            )
                             .child(
                                 div()
                                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_main())
-                                    .child(localization::recovery_title()),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                    .text_color(theme::text_muted())
-                                    .child(localization::recovery_description()),
-                            )
-                            .when(self.metadata_recovery_plan.is_some(), |this| {
-                                this.child(
+                                    .child(health_model.status.clone()),
+                            ),
+                    )
+                    .children(
+                        health_model
+                            .findings
+                            .iter()
+                            .enumerate()
+                            .map(|(index, finding)| {
+                                let kind = finding.kind;
+                                let can_rebuild = finding.can_rebuild;
+                                let action_label = match kind {
+                                    multiplex_store::HealthCheckKind::PaletteIndex => {
+                                        localization::health_rebuild_palette_action()
+                                    }
+                                    _ => String::new(),
+                                };
+                                h_flex()
+                                    .id(("settings-health-finding", index))
+                                    .gap_3()
+                                    .items_center()
+                                    .justify_between()
+                                    .p(px(theme::SPACE_COMPACT))
+                                    .rounded(px(theme::CONTROL_RADIUS))
+                                    .bg(theme::hover())
+                                    .child(
+                                        v_flex()
+                                            .min_w_0()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                                    .font_semibold()
+                                                    .text_color(theme::text_main())
+                                                    .child(finding.label.clone()),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                                    .text_color(theme::text_muted())
+                                                    .child(finding.state.clone()),
+                                            ),
+                                    )
+                                    .when(can_rebuild, |this| {
+                                        this.child(
+                                            Self::design_button(
+                                                ("settings-health-rebuild", index),
+                                                theme::ActionTone::Accent,
+                                                cx,
+                                            )
+                                            .label(action_label)
+                                            .on_click(
+                                                cx.listener(move |app, _, _, cx| {
+                                                    if kind
+                                                == multiplex_store::HealthCheckKind::PaletteIndex
+                                            {
+                                                app.rebuild_derived_index(
+                                                    multiplex_store::IndexRepairKind::PaletteIndex,
+                                                    cx,
+                                                );
+                                            }
+                                                }),
+                                            ),
+                                        )
+                                    })
+                                    .into_any_element()
+                            }),
+                    )
+                    .when(recovery_model.visible, |this| {
+                        this.child(
+                            v_flex()
+                                .id("settings-metadata-recovery")
+                                .gap_2()
+                                .p_3()
+                                .rounded(px(theme::CONTROL_RADIUS))
+                                .border_1()
+                                .border_color(theme::with_alpha(theme::warning(), 0.55))
+                                .bg(theme::with_alpha(theme::warning(), 0.08))
+                                .child(
                                     div()
-                                        .id("settings-metadata-recovery-impact")
-                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                        .font_semibold()
                                         .text_color(theme::text_main())
-                                        .child(localization::recovery_impact(
-                                            recovery_model.changed_files,
-                                            recovery_model.unchanged_files,
-                                            recovery_model.backup_bytes,
-                                        )),
+                                        .child(localization::recovery_title()),
                                 )
                                 .child(
                                     div()
                                         .text_size(px(theme::TYPE_CAPTION_SIZE))
                                         .text_color(theme::text_muted())
-                                        .child(localization::recovery_safety_notice()),
+                                        .child(localization::recovery_description()),
                                 )
-                            })
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .flex_wrap()
-                                    .when(health_model.can_prepare_restore, |this| {
-                                        this.child(
-                                            Button::new("settings-recovery-prepare")
-                                                .small()
-                                                .custom(Self::action_button_style(
+                                .when(self.metadata_recovery_plan.is_some(), |this| {
+                                    this.child(
+                                        div()
+                                            .id("settings-metadata-recovery-impact")
+                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                            .text_color(theme::text_main())
+                                            .child(localization::recovery_impact(
+                                                recovery_model.changed_files,
+                                                recovery_model.unchanged_files,
+                                                recovery_model.backup_bytes,
+                                            )),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                            .text_color(theme::text_muted())
+                                            .child(localization::recovery_safety_notice()),
+                                    )
+                                })
+                                .child(
+                                    h_flex()
+                                        .gap_2()
+                                        .flex_wrap()
+                                        .when(health_model.can_prepare_restore, |this| {
+                                            this.child(
+                                                Self::design_button(
+                                                    "settings-recovery-prepare",
                                                     theme::ActionTone::Neutral,
                                                     cx,
-                                                ))
+                                                )
                                                 .label(localization::recovery_prepare_action())
                                                 .on_click(cx.listener(|app, _, _, cx| {
                                                     app.prepare_metadata_recovery(cx);
                                                 })),
-                                        )
-                                    })
-                                    .when(recovery_model.can_confirm, |this| {
-                                        this.child(
-                                            Button::new("settings-recovery-confirm")
-                                                .small()
-                                                .custom(Self::action_button_style(
+                                            )
+                                        })
+                                        .when(recovery_model.can_confirm, |this| {
+                                            this.child(
+                                                Self::design_button(
+                                                    "settings-recovery-confirm",
                                                     theme::ActionTone::Danger,
                                                     cx,
-                                                ))
+                                                )
                                                 .label(localization::recovery_confirm_action())
                                                 .on_click(cx.listener(|app, _, _, cx| {
                                                     app.confirm_metadata_recovery(cx);
                                                 })),
-                                        )
-                                    })
-                                    .when(recovery_model.can_cancel, |this| {
-                                        this.child(
-                                            Button::new("settings-recovery-cancel")
-                                                .small()
-                                                .custom(Self::action_button_style(
+                                            )
+                                        })
+                                        .when(recovery_model.can_cancel, |this| {
+                                            this.child(
+                                                Self::design_button(
+                                                    "settings-recovery-cancel",
                                                     theme::ActionTone::Neutral,
                                                     cx,
-                                                ))
+                                                )
                                                 .label(localization::common_cancel())
                                                 .on_click(cx.listener(|app, _, _, cx| {
                                                     app.cancel_metadata_recovery(cx);
                                                 })),
-                                        )
-                                    }),
-                            ),
+                                            )
+                                        }),
+                                ),
+                        )
+                    })
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(localization::health_unaffected_notice()),
                     )
-                })
-                .child(
-                    div()
-                        .text_size(px(theme::TYPE_CAPTION_SIZE))
-                        .text_color(theme::text_muted())
-                        .child(localization::health_unaffected_notice()),
-                )
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .flex_wrap()
-                        .child(
-                            Button::new("settings-health-scan")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .flex_wrap()
+                            .child(
+                                Self::design_button(
+                                    "settings-health-scan",
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                )
                                 .label(localization::health_scan_action())
                                 .disabled(!health_model.can_scan)
-                                .on_click(cx.listener(|app, _, _, cx| {
-                                    app.scan_store_health(cx);
-                                })),
-                        )
-                        .when(health_busy, |this| {
-                            this.child(
-                                Button::new("settings-health-cancel")
-                                    .small()
-                                    .custom(Self::action_button_style(
+                                .on_click(cx.listener(
+                                    |app, _, _, cx| {
+                                        app.scan_store_health(cx);
+                                    },
+                                )),
+                            )
+                            .when(health_busy, |this| {
+                                this.child(
+                                    Self::design_button(
+                                        "settings-health-cancel",
                                         theme::ActionTone::Danger,
                                         cx,
-                                    ))
+                                    )
                                     .label(localization::health_cancel_action())
-                                    .on_click(cx.listener(|app, _, _, cx| {
-                                        app.cancel_health_operation(cx);
-                                    })),
-                            )
-                        }),
-                ),
-        );
+                                    .on_click(cx.listener(
+                                        |app, _, _, cx| {
+                                            app.cancel_health_operation(cx);
+                                        },
+                                    )),
+                                )
+                            }),
+                    ),
+            );
 
         let portable_card = self.settings_section_card(
             library_copy(MessageId::SettingsPortableDataTitle),
@@ -2675,18 +2662,14 @@ impl MultiplexApp {
             h_flex()
                 .gap_2()
                 .child(
-                    Button::new("settings-export-data")
-                        .small()
-                        .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                    Self::design_button("settings-export-data", theme::ActionTone::Neutral, cx)
                         .label(library_copy(MessageId::SettingsExportDataAction))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.export_portable_data(cx);
                         })),
                 )
                 .child(
-                    Button::new("settings-import-data")
-                        .small()
-                        .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                    Self::design_button("settings-import-data", theme::ActionTone::Accent, cx)
                         .label(library_copy(MessageId::SettingsImportDataAction))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.import_portable_data(window, cx);
@@ -2712,13 +2695,17 @@ impl MultiplexApp {
                         .gap_2()
                         .items_center()
                         .child(
-                            Button::new("settings-export-encrypted-data")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                                .label(library_copy(MessageId::SettingsExportEncryptedAction))
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            Self::design_button(
+                                "settings-export-encrypted-data",
+                                theme::ActionTone::Accent,
+                                cx,
+                            )
+                            .label(library_copy(MessageId::SettingsExportEncryptedAction))
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.export_encrypted_portable_data(window, cx);
-                                })),
+                                },
+                            )),
                         )
                         .child(
                             div()
@@ -2732,13 +2719,17 @@ impl MultiplexApp {
                         .gap_2()
                         .items_center()
                         .child(
-                            Button::new("settings-export-mobile-vault")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                                .label(library_copy(MessageId::SettingsExportMobileVaultAction))
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            Self::design_button(
+                                "settings-export-mobile-vault",
+                                theme::ActionTone::Accent,
+                                cx,
+                            )
+                            .label(library_copy(MessageId::SettingsExportMobileVaultAction))
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.export_mobile_vault(window, cx);
-                                })),
+                                },
+                            )),
                         )
                         .child(
                             div()
@@ -2756,13 +2747,17 @@ impl MultiplexApp {
                         .gap_2()
                         .items_center()
                         .child(
-                            Button::new("settings-import-mobile-pairing-request")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label(library_copy(MessageId::SettingsApproveMobileAction))
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            Self::design_button(
+                                "settings-import-mobile-pairing-request",
+                                theme::ActionTone::Neutral,
+                                cx,
+                            )
+                            .label(library_copy(MessageId::SettingsApproveMobileAction))
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.import_mobile_pairing_request(window, cx);
-                                })),
+                                },
+                            )),
                         )
                         .child(
                             div()
@@ -2782,13 +2777,17 @@ impl MultiplexApp {
                         .gap_2()
                         .items_center()
                         .child(
-                            Button::new("settings-import-encrypted-data")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label(library_copy(MessageId::SettingsImportEncryptedAction))
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            Self::design_button(
+                                "settings-import-encrypted-data",
+                                theme::ActionTone::Neutral,
+                                cx,
+                            )
+                            .label(library_copy(MessageId::SettingsImportEncryptedAction))
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.import_encrypted_portable_data(window, cx);
-                                })),
+                                },
+                            )),
                         )
                         .child(
                             div()
@@ -2821,18 +2820,14 @@ impl MultiplexApp {
                         .gap_2()
                         .items_center()
                         .child(
-                            Button::new("settings-sync-pick-folder")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                            Self::design_button("settings-sync-pick-folder", theme::ActionTone::Neutral, cx)
                                 .label(library_copy(MessageId::SettingsChooseFolderAction))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.pick_sync_folder(window, cx);
                                 })),
                         )
                         .child(
-                            Button::new("settings-sync-save-folder")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                            Self::design_button("settings-sync-save-folder", theme::ActionTone::Neutral, cx)
                                 .label(library_copy(MessageId::SettingsSaveFolderAction))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.save_sync_folder_input(window, cx);
@@ -2845,9 +2840,7 @@ impl MultiplexApp {
                         .items_center()
                         .flex_wrap()
                         .child(
-                            Button::new("settings-secure-sync")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                            Self::design_button("settings-secure-sync", theme::ActionTone::Accent, cx)
                                 .label(if secure_sync_configured {
                                     library_copy(MessageId::SettingsSecureSyncNowAction)
                                 } else {
@@ -2859,12 +2852,8 @@ impl MultiplexApp {
                         )
                         .when(self.replication_recovery_required, |this| {
                             this.child(
-                                Button::new("settings-secure-sync-recover")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Danger,
-                                        cx,
-                                    ))
+                                Self::design_button("settings-secure-sync-recover", theme::ActionTone::Danger,
+                                        cx)
                                     .label(library_copy(MessageId::SettingsSecureSyncRecoverAction))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.recover_secure_replication(cx);
@@ -2922,19 +2911,15 @@ impl MultiplexApp {
                                                         .chars()
                                                         .take(8)
                                                         .collect::<String>();
-                                                    Button::new((
+                                                    Self::design_button((
                                                         "settings-sync-conflict",
                                                         conflict_index * 16 + candidate_index,
-                                                    ))
-                                                    .small()
-                                                    .custom(Self::action_button_style(
-                                                        if selected == Some(candidate_index) {
+                                                    ), if selected == Some(candidate_index) {
                                                             theme::ActionTone::AccentSoft
                                                         } else {
                                                             theme::ActionTone::Neutral
                                                         },
-                                                        cx,
-                                                    ))
+                                                        cx)
                                                         .label(localization::dynamic_user_data_message(
                                                             MessageId::SettingsSecureSyncCandidateAction,
                                                             vec![candidate.summary.clone(), device],
@@ -2952,12 +2937,8 @@ impl MultiplexApp {
                                 },
                             ))
                             .child(
-                                Button::new("settings-sync-resolve")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
+                                Self::design_button("settings-sync-resolve", theme::ActionTone::Accent,
+                                        cx)
                                     .label(library_copy(
                                         MessageId::SettingsSecureSyncApplySelectionAction,
                                     ))
@@ -2978,9 +2959,7 @@ impl MultiplexApp {
                         .gap_2()
                         .items_center()
                         .child(
-                            Button::new("settings-sync-push")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                            Self::design_button("settings-sync-push", theme::ActionTone::Neutral, cx)
                                 .label(library_copy(
                                     MessageId::SettingsSecureSyncLegacyExportAction,
                                 ))
@@ -3225,21 +3204,23 @@ impl MultiplexApp {
                                         .child(localization::settings_search_count(result_count)),
                                 )
                                 .child(
-                                    Button::new("settings-search-clear")
-                                        .xsmall()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Neutral,
-                                            cx,
-                                        ))
-                                        .label(library_copy(MessageId::SettingsSearchClear))
-                                        .on_click(cx.listener(|this, _, window, cx| {
+                                    Self::design_button(
+                                        "settings-search-clear",
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    )
+                                    .xsmall()
+                                    .label(library_copy(MessageId::SettingsSearchClear))
+                                    .on_click(cx.listener(
+                                        |this, _, window, cx| {
                                             Self::set_input_value(
                                                 &this.settings_inputs.search,
                                                 "",
                                                 window,
                                                 cx,
                                             );
-                                        })),
+                                        },
+                                    )),
                                 ),
                         )
                     }),

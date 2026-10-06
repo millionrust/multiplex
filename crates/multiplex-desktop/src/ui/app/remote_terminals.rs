@@ -528,42 +528,40 @@ impl MultiplexApp {
                         h_flex()
                             .gap_2()
                             .child(
-                                Button::new("global-cli-terminals-review-enable")
-                                    .debug_selector(|| {
-                                        "global-cli-terminals-review-enable".to_string()
-                                    })
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
-                                    .disabled(!available)
-                                    .label(text(if installed {
-                                        MessageId::RemoteTerminalsGlobalReviewUpdate
-                                    } else {
-                                        MessageId::RemoteTerminalsGlobalReviewEnable
-                                    }))
-                                    .on_click(cx.listener(|this, _, _, cx| {
+                                Self::design_button(
+                                    "global-cli-terminals-review-enable",
+                                    theme::ActionTone::Accent,
+                                    cx,
+                                )
+                                .debug_selector(|| "global-cli-terminals-review-enable".to_string())
+                                .disabled(!available)
+                                .label(text(if installed {
+                                    MessageId::RemoteTerminalsGlobalReviewUpdate
+                                } else {
+                                    MessageId::RemoteTerminalsGlobalReviewEnable
+                                }))
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
                                         this.review_cli_shell_change(true, cx);
-                                    })),
+                                    },
+                                )),
                             )
                             .when(installed, |this| {
                                 this.child(
-                                    Button::new("global-cli-terminals-review-disable")
-                                        .debug_selector(|| {
-                                            "global-cli-terminals-review-disable".to_string()
-                                        })
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Neutral,
-                                            cx,
-                                        ))
-                                        .label(
-                                            localization::remote_terminals_review_disable_action(),
-                                        )
-                                        .on_click(cx.listener(|this, _, _, cx| {
+                                    Self::design_button(
+                                        "global-cli-terminals-review-disable",
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    )
+                                    .debug_selector(|| {
+                                        "global-cli-terminals-review-disable".to_string()
+                                    })
+                                    .label(localization::remote_terminals_review_disable_action())
+                                    .on_click(cx.listener(
+                                        |this, _, _, cx| {
                                             this.review_cli_shell_change(false, cx);
-                                        })),
+                                        },
+                                    )),
                                 )
                             }),
                     ),
@@ -615,41 +613,41 @@ impl MultiplexApp {
                                 .gap_2()
                                 .when(!pending.plan.is_empty(), |this| {
                                     this.child(
-                                        Button::new("global-cli-terminals-apply")
-                                            .debug_selector(|| {
-                                                "global-cli-terminals-apply".to_string()
-                                            })
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                if pending.enable {
-                                                    theme::ActionTone::Accent
-                                                } else {
-                                                    theme::ActionTone::Danger
-                                                },
-                                                cx,
-                                            ))
-                                            .label(if pending.enable {
-                                                localization::remote_terminals_apply_action()
+                                        Self::design_button(
+                                            "global-cli-terminals-apply",
+                                            if pending.enable {
+                                                theme::ActionTone::Accent
                                             } else {
-                                                localization::remote_terminals_remove_action()
-                                            })
-                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                theme::ActionTone::Danger
+                                            },
+                                            cx,
+                                        )
+                                        .debug_selector(|| "global-cli-terminals-apply".to_string())
+                                        .label(if pending.enable {
+                                            localization::remote_terminals_apply_action()
+                                        } else {
+                                            localization::remote_terminals_remove_action()
+                                        })
+                                        .on_click(
+                                            cx.listener(|this, _, _, cx| {
                                                 this.apply_cli_shell_change(cx);
-                                            })),
+                                            }),
+                                        ),
                                     )
                                 })
                                 .child(
-                                    Button::new("global-cli-terminals-cancel")
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Neutral,
-                                            cx,
-                                        ))
-                                        .label(localization::remote_terminals_cancel_action())
-                                        .on_click(cx.listener(|this, _, _, cx| {
+                                    Self::design_button(
+                                        "global-cli-terminals-cancel",
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    )
+                                    .label(localization::remote_terminals_cancel_action())
+                                    .on_click(cx.listener(
+                                        |this, _, _, cx| {
                                             this.remote_terminals.pending_cli_shell = None;
                                             cx.notify();
-                                        })),
+                                        },
+                                    )),
                                 ),
                         ),
                 )

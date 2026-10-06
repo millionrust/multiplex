@@ -6,7 +6,6 @@ use gpui::{
     AnyElement, App, Context, Div, InteractiveElement as _, IntoElement, ParentElement,
     StatefulInteractiveElement as _, Styled, px,
 };
-use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 use multiplex_ui_contract::{
@@ -1055,9 +1054,7 @@ impl MultiplexApp {
                     .child(sftp_text(MessageId::SftpConnectEmptyDescription)),
             )
             .child(
-                Button::new("sftp-select-host")
-                    .small()
-                    .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                Self::design_button("sftp-select-host", theme::ActionTone::Neutral, cx)
                     .label(sftp_text(MessageId::SftpSelectHostAction))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.sftp_show_host_picker = true;

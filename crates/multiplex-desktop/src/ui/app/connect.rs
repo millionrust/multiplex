@@ -7,7 +7,6 @@ use gpui::{
     ClipboardItem, Context, Div, Entity, InteractiveElement as _, IntoElement, ParentElement,
     Stateful, StatefulInteractiveElement as _, Styled, Window, div, px,
 };
-use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::{Input, InputState};
 use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
@@ -320,21 +319,20 @@ impl MultiplexApp {
                         div()
                             .debug_selector(|| "connect-fail-copy".to_string())
                             .child(
-                                Button::new("connect-fail-copy")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    ))
-                                    .label(connect_message(MessageId::ConnectCopyLogAction))
-                                    .on_click(cx.listener({
-                                        let log = log_lines.clone();
-                                        move |_, _, _, cx| {
-                                            cx.write_to_clipboard(ClipboardItem::new_string(
-                                                log.join("\n"),
-                                            ));
-                                        }
-                                    })),
+                                Self::design_button(
+                                    "connect-fail-copy",
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                )
+                                .label(connect_message(MessageId::ConnectCopyLogAction))
+                                .on_click(cx.listener({
+                                    let log = log_lines.clone();
+                                    move |_, _, _, cx| {
+                                        cx.write_to_clipboard(ClipboardItem::new_string(
+                                            log.join("\n"),
+                                        ));
+                                    }
+                                })),
                             ),
                     ),
             )
@@ -414,28 +412,31 @@ impl MultiplexApp {
                         div()
                             .debug_selector(|| "connect-fail-close".to_string())
                             .child(
-                                Button::new("connect-fail-close")
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    ))
-                                    .label(localization::common_close())
-                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                Self::design_button(
+                                    "connect-fail-close",
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                )
+                                .label(localization::common_close())
+                                .on_click(cx.listener(
+                                    move |this, _, window, cx| {
                                         this.close_connect_dialog_tab(workspace_id, window, cx);
-                                    })),
+                                    },
+                                )),
                             ),
                     )
                     .child(
                         div()
                             .debug_selector(|| "connect-fail-edit".to_string())
                             .child(
-                                Button::new("connect-fail-edit")
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    ))
-                                    .label(connect_message(MessageId::ConnectEditHostAction))
-                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                Self::design_button(
+                                    "connect-fail-edit",
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                )
+                                .label(connect_message(MessageId::ConnectEditHostAction))
+                                .on_click(cx.listener(
+                                    move |this, _, window, cx| {
                                         this.close_connect_dialog_tab(workspace_id, window, cx);
                                         this.activate_library_section(
                                             NavSection::Hosts,
@@ -445,22 +446,25 @@ impl MultiplexApp {
                                         this.load_profile_into_inputs(&profile_id, window, cx);
                                         this.show_editor_panel = true;
                                         cx.notify();
-                                    })),
+                                    },
+                                )),
                             ),
                     )
                     .child(
                         div()
                             .debug_selector(|| "connect-fail-restart".to_string())
                             .child(
-                                Button::new("connect-fail-restart")
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
-                                    .label(connect_message(MessageId::ConnectStartOverAction))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                Self::design_button(
+                                    "connect-fail-restart",
+                                    theme::ActionTone::Accent,
+                                    cx,
+                                )
+                                .label(connect_message(MessageId::ConnectStartOverAction))
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
                                         this.restart_choose_protocol(workspace_id, cx);
-                                    })),
+                                    },
+                                )),
                             ),
                     ),
             )
@@ -598,23 +602,25 @@ impl MultiplexApp {
                                 div()
                                     .debug_selector(|| "choose-proto-forward-agent".to_string())
                                     .child(
-                                        Button::new("choose-proto-forward-agent")
-                                            .w_full()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Danger,
-                                                cx,
-                                            ))
-                                            .icon(IconName::TriangleAlert)
-                                            .label(connect_message(
-                                                MessageId::ConnectForwardAgentAction,
-                                            ))
-                                            .on_click(cx.listener(move |this, _, window, cx| {
+                                        Self::design_button(
+                                            "choose-proto-forward-agent",
+                                            theme::ActionTone::Danger,
+                                            cx,
+                                        )
+                                        .w_full()
+                                        .icon(IconName::TriangleAlert)
+                                        .label(connect_message(
+                                            MessageId::ConnectForwardAgentAction,
+                                        ))
+                                        .on_click(
+                                            cx.listener(move |this, _, window, cx| {
                                                 this.confirm_choose_protocol_with_agent_forwarding(
                                                     workspace_id,
                                                     window,
                                                     cx,
                                                 );
-                                            })),
+                                            }),
+                                        ),
                                     ),
                             ),
                     )
@@ -631,30 +637,34 @@ impl MultiplexApp {
                         div()
                             .debug_selector(|| "choose-proto-close".to_string())
                             .child(
-                                Button::new("choose-proto-close")
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    ))
-                                    .label(localization::common_close())
-                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                Self::design_button(
+                                    "choose-proto-close",
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                )
+                                .label(localization::common_close())
+                                .on_click(cx.listener(
+                                    move |this, _, window, cx| {
                                         this.close_connect_dialog_tab(workspace_id, window, cx);
-                                    })),
+                                    },
+                                )),
                             ),
                     )
                     .child(
                         div()
                             .debug_selector(|| "choose-proto-continue".to_string())
                             .child(
-                                Button::new("choose-proto-continue")
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
-                                    .label(connect_message(MessageId::ConnectContinueAction))
-                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                Self::design_button(
+                                    "choose-proto-continue",
+                                    theme::ActionTone::Accent,
+                                    cx,
+                                )
+                                .label(connect_message(MessageId::ConnectContinueAction))
+                                .on_click(cx.listener(
+                                    move |this, _, window, cx| {
                                         this.confirm_choose_protocol(workspace_id, window, cx);
-                                    })),
+                                    },
+                                )),
                             ),
                     ),
             )
@@ -1052,30 +1062,34 @@ impl MultiplexApp {
                         div()
                             .debug_selector(|| "connect-dialog-close".to_string())
                             .child(
-                                Button::new("connect-dialog-close")
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    ))
-                                    .label(localization::common_close())
-                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                Self::design_button(
+                                    "connect-dialog-close",
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                )
+                                .label(localization::common_close())
+                                .on_click(cx.listener(
+                                    move |this, _, window, cx| {
                                         this.close_connect_dialog_tab(workspace_id, window, cx);
-                                    })),
+                                    },
+                                )),
                             ),
                     )
                     .child(
                         div()
                             .debug_selector(|| "connect-dialog-save".to_string())
                             .child(
-                                Button::new("connect-dialog-save")
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
-                                    .label(connect_message(MessageId::ConnectContinueSave))
-                                    .on_click(cx.listener(|this, _, window, cx| {
+                                Self::design_button(
+                                    "connect-dialog-save",
+                                    theme::ActionTone::Accent,
+                                    cx,
+                                )
+                                .label(connect_message(MessageId::ConnectContinueSave))
+                                .on_click(cx.listener(
+                                    |this, _, window, cx| {
                                         this.confirm_connect_dialog(true, window, cx);
-                                    })),
+                                    },
+                                )),
                             ),
                     ),
             )

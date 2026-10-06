@@ -6442,12 +6442,10 @@ impl MultiplexApp {
                                     .into_iter()
                                     .enumerate()
                                     .map(|(index, item)| {
-                                        Button::new(("agent-provider", index))
+                                        Self::design_button(("agent-provider", index), theme::ActionTone::Neutral, cx)
                                             .xsmall()
-                                            .custom(Self::segmented_button_style(
-                                                provider == item,
-                                                cx,
-                                            ))
+                                            .segmented(provider == item,
+                                                cx)
                                             .label(item.label())
                                             .on_click(cx.listener(move |this, _, window, cx| {
                                                 this.set_agent_creation_provider(item, window, cx);
@@ -6470,15 +6468,13 @@ impl MultiplexApp {
                                 h_flex()
                                     .gap_1()
                                     .child(
-                                        Button::new("agent-backend-interactive")
+                                        Self::design_button("agent-backend-interactive", theme::ActionTone::Neutral, cx)
                                             .debug_selector(|| {
                                                 "agent-backend-interactive".to_string()
                                             })
                                             .xsmall()
-                                            .custom(Self::segmented_button_style(
-                                                backend == AgentBackendKind::InteractivePty,
-                                                cx,
-                                            ))
+                                            .segmented(backend == AgentBackendKind::InteractivePty,
+                                                cx)
                                             .label(localization::static_message(multiplex_ui_contract::MessageId::RuntimeCapabilityInteractive))
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 this.set_agent_backend(
@@ -6488,15 +6484,13 @@ impl MultiplexApp {
                                             })),
                                     )
                                     .child(
-                                        Button::new("agent-backend-structured")
+                                        Self::design_button("agent-backend-structured", theme::ActionTone::Neutral, cx)
                                             .debug_selector(|| {
                                                 "agent-backend-structured".to_string()
                                             })
                                             .xsmall()
-                                            .custom(Self::segmented_button_style(
-                                                backend == AgentBackendKind::Structured,
-                                                cx,
-                                            ))
+                                            .segmented(backend == AgentBackendKind::Structured,
+                                                cx)
                                             .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyStructured))
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 this.set_agent_backend(
@@ -6521,12 +6515,10 @@ impl MultiplexApp {
                                 h_flex()
                                     .gap_1()
                                     .child(
-                                        Button::new("agent-location-local")
+                                        Self::design_button("agent-location-local", theme::ActionTone::Neutral, cx)
                                             .xsmall()
-                                            .custom(Self::segmented_button_style(
-                                                matches!(location, AgentLocation::Local),
-                                                cx,
-                                            ))
+                                            .segmented(matches!(location, AgentLocation::Local),
+                                                cx)
                                             .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyLocal))
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 this.set_agent_creation_location(
@@ -6543,9 +6535,9 @@ impl MultiplexApp {
                                                 AgentLocation::SavedHost { profile_id: selected }
                                                     if selected == &profile.id
                                             );
-                                            Button::new(("agent-location-host", index))
+                                            Self::design_button(("agent-location-host", index), theme::ActionTone::Neutral, cx)
                                                 .xsmall()
-                                                .custom(Self::segmented_button_style(active, cx))
+                                                .segmented(active, cx)
                                                 .label(profile.display_name())
                                                 .on_click(cx.listener(move |this, _, _, cx| {
                                                     this.set_agent_creation_location(
@@ -6651,12 +6643,10 @@ impl MultiplexApp {
                                     .enumerate()
                                     .map(
                                         |(index, (policy, label))| {
-                                            Button::new(("agent-permission", index))
+                                            Self::design_button(("agent-permission", index), theme::ActionTone::Neutral, cx)
                                                 .xsmall()
-                                                .custom(Self::segmented_button_style(
-                                                    permission_policy == policy,
-                                                    cx,
-                                                ))
+                                                .segmented(permission_policy == policy,
+                                                    cx)
                                                 .label(label)
                                                 .on_click(cx.listener(move |this, _, _, cx| {
                                                     this.set_agent_permission_policy(policy, cx);
@@ -6687,12 +6677,10 @@ impl MultiplexApp {
                                     .enumerate()
                                     .map(
                                         |(index, (policy, label))| {
-                                            Button::new(("agent-worktree", index))
+                                            Self::design_button(("agent-worktree", index), theme::ActionTone::Neutral, cx)
                                                 .xsmall()
-                                                .custom(Self::segmented_button_style(
-                                                    worktree_policy == policy,
-                                                    cx,
-                                                ))
+                                                .segmented(worktree_policy == policy,
+                                                    cx)
                                                 .label(label)
                                                 .on_click(cx.listener(move |this, _, _, cx| {
                                                     this.set_agent_worktree_policy(policy, cx);
@@ -6725,10 +6713,8 @@ impl MultiplexApp {
                     )
                     .child(
                         h_flex().justify_end().child(
-                            Button::new("agent-launch")
+                            Self::design_button("agent-launch", theme::ActionTone::Accent, cx)
                                 .debug_selector(|| "agent-launch".to_string())
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                                 .icon(IconName::ArrowRight)
                                 .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyLaunchAgent))
                                 .disabled(!can_launch)
@@ -7457,17 +7443,13 @@ impl MultiplexApp {
                             })),
                     )
                     .child(
-                        Button::new("canvas-fleet-broadcast")
-                            .debug_selector(|| "canvas-fleet-broadcast".to_string())
-                            .small()
-                            .custom(Self::action_button_style(
-                                if broadcast_input {
+                        Self::design_button("canvas-fleet-broadcast", if broadcast_input {
                                     theme::ActionTone::AccentSoft
                                 } else {
                                     theme::ActionTone::Neutral
                                 },
-                                cx,
-                            ))
+                                cx)
+                            .debug_selector(|| "canvas-fleet-broadcast".to_string())
                             .icon(IconName::ArrowRight)
                             .label(if broadcast_input {
                                 localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyBroadcastOn)
@@ -7527,15 +7509,12 @@ impl MultiplexApp {
                                         })),
                                 )
                                 .child(
-                                    Button::new("canvas-fleet-disconnect-confirm")
+                                    Self::design_button("canvas-fleet-disconnect-confirm", theme::ActionTone::Danger,
+                                            cx)
                                         .debug_selector(|| {
                                             "canvas-fleet-disconnect-confirm".to_string()
                                         })
                                         .xsmall()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Danger,
-                                            cx,
-                                        ))
                                         .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyDisconnect))
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.confirm_disconnect_canvas_fleet(cx);
@@ -9281,15 +9260,11 @@ impl MultiplexApp {
                                                     )),
                                             )
                                             .child(
-                                                Button::new("canvas-folder-save")
+                                                Self::design_button("canvas-folder-save", theme::ActionTone::Accent,
+                                                        cx)
                                                     .debug_selector(|| {
                                                         "canvas-folder-save".to_string()
                                                     })
-                                                    .small()
-                                                    .custom(Self::action_button_style(
-                                                        theme::ActionTone::Accent,
-                                                        cx,
-                                                    ))
                                                     .icon(IconName::Check)
                                                     .label(localization::common_save())
                                                     .disabled(
@@ -10971,13 +10946,11 @@ impl MultiplexApp {
                         .child(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyStructuredSessionIsNotRunning)),
                 )
                 .child(
-                    Button::new(SharedString::from(format!(
+                    Self::design_button(SharedString::from(format!(
                         "structured-restart-{}",
                         node_id.as_str()
-                    )))
+                    )), theme::ActionTone::Accent, cx)
                     .debug_selector(move || restart_selector.clone())
-                    .small()
-                    .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                     .icon(IconName::Redo2)
                     .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyRestart))
                     .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyStartANewProcessFromThisSavedAgentDefinition))
@@ -11188,15 +11161,12 @@ impl MultiplexApp {
                                     })),
                                 )
                                 .child(
-                                    Button::new(SharedString::from(format!(
+                                    Self::design_button(SharedString::from(format!(
                                         "structured-allow-{}",
                                         allow_id.as_str()
-                                    )))
+                                    )), theme::ActionTone::Accent,
+                                        cx)
                                     .xsmall()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
                                     .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyAllowOnce))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.respond_structured_agent_approval(
@@ -11254,12 +11224,11 @@ impl MultiplexApp {
                             )),
                         )
                         .child(
-                            Button::new(SharedString::from(format!(
+                            Self::design_button(SharedString::from(format!(
                                 "structured-send-{}",
                                 send_id.as_str()
-                            )))
+                            )), theme::ActionTone::Accent, cx)
                             .xsmall()
-                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                             .icon(IconName::ArrowRight)
                             .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopySendPrompt))
                             .on_click(cx.listener(
@@ -11352,12 +11321,8 @@ impl MultiplexApp {
                                     })),
                             )
                             .child(
-                                Button::new("context-review-send")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
+                                Self::design_button("context-review-send", theme::ActionTone::Accent,
+                                        cx)
                                     .icon(IconName::ArrowRight)
                                     .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopySendReviewedContext))
                                     .on_click(cx.listener(|this, _, _, cx| {
@@ -11447,12 +11412,8 @@ impl MultiplexApp {
                     .when(!pending.confirm_kill, |content| {
                         content
                             .child(
-                                Button::new("canvas-tmux-detach-node")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
+                                Self::design_button("canvas-tmux-detach-node", theme::ActionTone::Accent,
+                                        cx)
                                     .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyDetachFromCanvas))
                                     .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyCloseThisNodeAndLeaveTmuxRunning))
                                     .on_click(cx.listener(|this, _, _, cx| {
@@ -11470,12 +11431,8 @@ impl MultiplexApp {
                                     })),
                             )
                             .child(
-                                Button::new("canvas-tmux-kill-request")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Danger,
-                                        cx,
-                                    ))
+                                Self::design_button("canvas-tmux-kill-request", theme::ActionTone::Danger,
+                                        cx)
                                     .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyKillTmuxSession))
                                     .tooltip(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyPermanentlyStopThisTmuxSession))
                                     .disabled(!can_kill)
@@ -11502,12 +11459,8 @@ impl MultiplexApp {
                                         })),
                                 )
                                 .child(
-                                    Button::new("canvas-tmux-kill-confirm")
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Danger,
-                                            cx,
-                                        ))
+                                    Self::design_button("canvas-tmux-kill-confirm", theme::ActionTone::Danger,
+                                            cx)
                                         .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyConfirmKill))
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.confirm_tmux_session_kill(cx);
@@ -11589,13 +11542,9 @@ impl MultiplexApp {
                                     })),
                             )
                             .child(
-                                Button::new("canvas-pane-close-confirm")
+                                Self::design_button("canvas-pane-close-confirm", theme::ActionTone::Danger,
+                                        cx)
                                     .debug_selector(|| "canvas-pane-close-confirm".to_string())
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Danger,
-                                        cx,
-                                    ))
                                     .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyCloseTerminal))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.confirm_canvas_pane_close(cx);
@@ -11623,6 +11572,7 @@ impl MultiplexApp {
             .border_color(theme::danger())
             .bg(theme::library_card())
             .shadow_lg()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 h_flex()
                     .h(px(theme::CANVAS_TOOLBAR_HEIGHT))
@@ -11689,15 +11639,11 @@ impl MultiplexApp {
                                     })),
                             )
                             .child(
-                                Button::new("canvas-content-node-delete-confirm")
+                                Self::design_button("canvas-content-node-delete-confirm", theme::ActionTone::Danger,
+                                        cx)
                                     .debug_selector(|| {
                                         "canvas-content-node-delete-confirm".to_string()
                                     })
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Danger,
-                                        cx,
-                                    ))
                                     .icon(IconName::Delete)
                                     .label(if pending.is_note {
                                         localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyDeleteNote)
@@ -11872,12 +11818,8 @@ impl MultiplexApp {
                                             })),
                                     )
                                     .child(
-                                        Button::new("canvas-split-pane-chooser-confirm")
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Accent,
-                                                cx,
-                                            ))
+                                        Self::design_button("canvas-split-pane-chooser-confirm", theme::ActionTone::Accent,
+                                                cx)
                                             .icon(IconName::Check)
                                             .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyOpenSplit))
                                             .disabled(selected.is_empty())
@@ -12371,9 +12313,7 @@ impl MultiplexApp {
                             .child(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyAddYourFirstCanvasNode)),
                     )
                     .child(
-                        Button::new("canvas-empty-add")
-                            .small()
-                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                        Self::design_button("canvas-empty-add", theme::ActionTone::Accent, cx)
                             .icon(IconName::Plus)
                             .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyAddToCanvas))
                             .on_click(cx.listener(|this, _, _, cx| {

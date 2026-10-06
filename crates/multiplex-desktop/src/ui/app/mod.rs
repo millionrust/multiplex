@@ -110,7 +110,7 @@ use gpui::{
     MouseMoveEvent, MouseUpEvent, ScrollWheelEvent, StatefulInteractiveElement as _, font, *,
 };
 use gpui_component::IconName;
-use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
+use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{ActiveTheme, Icon, Sizable, StyledExt as _, h_flex, v_flex};
@@ -11481,67 +11481,62 @@ impl MultiplexApp {
                                             .gap_2()
                                             .flex_wrap()
                                             .child(
-                                                Button::new(("saved-group-select", index))
-                                                    .small()
-                                                    .custom(Self::action_button_style(
-                                                        theme::ActionTone::Neutral,
+                                                Self::design_button(
+                                                    ("saved-group-select", index),
+                                                    theme::ActionTone::Neutral,
+                                                    cx,
+                                                )
+                                                .label(localization::static_message(
+                                                    MessageId::HostGroupSelectHostsAction,
+                                                ))
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.select_filtered_group_hosts(
+                                                        &select_group_name,
                                                         cx,
-                                                    ))
-                                                    .label(localization::static_message(
-                                                        MessageId::HostGroupSelectHostsAction,
-                                                    ))
-                                                    .on_click(cx.listener(
-                                                        move |this, _, _, cx| {
-                                                            this.select_filtered_group_hosts(
-                                                                &select_group_name,
-                                                                cx,
-                                                            );
-                                                        },
-                                                    )),
+                                                    );
+                                                })),
                                             )
                                             .child(
-                                                Button::new(("saved-group-bulk", index))
-                                                    .small()
-                                                    .custom(Self::action_button_style(
-                                                        theme::ActionTone::AccentSoft,
-                                                        cx,
-                                                    ))
-                                                    .label(localization::static_message(
-                                                        MessageId::HostGroupUseBulkAction,
-                                                    ))
-                                                    .on_click(cx.listener(
-                                                        move |this, _, window, cx| {
-                                                            this.prepare_bulk_group_assignment(
-                                                                &bulk_group_name,
-                                                                window,
-                                                                cx,
-                                                            );
-                                                        },
-                                                    )),
+                                                Self::design_button(
+                                                    ("saved-group-bulk", index),
+                                                    theme::ActionTone::AccentSoft,
+                                                    cx,
+                                                )
+                                                .label(localization::static_message(
+                                                    MessageId::HostGroupUseBulkAction,
+                                                ))
+                                                .on_click(cx.listener(
+                                                    move |this, _, window, cx| {
+                                                        this.prepare_bulk_group_assignment(
+                                                            &bulk_group_name,
+                                                            window,
+                                                            cx,
+                                                        );
+                                                    },
+                                                )),
                                             )
                                             .child(
-                                                Button::new(("saved-group-load", index))
-                                                    .small()
-                                                    .custom(Self::action_button_style(
-                                                        theme::ActionTone::Neutral,
-                                                        cx,
-                                                    ))
-                                                    .label(localization::static_message(
-                                                        MessageId::HostGroupLoadDefaultsAction,
-                                                    ))
-                                                    .on_click(cx.listener(
-                                                        move |this, _, window, cx| {
-                                                            Self::set_input_value(
-                                                                &this.inputs.group,
-                                                                load_group_name.clone(),
-                                                                window,
-                                                                cx,
-                                                            );
-                                                            this.apply_group_defaults_to_editor(
-                                                                window, cx,
-                                                            );
-                                                        },
-                                                    )),
+                                                Self::design_button(
+                                                    ("saved-group-load", index),
+                                                    theme::ActionTone::Neutral,
+                                                    cx,
+                                                )
+                                                .label(localization::static_message(
+                                                    MessageId::HostGroupLoadDefaultsAction,
+                                                ))
+                                                .on_click(cx.listener(
+                                                    move |this, _, window, cx| {
+                                                        Self::set_input_value(
+                                                            &this.inputs.group,
+                                                            load_group_name.clone(),
+                                                            window,
+                                                            cx,
+                                                        );
+                                                        this.apply_group_defaults_to_editor(
+                                                            window, cx,
+                                                        );
+                                                    },
+                                                )),
                                             ),
                                     )
                                     .into_any_element()
@@ -11904,9 +11899,8 @@ impl MultiplexApp {
                             .gap_2()
                             .children([false, true].into_iter().map(|favorite| {
                                 let active = self.draft_profile_favorite == favorite;
-                                Button::new(("draft-profile-favorite", favorite as usize))
-                                    .small()
-                                    .custom(Self::segmented_button_style(active, cx))
+                                Self::design_button(("draft-profile-favorite", favorite as usize), theme::ActionTone::Neutral, cx)
+                                    .segmented(active, cx)
                                     .label(localization::static_message(if favorite {
                                         MessageId::HostLibraryPriorityStarredAction
                                     } else {
@@ -12076,12 +12070,8 @@ impl MultiplexApp {
                             h_flex()
                                 .gap_2()
                                 .child(
-                                    Button::new("group-defaults-save")
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::AccentSoft,
-                                            cx,
-                                        ))
+                                    Self::design_button("group-defaults-save", theme::ActionTone::AccentSoft,
+                                            cx)
                                         .label(localization::static_message(
                                             MessageId::HostGroupDefaultsSaveAction,
                                         ))
@@ -12091,12 +12081,8 @@ impl MultiplexApp {
                                 )
                                 .when(saved_group.is_some(), |this| {
                                     this.child(
-                                        Button::new("group-defaults-apply")
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Neutral,
-                                                cx,
-                                            ))
+                                        Self::design_button("group-defaults-apply", theme::ActionTone::Neutral,
+                                                cx)
                                             .label(localization::static_message(
                                                 MessageId::HostGroupLoadDefaultsAction,
                                             ))
@@ -12105,12 +12091,8 @@ impl MultiplexApp {
                                             })),
                                     )
                                     .child(
-                                        Button::new("group-defaults-remove")
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Danger,
-                                                cx,
-                                            ))
+                                        Self::design_button("group-defaults-remove", theme::ActionTone::Danger,
+                                                cx)
                                             .label(localization::static_message(
                                                 MessageId::HostGroupDefaultsDeleteAction,
                                             ))
@@ -12336,9 +12318,8 @@ impl MultiplexApp {
                                 .enumerate()
                                 .map(|(index, kind)| {
                                     let active = self.draft_outbound_proxy_kind == kind;
-                                    Button::new(("outbound-proxy-kind", index))
-                                        .small()
-                                        .custom(Self::segmented_button_style(active, cx))
+                                    Self::design_button(("outbound-proxy-kind", index), theme::ActionTone::Neutral, cx)
+                                        .segmented(active, cx)
                                         .label(kind.label())
                                         .on_click(cx.listener(move |this, _, _, cx| {
                                             this.set_draft_outbound_proxy_kind(kind, cx);
@@ -12423,9 +12404,8 @@ impl MultiplexApp {
                                     .enumerate()
                                     .map(|(index, kind)| {
                                         let active = self.draft_port_forward_kind == kind;
-                                        Button::new(("forward-kind", index))
-                                            .small()
-                                            .custom(Self::segmented_button_style(active, cx))
+                                        Self::design_button(("forward-kind", index), theme::ActionTone::Neutral, cx)
+                                            .segmented(active, cx)
                                             .label(kind.label())
                                             .on_click(cx.listener(move |this, _, _, cx| {
                                                 this.set_draft_port_forward_kind(kind, cx);
@@ -12474,12 +12454,8 @@ impl MultiplexApp {
                                                         ),
                                                 )
                                                 .child(
-                                                    Button::new(("remove-forward-rule", index))
-                                                        .small()
-                                                        .custom(Self::action_button_style(
-                                                            theme::ActionTone::Danger,
-                                                            cx,
-                                                        ))
+                                                    Self::design_button(("remove-forward-rule", index), theme::ActionTone::Danger,
+                                                            cx)
                                                         .label(localization::static_message(
                                                             MessageId::HostPortForwardRemoveAction,
                                                         ))
@@ -12545,12 +12521,8 @@ impl MultiplexApp {
                             .gap_2()
                             .items_center()
                             .child(
-                                Button::new("add-forward-rule")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
+                                Self::design_button("add-forward-rule", theme::ActionTone::Accent,
+                                        cx)
                                     .label(localization::static_message(
                                         MessageId::HostPortForwardAddAction,
                                     ))
@@ -13004,16 +12976,18 @@ impl MultiplexApp {
                                 ),
                         )
                         .child(
-                            Button::new("hosts-onboarding-dismiss")
-                                .debug_selector(|| "hosts-onboarding-dismiss".to_string())
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label(localization::static_message(
-                                    MessageId::ActivityCenterDismissAction,
-                                ))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.dismiss_onboarding(cx);
-                                })),
+                            Self::design_button(
+                                "hosts-onboarding-dismiss",
+                                theme::ActionTone::Neutral,
+                                cx,
+                            )
+                            .debug_selector(|| "hosts-onboarding-dismiss".to_string())
+                            .label(localization::static_message(
+                                MessageId::ActivityCenterDismissAction,
+                            ))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.dismiss_onboarding(cx);
+                            })),
                         ),
                 )
                 .child(
@@ -13041,81 +13015,95 @@ impl MultiplexApp {
                         .gap_2()
                         .flex_wrap()
                         .child(
-                            Button::new("hosts-onboarding-new")
-                                .debug_selector(|| "hosts-onboarding-new".to_string())
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                                .label(localization::static_message(MessageId::HostsAddAction))
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            Self::design_button(
+                                "hosts-onboarding-new",
+                                theme::ActionTone::Accent,
+                                cx,
+                            )
+                            .debug_selector(|| "hosts-onboarding-new".to_string())
+                            .label(localization::static_message(MessageId::HostsAddAction))
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.open_editor_for_new_host(window, cx);
-                                })),
+                                },
+                            )),
                         )
                         .child(
-                            Button::new("hosts-onboarding-key")
-                                .debug_selector(|| "hosts-onboarding-key".to_string())
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .icon(IconName::FolderOpen)
-                                .label(localization::static_message(
-                                    MessageId::HostsOnboardingAddKeyAction,
-                                ))
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            Self::design_button(
+                                "hosts-onboarding-key",
+                                theme::ActionTone::Neutral,
+                                cx,
+                            )
+                            .debug_selector(|| "hosts-onboarding-key".to_string())
+                            .icon(IconName::FolderOpen)
+                            .label(localization::static_message(
+                                MessageId::HostsOnboardingAddKeyAction,
+                            ))
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.pick_key_file(window, cx);
                                     this.nav_section = NavSection::Hosts;
                                     this.show_editor_panel = true;
                                     this.draft_auth_mode = AuthMode::PrivateKey;
                                     cx.notify();
-                                })),
+                                },
+                            )),
                         )
                         .child(
-                            Button::new("hosts-onboarding-canvas")
-                                .debug_selector(|| "hosts-onboarding-canvas".to_string())
-                                .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::AccentSoft,
-                                    cx,
-                                ))
-                                .icon(IconName::Map)
-                                .label(localization::static_message(
-                                    MessageId::HostsAgentCanvasAction,
-                                ))
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            Self::design_button(
+                                "hosts-onboarding-canvas",
+                                theme::ActionTone::AccentSoft,
+                                cx,
+                            )
+                            .debug_selector(|| "hosts-onboarding-canvas".to_string())
+                            .icon(IconName::Map)
+                            .label(localization::static_message(
+                                MessageId::HostsAgentCanvasAction,
+                            ))
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.open_agent_canvas(window, cx);
-                                })),
+                                },
+                            )),
                         )
                         .child(
-                            Button::new("hosts-onboarding-local")
-                                .debug_selector(|| "hosts-onboarding-local".to_string())
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .icon(IconName::SquareTerminal)
-                                .label(localization::static_message(
-                                    MessageId::AgentCanvasCopyLocalTerminal,
-                                ))
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            Self::design_button(
+                                "hosts-onboarding-local",
+                                theme::ActionTone::Neutral,
+                                cx,
+                            )
+                            .debug_selector(|| "hosts-onboarding-local".to_string())
+                            .icon(IconName::SquareTerminal)
+                            .label(localization::static_message(
+                                MessageId::AgentCanvasCopyLocalTerminal,
+                            ))
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.open_local_terminal(window, cx);
-                                })),
+                                },
+                            )),
                         )
                         .when(imported_hosts > 0 || saved_hosts > 0, |this| {
                             this.child(
-                                Button::new("hosts-onboarding-search")
-                                    .debug_selector(|| "hosts-onboarding-search".to_string())
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    ))
-                                    .label(localization::static_message(
-                                        MessageId::HostsOnboardingFocusSearchAction,
-                                    ))
-                                    .on_click(cx.listener(|this, _, window, cx| {
+                                Self::design_button(
+                                    "hosts-onboarding-search",
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                )
+                                .debug_selector(|| "hosts-onboarding-search".to_string())
+                                .label(localization::static_message(
+                                    MessageId::HostsOnboardingFocusSearchAction,
+                                ))
+                                .on_click(cx.listener(
+                                    |this, _, window, cx| {
                                         this.focus_host_search(window, cx);
                                         this.status_message = localization::static_message(
                                             MessageId::HostSearchFocusedStatus,
                                         );
                                         this.error_message.clear();
                                         cx.notify();
-                                    })),
+                                    },
+                                )),
                             )
                         }),
                 )
@@ -13298,44 +13286,12 @@ impl MultiplexApp {
     }
 
     /// Shared Slate geometry and colors for page actions on the current GPUI component stack.
-    fn design_button(id: impl Into<gpui::ElementId>, tone: theme::ActionTone, cx: &App) -> Button {
-        Button::new(id)
-            .small()
-            .h(px(theme::CONTROL_HEIGHT_DEFAULT))
-            .px(px(theme::SPACE_3))
-            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-            .rounded(px(theme::CONTROL_RADIUS))
-            .custom(Self::action_button_style(tone, cx))
-    }
-
-    fn action_button_style(tone: theme::ActionTone, cx: &App) -> ButtonCustomVariant {
-        ButtonCustomVariant::new(cx)
-            .color(theme::action_fill(tone))
-            .foreground(theme::action_foreground(tone))
-            .border(theme::action_border(tone))
-            .hover(theme::action_hover(tone))
-            .active(theme::action_active(tone))
-    }
-
-    /// Segment styling for segmented groups built from `Button`s, which need icons or
-    /// tooltips. It matches [`Self::segmented_control`]: the selected segment is raised and
-    /// neutral, the others are bare labels.
-    fn segmented_button_style(active: bool, cx: &App) -> ButtonCustomVariant {
-        if active {
-            ButtonCustomVariant::new(cx)
-                .color(theme::control_bg())
-                .foreground(theme::text_main())
-                .border(theme::border_strong())
-                .hover(theme::control_bg())
-                .active(theme::control_bg())
-        } else {
-            ButtonCustomVariant::new(cx)
-                .color(gpui::transparent_black())
-                .foreground(theme::text_muted())
-                .border(gpui::transparent_black())
-                .hover(theme::hover())
-                .active(theme::hover())
-        }
+    fn design_button(
+        id: impl Into<gpui::ElementId>,
+        tone: theme::ActionTone,
+        cx: &App,
+    ) -> crate::ui::action_button::ActionButton {
+        crate::ui::action_button::ActionButton::new(id, tone, cx)
     }
 
     /// A compact segmented choice: sized to its labels, with the selection drawn as a raised

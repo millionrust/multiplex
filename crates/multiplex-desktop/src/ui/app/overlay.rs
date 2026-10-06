@@ -5,10 +5,9 @@ use gpui::{
     AnyElement, Context, Div, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton,
     ParentElement, Stateful, StatefulInteractiveElement as _, Styled, Window, div, px, relative,
 };
-use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
+use gpui_component::{Icon, IconName, StyledExt as _, h_flex, v_flex};
 
 use crate::ui::app::global_search::{
     category_label, global_search_failure_message, search_status_label,
@@ -136,10 +135,8 @@ impl MultiplexApp {
                     h_flex()
                         .gap_2()
                         .child(
-                            Button::new("paste-confirm")
+                            Self::design_button("paste-confirm", theme::ActionTone::Accent, cx)
                                 .debug_selector(|| "paste-confirm".to_string())
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                                 .label(localization::overlay_paste_action())
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                     cx.stop_propagation();
@@ -149,10 +146,8 @@ impl MultiplexApp {
                                 })),
                         )
                         .child(
-                            Button::new("paste-cancel")
+                            Self::design_button("paste-cancel", theme::ActionTone::Neutral, cx)
                                 .debug_selector(|| "paste-cancel".to_string())
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
                                 .label(localization::common_cancel())
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                     cx.stop_propagation();

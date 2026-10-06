@@ -296,13 +296,15 @@ impl MultiplexApp {
                 )
                 .child(
                     h_flex().gap_2().justify_center().child(
-                        Button::new("workspace-files-local-back")
-                            .small()
-                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                            .label(workspace_sftp_text(MessageId::SftpBackTerminalAction))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.show_active_workspace_terminal(cx);
-                            })),
+                        Self::design_button(
+                            "workspace-files-local-back",
+                            theme::ActionTone::Accent,
+                            cx,
+                        )
+                        .label(workspace_sftp_text(MessageId::SftpBackTerminalAction))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.show_active_workspace_terminal(cx);
+                        })),
                     ),
                 )
             } else {
@@ -318,22 +320,26 @@ impl MultiplexApp {
                         .gap_2()
                         .justify_center()
                         .child(
-                            Button::new("workspace-files-open")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                                .label(workspace_sftp_text(MessageId::SftpOpenFilesAction))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.open_active_workspace_files(cx);
-                                })),
+                            Self::design_button(
+                                "workspace-files-open",
+                                theme::ActionTone::Accent,
+                                cx,
+                            )
+                            .label(workspace_sftp_text(MessageId::SftpOpenFilesAction))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.open_active_workspace_files(cx);
+                            })),
                         )
                         .child(
-                            Button::new("workspace-files-back")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label(workspace_sftp_text(MessageId::SftpBackTerminalAction))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.show_active_workspace_terminal(cx);
-                                })),
+                            Self::design_button(
+                                "workspace-files-back",
+                                theme::ActionTone::Neutral,
+                                cx,
+                            )
+                            .label(workspace_sftp_text(MessageId::SftpBackTerminalAction))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.show_active_workspace_terminal(cx);
+                            })),
                         ),
                 )
             };
@@ -464,26 +470,30 @@ impl MultiplexApp {
                             })),
                     )
                     .child(
-                        Button::new("workspace-files-upload")
-                            .small()
-                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                            .icon(IconName::Plus)
-                            .label(workspace_sftp_text(MessageId::SftpUploadAction))
-                            .disabled(transfer_active)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.upload_workspace_file(window, cx);
-                            })),
+                        Self::design_button(
+                            "workspace-files-upload",
+                            theme::ActionTone::Accent,
+                            cx,
+                        )
+                        .icon(IconName::Plus)
+                        .label(workspace_sftp_text(MessageId::SftpUploadAction))
+                        .disabled(transfer_active)
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.upload_workspace_file(window, cx);
+                        })),
                     )
                     .child(
-                        Button::new("workspace-files-download")
-                            .small()
-                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                            .icon(IconName::ArrowDown)
-                            .label(workspace_sftp_text(MessageId::SftpDownloadAction))
-                            .disabled(transfer_active || !selected_is_file)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.download_workspace_file(window, cx);
-                            })),
+                        Self::design_button(
+                            "workspace-files-download",
+                            theme::ActionTone::Neutral,
+                            cx,
+                        )
+                        .icon(IconName::ArrowDown)
+                        .label(workspace_sftp_text(MessageId::SftpDownloadAction))
+                        .disabled(transfer_active || !selected_is_file)
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.download_workspace_file(window, cx);
+                        })),
                     )
                     .child(
                         Button::new("workspace-files-delete")
@@ -610,25 +620,22 @@ impl MultiplexApp {
                                 })
                                 .when(can_retry, |this| {
                                     this.child(
-                                        Button::new("workspace-transfer-retry")
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Accent,
-                                                cx,
-                                            ))
-                                            .icon(IconName::Redo2)
-                                            .label(if transfer.transferred_bytes > 0 {
-                                                workspace_sftp_text(
-                                                    MessageId::SftpResumeTransferAction,
-                                                )
-                                            } else {
-                                                workspace_sftp_text(
-                                                    MessageId::SftpRetryTransferAction,
-                                                )
-                                            })
-                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                        Self::design_button(
+                                            "workspace-transfer-retry",
+                                            theme::ActionTone::Accent,
+                                            cx,
+                                        )
+                                        .icon(IconName::Redo2)
+                                        .label(if transfer.transferred_bytes > 0 {
+                                            workspace_sftp_text(MessageId::SftpResumeTransferAction)
+                                        } else {
+                                            workspace_sftp_text(MessageId::SftpRetryTransferAction)
+                                        })
+                                        .on_click(
+                                            cx.listener(move |this, _, _, cx| {
                                                 this.retry_workspace_transfer(workspace_id, cx);
-                                            })),
+                                            }),
+                                        ),
                                     )
                                 }),
                         )
@@ -668,23 +675,22 @@ impl MultiplexApp {
                                             )),
                                     )
                                     .child(
-                                        Button::new("workspace-transfer-replace")
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Danger,
-                                                cx,
-                                            ))
-                                            .icon(IconName::Replace)
-                                            .label(workspace_sftp_text(
-                                                MessageId::SftpReplaceAction,
-                                            ))
-                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                        Self::design_button(
+                                            "workspace-transfer-replace",
+                                            theme::ActionTone::Danger,
+                                            cx,
+                                        )
+                                        .icon(IconName::Replace)
+                                        .label(workspace_sftp_text(MessageId::SftpReplaceAction))
+                                        .on_click(
+                                            cx.listener(move |this, _, _, cx| {
                                                 this.resolve_workspace_transfer(
                                                     workspace_id,
                                                     crate::sftp::SftpConflictPolicy::Replace,
                                                     cx,
                                                 );
-                                            })),
+                                            }),
+                                        ),
                                     )
                                     .child(
                                         Button::new("workspace-transfer-skip")
@@ -701,23 +707,24 @@ impl MultiplexApp {
                                     )
                                     .when(conflict.resume_available, |this| {
                                         this.child(
-                                            Button::new("workspace-transfer-resume")
-                                                .small()
-                                                .custom(Self::action_button_style(
-                                                    theme::ActionTone::Accent,
-                                                    cx,
-                                                ))
-                                                .icon(IconName::Redo2)
-                                                .label(workspace_sftp_text(
-                                                    MessageId::SftpResumeTransferAction,
-                                                ))
-                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                            Self::design_button(
+                                                "workspace-transfer-resume",
+                                                theme::ActionTone::Accent,
+                                                cx,
+                                            )
+                                            .icon(IconName::Redo2)
+                                            .label(workspace_sftp_text(
+                                                MessageId::SftpResumeTransferAction,
+                                            ))
+                                            .on_click(
+                                                cx.listener(move |this, _, _, cx| {
                                                     this.resolve_workspace_transfer(
                                                         workspace_id,
                                                         crate::sftp::SftpConflictPolicy::Resume,
                                                         cx,
                                                     );
-                                                })),
+                                                }),
+                                            ),
                                         )
                                     }),
                             )
@@ -1583,24 +1590,16 @@ impl MultiplexApp {
                             .gap_2()
                             .justify_center()
                             .child(
-                                Button::new("workspace-empty-local")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
+                                Self::design_button("workspace-empty-local", theme::ActionTone::Accent,
+                                        cx)
                                     .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyLocalTerminal))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.open_local_terminal(window, cx);
                                     })),
                             )
                             .child(
-                                Button::new("workspace-empty-hosts")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    ))
+                                Self::design_button("workspace-empty-hosts", theme::ActionTone::Neutral,
+                                        cx)
                                     .label(localization::static_message(multiplex_ui_contract::MessageId::HostsAddAction))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.open_editor_for_new_host(window, cx);
@@ -1863,7 +1862,7 @@ impl MultiplexApp {
                             Self::design_button(id, theme::ActionTone::Neutral, cx)
                                 .debug_selector(move || id.to_string())
                                 .h(px(theme::CONTROL_HEIGHT_COMPACT))
-                                .custom(Self::segmented_button_style(layout_mode == mode, cx))
+                                .segmented(layout_mode == mode, cx)
                                 .icon(icon)
                                 .label(label)
                                 .tooltip(tooltip)

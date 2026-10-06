@@ -1446,26 +1446,26 @@ impl MultiplexApp {
                         )
                         .when(visible_count > 1, |header| {
                             header.child(
-                                Button::new(("hosts-open-fleet", group_index))
-                                    .debug_selector(move || {
-                                        format!("hosts-open-fleet-{group_index}")
-                                    })
-                                    .xsmall()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::AccentSoft,
-                                        cx,
-                                    ))
-                                    .icon(IconName::Globe)
-                                    .label(host_message(MessageId::HostsOpenFleetAction))
-                                    .tooltip(localization::hosts_open_fleet_tooltip(visible_count))
-                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                Self::design_button(
+                                    ("hosts-open-fleet", group_index),
+                                    theme::ActionTone::AccentSoft,
+                                    cx,
+                                )
+                                .debug_selector(move || format!("hosts-open-fleet-{group_index}"))
+                                .xsmall()
+                                .icon(IconName::Globe)
+                                .label(host_message(MessageId::HostsOpenFleetAction))
+                                .tooltip(localization::hosts_open_fleet_tooltip(visible_count))
+                                .on_click(cx.listener(
+                                    move |this, _, window, cx| {
                                         this.open_saved_host_fleet_canvas(
                                             &fleet_group_name,
                                             fleet_profile_ids.clone(),
                                             window,
                                             cx,
                                         );
-                                    })),
+                                    },
+                                )),
                             )
                         }),
                 );
@@ -1508,9 +1508,8 @@ impl MultiplexApp {
                             ),
                     )
                     .child(
-                        Button::new("hosts-empty-new")
+                        Self::design_button("hosts-empty-new", theme::ActionTone::Accent, cx)
                             .w_full()
-                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                             .label(host_message(MessageId::ConnectContinueAction))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 if !this.submit_create_host_from_empty_state(window, cx) {
@@ -1531,33 +1530,35 @@ impl MultiplexApp {
                             .gap_2()
                             .justify_center()
                             .child(
-                                Button::new("hosts-empty-clear-search")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    ))
-                                    .label(host_message(MessageId::HostsClearSearch))
-                                    .on_click(cx.listener(|this, _, window, cx| {
+                                Self::design_button(
+                                    "hosts-empty-clear-search",
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                )
+                                .label(host_message(MessageId::HostsClearSearch))
+                                .on_click(cx.listener(
+                                    |this, _, window, cx| {
                                         Self::set_input_value(
                                             &this.shell_inputs.host_search,
                                             "",
                                             window,
                                             cx,
                                         );
-                                    })),
+                                    },
+                                )),
                             )
                             .child(
-                                Button::new("hosts-empty-new-filtered")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
-                                    .label(host_message(MessageId::HostsAddAction))
-                                    .on_click(cx.listener(|this, _, window, cx| {
+                                Self::design_button(
+                                    "hosts-empty-new-filtered",
+                                    theme::ActionTone::Accent,
+                                    cx,
+                                )
+                                .label(host_message(MessageId::HostsAddAction))
+                                .on_click(cx.listener(
+                                    |this, _, window, cx| {
                                         this.open_editor_for_new_host(window, cx);
-                                    })),
+                                    },
+                                )),
                             ),
                     )
                 };
@@ -1574,10 +1575,9 @@ impl MultiplexApp {
                     .gap(px(theme::SPACE_0))
                     .items_center()
                     .child(
-                        Button::new("library-new-host")
+                        Self::design_button("library-new-host", theme::ActionTone::Neutral, cx)
                             .debug_selector(|| "library-new-host".to_string())
                             .xsmall()
-                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
                             .icon(IconName::Plus)
                             .label(host_message(MessageId::HostsAddAction))
                             .on_click(cx.listener(|this, _, window, cx| {
@@ -2433,20 +2433,21 @@ impl MultiplexApp {
                                 ),
                             )
                             .child(
-                                Button::new("library-quick-connect")
-                                    .debug_selector(|| "library-quick-connect".to_string())
-                                    .xsmall()
-                                    .custom(Self::action_button_style(
-                                        if has_quick_connect {
-                                            theme::ActionTone::Accent
-                                        } else {
-                                            theme::ActionTone::Neutral
-                                        },
-                                        cx,
-                                    ))
-                                    .disabled(!has_quick_connect)
-                                    .label(localization::common_connect())
-                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                Self::design_button(
+                                    "library-quick-connect",
+                                    if has_quick_connect {
+                                        theme::ActionTone::Accent
+                                    } else {
+                                        theme::ActionTone::Neutral
+                                    },
+                                    cx,
+                                )
+                                .debug_selector(|| "library-quick-connect".to_string())
+                                .xsmall()
+                                .disabled(!has_quick_connect)
+                                .label(localization::common_connect())
+                                .on_click(cx.listener(
+                                    move |this, _, window, cx| {
                                         if let Some(qc) = this.try_quick_connect_from_search(cx) {
                                             let password = this.current_quick_connect_password(cx);
                                             this.quick_connect(
@@ -2460,7 +2461,8 @@ impl MultiplexApp {
                                                 cx,
                                             );
                                         }
-                                    })),
+                                    },
+                                )),
                             ),
                     ),
             )
@@ -2479,32 +2481,36 @@ impl MultiplexApp {
                             .items_center()
                             .child(self.render_new_host_split_button(cx))
                             .child(
-                                Button::new("library-agent-canvas")
-                                    .debug_selector(|| "library-agent-canvas".to_string())
-                                    .xsmall()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::AccentSoft,
-                                        cx,
-                                    ))
-                                    .icon(IconName::Map)
-                                    .label(host_message(MessageId::HostsAgentCanvasAction))
-                                    .on_click(cx.listener(|this, _, window, cx| {
+                                Self::design_button(
+                                    "library-agent-canvas",
+                                    theme::ActionTone::AccentSoft,
+                                    cx,
+                                )
+                                .debug_selector(|| "library-agent-canvas".to_string())
+                                .xsmall()
+                                .icon(IconName::Map)
+                                .label(host_message(MessageId::HostsAgentCanvasAction))
+                                .on_click(cx.listener(
+                                    |this, _, window, cx| {
                                         this.open_agent_canvas(window, cx);
-                                    })),
+                                    },
+                                )),
                             )
                             .child(
-                                Button::new("library-new-terminal")
-                                    .debug_selector(|| "library-new-terminal".to_string())
-                                    .xsmall()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    ))
-                                    .icon(IconName::SquareTerminal)
-                                    .label(host_message(MessageId::HostsTerminalAction))
-                                    .on_click(cx.listener(|this, _, window, cx| {
+                                Self::design_button(
+                                    "library-new-terminal",
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                )
+                                .debug_selector(|| "library-new-terminal".to_string())
+                                .xsmall()
+                                .icon(IconName::SquareTerminal)
+                                .label(host_message(MessageId::HostsTerminalAction))
+                                .on_click(cx.listener(
+                                    |this, _, window, cx| {
                                         this.open_local_terminal(window, cx);
-                                    })),
+                                    },
+                                )),
                             ),
                     )
                     .child(
@@ -2538,18 +2544,20 @@ impl MultiplexApp {
                                         })),
                                 )
                                 .child(
-                                    Button::new("hosts-bulk-diagnose")
-                                        .debug_selector(|| "hosts-bulk-diagnose".to_string())
-                                        .xsmall()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Accent,
-                                            cx,
-                                        ))
-                                        .label(host_message(MessageId::HostsDiagnoseAction))
-                                        .tooltip(host_message(MessageId::HostsDiagnoseTooltip))
-                                        .on_click(cx.listener(|this, _, _, cx| {
+                                    Self::design_button(
+                                        "hosts-bulk-diagnose",
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    )
+                                    .debug_selector(|| "hosts-bulk-diagnose".to_string())
+                                    .xsmall()
+                                    .label(host_message(MessageId::HostsDiagnoseAction))
+                                    .tooltip(host_message(MessageId::HostsDiagnoseTooltip))
+                                    .on_click(cx.listener(
+                                        |this, _, _, cx| {
                                             this.diagnose_selected_hosts(cx);
-                                        })),
+                                        },
+                                    )),
                                 )
                                 .child(
                                     Button::new("hosts-bulk-star")

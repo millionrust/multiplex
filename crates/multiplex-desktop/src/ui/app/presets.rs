@@ -6,7 +6,6 @@ use gpui::{
     AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement, StatefulInteractiveElement as _, Styled, Window, div, px,
 };
-use gpui_component::button::ButtonVariants as _;
 use gpui_component::input::{Input, InputState};
 use gpui_component::{Disableable as _, Icon, IconName, StyledExt as _, h_flex, v_flex};
 use multiplex_domain::{
@@ -1683,7 +1682,7 @@ impl MultiplexApp {
                             cx,
                         )
                         .label(localization::preset_enabled_field())
-                        .custom(Self::segmented_button_style(enabled, cx))
+                        .segmented(enabled, cx)
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.update_preset_flags(id, Some(!enabled), None, cx);
                         })),
@@ -1696,7 +1695,7 @@ impl MultiplexApp {
                         )
                         .icon(IconName::Star)
                         .label(localization::preset_favorite_field())
-                        .custom(Self::segmented_button_style(favorite, cx))
+                        .segmented(favorite, cx)
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.update_preset_flags(id, None, Some(!favorite), cx);
                         })),
@@ -1825,10 +1824,7 @@ impl MultiplexApp {
                             cx,
                         )
                         .label(label)
-                        .custom(Self::segmented_button_style(
-                            editor.working_choice == choice,
-                            cx,
-                        ))
+                        .segmented(editor.working_choice == choice, cx)
                         .on_click(cx.listener(move |this, _, _, cx| {
                             if let Some(editor) = &mut this.preset_library.editor {
                                 editor.working_choice = choice;
@@ -1873,10 +1869,7 @@ impl MultiplexApp {
                         cx,
                     )
                     .label(label)
-                    .custom(Self::segmented_button_style(
-                        editor.permission_policy == policy,
-                        cx,
-                    ))
+                    .segmented(editor.permission_policy == policy, cx)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if let Some(editor) = &mut this.preset_library.editor {
                             editor.permission_policy = policy;
@@ -2176,7 +2169,7 @@ fn toggle_button(
             IconName::Close
         })
         .label(label)
-        .custom(MultiplexApp::segmented_button_style(selected, cx))
+        .segmented(selected, cx)
         .on_click(listener)
 }
 
