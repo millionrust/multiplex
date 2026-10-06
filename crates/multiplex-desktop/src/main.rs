@@ -433,6 +433,7 @@ fn main() {
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 display_id: restore_display_id,
+                is_movable: !cfg!(target_os = "macos"),
                 titlebar: Some(TitlebarOptions {
                     title: Some("Multiplex".into()),
                     appears_transparent: true,

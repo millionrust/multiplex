@@ -543,6 +543,7 @@ impl MultiplexApp {
         match cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
+                is_movable: !cfg!(target_os = "macos"),
                 titlebar: Some(TitlebarOptions {
                     title: Some(localization::shell_app_title().into()),
                     appears_transparent: true,
@@ -850,12 +851,12 @@ impl MultiplexApp {
                             }))
                             .on_mouse_down(
                                 MouseButton::Left,
-                                cx.listener(|_, event: &MouseDownEvent, window, _| {
+                                cx.listener(|_, event: &MouseDownEvent, window, cx| {
                                     // Only a plain single press starts a window drag;
                                     // a double-click is handled on click-up below so
                                     // the native drag loop doesn't swallow it.
                                     if event.click_count == 1 {
-                                        crate::platform_mac::start_window_drag();
+                                        crate::platform_mac::start_window_drag(cx);
                                         window.start_window_move();
                                     }
                                 }),

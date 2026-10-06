@@ -10,97 +10,31 @@
 
 #[cfg(target_os = "macos")]
 mod imp {
-    use std::ffi::CStr;
+    use std::time::Duration;
 
-    use objc::declare::ClassDecl;
-    use objc::runtime::{Class, Object, Sel};
+    use objc::rc::StrongPtr;
+    use objc::runtime::Object;
     use objc::{class, msg_send, sel, sel_impl};
 
     type Id = *mut Object;
 
-    unsafe extern "C" {
-        fn object_setClass(obj: Id, cls: *const Class) -> *const Class;
-    }
+    /// The foreground task retains its window until the Window Server finishes the drag.
+    /// Restore automatic-drag prevention even if the task is cancelled during shutdown.
+    struct NativeDrag(StrongPtr);
 
-    /// Replacement `mouseDownCanMoveWindow` — always NO, so macOS never
-    /// auto-drags the window from a mouse-down on this view.
-    extern "C" fn no_window_drag(_: &Object, _: Sel) -> bool {
-        false
-    }
-
-    /// Suffix appended to dynamically-created non-dragging subclasses.
-    const NO_DRAG_SUFFIX: &str = "_TermiNoDrag";
-
-    /// Reclass one view instance to a (cached) subclass of its current class
-    /// that returns NO from `mouseDownCanMoveWindow`. The subclass adds no
-    /// ivars, so the instance layout is unchanged and the swap is safe.
-    /// Returns `true` if the view was (or already is) non-dragging.
-    fn make_view_non_dragging(view: Id) -> bool {
-        if view.is_null() {
-            return false;
-        }
-        unsafe {
-            let class: *const Class = msg_send![view, class];
-            if class.is_null() {
-                return false;
-            }
-            let class_name = CStr::from_ptr(objc::runtime::class_getName(&*class))
-                .to_string_lossy()
-                .into_owned();
-            if class_name.ends_with(NO_DRAG_SUFFIX) {
-                return true; // already patched
-            }
-            let subclass_name = format!("{class_name}{NO_DRAG_SUFFIX}");
-            let subclass: *const Class = match Class::get(&subclass_name) {
-                Some(existing) => existing,
-                None => {
-                    let Some(mut decl) = ClassDecl::new(&subclass_name, &*class) else {
-                        eprintln!("[platform_mac] could not subclass {class_name}");
-                        return false;
-                    };
-                    decl.add_method(
-                        sel!(mouseDownCanMoveWindow),
-                        no_window_drag as extern "C" fn(&Object, Sel) -> bool,
-                    );
-                    decl.register()
-                }
-            };
-            object_setClass(view, subclass);
-            true
-        }
-    }
-
-    /// Recursively make `view` and every descendant non-dragging; returns the
-    /// number of views patched.
-    fn patch_view_tree(view: Id) -> usize {
-        if view.is_null() {
-            return 0;
-        }
-        let mut patched = 0;
-        unsafe {
-            let subviews: Id = msg_send![view, subviews];
-            if !subviews.is_null() {
-                let count: usize = msg_send![subviews, count];
-                for index in 0..count {
-                    let child: Id = msg_send![subviews, objectAtIndex: index];
-                    patched += patch_view_tree(child);
-                }
+    impl Drop for NativeDrag {
+        fn drop(&mut self) {
+            unsafe {
+                let _: () = msg_send![*self.0, setMovable: false];
             }
         }
-        if make_view_non_dragging(view) {
-            patched += 1;
-        }
-        patched
     }
 
-    /// Stop macOS from auto-dragging the window from the title-bar zone.
+    /// Stop automatic title-bar dragging without changing AppKit view classes.
     ///
-    /// We walk the whole window view tree from the theme frame down — title-bar
-    /// views, content view, and GPUI's render view — and make every view report
-    /// `mouseDownCanMoveWindow = NO`. The window stays `isMovable = YES` so our
-    /// own [`start_window_drag`] can still move it.
-    ///
-    /// Call once after the first window is created.
+    /// AppKit observes its title-bar views with KVO. Replacing their runtime classes can
+    /// discard Foundation's observer subclass and crash when a decoration is released.
+    /// The public window property leaves those view lifetimes and observers intact.
     pub fn disable_titlebar_window_drag() {
         unsafe {
             let app: Id = msg_send![class!(NSApplication), sharedApplication];
@@ -112,32 +46,18 @@ mod imp {
                 return;
             }
             let count: usize = msg_send![windows, count];
-            let mut patched = 0;
             for index in 0..count {
                 let window: Id = msg_send![windows, objectAtIndex: index];
-                if window.is_null() {
-                    continue;
+                if !window.is_null() {
+                    let _: () = msg_send![window, setMovableByWindowBackground: false];
+                    let _: () = msg_send![window, setMovable: false];
                 }
-                let content_view: Id = msg_send![window, contentView];
-                if content_view.is_null() {
-                    continue;
-                }
-                // The theme frame is the content view's superview; patching
-                // from there also covers the native title-bar container.
-                let theme_frame: Id = msg_send![content_view, superview];
-                let root = if theme_frame.is_null() {
-                    content_view
-                } else {
-                    theme_frame
-                };
-                patched += patch_view_tree(root);
             }
-            eprintln!("[platform_mac] disabled OS window drag on {patched} views");
         }
     }
 
     /// Begin a native macOS window drag for the in-flight mouse-down event.
-    pub fn start_window_drag() {
+    pub fn start_window_drag(cx: &mut gpui::App) {
         unsafe {
             let app: Id = msg_send![class!(NSApplication), sharedApplication];
             if app.is_null() {
@@ -153,7 +73,24 @@ mod imp {
                 window = msg_send![app, keyWindow];
             }
             if !window.is_null() {
+                let drag = NativeDrag(StrongPtr::retain(window));
+                let _: () = msg_send![window, setMovable: true];
                 let _: () = msg_send![window, performWindowDragWithEvent: event];
+                // performWindowDragWithEvent returns immediately and may consume mouse-up.
+                // Poll on GPUI's main-thread executor rather than relying on a GPUI mouse-up.
+                cx.spawn(async move |cx| {
+                    loop {
+                        cx.background_executor()
+                            .timer(Duration::from_millis(16))
+                            .await;
+                        let pressed: usize = msg_send![class!(NSEvent), pressedMouseButtons];
+                        if pressed & 1 == 0 {
+                            break;
+                        }
+                    }
+                    drop(drag);
+                })
+                .detach();
             }
         }
     }
@@ -169,4 +106,4 @@ pub fn disable_titlebar_window_drag() {}
 /// Begin a native window drag (handled by GPUI's `start_window_move` elsewhere
 /// on non-macOS platforms).
 #[cfg(not(target_os = "macos"))]
-pub fn start_window_drag() {}
+pub fn start_window_drag(_: &mut gpui::App) {}
