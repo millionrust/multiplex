@@ -158,3 +158,32 @@ Multiplex does not yet ship an auto-updater. The intended path:
 
 Until that lands, distribute releases via GitHub Releases and let
 package managers (Homebrew, scoop, AUR) pick them up.
+
+## Build caches
+
+CI uses `Swatinem/rust-cache` after installing the pinned Rust toolchain. Its keys
+include the platform, toolchain, manifests and compiler environment. Windows test
+shards restore the same dependency cache and only shard 1 saves it. Failed CI jobs
+can save dependencies; workspace binaries are rebuilt before native terminal tests.
+
+Linux CI also fetches the locked dependency graph and immediately saves a portable
+`cargo-sources-v1-<Cargo.lock hash>` cache containing only the Cargo registry and Git
+sources. Every release platform restores this default-branch cache. Previously,
+release jobs had private `release-*` keys with saving disabled, so those keys could
+never be populated. Source caching avoids repeat downloads without storing seven
+more compiled target caches alongside CI's already substantial cache footprint.
+
+Tagged releases keep the optimized one-codegen-unit/thin-LTO profile. Dry runs use
+16 codegen units without LTO, so their compiled dependencies are not interchangeable.
+Mobile release scripts retain isolated temporary build directories; cached downloads
+speed fetching, but their native libraries still compile cleanly. CI mobile builds
+share a cached target directory because they verify artifacts rather than ship them.
+Cache hits do not prove build correctness: packaging checks, native tests, checksums
+and attestations still run. The release workflow remains a draft-only publisher.
+
+Reference: [Pintail's CI](https://github.com/chittihq/pintail/blob/dev/.github/workflows/ci.yml)
+uses the same pinned-toolchain/dependency-cache pattern. Its
+[Docker build](https://github.com/chittihq/pintail/blob/dev/Dockerfile) separates dependency
+compilation from application sources and exports container layers through GHCR.
+Multiplex builds native macOS, Windows and mobile artifacts, so that container cache
+is not a replacement for its platform-specific caches.

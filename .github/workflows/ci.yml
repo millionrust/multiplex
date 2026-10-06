@@ -136,6 +136,32 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      # A small, portable source cache for release jobs. Save it immediately after fetch,
+      # so an unrelated test failure cannot leave every release starting from an empty key.
+      - name: Restore release dependency sources
+        if: runner.os == 'Linux'
+        id: release-sources
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-sources-v1-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-sources-v1-
+
+      - name: Fetch locked release dependency sources
+        if: runner.os == 'Linux'
+        run: cargo fetch --locked
+
+      - name: Save release dependency sources
+        if: runner.os == 'Linux' && steps.release-sources.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-sources-v1-${{ hashFiles('Cargo.lock') }}
+
       - uses: Swatinem/rust-cache@v2
         with:
           # CI has been red, and rust-cache saves nothing from a failed job by default, so every
