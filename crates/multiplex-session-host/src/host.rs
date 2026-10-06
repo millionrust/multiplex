@@ -346,7 +346,7 @@ impl RuntimeState {
             "stop_requested": self.stop_response.requested.load(Ordering::Acquire),
             "connections": self.active_connections.load(Ordering::Acquire),
         });
-        eprintln!("{line}");
+        let _ = writeln!(std::io::stderr().lock(), "{line}");
     }
 }
 
@@ -1066,7 +1066,7 @@ async fn accept_loop(
                             "stage": error.stage(),
                             "io_kind": error.io_kind.map(|kind| format!("{kind:?}")),
                         });
-                        eprintln!("{line}");
+                        let _ = writeln!(std::io::stderr().lock(), "{line}");
                     }
                     state.release_writer(connection_id).await;
                     state.active_connections.fetch_sub(1, Ordering::AcqRel);

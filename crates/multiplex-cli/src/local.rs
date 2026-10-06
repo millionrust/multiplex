@@ -2446,7 +2446,12 @@ impl HostLauncher for ProcessHostLauncher {
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            // A detached Host outlives this frontend and must never write to its closed pipe.
+            .stderr(if self.detached {
+                Stdio::null()
+            } else {
+                Stdio::piped()
+            });
         if self.detached {
             detach_from_terminal(&mut command);
         }
