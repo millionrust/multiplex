@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import OSLog
 
 /// Why this phone is not showing a computer's screen.
 enum ControllerScreenUnavailable: Equatable, Sendable {
@@ -24,6 +25,9 @@ final class ControllerScreenCoordinator: ObservableObject {
     @Published private(set) var preview: RemoteScreenViewModel?
     /// The full-size screen, once someone opens it.
     @Published private(set) var viewer: RemoteScreenViewModel?
+    @Published private(set) var isPresentingViewer = false
+    private(set) var requestedSurface: UInt32?
+    private static let logger = Logger(subsystem: "com.millionrust.multiplex", category: "controller-screen")
     /// The last picture seen for each computer, keyed by host id.
     @Published private(set) var lastPictures: [String: CGImage] = [:]
     @Published private(set) var unavailable: ControllerScreenUnavailable?
@@ -75,6 +79,9 @@ final class ControllerScreenCoordinator: ObservableObject {
         connection: any ControllerConnecting,
         surface: UInt32? = nil
     ) {
+        isPresentingViewer = true
+        requestedSurface = surface
+        Self.logger.notice("screen_open_requested")
         start(host: host, connection: connection, preview: false, surface: surface)
     }
 
@@ -89,6 +96,7 @@ final class ControllerScreenCoordinator: ObservableObject {
 
     /// Ends whatever session is running and keeps the last picture.
     func stop() {
+        isPresentingViewer = false
         viewer?.pictureInPicture.stop()
         session?.cancel()
         session = nil
@@ -106,17 +114,18 @@ final class ControllerScreenCoordinator: ObservableObject {
     }
 
     func resumeViewer(connection: any ControllerConnecting) {
-        guard session == nil, let host = watchingHost, viewer != nil else { return }
+        guard session == nil, let host = watchingHost, isPresentingViewer else { return }
+        unavailable = nil
         reconnecting = true
         generation += 1
         run(host: host, connection: connection, preview: false,
-            surface: viewer?.selectedSurface, token: generation)
+            surface: viewer?.selectedSurface ?? requestedSurface, token: generation)
     }
 
     func updateCapabilities(host: PairedHostRecord, connection: any ControllerConnecting) {
         guard let watchingHost, watchingHost.id == host.id,
               watchingHost.capabilityBits != host.capabilityBits else { return }
-        let wantsPreview = viewer == nil
+        let wantsPreview = !isPresentingViewer
         (viewer ?? preview)?.restrictCapabilities(host.capabilityBits)
         session?.cancel()
         generation += 1
@@ -129,7 +138,7 @@ final class ControllerScreenCoordinator: ObservableObject {
         }
         reconnecting = true
         run(host: host, connection: connection, preview: wantsPreview,
-            surface: (viewer ?? preview)?.selectedSurface, token: generation)
+            surface: (viewer ?? preview)?.selectedSurface ?? requestedSurface, token: generation)
     }
 
     private func start(
@@ -142,7 +151,8 @@ final class ControllerScreenCoordinator: ObservableObject {
             unavailable = .notGranted
             return
         }
-        session?.cancel()
+        let previous = session
+        previous?.cancel()
         session = nil
         self.preview = nil
         viewer = nil
@@ -156,7 +166,8 @@ final class ControllerScreenCoordinator: ObservableObject {
             connection: connection,
             preview: wantsPreview,
             surface: surface,
-            token: generation
+            token: generation,
+            previous: previous
         )
     }
 
@@ -170,10 +181,16 @@ final class ControllerScreenCoordinator: ObservableObject {
         connection: any ControllerConnecting,
         preview wantsPreview: Bool,
         surface: UInt32? = nil,
-        token: Int
+        token: Int,
+        previous: Task<Void, Never>? = nil
     ) {
         let hostID = host.id
         session = Task { [weak self] in
+            if let previous {
+                await connection.cancel()
+                await previous.value
+            }
+            guard !Task.isCancelled else { return }
             while !Task.isCancelled {
                 do {
                     try await connection.watchScreen(
@@ -224,6 +241,8 @@ final class ControllerScreenCoordinator: ObservableObject {
         // A session that has already been replaced does not get to answer for the one that
         // replaced it.
         guard token == generation else { return false }
+        let category = Self.failureCategory(error)
+        Self.logger.notice("screen_session_failed category=\(category, privacy: .public)")
         // The computer answered by name: it is not sharing its screen. Nothing on this phone
         // changes that, and asking again gets the same answer, so it is said rather than
         // retried behind a spinner that never resolves.
@@ -256,6 +275,17 @@ final class ControllerScreenCoordinator: ObservableObject {
         return true
     }
 
+    private static func failureCategory(_ error: Error) -> String {
+        if error is CancellationError { return "cancelled" }
+        guard let error = error as? ControllerConnectionError else { return "transport" }
+        switch error {
+        case .capabilityDenied: return "capability_denied"
+        case .authenticationFailed: return "authentication_failed"
+        case .hostError(let code): return code == sharingOffCode ? "screen_sharing_off" : "host_rejected"
+        default: return "protocol_or_network"
+        }
+    }
+
     private func opened(
         ticket: ControllerScreenTicket,
         viewer screenViewer: ScreenViewer,
@@ -263,6 +293,7 @@ final class ControllerScreenCoordinator: ObservableObject {
         token: Int
     ) {
         guard token == generation else { return }
+        Self.logger.notice("screen_session_opened")
         if let current = wantsPreview ? preview : viewer {
             current.replaceConnection(viewer: screenViewer, ticket: ticket)
         } else {

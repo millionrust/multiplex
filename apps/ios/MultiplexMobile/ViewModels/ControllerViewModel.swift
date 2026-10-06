@@ -485,7 +485,7 @@ final class ControllerViewModel: ObservableObject {
 
     func suspend(allowPictureInPicture: Bool = true) {
         activeTerminal?.suspend()
-        if allowPictureInPicture, let viewer = screens.viewer, viewer.pictureInPicture.start() { return }
+        if allowPictureInPicture, let viewer = screens.viewer, viewer.state == .watching, viewer.pictureInPicture.start() { return }
         screens.pauseViewerForBackground()
         stopLiveSettingsRefresh()
         terminalSelection?.cancel()
@@ -507,7 +507,7 @@ final class ControllerViewModel: ObservableObject {
     }
 
     func resume() {
-        if screens.viewer != nil, let selectedConnection {
+        if screens.isPresentingViewer, let selectedConnection {
             screens.resumeViewer(connection: selectedConnection)
             state = replacing(connection: .readyReadOnly, sessions: state.sessions)
             startLiveSettingsRefresh()
@@ -603,6 +603,7 @@ final class ControllerViewModel: ObservableObject {
     /// terminals is what the page is mostly for.
     func startScreenPreview() {
         guard activeTerminal == nil,
+              !screens.isPresentingViewer,
               !screens.isWatching,
               state.connection == .readyReadOnly,
               !state.isCachedReadOnly,
@@ -616,7 +617,7 @@ final class ControllerViewModel: ObservableObject {
     /// Ends the preview. Opening the full screen can take the page off screen, so this leaves a
     /// viewer alone: it is the same session, and stopping it would close what was just opened.
     func stopScreenPreview() {
-        guard screens.isWatching, screens.viewer == nil else { return }
+        guard screens.isWatching, !screens.isPresentingViewer, screens.viewer == nil else { return }
         screens.stop()
         retry()
     }

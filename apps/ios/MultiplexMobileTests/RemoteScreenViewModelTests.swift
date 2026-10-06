@@ -461,6 +461,18 @@ final class RemoteScreenReconnectTests: XCTestCase {
     }
 
     /// A computer taking screen access away is not a network problem, so retrying is pointless.
+    func testMainDisplayPresentsImmediatelyAndKeepsTheFailureVisible() async throws {
+        let coordinator = ControllerScreenCoordinator { _ in .milliseconds(5) }
+        let connection = FlakyScreenConnection(failures: .max, error: .hostError("screen_sharing_off"))
+        coordinator.openViewer(host: try host(), connection: connection)
+        XCTAssertTrue(coordinator.isPresentingViewer, "the tap must open the viewer before a ticket arrives")
+        XCTAssertNil(coordinator.viewer)
+        try await waitUntil { coordinator.unavailable == .sharingOff }
+        XCTAssertTrue(coordinator.isPresentingViewer, "a rejection must be visible instead of dismissing the page")
+        coordinator.stop()
+        XCTAssertFalse(coordinator.isPresentingViewer)
+    }
+
     func testLosingScreenAccessStopsRatherThanRetrying() async throws {
         let coordinator = ControllerScreenCoordinator { _ in .milliseconds(5) }
         let connection = FlakyScreenConnection(failures: .max, error: .capabilityDenied)

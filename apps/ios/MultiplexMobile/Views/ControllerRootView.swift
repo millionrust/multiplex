@@ -163,17 +163,7 @@ struct ControllerRootView: View {
         .fullScreenCover(item: fullScreenRoute) { route in
             switch route {
             case .screen:
-                if let screen = screens.viewer {
-                    ControllerScreenViewerSheet(
-                        model: screen,
-                        screens: viewModel.screens,
-                        routeName: viewModel.selectedRoute.map(ControllerPresentation.routeTitle),
-                        onClose: viewModel.closeScreen,
-                        controller: viewModel,
-                        onSelectTerminal: viewModel.openReadOnlyTerminal,
-                        onCloseTerminal: viewModel.closeReadOnlyTerminal
-                    )
-                }
+                ControllerScreenPresentation(controller: viewModel, screens: screens)
             case .terminal:
                 if let terminal = viewModel.activeTerminal {
                     ControllerReadOnlyTerminalView(
@@ -380,13 +370,13 @@ struct ControllerRootView: View {
     private var fullScreenRoute: Binding<FullScreenRoute?> {
         Binding(
             get: {
-                if screens.viewer != nil { return .screen }
+                if screens.isPresentingViewer { return .screen }
                 if viewModel.activeTerminal != nil { return .terminal }
                 return nil
             },
             set: { next in
                 guard next == nil else { return }
-                if screens.viewer != nil {
+                if screens.isPresentingViewer {
                     viewModel.closeScreen()
                 } else if viewModel.activeTerminal != nil {
                     viewModel.closeReadOnlyTerminal()
@@ -402,6 +392,48 @@ struct ControllerRootView: View {
         )
     }
 
+}
+
+/// Opening is presented immediately; the connection can then succeed or show its failure here.
+private struct ControllerScreenPresentation: View {
+    @ObservedObject var controller: ControllerViewModel
+    @ObservedObject var screens: ControllerScreenCoordinator
+
+    var body: some View {
+        if let screen = screens.viewer {
+            ControllerScreenViewerSheet(
+                model: screen, screens: screens,
+                routeName: controller.selectedRoute.map(ControllerPresentation.routeTitle),
+                onClose: controller.closeScreen, controller: controller,
+                onSelectTerminal: controller.openReadOnlyTerminal,
+                onCloseTerminal: controller.closeReadOnlyTerminal
+            )
+        } else {
+            VStack(spacing: 18) {
+                if let unavailable = screens.unavailable {
+                    Image(systemName: "display.trianglebadge.exclamationmark").font(.largeTitle)
+                    Text(message(unavailable)).multilineTextAlignment(.center)
+                    FlowPill(label: "Try again", systemImage: "arrow.clockwise") { controller.openScreen(surface: screens.requestedSurface) }
+                } else {
+                    ProgressView()
+                    Text("Opening the computer’s screen…")
+                }
+                FlowPill(label: "Back", systemImage: "chevron.left", action: controller.closeScreen)
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .foregroundStyle(Flow.text)
+            .background(Flow.canvas)
+        }
+    }
+
+    private func message(_ unavailable: ControllerScreenUnavailable) -> String {
+        switch unavailable {
+        case .sharingOff: return "Screen sharing is off or screen-recording access is unavailable on this computer. Enable it in Multiplex on the computer."
+        case .notGranted: return "This computer has not granted screen access to this phone."
+        case .failed(let message): return message
+        }
+    }
 }
 
 /// Terminal tabs under a computer's screen.
