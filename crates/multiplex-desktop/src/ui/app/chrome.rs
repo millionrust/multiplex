@@ -527,7 +527,10 @@ impl MultiplexApp {
         };
         let mut initial_state = self.saved.clone();
         initial_state.settings.restore_workspaces_on_launch = false;
-        let request_for_window = request.clone();
+        let mut request_for_window = request.clone();
+        if request_for_window.is_local_shell() {
+            request_for_window.persistent_session_name = None;
+        }
         let bounds = Bounds::centered(
             None,
             size(

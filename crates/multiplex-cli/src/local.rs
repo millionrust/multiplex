@@ -2442,7 +2442,14 @@ impl HostLauncher for ProcessHostLauncher {
     ) -> Result<HostLaunchOutcome, CliError> {
         let host_executable = fs::canonicalize(host_executable)
             .map_err(|_| unavailable("Multiplex session Host companion is unavailable"))?;
+        // The development desktop executable also exposes the Session Host entry point.
+        let embedded = host_executable
+            .file_name()
+            .is_some_and(|name| name == "multiplex" || name == "multiplex.exe");
         let mut command = Command::new(host_executable);
+        if embedded {
+            command.arg("--session-host");
+        }
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

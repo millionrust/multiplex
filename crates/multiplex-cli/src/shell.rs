@@ -29,19 +29,85 @@ use crate::{Cancellation, CliError, ErrorCode};
 /// Set in every shell this starts, so a profile that runs the launcher again from inside one
 /// runs the program plainly instead of nesting a session in a session.
 pub const SHELL_SESSION_ENV: &str = "MULTIPLEX_SHELL_SESSION";
+/// One native-frontend handshake, consumed before publishing a connected pane.
+pub const SHELL_READY_MARKER: &[u8] = b"\x1b]777;multiplex-cli-ready\x07";
+/// Parsed shell launch, including the stable identity used when an app pane is restored.
+#[derive(Debug, PartialEq, Eq)]
+pub struct ShellInvocation {
+    pub session_id: Option<HostedSessionId>,
+    pub raw_input: bool,
+    pub program: Option<String>,
+    pub arguments: Vec<String>,
+}
+
+pub fn parse_shell_arguments(arguments: &[String]) -> Result<ShellInvocation, CliError> {
+    let (raw_input, arguments) = match arguments {
+        [flag, rest @ ..] if flag == "--raw" => (true, rest),
+        _ => (false, arguments),
+    };
+    let (session_id, arguments) = match arguments {
+        [flag, value, rest @ ..] if flag == "--session-id" => {
+            (Some(value.parse().map_err(|_| shell_usage())?), rest)
+        }
+        _ => (None, arguments),
+    };
+    let (program, arguments) = match arguments {
+        [] => (None, Vec::new()),
+        [separator, program, rest @ ..] if separator == "--" && !program.is_empty() => {
+            (Some(program.clone()), rest.to_vec())
+        }
+        _ => return Err(shell_usage()),
+    };
+    Ok(ShellInvocation {
+        session_id,
+        raw_input,
+        program,
+        arguments,
+    })
+}
+
+fn shell_usage() -> CliError {
+    CliError::new(
+        ErrorCode::Usage,
+        "invalid shell launch arguments",
+        "Use multiplex-cli shell [--raw] [--session-id UUID] [-- PROGRAM ARGS...].",
+    )
+}
+
 pub struct ShellLauncher {
     paths: CliPaths,
+    raw_input: bool,
 }
 
 impl ShellLauncher {
     pub fn new(paths: CliPaths) -> Self {
-        Self { paths }
+        Self {
+            paths,
+            raw_input: false,
+        }
+    }
+
+    /// Preserve bytes from a native terminal, including terminal replies and mouse reports.
+    pub fn raw_input(mut self, enabled: bool) -> Self {
+        self.raw_input = enabled;
+        self
     }
 
     /// Runs `program` (or this platform's shell) in a durable session and attaches to it, or runs
     /// it directly where a session would not help. Returns the exit code to leave with.
     pub fn execute(
         &self,
+        program: Option<String>,
+        arguments: Vec<String>,
+        cancellation: &Cancellation,
+    ) -> Result<i32, CliError> {
+        self.execute_session(None, program, arguments, cancellation)
+    }
+
+    /// Launch a new console, or attach to the console a saved app pane already owns.
+    pub fn execute_session(
+        &self,
+        session_id: Option<HostedSessionId>,
         program: Option<String>,
         arguments: Vec<String>,
         cancellation: &Cancellation,
@@ -53,7 +119,49 @@ impl ShellLauncher {
         let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
         let nested = std::env::var_os(SHELL_SESSION_ENV).is_some();
         if !interactive || nested || !self.paths.host_executable().is_file() {
+            if session_id.is_some() {
+                return Err(CliError::new(
+                    ErrorCode::Unavailable,
+                    "saved terminal requires a local terminal and Session Host",
+                    "Reopen it from Multiplex with the Session Host available.",
+                ));
+            }
             return run_directly(&program, &arguments);
+        }
+        // A terminal that reports no size, as some do before their window is drawn, gets the
+        // classic one; the first resize puts the real size right.
+        let (columns, rows) = crossterm::terminal::size()
+            .ok()
+            .filter(|&(columns, rows)| columns >= 10 && rows >= 2)
+            .unwrap_or((80, 24));
+        let columns = columns.min(1_000);
+        let rows = rows.min(1_000);
+        let restoring = session_id.is_some();
+        let session_id = session_id.unwrap_or_default();
+        let host_instance_id = HostInstanceId::new();
+        let session_dir = self
+            .paths
+            .config_root()
+            .join(CONSOLE_SESSIONS_DIR)
+            .join(session_id.to_string());
+        let runtime_root = self.paths.runtime_parent().join(session_id.to_string());
+        if restoring && session_dir.exists() {
+            let record = multiplex_store::read_console_session(&session_dir)
+                .ok_or_else(unavailable_storage)?;
+            let metadata = multiplex_store::read_host_metadata(&session_dir)
+                .map_err(|_| unavailable_storage())?;
+            if record.session_id != session_id || metadata.session_id != session_id {
+                return Err(unavailable_storage());
+            }
+            return attach_console(
+                session_id,
+                metadata.host_instance_id,
+                runtime_root,
+                columns,
+                rows,
+                cancellation,
+                self.raw_input,
+            );
         }
         let executable = resolve_program(&program).ok_or_else(|| {
             CliError::new(
@@ -69,23 +177,7 @@ impl ShellLauncher {
                 "Open the terminal in a folder that still exists.",
             )
         })?;
-        // A terminal that reports no size, as some do before their window is drawn, gets the
-        // classic one; the first resize puts the real size right.
-        let (columns, rows) = crossterm::terminal::size()
-            .ok()
-            .filter(|&(columns, rows)| columns >= 10 && rows >= 2)
-            .unwrap_or((80, 24));
-        let columns = columns.min(1_000);
-        let rows = rows.min(1_000);
-        let session_id = HostedSessionId::new();
-        let host_instance_id = HostInstanceId::new();
-        let session_dir = self
-            .paths
-            .config_root()
-            .join(CONSOLE_SESSIONS_DIR)
-            .join(session_id.to_string());
         std::fs::create_dir_all(&session_dir).map_err(|_| unavailable_storage())?;
-        let runtime_root = self.paths.runtime_parent().join(session_id.to_string());
         // The shell gets this terminal's environment, as it would started directly, and learns
         // that it runs in a Multiplex session.
         let mut environment: BTreeMap<String, String> = std::env::vars().collect();
@@ -124,33 +216,57 @@ impl ShellLauncher {
         };
         write_console_session(&session_dir, &record).map_err(|_| unavailable_storage())?;
 
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|_| {
-                CliError::new(
-                    ErrorCode::Unavailable,
-                    "unable to start the terminal session",
-                    "Try opening the terminal again.",
-                )
-            })?;
-        let attached = runtime.block_on(run_attach(
+        attach_console(
             session_id,
-            crate::local::ValidatedSessionAttach {
-                runtime_root,
-                request: HostAttachRequest {
-                    expected_host_instance_id: host_instance_id,
-                    from_sequence: OutputSequence::ZERO,
-                    columns,
-                    rows,
-                    request_control: true,
-                },
-            },
+            host_instance_id,
+            runtime_root,
+            columns,
+            rows,
             cancellation,
-            AttachStyle::Shell,
-        ));
-        attached.map(|()| 0)
+            self.raw_input,
+        )
     }
+}
+
+fn attach_console(
+    session_id: HostedSessionId,
+    host_instance_id: HostInstanceId,
+    runtime_root: PathBuf,
+    columns: u16,
+    rows: u16,
+    cancellation: &Cancellation,
+    raw_input: bool,
+) -> Result<i32, CliError> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|_| {
+            CliError::new(
+                ErrorCode::Unavailable,
+                "unable to start the terminal session",
+                "Try opening the terminal again.",
+            )
+        })?;
+    let attached = runtime.block_on(run_attach(
+        session_id,
+        crate::local::ValidatedSessionAttach {
+            runtime_root,
+            request: HostAttachRequest {
+                expected_host_instance_id: host_instance_id,
+                from_sequence: OutputSequence::ZERO,
+                columns,
+                rows,
+                request_control: true,
+            },
+        },
+        cancellation,
+        if raw_input {
+            AttachStyle::RawShell
+        } else {
+            AttachStyle::Shell
+        },
+    ));
+    attached.map(|()| 0)
 }
 
 /// The shell this platform's terminals open by default.
@@ -234,6 +350,33 @@ fn unavailable_storage() -> CliError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shell_arguments_preserve_the_saved_identity_and_exact_program_arguments() {
+        let id = HostedSessionId::new();
+        let args = [
+            "--session-id".into(),
+            id.to_string(),
+            "--".into(),
+            "/bin/sh".into(),
+            "-c".into(),
+            "echo 'a b'".into(),
+        ];
+        let parsed = parse_shell_arguments(&args).unwrap();
+        assert_eq!(parsed.session_id, Some(id));
+        assert!(!parsed.raw_input);
+        let raw = ["--raw".into(), "--session-id".into(), id.to_string()];
+        assert!(parse_shell_arguments(&raw).unwrap().raw_input);
+        assert_eq!(parsed.program.as_deref(), Some("/bin/sh"));
+        assert_eq!(parsed.arguments, ["-c", "echo 'a b'"]);
+        assert!(parse_shell_arguments(&["--session-id".into(), "invalid".into()]).is_err());
+        assert!(
+            parse_shell_arguments(&["--session-id".into(), id.to_string(), "--unknown".into()])
+                .is_err()
+        );
+        assert!(parse_shell_arguments(&["--".into()]).is_err());
+        assert_eq!(parse_shell_arguments(&[]).unwrap().session_id, None);
+    }
 
     #[test]
     fn a_program_is_named_without_its_path_or_extension() {

@@ -2313,27 +2313,13 @@ impl MultiplexApp {
         cx.notify();
     }
 
+    #[cfg(test)]
     fn set_draft_persistent_session(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.draft_persistent_session = enabled;
         self.status_message = localization::static_message(if enabled {
             MessageId::HostPersistentTmuxStatus
         } else {
             MessageId::HostNormalShellStatus
-        });
-        self.error_message.clear();
-        cx.notify();
-    }
-
-    fn set_draft_persistent_session_detach_others(
-        &mut self,
-        detach_others: bool,
-        cx: &mut Context<Self>,
-    ) {
-        self.draft_persistent_session_detach_others = detach_others;
-        self.status_message = localization::static_message(if detach_others {
-            MessageId::HostDetachOtherClientsStatus
-        } else {
-            MessageId::HostKeepOtherClientsStatus
         });
         self.error_message.clear();
         cx.notify();
@@ -5064,26 +5050,6 @@ impl MultiplexApp {
         cx.notify();
     }
 
-    /// Only changes what a new Host and a quick connect start with; a saved Host keeps its own
-    /// answer, which is why this does not walk the profiles.
-    fn update_persistent_remote_sessions(&mut self, enabled: bool, cx: &mut Context<Self>) {
-        self.saved.settings.persistent_remote_sessions = enabled;
-        self.save_settings();
-        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
-        self.error_message.clear();
-        cx.notify();
-    }
-
-    /// Only changes what the next local terminal starts with; the ones already open keep running
-    /// as they are.
-    fn update_persistent_local_sessions(&mut self, enabled: bool, cx: &mut Context<Self>) {
-        self.saved.settings.persistent_local_sessions = enabled;
-        self.save_settings();
-        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
-        self.error_message.clear();
-        cx.notify();
-    }
-
     fn update_copy_on_select(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.saved.settings.copy_on_select = enabled;
         self.save_settings();
@@ -7429,28 +7395,16 @@ impl MultiplexApp {
         Ok(request)
     }
 
-    /// A duplicated pane carries the original's tmux session name, which would put two panes in
-    /// one session instead of giving the copy a shell of its own. Only the app's own local names
-    /// are rewritten: attaching twice to a session the person keeps is what that asks for, and a
-    /// restored pane finds no live pane holding its name.
     fn give_a_duplicated_local_pane_its_own_session(&mut self, request: &mut ConnectRequest) {
-        let Some(name) = request.persistent_session_name.clone() else {
+        let Some(id) = crate::models::local_console_session_id(request) else {
             return;
         };
-        if !request.is_local_shell()
-            || !request.persistent_session
-            || !crate::models::is_app_owned_local_session(&name)
-        {
-            return;
-        }
-        let taken = self
+        if self
             .panes
             .iter()
-            .any(|pane| pane.request.persistent_session_name.as_deref() == Some(name.as_str()));
-        if taken {
-            request.persistent_session_name = Some(crate::models::local_persistent_session_name(
-                self.next_session_id(),
-            ));
+            .any(|pane| crate::models::local_console_session_id(&pane.request) == Some(id))
+        {
+            request.persistent_session_name = None;
         }
     }
 
@@ -7472,6 +7426,18 @@ impl MultiplexApp {
     ) -> u64 {
         let mut request = request;
         self.give_a_duplicated_local_pane_its_own_session(&mut request);
+        crate::models::prepare_terminal_request(&mut request);
+        if request.is_local_shell()
+            && let Ok(root) = crate::storage::app_dir()
+        {
+            request
+                .environment
+                .retain(|(key, _)| key != "MULTIPLEX_CONFIG_DIR");
+            request.environment.push((
+                "MULTIPLEX_CONFIG_DIR".into(),
+                root.to_string_lossy().into_owned(),
+            ));
+        }
         let request = request;
         let pane_id = request.session_id;
         let endpoint = request.endpoint_label();
@@ -7738,6 +7704,8 @@ impl MultiplexApp {
             )
         });
 
+        let controller_session_id =
+            crate::models::local_console_session_id(&request).unwrap_or_default();
         self.panes.push(SessionPane {
             id: pane_id,
             request,
@@ -7771,7 +7739,7 @@ impl MultiplexApp {
             auto_reconnect_at: None,
             user_closed: false,
             app_attached: None,
-            controller_session_id: HostedSessionId::new(),
+            controller_session_id,
         });
 
         if let Some(pane) = self.panes.last_mut()
@@ -7817,7 +7785,7 @@ impl MultiplexApp {
             if let Some(title) = spec.title.as_ref().filter(|value| !value.trim().is_empty()) {
                 connect.title = title.clone();
             }
-            self.make_local_request_resumable(&mut connect);
+            self.prepare_local_cli_terminal(&mut connect);
             let pane_id = connect.session_id;
             let Some((_, pane_id)) =
                 self.open_request_workspace_without_window(connect, pane_id, cx)
@@ -7841,7 +7809,11 @@ impl MultiplexApp {
         let Some(pane) = self.pane(pane_id) else {
             return;
         };
-        if pane.app_attached.is_some() || !pane.connected || pane.closed {
+        if pane.app_attached.is_some()
+            || crate::models::local_console_session_id(&pane.request).is_some()
+            || !pane.connected
+            || pane.closed
+        {
             return;
         }
         let input_tx = pane.runtime.command_tx.clone();
@@ -7880,14 +7852,8 @@ impl MultiplexApp {
         }
     }
 
-    /// Makes a local terminal resumable, when the person asked for that and this computer can do
-    /// it. The name is kept in the saved workspace, so the next launch attaches to the session
-    /// this one started rather than opening a second shell beside it.
-    fn make_local_request_resumable(&mut self, request: &mut ConnectRequest) {
-        let enabled = self.saved.settings.persistent_local_sessions;
-        let available = crate::local::local_tmux_available();
-        let name = crate::models::local_persistent_session_name(self.next_session_id());
-        make_request_resumable(request, enabled, available, name);
+    fn prepare_local_cli_terminal(&mut self, request: &mut ConnectRequest) {
+        crate::models::prepare_terminal_request(request);
     }
 
     fn open_local_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -7895,7 +7861,7 @@ impl MultiplexApp {
             0,
             self.saved.settings.default_local_shell.clone(),
         );
-        self.make_local_request_resumable(&mut request);
+        self.prepare_local_cli_terminal(&mut request);
         let Some((_, pane_id)) = self.open_request_workspace(request.clone(), window, cx) else {
             return;
         };
@@ -12203,191 +12169,6 @@ impl MultiplexApp {
             )
     }
 
-    fn render_persistent_session_editor(&self, cx: &Context<Self>) -> Stateful<Div> {
-        v_flex()
-            .id("persistent-session-settings")
-            .debug_selector(|| "persistent-session-settings".to_string())
-            .gap_3()
-            .p_3()
-            .rounded(px(theme::CARD_RADIUS))
-            .bg(if self.draft_persistent_session {
-                theme::with_alpha(theme::accent(), 0.08)
-            } else {
-                theme::card_hover_subtle()
-            })
-            .border_1()
-            .border_color(if self.draft_persistent_session {
-                theme::with_alpha(theme::accent(), 0.32)
-            } else {
-                theme::soft_border()
-            })
-            .child(
-                v_flex()
-                    .gap_2()
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                div()
-                                    .text_size(px(theme::TYPE_HEADING_SIZE))
-                                    .font_semibold()
-                                    .text_color(theme::text_main())
-                                    .child(localization::static_message(
-                                        MessageId::HostPersistentSessionTitle,
-                                    )),
-                            )
-                            .when(self.draft_persistent_session, |this| {
-                                this.child(self.status_badge(
-                                    localization::static_message(
-                                        MessageId::HostPersistentSessionEnabledBadge,
-                                    ),
-                                    theme::library_card(),
-                                    theme::success(),
-                                ))
-                            }),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(theme::TYPE_CAPTION_SIZE))
-                            .line_height(relative(1.45))
-                            .text_color(theme::text_muted())
-                            .child(localization::static_message(
-                                MessageId::HostPersistentSessionDescription,
-                            )),
-                    )
-                    .child(
-                        div()
-                            .id("persistent-session-toggle")
-                            .debug_selector(|| "persistent-session-toggle".to_string())
-                            .w_full()
-                            .h(px(theme::current_design_tokens()
-                                .control_height_compact()
-                                .0))
-                            .px_3()
-                            .rounded(px(theme::CONTROL_RADIUS))
-                            .border_1()
-                            .border_color(if self.draft_persistent_session {
-                                theme::border()
-                            } else {
-                                theme::with_alpha(theme::accent(), 0.45)
-                            })
-                            .bg(if self.draft_persistent_session {
-                                theme::card_hover()
-                            } else {
-                                theme::accent()
-                            })
-                            .hover(|style| style.bg(theme::hover()))
-                            .cursor_pointer()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                let enabled = !this.draft_persistent_session;
-                                this.set_draft_persistent_session(enabled, cx);
-                            }))
-                            .child(
-                                div()
-                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                    .font_medium()
-                                    .text_color(if self.draft_persistent_session {
-                                        theme::text_main()
-                                    } else {
-                                        theme::text_on_dark()
-                                    })
-                                    .child(if self.draft_persistent_session {
-                                        localization::static_message(
-                                            MessageId::HostPersistentSessionDisableAction,
-                                        )
-                                    } else {
-                                        localization::static_message(
-                                            MessageId::HostPersistentSessionEnableAction,
-                                        )
-                                    }),
-                            ),
-                    ),
-            )
-            .when(self.draft_persistent_session, |this| {
-                this.child(
-                    v_flex()
-                        .gap_3()
-                        .child(
-                            v_flex()
-                                .gap_2()
-                                .child(self.form_field(
-                                    localization::static_message(
-                                        MessageId::HostTmuxSessionNameField,
-                                    ),
-                                    Input::new(&self.inputs.persistent_session_name),
-                                ))
-                                .child(
-                                    v_flex()
-                                        .gap_2()
-                                        .child(
-                                            div()
-                                                .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                                .text_color(theme::text_muted())
-                                                .child(localization::static_message(
-                                                    MessageId::HostTmuxAttachBehaviorTitle,
-                                                )),
-                                        )
-                                        .child(h_flex().gap_2().children(
-                                            [false, true].into_iter().map(|detach_others| {
-                                                let active = self
-                                                    .draft_persistent_session_detach_others
-                                                    == detach_others;
-                                                Button::new((
-                                                    "persistent-session-detach",
-                                                    detach_others as usize,
-                                                ))
-                                                .small()
-                                                .custom(Self::segmented_button_style(active, cx))
-                                                .label(if detach_others {
-                                                    localization::static_message(
-                                                        MessageId::HostTmuxDetachOthersAction,
-                                                    )
-                                                } else {
-                                                    localization::static_message(
-                                                        MessageId::HostTmuxShareAttachAction,
-                                                    )
-                                                })
-                                                .on_click(cx.listener(move |this, _, _, cx| {
-                                                    this.set_draft_persistent_session_detach_others(
-                                                            detach_others,
-                                                            cx,
-                                                        );
-                                                }))
-                                                .into_any_element()
-                                            }),
-                                        )),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                .line_height(relative(1.45))
-                                .text_color(theme::text_muted())
-                                .child(localization::static_message(
-                                    MessageId::HostPersistentSessionRequirementsDescription,
-                                )),
-                        ),
-                )
-            })
-            .when(
-                self.draft_persistent_session && self.draft_persistent_session_detach_others,
-                |this| {
-                    this.child(
-                        div()
-                            .text_size(px(theme::TYPE_CAPTION_SIZE))
-                            .text_color(theme::warning())
-                            .child(localization::static_message(
-                                MessageId::HostTmuxDetachOthersWarning,
-                            )),
-                    )
-                },
-            )
-    }
-
     fn render_editor_panel(&self, cx: &Context<Self>) -> Div {
         let auth_mode = self.draft_auth_mode;
         let group_name = self.inputs.group.read(cx).value().trim().to_string();
@@ -12426,7 +12207,6 @@ impl MultiplexApp {
                 "Description",
                 Input::new(&self.inputs.description),
             ))
-            .child(self.render_persistent_session_editor(cx))
             .child(
                 v_flex()
                     .gap_2()
@@ -14578,25 +14358,6 @@ impl MultiplexApp {
     }
 }
 
-/// Decides whether a local terminal runs inside tmux.
-///
-/// A request that already carries a session — one attached from Sessions, or a canvas terminal
-/// that names its own — is left alone, and a computer without tmux gets the plain shell it has
-/// always had rather than a failure to open a terminal.
-fn make_request_resumable(
-    request: &mut ConnectRequest,
-    enabled: bool,
-    tmux_available: bool,
-    session_name: String,
-) {
-    if !request.is_local_shell() || request.persistent_session || !enabled || !tmux_available {
-        return;
-    }
-    request.persistent_session = true;
-    request.persistent_session_name = Some(session_name);
-    request.persistent_session_detach_others = false;
-}
-
 fn search_rows(rows: &[String], query: &str) -> Vec<SearchMatch> {
     if query.trim().is_empty() {
         return Vec::new();
@@ -16250,46 +16011,26 @@ mod tests {
     }
 
     #[test]
-    fn a_local_terminal_becomes_resumable_only_where_tmux_can_run_it() {
-        let shell = crate::models::LocalShellConfig {
-            program: "/bin/zsh".to_string(),
-            args: Vec::new(),
-            cwd: None,
-        };
-        let mut request = ConnectRequest::local_shell_with_config(1, shell.clone());
-        super::make_request_resumable(&mut request, true, true, "tr-local-1-7".to_string());
-        assert!(request.persistent_session);
-        assert_eq!(
-            request.persistent_session_name.as_deref(),
-            Some("tr-local-1-7")
+    fn restored_local_terminals_replace_legacy_tmux_with_stable_cli_identity() {
+        let mut request = ConnectRequest::persistent_local_shell_with_config(
+            1,
+            crate::models::LocalShellConfig::default(),
+            "tr-local-old".into(),
+            true,
         );
+        crate::models::prepare_terminal_request(&mut request);
+        let id = crate::models::local_console_session_id(&request).expect("CLI identity");
+        assert!(!request.persistent_session);
         assert!(!request.persistent_session_detach_others);
-
-        let mut without_tmux = ConnectRequest::local_shell_with_config(2, shell.clone());
-        super::make_request_resumable(&mut without_tmux, true, false, "tr-local-2-7".to_string());
-        assert!(!without_tmux.persistent_session);
-        assert!(without_tmux.persistent_session_name.is_none());
-
-        let mut turned_off = ConnectRequest::local_shell_with_config(3, shell.clone());
-        super::make_request_resumable(&mut turned_off, false, true, "tr-local-3-7".to_string());
-        assert!(!turned_off.persistent_session);
-
-        // A terminal attached to a session the person keeps holds on to its own name.
-        let mut attached = ConnectRequest::persistent_local_shell_with_config(
-            4,
-            shell,
-            "notes".to_string(),
-            false,
-        );
-        super::make_request_resumable(&mut attached, true, true, "tr-local-4-7".to_string());
-        assert_eq!(attached.persistent_session_name.as_deref(), Some("notes"));
+        let mut restored = request.to_restorable().unwrap().to_connect_request(2);
+        crate::models::prepare_terminal_request(&mut restored);
+        assert_eq!(crate::models::local_console_session_id(&restored), Some(id));
     }
 
     #[test]
     fn only_the_local_sessions_the_app_named_are_its_to_end() {
-        let name = crate::models::local_persistent_session_name(12);
-        assert!(crate::models::is_app_owned_local_session(&name));
-        assert!(name.contains("-12-"));
+        let name = "tr-local-12-legacy";
+        assert!(crate::models::is_app_owned_local_session(name));
         assert!(!crate::models::is_app_owned_local_session("notes"));
         assert!(!crate::models::is_app_owned_local_session(
             "tr-deploy-host-22"
@@ -18038,7 +17779,7 @@ mod tests {
                     .filter_map(|pane_id| app.pane(*pane_id))
                     .filter(|pane| pane.request.persistent_session)
                     .count(),
-                1
+                0
             );
             let restored = app
                 .saved
@@ -18620,7 +18361,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn canvas_saved_host_request_preserves_ssh_and_tmux_configuration(cx: &mut TestAppContext) {
+    fn canvas_saved_host_request_preserves_ssh_without_legacy_tmux(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let mut saved = SavedState::default();
         saved.profiles.push(HostProfile {
@@ -18654,11 +18395,8 @@ mod tests {
                 request.startup_command.as_deref(),
                 Some("git status --short")
             );
-            assert!(request.persistent_session);
-            assert_eq!(
-                request.persistent_session_name.as_deref(),
-                Some("tr-profile-canvas-prod")
-            );
+            assert!(!request.persistent_session);
+            assert!(request.persistent_session_name.is_none());
             assert_eq!(request.terminal_scrollback_rows, 32_000);
             assert_eq!(
                 request.environment,
@@ -19090,7 +18828,10 @@ sleep 30
         wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
             let workspace = app.active_workspace()?;
             (workspace.layout_mode == WorkspaceLayoutMode::Canvas
-                && workspace.canvas.node(&node_id).is_some())
+                && workspace.canvas.node(&node_id).is_some()
+                && app
+                    .pane(workspace.active_pane_id)
+                    .is_some_and(|pane| pane.connected))
             .then_some(())
         });
         app.read_with(cx, |app, _| {
@@ -20178,36 +19919,18 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_host_editor_exposes_persistent_session_setting(cx: &mut TestAppContext) {
+    fn host_editor_no_longer_offers_automatic_tmux(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
-
         window
             .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.open_editor_for_new_host(window, cx);
-                })
+                app.update(cx, |app, cx| app.open_editor_for_new_host(window, cx))
             })
-            .expect("window update should succeed");
-
+            .unwrap();
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.run_until_parked();
-        for _ in 0..8 {
-            if visual.debug_bounds("persistent-session-settings").is_some() {
-                break;
-            }
-            scroll_selector(window, cx, "editor-side-scroll", -400.0);
-            visual = VisualTestContext::from_window(window.into(), cx);
-            visual.run_until_parked();
-        }
-        assert!(
-            visual.debug_bounds("persistent-session-settings").is_some(),
-            "persistent session section should be visible in the host editor"
-        );
-        assert!(
-            visual.debug_bounds("persistent-session-toggle").is_some(),
-            "persistent session enable control should be visible in the host editor"
-        );
+        assert!(visual.debug_bounds("persistent-session-settings").is_none());
+        assert!(visual.debug_bounds("persistent-session-toggle").is_none());
     }
 
     #[gpui::test]
@@ -22282,7 +22005,9 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_live_local_pane_is_published_for_mobile_and_removed_on_close(cx: &mut TestAppContext) {
+    fn local_cli_pane_has_one_mobile_console_and_survives_closing_the_pane(
+        cx: &mut TestAppContext,
+    ) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let request = ConnectRequest::local_shell_with_config(
@@ -22302,12 +22027,31 @@ sleep 1
             })
             .expect("window update should succeed");
 
-        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
-            (app.pane(pane_id).is_some_and(|pane| pane.connected) && app.desktop_panes.len() == 1)
-                .then_some(())
+        let root = crate::storage::app_dir().unwrap();
+        let id = app.read_with(cx, |app, _| {
+            crate::models::local_console_session_id(&app.pane(pane_id).unwrap().request).unwrap()
         });
-
+        let consoles = root.join("console-sessions");
+        let runtime_parent = crate::controller_runtime_parent(&root);
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            (app.pane(pane_id).is_some_and(|pane| pane.connected)
+                && multiplex_store::live_console_sessions(&consoles, &runtime_parent)
+                    .iter()
+                    .any(|live| live.record.session_id == id))
+            .then_some(())
+        });
+        app.read_with(cx, |app, _| {
+            assert!(
+                app.desktop_panes.is_empty(),
+                "console is not published a second time as a desktop pane"
+            )
+        });
         app.update(cx, |app, cx| app.close_pane(pane_id, cx));
+        assert!(
+            multiplex_store::live_console_sessions(&consoles, &runtime_parent)
+                .iter()
+                .any(|live| live.record.session_id == id)
+        );
         app.read_with(cx, |app, _| {
             assert!(app.desktop_panes.is_empty());
             assert!(app.pane(pane_id).is_none());
@@ -31128,92 +30872,6 @@ sleep 1
         });
         open_canvas_more(&app, window, cx);
         let _add_button = selector_click_center(window, cx, "canvas-add-terminal");
-    }
-
-    #[gpui::test]
-    fn canvas_persistent_local_terminal_opens_or_explains_missing_tmux(cx: &mut TestAppContext) {
-        let _isolation = TestIsolation::acquire();
-        let tmux_available = crate::local::local_tmux_version().is_ok();
-        let (app, window) = open_test_app(cx);
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.open_local_terminal(window, cx);
-                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
-                })
-            })
-            .expect("canvas workspace should open");
-        let initial_pane_ids = app.read_with(cx, |app, _| {
-            app.panes.iter().map(|pane| pane.id).collect::<Vec<_>>()
-        });
-        let initial_pane_count = initial_pane_ids.len();
-        open_canvas_more(&app, window, cx);
-        let add = wait_for_selector_click_center(
-            window,
-            cx,
-            "canvas-add-terminal",
-            Duration::from_secs(2),
-        );
-        let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(add, gpui::Modifiers::none());
-        visual.run_until_parked();
-        let persistent = wait_for_selector_click_center(
-            window,
-            cx,
-            "canvas-add-local-persistent",
-            Duration::from_secs(2),
-        );
-        visual.simulate_click(persistent, gpui::Modifiers::none());
-        visual.run_until_parked();
-
-        if !tmux_available {
-            app.read_with(cx, |app, _| {
-                assert_eq!(app.panes.len(), initial_pane_count);
-                assert!(app.error_message.contains("needs tmux"));
-                assert!(
-                    app.error_message
-                        .contains(crate::local::local_tmux_install_guidance())
-                );
-            });
-            return;
-        }
-
-        let (pane_id, session_name) = wait_for_app_state(cx, &app, Duration::from_secs(5), |app| {
-            app.panes
-                .iter()
-                .find(|pane| {
-                    !initial_pane_ids.contains(&pane.id)
-                        && pane.request.persistent_session
-                        && pane.connected
-                })
-                .and_then(|pane| {
-                    pane.request
-                        .persistent_session_name
-                        .clone()
-                        .map(|session_name| (pane.id, session_name))
-                })
-        });
-        app.read_with(cx, |app, _| {
-            assert_eq!(app.panes.len(), initial_pane_count + 1);
-            assert!(app.error_message.is_empty());
-            assert_eq!(
-                app.pane(pane_id).unwrap().title,
-                "Persistent Local Terminal"
-            );
-        });
-        app.update(cx, |app, _| {
-            app.pane(pane_id)
-                .unwrap()
-                .runtime
-                .command_tx
-                .send(SessionCommand::KillTmuxSession {
-                    session_name: session_name.clone(),
-                })
-                .unwrap();
-        });
-        wait_for_app_state(cx, &app, Duration::from_secs(5), |app| {
-            app.pane(pane_id).is_none().then_some(())
-        });
     }
 
     #[gpui::test]

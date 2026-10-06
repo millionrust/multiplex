@@ -1,4 +1,4 @@
-use std::io::{IsTerminal as _, Write};
+use std::io::{IsTerminal as _, Read as _, Write};
 use std::time::Duration;
 
 use crossterm::event::{Event as TerminalEvent, EventStream, KeyCode, KeyEventKind};
@@ -35,6 +35,8 @@ pub(crate) enum AttachStyle {
     /// lease only while it is typed in, so a paired device can take a terminal nobody here is
     /// using, and keys typed while a device holds it ring the bell instead of mixing in.
     Shell,
+    /// Native terminal bridge: preserve every input byte, including terminal protocols.
+    RawShell,
 }
 
 /// The writer lease as a shell window holds it: taken on the first keystroke, let go when the
@@ -194,6 +196,20 @@ pub(crate) async fn run_attach(
     verify_host_identity(&mut client, validated.request.expected_host_instance_id)?;
 
     let mut stdout = std::io::stdout().lock();
+    // Enter raw input before announcing readiness or replaying output. Otherwise tcsetattr can
+    // discard keys queued during restore, even though the native PTY already exists.
+    let _native_raw_mode = if style == AttachStyle::RawShell {
+        enable_raw_mode()
+            .map_err(|_| terminal_unavailable("interactive terminal mode is unavailable"))?;
+        let guard = RawModeGuard;
+        stdout
+            .write_all(crate::SHELL_READY_MARKER)
+            .and_then(|()| stdout.flush())
+            .map_err(|_| output_unavailable())?;
+        Some(guard)
+    } else {
+        None
+    };
     let mut watermark = validated.request.from_sequence;
     let state = poll_output(
         &mut client,
@@ -237,13 +253,29 @@ pub(crate) async fn run_attach(
         )
         .map_err(|_| output_unavailable())?;
     }
-    enable_raw_mode()
-        .map_err(|_| terminal_unavailable("interactive terminal mode is unavailable"))?;
-    let _raw_mode = RawModeGuard;
+    let _raw_mode = if style != AttachStyle::RawShell {
+        enable_raw_mode()
+            .map_err(|_| terminal_unavailable("interactive terminal mode is unavailable"))?;
+        Some(RawModeGuard)
+    } else {
+        None
+    };
+    if style == AttachStyle::RawShell {
+        return run_raw_shell(
+            &mut client,
+            &mut stdout,
+            &mut watermark,
+            validated.request.columns,
+            validated.request.rows,
+            cancellation,
+            &async_cancel,
+        )
+        .await;
+    }
     let mut events = EventStream::new();
     let mut ticker = tokio::time::interval(match style {
         AttachStyle::Inspect => LIVE_POLL_INTERVAL,
-        AttachStyle::Shell => SHELL_POLL_INTERVAL,
+        AttachStyle::Shell | AttachStyle::RawShell => SHELL_POLL_INTERVAL,
     });
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut columns = validated.request.columns;
@@ -360,6 +392,68 @@ pub(crate) async fn run_attach(
         }
     }
     let _ = client.detach(&async_cancel).await;
+    Ok(())
+}
+
+/// GPUI already encodes keys, paste, focus, mouse reports and terminal replies. Parsing that
+/// stream as key events loses protocol bytes. Read it verbatim, with bounded backpressure, while
+/// polling the frontend PTY size so resize signals reach the durable Host too.
+async fn run_raw_shell(
+    client: &mut HostClient,
+    stdout: &mut impl Write,
+    watermark: &mut OutputSequence,
+    mut columns: u16,
+    mut rows: u16,
+    cancellation: &Cancellation,
+    cancel: &CancellationToken,
+) -> Result<(), CliError> {
+    let (input_tx, mut input_rx) = tokio::sync::mpsc::channel(8);
+    std::thread::spawn(move || {
+        let mut stdin = std::io::stdin().lock();
+        let mut bytes = [0u8; MAX_INTERACTIVE_INPUT_BYTES];
+        loop {
+            match stdin.read(&mut bytes) {
+                Ok(0) | Err(_) => break,
+                Ok(count) => {
+                    if input_tx.blocking_send(bytes[..count].to_vec()).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+    let mut lease = ShellLease::new();
+    let mut ticker = tokio::time::interval(SHELL_POLL_INTERVAL);
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        tokio::select! {
+            bytes = input_rx.recv() => {
+                let Some(bytes) = bytes else { break; };
+                if lease.take(client, cancel).await {
+                    client.resize(CommandId::new(), u32::from(columns), u32::from(rows), cancel).await.map_err(map_resize_after_dispatch)?;
+                }
+                send_shell_input(client, &mut lease, bytes, stdout, cancel).await?;
+            }
+            _ = ticker.tick() => {
+                if cancellation.is_cancelled() { break; }
+                if let Ok((next_columns, next_rows)) = crossterm::terminal::size() {
+                    let next_columns = next_columns.clamp(1, 1_000);
+                    let next_rows = next_rows.clamp(1, 1_000);
+                    if (columns, rows) != (next_columns, next_rows) {
+                        columns = next_columns;
+                        rows = next_rows;
+                        if lease.take(client, cancel).await {
+                            client.resize(CommandId::new(), u32::from(columns), u32::from(rows), cancel).await.map_err(map_resize_after_dispatch)?;
+                        }
+                    }
+                }
+                let state = poll_output(client, stdout, watermark, columns, rows, cancel).await?;
+                lease.release_if_idle(client, cancel).await;
+                if lifecycle_terminal(decode_host_lifecycle(state.lifecycle)?) { break; }
+            }
+        }
+    }
+    let _ = client.detach(cancel).await;
     Ok(())
 }
 

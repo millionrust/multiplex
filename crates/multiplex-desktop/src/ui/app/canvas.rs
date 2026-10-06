@@ -31,7 +31,6 @@ use crate::agents::{
     schedule_dependency_dag, spawn_codex_session, spawn_headless_session,
     spawn_remote_codex_session, spawn_remote_headless_session,
 };
-use crate::local::{local_tmux_install_guidance, local_tmux_version};
 use crate::models::{
     AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider,
     CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CANVAS_MAX_ZOOM, CANVAS_MIN_NODE_HEIGHT,
@@ -39,7 +38,7 @@ use crate::models::{
     CanvasEdgeKind, CanvasNodeId, CanvasNoteColor, ConnectRequest, ConnectionKind, HostProfile,
     LocalShellConfig, SavedAgentDefinition, SavedCanvasEdge, SavedCanvasNode, SavedCanvasNodeKind,
     SavedCanvasState, SavedCanvasViewport, SavedManagedWorktreeDisposition, SavedWorktreePolicy,
-    WorkspaceLayoutMode, default_persistent_session_name_from_id,
+    WorkspaceLayoutMode,
 };
 use crate::ssh::SessionCommand;
 use crate::ui::app::motion::{self, MotionRect, MotionSpeed};
@@ -3789,56 +3788,6 @@ impl MultiplexApp {
         cx.notify();
     }
 
-    pub(super) fn add_persistent_local_terminal_to_canvas(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let version = match local_tmux_version() {
-            Ok(version) => version,
-            Err(error) => {
-                self.error_message = localization::dynamic_user_data_message(multiplex_ui_contract::MessageId::AgentCanvasDynamicPersistentLocalTerminalNeedsTmuxError, vec![(error).to_string(), (local_tmux_install_guidance()).to_string()]);
-                cx.notify();
-                return;
-            }
-        };
-        let Some(workspace_id) = self.active_workspace_id else {
-            self.error_message =
-                localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyOpenACanvasWorkspaceBeforeAddingAPersistentTerminal).to_string();
-            cx.notify();
-            return;
-        };
-        let mut config = self.saved.settings.default_local_shell.clone();
-        if let Some(folder) = self
-            .active_workspace()
-            .and_then(|workspace| workspace.folder.clone())
-        {
-            config.cwd = Some(folder);
-        }
-        let session_name = format!("tr-local-{workspace_id}-{}", current_unix_millis());
-        let request = ConnectRequest::persistent_local_shell_with_config(
-            0,
-            config,
-            session_name.clone(),
-            false,
-        );
-        if self
-            .add_request_to_canvas(request, None, window, cx)
-            .is_none()
-        {
-            self.error_message =
-                localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyUnableToAddThePersistentTerminalToThisCanvas).to_string();
-            cx.notify();
-            return;
-        }
-        self.canvas_add_menu_open = false;
-        self.canvas_more_menu_open = false;
-        self.status_message =
-            localization::dynamic_user_data_message(multiplex_ui_contract::MessageId::AgentCanvasDynamicAttachedPersistentLocalTmuxSessionSessionN, vec![(session_name).to_string(), (version).to_string()]);
-        self.error_message.clear();
-        cx.notify();
-    }
-
     pub(super) fn connect_request_for_saved_canvas_host(
         &self,
         profile: &HostProfile,
@@ -3866,13 +3815,9 @@ impl MultiplexApp {
             startup_directory: profile.startup_directory.clone(),
             startup_command: profile.startup_command.clone(),
             start_in_files: false,
-            persistent_session: profile.persistent_session,
-            persistent_session_name: profile.persistent_session_name.clone().or_else(|| {
-                profile
-                    .persistent_session
-                    .then(|| default_persistent_session_name_from_id(&profile.id))
-            }),
-            persistent_session_detach_others: profile.persistent_session_detach_others,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: profile.terminal_scrollback_rows.unwrap_or(10_000) as usize,
             port_forward_rules: profile.effective_port_forward_rules(),
             local_shell: None,
@@ -6236,21 +6181,6 @@ impl MultiplexApp {
                             .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyLocalTerminal))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.add_local_terminal_to_canvas(window, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("canvas-add-local-persistent")
-                            .debug_selector(|| "canvas-add-local-persistent".to_string())
-                            .small()
-                            .w_full()
-                            .justify_start()
-                            .icon(IconName::Redo2)
-                            .label(localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyPersistentLocalTerminal))
-                            .tooltip(
-                                localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyAttachOrCreateALocalTmuxSessionThatSurvivesClosingTermirust),
-                            )
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.add_persistent_local_terminal_to_canvas(window, cx);
                             })),
                     )
                     .when(!host_groups.is_empty(), |list| {

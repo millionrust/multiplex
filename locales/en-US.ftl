@@ -2592,7 +2592,7 @@ product-private-session-row = Private session
 files-title = Files
 files-description = Browse this computer's files and the files on a connected host.
 other-terminals-heading = Other terminals on this computer
-other-terminals-description = Terminals routed through the Multiplex CLI, including global routing and terminal profiles.
+other-terminals-description = Local app terminals and external terminals routed through the Multiplex CLI.
 other-terminals-profile-origin = Multiplex CLI · { $directory }
 other-terminals-tmux-origin = { $count ->
     [zero] tmux session

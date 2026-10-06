@@ -378,15 +378,6 @@ pub fn default_persistent_session_name_from_id(id: &str) -> String {
 /// a tab kills a session with this prefix and leaves every other one running.
 pub const LOCAL_PERSISTENT_SESSION_PREFIX: &str = "tr-local-";
 
-/// A name no other pane will take, kept in the saved workspace so the next launch attaches to the
-/// same session rather than starting a second one.
-pub fn local_persistent_session_name(session_id: u64) -> String {
-    format!(
-        "{LOCAL_PERSISTENT_SESSION_PREFIX}{session_id}-{}",
-        crate::ui::util::current_unix_millis()
-    )
-}
-
 /// Whether this is a local tmux session the app made, and may therefore end.
 pub fn is_app_owned_local_session(name: &str) -> bool {
     name.starts_with(LOCAL_PERSISTENT_SESSION_PREFIX)
@@ -772,15 +763,13 @@ pub struct AppSettings {
     /// Only Wayland produces one; it is opaque and names no screen.
     #[serde(default)]
     pub remote_screen_restore_token: Option<String>,
-    /// Run remote shells inside tmux, so a dropped connection is picked up where it left off
-    /// rather than started again. A host can still be switched off on its own.
+    /// Legacy tmux preference, retained only to read older saved state.
     #[serde(default = "default_persistent_remote_sessions")]
     pub persistent_remote_sessions: bool,
     /// Set once the hosts saved before resumable sessions became the default were switched over.
     #[serde(default)]
     pub persistent_sessions_adopted: bool,
-    /// Run local terminals inside tmux, so closing the app leaves what they are running alive and
-    /// the next launch attaches to it again. Ignored where tmux is not installed.
+    /// Legacy tmux preference. Local app terminals always use Multiplex CLI now.
     #[serde(default = "default_persistent_local_sessions")]
     pub persistent_local_sessions: bool,
 }
@@ -814,11 +803,11 @@ fn default_diagnostics_retention_days() -> u8 {
 }
 
 fn default_persistent_remote_sessions() -> bool {
-    true
+    false
 }
 
 fn default_persistent_local_sessions() -> bool {
-    true
+    false
 }
 
 impl Default for AppSettings {
@@ -1406,24 +1395,11 @@ impl SavedState {
         }
     }
 
-    /// Switches the hosts saved before this over to resumable remote sessions, once.
-    ///
-    /// Running the remote shell inside tmux is now what a host does unless it is turned off, but a
-    /// host saved earlier carries `persistent_session: false` — the only value the old per-host
-    /// toggle ever wrote for a host nobody touched. Rewriting them once is the only way those
-    /// hosts get the new behaviour; a host turned off after this keeps its answer, because the
-    /// flag is never cleared. Returns whether anything changed, so the caller can save.
+    /// Retire the old automatic tmux adoption without changing user-owned sessions.
     pub fn adopt_persistent_sessions(&mut self) -> bool {
-        if self.settings.persistent_sessions_adopted {
-            return false;
-        }
+        let changed = !self.settings.persistent_sessions_adopted;
         self.settings.persistent_sessions_adopted = true;
-        if self.settings.persistent_remote_sessions {
-            for profile in &mut self.profiles {
-                profile.persistent_session = true;
-            }
-        }
-        true
+        changed
     }
 
     pub fn ensure_vaults(&mut self) {
@@ -3933,6 +3909,33 @@ impl SavedAppAttachedSession {
     }
 }
 
+/// CLI console identity retained in the workspace's existing serialized session name.
+/// The legacy `persistent_session` switch is never enabled for these consoles.
+pub fn local_console_session_id(
+    request: &ConnectRequest,
+) -> Option<multiplex_domain::HostedSessionId> {
+    if !request.is_local_shell() {
+        return None;
+    }
+    request
+        .persistent_session_name
+        .as_deref()?
+        .strip_prefix("multiplex-cli:")?
+        .parse()
+        .ok()
+}
+
+pub fn prepare_terminal_request(request: &mut ConnectRequest) {
+    request.persistent_session = false;
+    request.persistent_session_detach_others = false;
+    request.persistent_session_name = if request.is_local_shell() {
+        let id = local_console_session_id(request).unwrap_or_default();
+        Some(format!("multiplex-cli:{id}"))
+    } else {
+        None
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -3957,7 +3960,7 @@ mod tests {
     };
 
     #[test]
-    fn saved_hosts_are_switched_over_to_resumable_sessions_once() {
+    fn saved_hosts_are_never_automatically_switched_to_tmux() {
         let mut saved = SavedState::default();
         saved.settings.persistent_sessions_adopted = false;
         saved.profiles = vec![HostProfile {
@@ -3969,7 +3972,7 @@ mod tests {
         }];
 
         assert!(saved.adopt_persistent_sessions());
-        assert!(saved.profiles[0].persistent_session);
+        assert!(!saved.profiles[0].persistent_session);
 
         // A host turned off afterwards stays off: the switch-over never runs twice.
         saved.profiles[0].persistent_session = false;

@@ -313,6 +313,48 @@ fn main() {
     if std::env::args().nth(1).as_deref() == Some(ARTIFACT_PREVIEW_MODE) {
         std::process::exit(crate::artifact_preview::run_worker_mode());
     }
+    if std::env::args().nth(1).as_deref() == Some("--cli-shell") {
+        attach_parent_console();
+        let arguments: Vec<String> = std::env::args().skip(2).collect();
+        let result = multiplex_cli::parse_shell_arguments(&arguments).and_then(|invocation| {
+            let paths = multiplex_cli::CliPaths::new(
+                crate::storage::app_dir().map_err(|_| {
+                    multiplex_cli::CliError::new(
+                        multiplex_cli::ErrorCode::Unavailable,
+                        "application storage unavailable",
+                        "Check the application data folder.",
+                    )
+                })?,
+                std::env::current_exe().map_err(|_| {
+                    multiplex_cli::CliError::new(
+                        multiplex_cli::ErrorCode::Unavailable,
+                        "application executable unavailable",
+                        "Restart Multiplex.",
+                    )
+                })?,
+            );
+            multiplex_cli::ShellLauncher::new(paths)
+                .raw_input(invocation.raw_input)
+                .execute_session(
+                    invocation.session_id,
+                    invocation.program,
+                    invocation.arguments,
+                    &multiplex_cli::Cancellation::default(),
+                )
+        });
+        match result {
+            Ok(code) => std::process::exit(code),
+            Err(error) => {
+                let output = multiplex_cli::failure_output(error, false, 80);
+                let _ = multiplex_cli::write_output(
+                    &output,
+                    &mut std::io::stdout(),
+                    &mut std::io::stderr(),
+                );
+                std::process::exit(output.exit_code);
+            }
+        }
+    }
     if std::env::args().nth(1).as_deref() == Some(SESSION_HOST_MODE) {
         if let Err(error) = run_session_host_mode() {
             eprintln!(

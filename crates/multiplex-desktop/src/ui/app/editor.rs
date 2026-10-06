@@ -337,7 +337,6 @@ impl MultiplexApp {
         let ssh_body = v_flex()
             .gap(px(theme::SPACE_COMPACT))
             .child(self.editor_protocol_row(&self.inputs.port))
-            .child(self.render_persistent_session_editor(cx))
             .child(div().h(px(theme::BORDER_HAIRLINE)).bg(theme::soft_border()))
             .child(
                 div()

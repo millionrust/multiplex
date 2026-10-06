@@ -114,21 +114,18 @@ fn main() {
 
 /// `multiplex-cli shell [-- PROGRAM ARGS...]`.
 fn run_shell(arguments: &[String], cancellation: &multiplex_cli::Cancellation) -> ! {
-    let (program, rest) = match arguments {
-        [] => (None, Vec::new()),
-        [separator, program, rest @ ..] if separator == "--" => {
-            (Some(program.clone()), rest.to_vec())
-        }
-        _ => {
-            let _ = writeln!(
-                std::io::stderr(),
-                "error[usage]: multiplex-cli shell [-- PROGRAM ARGS...]"
-            );
-            std::process::exit(2);
-        }
-    };
-    let result = CliPaths::discover()
-        .and_then(|paths| ShellLauncher::new(paths).execute(program, rest, cancellation));
+    let result = multiplex_cli::parse_shell_arguments(arguments).and_then(|invocation| {
+        CliPaths::discover().and_then(|paths| {
+            ShellLauncher::new(paths)
+                .raw_input(invocation.raw_input)
+                .execute_session(
+                    invocation.session_id,
+                    invocation.program,
+                    invocation.arguments,
+                    cancellation,
+                )
+        })
+    });
     match result {
         Ok(code) => std::process::exit(code),
         Err(error) => exit_with_output(failure_output(error, false, 80)),

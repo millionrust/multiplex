@@ -58,7 +58,9 @@ reachable from then on.
 - **The retired tmux startup setup** (macOS and Linux), which an earlier version installed to
   start every new tab in Terminal, Zed, iTerm2, Ghostty, WezTerm, and the VS Code terminal
   inside tmux. The desktop app now only checks and removes it; the Multiplex profile replaces it.
-- Local panes marked persistent already run inside `tmux new-session -A -s <name>`.
+- Local app panes also run `multiplex-cli shell`; their saved UUID reattaches to the same
+  detached Session Host after restart. They share the CLI console inventory with external
+  terminals. SSH opens the remote shell directly; old automatic tmux preferences are ignored.
 
 Not yet: approval prompts answered from the phone (`Approval` returns an error on both
 backends), and any relay UI on the desktop (relay is CLI-only).

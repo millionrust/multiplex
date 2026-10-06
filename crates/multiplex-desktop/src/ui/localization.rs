@@ -359,10 +359,6 @@ static_message!(shell_layout_split_label, ShellLayoutSplitLabelArgs);
 static_message!(shell_layout_split_tooltip, ShellLayoutSplitTooltipArgs);
 static_message!(shell_layout_canvas_label, ShellLayoutCanvasLabelArgs);
 static_message!(shell_layout_canvas_tooltip, ShellLayoutCanvasTooltipArgs);
-static_message!(shell_tmux_missing, ShellTmuxMissingArgs);
-static_message!(shell_tmux_install_guidance, ShellTmuxInstallGuidanceArgs);
-static_message!(shell_tmux_install_generic, ShellTmuxInstallGenericArgs);
-static_message!(shell_tmux_fallback, ShellTmuxFallbackArgs);
 static_message!(
     overlay_snippet_prompts_title,
     OverlaySnippetPromptsTitleArgs

@@ -183,13 +183,13 @@ impl MultiplexApp {
                 session_dir,
                 runtime_root,
             } => {
-                let request = crate::models::ConnectRequest::local_shell_with_config(
+                let mut request = crate::models::ConnectRequest::local_shell_with_config(
                     self.next_session_id(),
                     self.saved.settings.default_local_shell.clone(),
                 );
-                let Some((_, pane_id)) = self.open_request_workspace(request, window, cx) else {
-                    return;
-                };
+                request.persistent_session_name = Some(format!("multiplex-cli:{session_id}"));
+                request.title = terminal.title.clone();
+                let pane_id = request.session_id;
                 let runtime = self.session_coordinator.start(SessionStartRequest::attach(
                     pane_id,
                     session_id,
@@ -199,11 +199,19 @@ impl MultiplexApp {
                     },
                     multiplex_domain::OutputSequence::ZERO,
                 ));
-                if let Some(pane) = self.pane_mut(pane_id) {
-                    pane.runtime = runtime;
-                    pane.request.title = terminal.title.clone();
-                    pane.status = localization::other_terminals_attaching();
+                self.register_pane(
+                    request.clone(),
+                    runtime,
+                    cx.focus_handle().tab_stop(true),
+                    cx.focus_handle().tab_stop(true),
+                    cx,
+                );
+                self.open_spawned_pane_workspace(&request, pane_id);
+                self.sync_terminal_layout(window, cx);
+                if let Some(pane) = self.pane(pane_id) {
+                    pane.terminal_focus.focus(window);
                 }
+                self.persist_runtime_state();
                 self.status_message = localization::other_terminals_attaching();
             }
         }
