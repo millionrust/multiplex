@@ -6,12 +6,12 @@
 
 use std::path::PathBuf;
 
+use crate::ui::action_button::ActionButton as Button;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, Context, InteractiveElement as _, IntoElement as _, ParentElement, Styled, Window,
     px,
 };
-use gpui_component::button::Button;
 use gpui_component::{Icon, IconName, h_flex, v_flex};
 use multiplex_domain::{CanonicalPath, PresetId};
 use multiplex_store::{LibraryRepository, LibrarySnapshot, StoreError, StoreHealth};

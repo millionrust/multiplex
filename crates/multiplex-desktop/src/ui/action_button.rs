@@ -3,7 +3,7 @@ use gpui::{
     AnyElement, App, ClickEvent, ElementId, InteractiveElement, Interactivity, IntoElement,
     ParentElement, RenderOnce, SharedString, StyleRefinement, Styled, Window, div, px, relative,
 };
-use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
+use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariant, ButtonVariants};
 use gpui_component::{Disableable, Icon, Selectable, Sizable, Size, StyledExt as _};
 
 use super::theme;
@@ -17,33 +17,35 @@ pub(crate) struct ActionButton {
     disabled: bool,
     segment: Option<bool>,
     customized: bool,
+    quiet: bool,
+    has_children: bool,
+    size: Size,
 }
 
 impl ActionButton {
-    pub fn new(id: impl Into<ElementId>, tone: theme::ActionTone, cx: &App) -> Self {
-        let inner = Button::new(id)
-            .small()
-            .h(px(theme::CONTROL_HEIGHT_DEFAULT))
-            .px(px(theme::SPACE_3))
-            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-            .rounded(px(theme::CONTROL_RADIUS))
-            .custom(
-                ButtonCustomVariant::new(cx)
-                    .color(theme::action_fill(tone))
-                    .foreground(theme::action_foreground(tone))
-                    .border(theme::action_border(tone))
-                    .hover(theme::action_hover(tone))
-                    .active(theme::action_active(tone)),
-            );
+    pub fn new(id: impl Into<ElementId>) -> Self {
         Self {
-            inner,
-            tone,
+            inner: Button::new(id)
+                .small()
+                .h(px(theme::CONTROL_HEIGHT_DEFAULT))
+                .px(px(theme::SPACE_3))
+                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                .rounded(px(theme::CONTROL_RADIUS)),
+            tone: theme::ActionTone::Neutral,
             label: None,
             icon: None,
             disabled: false,
             segment: None,
             customized: false,
+            quiet: false,
+            has_children: false,
+            size: Size::Small,
         }
+    }
+    pub fn with_tone(id: impl Into<ElementId>, tone: theme::ActionTone, _cx: &App) -> Self {
+        let mut button = Self::new(id);
+        button.tone = tone;
+        button
     }
     pub fn segmented(mut self, active: bool, cx: &App) -> Self {
         self.segment = Some(active);
@@ -102,6 +104,7 @@ impl InteractiveElement for ActionButton {
 }
 impl ParentElement for ActionButton {
     fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        self.has_children = true;
         self.inner.extend(elements);
     }
 }
@@ -123,26 +126,75 @@ impl Selectable for ActionButton {
 }
 impl Sizable for ActionButton {
     fn with_size(mut self, size: impl Into<Size>) -> Self {
-        self.inner = self.inner.with_size(size);
+        let size = size.into();
+        self.size = size;
+        self.inner = self.inner.with_size(size).h(match size {
+            Size::XSmall => px(theme::CONTROL_HEIGHT_COMPACT),
+            Size::Size(height) => height,
+            _ => px(theme::CONTROL_HEIGHT_DEFAULT),
+        });
         self
     }
 }
 impl ButtonVariants for ActionButton {
     fn with_variant(mut self, variant: gpui_component::button::ButtonVariant) -> Self {
-        self.customized = true;
+        self.customized = matches!(variant, ButtonVariant::Custom(_));
+        self.quiet = matches!(
+            variant,
+            ButtonVariant::Ghost | ButtonVariant::Link | ButtonVariant::Text
+        );
+        self.tone = match variant {
+            ButtonVariant::Primary => theme::ActionTone::Accent,
+            ButtonVariant::Danger => theme::ActionTone::Danger,
+            ButtonVariant::Info | ButtonVariant::Success | ButtonVariant::Warning => {
+                theme::ActionTone::AccentSoft
+            }
+            _ => theme::ActionTone::Neutral,
+        };
         self.inner = self.inner.with_variant(variant);
         self
     }
 }
 impl RenderOnce for ActionButton {
-    fn render(mut self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(mut self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let foreground = if self.disabled || self.segment == Some(false) {
             theme::text_muted()
-        } else if self.segment == Some(true) {
+        } else if self.segment == Some(true) || self.inner.is_selected() {
             theme::text_main()
         } else {
             theme::action_foreground(self.tone)
         };
+        let selected = self.inner.is_selected();
+        if self.segment.is_none() && !self.customized {
+            self.inner = self.inner.custom(
+                ButtonCustomVariant::new(cx)
+                    .color(if self.quiet && !selected {
+                        gpui::transparent_black()
+                    } else {
+                        theme::action_fill(self.tone)
+                    })
+                    .foreground(foreground)
+                    .border(if selected {
+                        theme::border_strong()
+                    } else if self.quiet {
+                        gpui::transparent_black()
+                    } else {
+                        theme::action_border(self.tone)
+                    })
+                    .hover(theme::action_hover(self.tone))
+                    .active(theme::action_active(self.tone)),
+            );
+        }
+        if self.label.is_none() && !self.has_children {
+            self.inner = self.inner.px(px(0.));
+            if self.inner.style().size.width.is_none() {
+                self.inner = self.inner.w(match self.size {
+                    Size::XSmall => px(theme::CONTROL_HEIGHT_COMPACT),
+                    Size::Size(width) => width,
+                    _ => px(theme::CONTROL_HEIGHT_DEFAULT),
+                });
+            }
+        }
         if let Some(label) = self.label {
             // Keep the label in the app palette across the underlying component's hover state.
             self.inner = if self.customized {
@@ -164,11 +216,14 @@ impl RenderOnce for ActionButton {
         if self.disabled {
             self.inner = self.inner.bg(theme::library_card()).shadow(Vec::new());
         } else {
-            if self.segment.is_none() && !self.customized && self.inner.style().background.is_none()
+            if self.segment.is_none()
+                && !self.customized
+                && !self.quiet
+                && self.inner.style().background.is_none()
             {
                 self.inner = self.inner.bg(theme::action_background(self.tone));
             }
-            if !self.customized && self.segment.is_none() {
+            if !self.customized && !self.quiet && self.segment.is_none() {
                 self.inner = self.inner.shadow(theme::button_shadow(self.tone));
             }
         }

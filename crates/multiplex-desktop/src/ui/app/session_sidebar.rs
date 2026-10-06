@@ -1,11 +1,12 @@
 use std::time::{Duration, Instant};
 
+use crate::ui::action_button::ActionButton as Button;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, Context, InteractiveElement as _, IntoElement as _, ParentElement as _, Styled,
     Window, div, px,
 };
-use gpui_component::button::{Button, ButtonVariants as _};
+use gpui_component::button::ButtonVariants as _;
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{

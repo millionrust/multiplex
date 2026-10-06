@@ -4,6 +4,7 @@
 
 use std::time::Instant;
 
+use crate::ui::action_button::ActionButton as Button;
 use gpui::AppContext as _;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -12,7 +13,7 @@ use gpui::{
     MouseMoveEvent, MouseUpEvent, ParentElement, ScrollWheelEvent, SharedString, Stateful,
     StatefulInteractiveElement as _, Styled, Window, div, px, relative,
 };
-use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::button::ButtonVariants;
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Disableable as _, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};

@@ -1,11 +1,11 @@
 use std::path::{Path, PathBuf};
 
+use crate::ui::action_button::ActionButton as Button;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement, SharedString, Styled, Window, div, px, relative,
 };
-use gpui_component::button::Button;
 use gpui_component::input::{Input, InputState};
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Disableable, IconName, Sizable, StyledExt as _, h_flex, v_flex};

@@ -2,13 +2,14 @@
 //! split menu + Grid/Tag/Sort/Avatar dropdowns), the absolute overlay layer
 //! and the page wrapper. All methods are part of `MultiplexApp`.
 
+use crate::ui::action_button::ActionButton as Button;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, App, ClickEvent, ClipboardItem, Context, Div, ElementId, Focusable as _,
     InteractiveElement as _, IntoElement, MouseButton, ParentElement, SharedString, Stateful,
     StatefulInteractiveElement as _, Styled, Window, div, px,
 };
-use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::button::ButtonVariants;
 use gpui_component::input::Input;
 use gpui_component::{Disableable, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 

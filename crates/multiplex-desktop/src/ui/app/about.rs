@@ -1,11 +1,11 @@
 //! Settings → About: which Multiplex this is, for a person checking for an update or filing a
 //! bug.
 
+use crate::ui::action_button::ActionButton as Button;
 use gpui::{
     ClipboardItem, Context, Div, InteractiveElement as _, ParentElement, Styled, div,
     prelude::FluentBuilder as _, px,
 };
-use gpui_component::button::Button;
 use gpui_component::{Sizable as _, h_flex, v_flex};
 
 use super::MultiplexApp;

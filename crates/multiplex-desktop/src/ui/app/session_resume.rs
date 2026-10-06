@@ -1,11 +1,12 @@
 use std::path::{Path, PathBuf};
 
+use crate::ui::action_button::ActionButton as Button;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement, Styled, Window, div,
     px, relative,
 };
-use gpui_component::button::{Button, ButtonVariants as _};
+use gpui_component::button::ButtonVariants as _;
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Disableable as _, Icon, IconName, StyledExt as _, h_flex, v_flex};
 use multiplex_domain::{

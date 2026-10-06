@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use crate::ui::action_button::ActionButton as Button;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, App, ClipboardItem, Context, CursorStyle, Div, Focusable as _,
@@ -10,7 +11,7 @@ use gpui::{
     SharedString, StatefulInteractiveElement as _, Styled, Window, canvas as paint_canvas, div,
     point, px, relative,
 };
-use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::button::ButtonVariants;
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Disableable as _, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};

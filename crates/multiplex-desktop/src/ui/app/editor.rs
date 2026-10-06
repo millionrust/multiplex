@@ -2,12 +2,13 @@
 //! header (title + vault picker + overflow + collapse), footer (Connect /
 //! Save / Delete), and the open / close / connect helpers.
 
+use crate::ui::action_button::ActionButton as Button;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, Context, Div, Entity, InteractiveElement as _, ParentElement, Stateful,
     StatefulInteractiveElement as _, Styled, Window, div, px,
 };
-use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::button::ButtonVariants;
 use gpui_component::input::{Input, InputState};
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};

@@ -4,11 +4,12 @@
 
 use std::time::Duration;
 
+use crate::ui::action_button::ActionButton as Button;
 use gpui::{
     AnyElement, Context, Div, InteractiveElement as _, IntoElement, ParentElement,
     StatefulInteractiveElement as _, Styled, div, prelude::FluentBuilder as _, px,
 };
-use gpui_component::button::{Button, ButtonVariants as _};
+use gpui_component::button::ButtonVariants as _;
 use gpui_component::{Disableable as _, Sizable as _, StyledExt as _, h_flex, v_flex};
 
 use super::MultiplexApp;

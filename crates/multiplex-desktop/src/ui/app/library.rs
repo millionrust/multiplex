@@ -1,12 +1,13 @@
 //! Library secondary pages: Keychain (Keys + Identities), Vaults, Known
 //! Hosts, Logs, and Settings. All methods are part of `MultiplexApp`.
 
+use crate::ui::action_button::ActionButton as Button;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     Context, Div, InteractiveElement as _, IntoElement, ParentElement, SharedString,
     StatefulInteractiveElement as _, Styled, div, px, relative,
 };
-use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::button::ButtonVariants;
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Disableable, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};

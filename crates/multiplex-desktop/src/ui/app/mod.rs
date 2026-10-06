@@ -104,13 +104,14 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 use crate::terminal::MouseProtocolMode;
+use crate::ui::action_button::ActionButton as Button;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     ClipboardItem, InteractiveElement as _, KeyDownEvent, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, ScrollWheelEvent, StatefulInteractiveElement as _, font, *,
 };
 use gpui_component::IconName;
-use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::button::ButtonVariants;
 use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{ActiveTheme, Icon, Sizable, StyledExt as _, h_flex, v_flex};
@@ -13291,7 +13292,7 @@ impl MultiplexApp {
         tone: theme::ActionTone,
         cx: &App,
     ) -> crate::ui::action_button::ActionButton {
-        crate::ui::action_button::ActionButton::new(id, tone, cx)
+        crate::ui::action_button::ActionButton::with_tone(id, tone, cx)
     }
 
     /// A compact segmented choice: sized to its labels, with the selection drawn as a raised
@@ -28454,7 +28455,7 @@ sleep 1
             visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(720.)));
             visual.run_until_parked();
             let body = visual.debug_bounds("about-details").unwrap();
-            assert!(body.size.width > gpui::px(300.));
+            assert!(body.size.width > gpui::px(crate::ui::theme::SETTINGS_NAV_WIDTH));
             for selector in [
                 "about-version-value",
                 "about-build-value",
@@ -28464,7 +28465,7 @@ sleep 1
             ] {
                 let value = visual.debug_bounds(selector).unwrap();
                 assert!(
-                    value.size.width > gpui::px(160.),
+                    value.size.width > body.size.width * 0.4,
                     "{selector} must have room for readable text"
                 );
                 assert!(
@@ -28475,7 +28476,7 @@ sleep 1
             }
             let button = visual.debug_bounds("about-copy-details").unwrap();
             assert!(
-                button.bottom() <= gpui::px(720.),
+                button.bottom() <= visual.update(|window, _| window.viewport_size().height),
                 "update controls remain reachable without oversized metadata rows"
             );
         }
