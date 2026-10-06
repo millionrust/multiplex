@@ -141,9 +141,9 @@ use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
     HostColorTag, HostProfile, JumpHostConnection, OutboundProxyKind, PortForwardKind,
     PortForwardRule, ProfileSource, QuickConnect, SavedAppAttachedSession, SavedHostGroup,
-    SavedIdentity, SavedSnippet, SavedState, SavedVault, SavedVaultMember, SavedWindowBounds,
-    SavedWorkspace, SessionLogEntry, SplitAxis, ThemePreset, VaultKind, VaultMemberRole,
-    WorkspaceLayoutMode, default_persistent_session_name_from_id,
+    SavedIdentity, SavedState, SavedVault, SavedVaultMember, SavedWindowBounds, SavedWorkspace,
+    SessionLogEntry, SplitAxis, ThemePreset, VaultKind, VaultMemberRole, WorkspaceLayoutMode,
+    default_persistent_session_name_from_id,
 };
 use crate::replication::{
     DesktopConflictSelection, DesktopReplication, DesktopReplicationConflict,
@@ -172,6 +172,7 @@ use crate::ui::render_terminal::{
     SelectionRange, normalized_selection, terminal_lifecycle_for_hosted_state,
 };
 use crate::ui::shell::{shell_command_requires_continuation, startup_bytes_for_request};
+#[cfg(test)]
 use crate::ui::snippet::{
     extract_snippet_prompt_names, substitute_snippet_placeholders, substitute_snippet_prompts,
 };
@@ -316,7 +317,6 @@ enum NavSection {
     Sftp,
     Vaults,
     Keychain,
-    Snippets,
     Settings,
     KnownHosts,
     Logs,
@@ -340,7 +340,6 @@ impl NavSection {
             Self::Sftp => "Files".to_string(),
             Self::Vaults => "Vaults".to_string(),
             Self::Keychain => "Keys".to_string(),
-            Self::Snippets => "Snippets".to_string(),
             Self::Settings => "Settings".to_string(),
             Self::KnownHosts => "Known Hosts".to_string(),
             Self::Logs => "Logs".to_string(),
@@ -357,7 +356,6 @@ impl NavSection {
             Self::Sftp => IconName::Folder.into(),
             Self::Vaults => app_icon(ICON_VAULT),
             Self::Keychain => app_icon(ICON_KEY),
-            Self::Snippets => IconName::BookOpen.into(),
             Self::Settings => IconName::Settings.into(),
             Self::KnownHosts => app_icon(ICON_SHIELD_CHECK),
             Self::Logs => IconName::BookOpen.into(),
@@ -544,12 +542,6 @@ struct ShellInputs {
     context_handoff_preview: Entity<InputState>,
 }
 
-struct SnippetInputs {
-    label: Entity<InputState>,
-    group: Entity<InputState>,
-    command: Entity<InputState>,
-}
-
 struct SettingsInputs {
     search: Entity<InputState>,
     local_shell_program: Entity<InputState>,
@@ -578,28 +570,6 @@ struct VaultInputs {
 struct VaultMemberInputs {
     name: Entity<InputState>,
     email: Entity<InputState>,
-}
-
-impl SnippetInputs {
-    fn new(window: &mut Window, cx: &mut Context<MultiplexApp>) -> Self {
-        Self {
-            label: cx.new(|cx| {
-                InputState::new(window, cx).placeholder(localization::static_message(
-                    MessageId::SnippetInputLabelPlaceholder,
-                ))
-            }),
-            group: cx.new(|cx| {
-                InputState::new(window, cx).placeholder(localization::static_message(
-                    MessageId::SnippetInputGroupPlaceholder,
-                ))
-            }),
-            command: cx.new(|cx| {
-                InputState::new(window, cx).placeholder(localization::static_message(
-                    MessageId::SnippetInputCommandPlaceholder,
-                ))
-            }),
-        }
-    }
 }
 
 // termirust-ui-surface:settings:start
@@ -927,25 +897,6 @@ struct PendingPaste {
     text: String,
 }
 
-struct SnippetPromptField {
-    name: String,
-    input: Entity<InputState>,
-}
-
-struct PendingSnippetPrompts {
-    snippet_id: String,
-    pane_id: u64,
-    source_command: String,
-    fields: Vec<SnippetPromptField>,
-}
-
-struct PendingSnippetInsert {
-    snippet_id: String,
-    pane_id: u64,
-    source_command: String,
-    text: String,
-}
-
 struct WorkspaceTab {
     id: u64,
     title: String,
@@ -1195,7 +1146,6 @@ pub struct MultiplexApp {
     saved: SavedState,
     inputs: DraftInputs,
     shell_inputs: ShellInputs,
-    snippet_inputs: SnippetInputs,
     settings_inputs: SettingsInputs,
     replication_inputs: ReplicationSettingsInputs,
     vault_inputs: VaultInputs,
@@ -1261,7 +1211,6 @@ pub struct MultiplexApp {
     active_workspace_id: Option<u64>,
     selected_profile_id: Option<String>,
     selected_host_ids: HashSet<String>,
-    selected_snippet_id: Option<String>,
     selected_vault_id: Option<String>,
     selected_vault_member_id: Option<String>,
     next_session_id: u64,
@@ -1288,8 +1237,6 @@ pub struct MultiplexApp {
     draft_port_forward_rules: Vec<PortForwardRule>,
     draft_port_forward_kind: PortForwardKind,
     draft_outbound_proxy_kind: OutboundProxyKind,
-    snippet_vault_id: Option<String>,
-    snippet_pinned: bool,
     draft_vault_member_role: VaultMemberRole,
     known_hosts: Arc<KnownHostStore>,
     keychain_tab: KeychainTab,
@@ -1379,8 +1326,6 @@ pub struct MultiplexApp {
     canvas_note_editor_input: Entity<InputState>,
     canvas_folder_editor_input: Entity<InputState>,
     pending_paste: Option<PendingPaste>,
-    pending_snippet_prompts: Option<PendingSnippetPrompts>,
-    pending_snippet_insert: Option<PendingSnippetInsert>,
     sync_pull_force: bool,
     sync_pull_pending_warning: bool,
     replication_review: Option<DesktopReplicationReview>,
@@ -1479,7 +1424,6 @@ impl MultiplexApp {
     pub fn new(mut saved: SavedState, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let inputs = DraftInputs::new(window, cx);
         let shell_inputs = ShellInputs::new(window, cx);
-        let snippet_inputs = SnippetInputs::new(window, cx);
         let settings_inputs = SettingsInputs::new(window, cx);
         let replication_inputs = ReplicationSettingsInputs::new(window, cx);
         let replication_deletion_subscription = cx.subscribe(
@@ -1679,7 +1623,6 @@ impl MultiplexApp {
             saved,
             inputs,
             shell_inputs,
-            snippet_inputs,
             settings_inputs,
             replication_inputs,
             vault_inputs,
@@ -1738,7 +1681,6 @@ impl MultiplexApp {
             panes: Vec::new(),
             workspaces: Vec::new(),
             active_workspace_id: None,
-            selected_snippet_id: None,
             selected_host_ids: HashSet::new(),
             selected_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             selected_vault_member_id: None,
@@ -1766,8 +1708,6 @@ impl MultiplexApp {
             draft_port_forward_rules: Vec::new(),
             draft_port_forward_kind: PortForwardKind::Local,
             draft_outbound_proxy_kind: OutboundProxyKind::Direct,
-            snippet_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
-            snippet_pinned: false,
             draft_vault_member_role: VaultMemberRole::Editor,
             known_hosts,
             keychain_tab: KeychainTab::Keys,
@@ -1854,8 +1794,6 @@ impl MultiplexApp {
             canvas_note_editor_input,
             canvas_folder_editor_input,
             pending_paste: None,
-            pending_snippet_prompts: None,
-            pending_snippet_insert: None,
             sync_pull_force: false,
             sync_pull_pending_warning: false,
             replication_review: None,
@@ -3089,179 +3027,6 @@ impl MultiplexApp {
     }
 
     // termirust-ui-surface:vault-keys-snippets:start
-    fn current_snippet_draft(&self, cx: &App) -> SavedSnippet {
-        SavedSnippet {
-            id: self
-                .selected_snippet_id
-                .clone()
-                .unwrap_or_else(SavedSnippet::snippet_id),
-            label: self.snippet_inputs.label.read(cx).value().to_string(),
-            vault_id: Some(self.effective_vault_id(self.snippet_vault_id.as_deref())),
-            group: self.snippet_inputs.group.read(cx).value().to_string(),
-            pinned: self.snippet_pinned,
-            command: self.snippet_inputs.command.read(cx).value().to_string(),
-        }
-    }
-
-    fn load_snippet_into_inputs(
-        &mut self,
-        snippet_id: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(snippet) = self
-            .saved
-            .snippets
-            .iter()
-            .find(|item| item.id == snippet_id)
-        else {
-            return;
-        };
-
-        Self::set_input_value(
-            &self.snippet_inputs.label,
-            snippet.label.clone(),
-            window,
-            cx,
-        );
-        Self::set_input_value(
-            &self.snippet_inputs.group,
-            snippet.group.clone(),
-            window,
-            cx,
-        );
-        Self::set_input_value(
-            &self.snippet_inputs.command,
-            snippet.command.clone(),
-            window,
-            cx,
-        );
-        self.snippet_vault_id = Some(self.effective_vault_id(snippet.vault_id.as_deref()));
-        self.snippet_pinned = snippet.pinned;
-        self.selected_snippet_id = Some(snippet.id.clone());
-        self.nav_section = NavSection::Snippets;
-        self.status_message = localization::snippet_loaded_status(snippet.display_name());
-        self.error_message.clear();
-        cx.notify();
-    }
-
-    fn clear_snippet_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        Self::set_input_value(&self.snippet_inputs.label, "", window, cx);
-        Self::set_input_value(&self.snippet_inputs.group, "", window, cx);
-        Self::set_input_value(&self.snippet_inputs.command, "", window, cx);
-        self.snippet_vault_id = Some(self.effective_vault_id(self.selected_vault_id.as_deref()));
-        self.snippet_pinned = false;
-        self.selected_snippet_id = None;
-        self.nav_section = NavSection::Snippets;
-        self.status_message = localization::static_message(MessageId::SnippetDraftCleared);
-        self.error_message.clear();
-        cx.notify();
-    }
-
-    fn toggle_snippet_pinned(&mut self, pinned: bool, cx: &mut Context<Self>) {
-        self.snippet_pinned = pinned;
-        self.status_message = if pinned {
-            localization::static_message(MessageId::SnippetPinDraftOn)
-        } else {
-            localization::static_message(MessageId::SnippetPinDraftOff)
-        };
-        self.error_message.clear();
-        cx.notify();
-    }
-
-    fn set_saved_snippet_pinned(
-        &mut self,
-        snippet_id: &str,
-        pinned: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(snippet) = self
-            .saved
-            .snippets
-            .iter_mut()
-            .find(|item| item.id == snippet_id)
-        else {
-            return;
-        };
-
-        snippet.pinned = pinned;
-        self.saved.snippets.sort_by(|left, right| {
-            right.pinned.cmp(&left.pinned).then_with(|| {
-                left.display_name()
-                    .to_ascii_lowercase()
-                    .cmp(&right.display_name().to_ascii_lowercase())
-            })
-        });
-        if save_saved_state(&self.saved).is_err() {
-            self.error_message =
-                localization::static_message(MessageId::VaultKeySnippetStateStorageFailure);
-            cx.notify();
-            return;
-        }
-        if self.selected_snippet_id.as_deref() == Some(snippet_id) {
-            self.snippet_pinned = pinned;
-            self.load_snippet_into_inputs(snippet_id, window, cx);
-            return;
-        }
-        self.status_message = if pinned {
-            localization::static_message(MessageId::SnippetPinnedStatus)
-        } else {
-            localization::static_message(MessageId::SnippetUnpinnedStatus)
-        };
-        self.error_message.clear();
-        cx.notify();
-    }
-
-    fn save_snippet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let snippet = self.current_snippet_draft(cx);
-        if snippet.command.trim().is_empty() {
-            self.error_message = localization::static_message(MessageId::SnippetCommandRequired);
-            cx.notify();
-            return;
-        }
-
-        self.saved.upsert_snippet(snippet.clone());
-        if save_saved_state(&self.saved).is_err() {
-            self.error_message =
-                localization::static_message(MessageId::VaultKeySnippetStateStorageFailure);
-            cx.notify();
-            return;
-        }
-
-        self.selected_snippet_id = Some(snippet.id.clone());
-        if snippet.label.trim().is_empty() {
-            Self::set_input_value(
-                &self.snippet_inputs.label,
-                snippet.display_name(),
-                window,
-                cx,
-            );
-        }
-        self.status_message = localization::snippet_saved_status(snippet.display_name());
-        self.error_message.clear();
-        cx.notify();
-    }
-
-    fn remove_selected_snippet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(snippet_id) = self.selected_snippet_id.clone() else {
-            return;
-        };
-
-        self.saved.remove_snippet(&snippet_id);
-        if save_saved_state(&self.saved).is_err() {
-            self.error_message =
-                localization::static_message(MessageId::VaultKeySnippetStateStorageFailure);
-            cx.notify();
-            return;
-        }
-
-        self.clear_snippet_form(window, cx);
-        self.status_message = localization::static_message(MessageId::SnippetRemovedStatus);
-        self.error_message.clear();
-        cx.notify();
-    }
-
     fn current_vault_draft(&self, _cx: &App) -> SavedVault {
         let selected_id = self
             .selected_vault_id
@@ -3337,7 +3102,6 @@ impl MultiplexApp {
         self.selected_vault_id = Some(vault.id.clone());
         self.selected_vault_member_id = None;
         self.draft_vault_id = Some(vault.id.clone());
-        self.snippet_vault_id = Some(vault.id.clone());
         Self::set_input_value(&self.vault_member_inputs.name, "", window, cx);
         Self::set_input_value(&self.vault_member_inputs.email, "", window, cx);
         self.draft_vault_member_role = VaultMemberRole::Editor;
@@ -3355,7 +3119,6 @@ impl MultiplexApp {
         self.selected_vault_id = Some(DEFAULT_VAULT_ID.to_string());
         self.selected_vault_member_id = None;
         self.draft_vault_id = Some(DEFAULT_VAULT_ID.to_string());
-        self.snippet_vault_id = Some(DEFAULT_VAULT_ID.to_string());
         self.draft_vault_member_role = VaultMemberRole::Editor;
         self.nav_section = NavSection::Vaults;
         self.status_message = localization::static_message(MessageId::VaultDraftCleared);
@@ -3389,7 +3152,6 @@ impl MultiplexApp {
 
         self.selected_vault_id = Some(vault.id.clone());
         self.draft_vault_id = Some(vault.id.clone());
-        self.snippet_vault_id = Some(vault.id.clone());
         self.status_message = localization::vault_saved_status(vault.display_name());
         self.error_message.clear();
         self.nav_section = NavSection::Vaults;
@@ -3586,214 +3348,6 @@ impl MultiplexApp {
     }
 
     // termirust-ui-surface:vault-keys-snippets:start
-    fn insert_saved_snippet(
-        &mut self,
-        snippet_id: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(pane_id) = self.active_pane().map(|pane| pane.id) else {
-            self.error_message = localization::snippet_error_terminal_required();
-            cx.notify();
-            return;
-        };
-        self.prepare_snippet_insert(snippet_id, pane_id, window, cx);
-    }
-
-    fn prepare_snippet_insert(
-        &mut self,
-        snippet_id: &str,
-        pane_id: u64,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.active_pane().map(|pane| pane.id) != Some(pane_id) {
-            self.error_message = localization::snippet_error_stale_terminal();
-            cx.notify();
-            return;
-        }
-        let Some(snippet) = self
-            .saved
-            .snippets
-            .iter()
-            .find(|snippet| snippet.id == snippet_id)
-            .cloned()
-        else {
-            self.error_message = localization::snippet_error_stale();
-            cx.notify();
-            return;
-        };
-        if snippet.command.len() > multiplex_ui_contract::MAX_SNIPPET_INSERT_BYTES {
-            self.error_message = localization::snippet_error_oversize();
-            cx.notify();
-            return;
-        }
-        let prompts = extract_snippet_prompt_names(&snippet.command);
-        if !prompts.is_empty() {
-            let fields: Vec<SnippetPromptField> = prompts
-                .iter()
-                .map(|name| {
-                    let placeholder = localization::snippet_prompt_placeholder(name.clone());
-                    SnippetPromptField {
-                        name: name.clone(),
-                        input: cx
-                            .new(|cx| InputState::new(window, cx).placeholder(placeholder.clone())),
-                    }
-                })
-                .collect();
-            self.pending_snippet_prompts = Some(PendingSnippetPrompts {
-                snippet_id: snippet.id,
-                pane_id,
-                source_command: snippet.command,
-                fields,
-            });
-            self.status_message = localization::snippet_prompts_required(prompts.len());
-            self.error_message.clear();
-            if let Some(prompts) = self.pending_snippet_prompts.as_ref()
-                && let Some(first) = prompts.fields.first()
-            {
-                first.input.read(cx).focus_handle(cx).focus(window);
-            }
-            cx.notify();
-            return;
-        }
-        let resolved = self
-            .pane(pane_id)
-            .map(|pane| substitute_snippet_placeholders(&snippet.command, &pane.request));
-        if let Some(resolved) = resolved {
-            self.stage_snippet_insert(snippet.id, pane_id, snippet.command, resolved, cx);
-        }
-    }
-
-    fn stage_snippet_insert(
-        &mut self,
-        snippet_id: String,
-        pane_id: u64,
-        source_command: String,
-        text: String,
-        cx: &mut Context<Self>,
-    ) {
-        if text.len() > multiplex_ui_contract::MAX_SNIPPET_INSERT_BYTES {
-            self.error_message = localization::snippet_error_oversize();
-            cx.notify();
-            return;
-        }
-        if text.contains(['\n', '\r']) {
-            self.pending_snippet_insert = Some(PendingSnippetInsert {
-                snippet_id,
-                pane_id,
-                source_command,
-                text,
-            });
-            self.status_message = localization::snippet_multiline_review_required();
-            self.error_message.clear();
-            cx.notify();
-            return;
-        }
-        if self.send_snippet_text(pane_id, &text, cx) {
-            self.status_message = localization::snippet_inserted_as_text();
-            self.error_message.clear();
-            cx.notify();
-        }
-    }
-
-    fn confirm_snippet_prompts(&mut self, cx: &mut Context<Self>) {
-        let Some(pending) = self.pending_snippet_prompts.take() else {
-            return;
-        };
-        let values: Vec<(String, String)> = pending
-            .fields
-            .iter()
-            .map(|field| (field.name.clone(), field.input.read(cx).value().to_string()))
-            .collect();
-        let Some(snippet) = self
-            .saved
-            .snippets
-            .iter()
-            .find(|snippet| {
-                snippet.id == pending.snippet_id && snippet.command == pending.source_command
-            })
-            .cloned()
-        else {
-            self.error_message = localization::snippet_error_stale();
-            cx.notify();
-            return;
-        };
-        if self.active_pane().map(|pane| pane.id) != Some(pending.pane_id) {
-            self.error_message = localization::snippet_error_stale_terminal();
-            cx.notify();
-            return;
-        }
-        let resolved_prompts = substitute_snippet_prompts(&snippet.command, &values);
-        let resolved = self
-            .pane(pending.pane_id)
-            .map(|pane| substitute_snippet_placeholders(&resolved_prompts, &pane.request));
-        if let Some(resolved) = resolved {
-            self.stage_snippet_insert(snippet.id, pending.pane_id, snippet.command, resolved, cx);
-        }
-    }
-
-    fn cancel_snippet_prompts(&mut self, cx: &mut Context<Self>) {
-        if self.pending_snippet_prompts.take().is_some() {
-            self.status_message = localization::snippet_prompts_cancelled();
-            self.error_message.clear();
-            cx.notify();
-        }
-    }
-
-    fn confirm_pending_snippet_insert(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(pending) = self.pending_snippet_insert.take() else {
-            return false;
-        };
-        let current = self.saved.snippets.iter().any(|snippet| {
-            snippet.id == pending.snippet_id && snippet.command == pending.source_command
-        });
-        if !current || self.active_pane().map(|pane| pane.id) != Some(pending.pane_id) {
-            self.error_message = localization::snippet_error_stale_terminal();
-            cx.notify();
-            return false;
-        }
-        if !self
-            .pane(pending.pane_id)
-            .is_some_and(|pane| pane.terminal.bracketed_paste())
-        {
-            self.error_message = localization::snippet_error_multiline_unsupported();
-            cx.notify();
-            return false;
-        }
-        let result = self.send_snippet_text(pending.pane_id, &pending.text, cx);
-        if result {
-            self.status_message = localization::snippet_inserted_as_text();
-            self.error_message.clear();
-        }
-        cx.notify();
-        result
-    }
-
-    fn cancel_pending_snippet_insert(&mut self, cx: &mut Context<Self>) {
-        if self.pending_snippet_insert.take().is_some() {
-            self.status_message = localization::snippet_insert_cancelled();
-            self.error_message.clear();
-            cx.notify();
-        }
-    }
-
-    fn send_snippet_text(&mut self, pane_id: u64, text: &str, cx: &mut Context<Self>) -> bool {
-        let bracketed = self
-            .pane(pane_id)
-            .is_some_and(|pane| pane.terminal.bracketed_paste());
-        let mut bytes = Vec::with_capacity(text.len() + if bracketed { 12 } else { 0 });
-        if bracketed {
-            bytes.extend_from_slice(b"\x1b[200~");
-        }
-        bytes.extend_from_slice(text.as_bytes());
-        if bracketed {
-            bytes.extend_from_slice(b"\x1b[201~");
-        }
-        self.send_input_bytes(pane_id, bytes, cx)
-    }
-
-    // termirust-ui-surface:vault-keys-snippets:end
     fn send_startup_actions(&mut self, session_id: u64) -> bool {
         let Some((command_tx, startup_bytes)) = self.pane(session_id).and_then(|pane| {
             startup_bytes_for_request(
@@ -4322,16 +3876,6 @@ impl MultiplexApp {
         };
         self.error_message.clear();
         self.set_bulk_group_input("", window, cx);
-    }
-
-    fn pinned_snippet_quick_actions(&self) -> Vec<SavedSnippet> {
-        self.saved
-            .snippets
-            .iter()
-            .filter(|snippet| snippet.pinned)
-            .take(6)
-            .cloned()
-            .collect()
     }
 
     fn pick_key_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -4906,7 +4450,7 @@ impl MultiplexApp {
             NavSection::Presets => localization::presets_ready_status(),
             NavSection::Hosts => localization::static_message(MessageId::HostsStateReady),
             NavSection::Sftp => localization::static_message(MessageId::SftpStateReady),
-            NavSection::Vaults | NavSection::Keychain | NavSection::Snippets => {
+            NavSection::Vaults | NavSection::Keychain => {
                 localization::static_message(MessageId::VaultKeySnippetStateReady)
             }
             NavSection::Settings => localization::static_message(MessageId::SettingsStateReady),
@@ -10544,7 +10088,7 @@ impl MultiplexApp {
             &self.saved.command_history,
             &self.saved.scoped_command_history,
             &pane.request.history_scope_key(),
-            &self.saved.snippets,
+            &[],
             path_context.as_ref(),
             output_context.as_ref(),
         )
@@ -10568,7 +10112,7 @@ impl MultiplexApp {
                     &self.saved.command_history,
                     &self.saved.scoped_command_history,
                     &pane.request.history_scope_key(),
-                    &self.saved.snippets,
+                    &[],
                     None,
                 )
             })
@@ -13397,7 +12941,6 @@ impl MultiplexApp {
         let imported_hosts = self.imported_host_count();
         let saved_hosts = self.user_host_count();
         let identities = self.saved.identities.len();
-        let snippets = self.saved.snippets.len();
         let title = if imported_hosts > 0 || identities > 0 {
             "Welcome to your host library"
         } else {
@@ -13491,11 +13034,6 @@ impl MultiplexApp {
                             localization::hosts_onboarding_identity_count(identities),
                             theme::library_bg(),
                             theme::success(),
-                        ))
-                        .child(self.status_badge(
-                            localization::hosts_onboarding_snippet_count(snippets),
-                            theme::library_bg(),
-                            theme::warning(),
                         )),
                 )
                 .child(
@@ -13693,7 +13231,6 @@ impl MultiplexApp {
             NavSection::Sftp => self.render_files_view(cx),
             NavSection::Vaults => self.render_vaults_view(cx).into_any_element(),
             NavSection::Keychain => self.render_keychain_view(cx).into_any_element(),
-            NavSection::Snippets => self.render_snippets_view(cx).into_any_element(),
             NavSection::Settings => self.render_settings_view(cx).into_any_element(),
             NavSection::KnownHosts => self.render_known_hosts_view(cx).into_any_element(),
             NavSection::Logs => self.render_logs_view(cx).into_any_element(),
@@ -13884,9 +13421,7 @@ impl Render for MultiplexApp {
         let host_modal_open = self.active_workspace().is_some_and(|workspace| {
             workspace.pending_connect.is_some() || workspace.connect_failure.is_some()
         });
-        let sensitive_modal_open = self.key_lifecycle_dialog.is_some()
-            || self.pending_snippet_prompts.is_some()
-            || self.pending_snippet_insert.is_some();
+        let sensitive_modal_open = self.key_lifecycle_dialog.is_some();
         let background_surface_available =
             !worktree_modal_open && !host_modal_open && !sensitive_modal_open;
         let product_session = background_surface_available
@@ -14163,14 +13698,6 @@ impl MultiplexApp {
                 self.cancel_pane_rename(window, cx);
                 return true;
             }
-            if self.pending_snippet_prompts.is_some() {
-                self.cancel_snippet_prompts(cx);
-                return true;
-            }
-            if self.pending_snippet_insert.is_some() {
-                self.cancel_pending_snippet_insert(cx);
-                return true;
-            }
             if self.pending_paste.is_some() {
                 self.cancel_pending_paste(cx);
                 return true;
@@ -14438,7 +13965,6 @@ fn nav_section_key(section: NavSection) -> u64 {
         NavSection::Hosts => 1,
         NavSection::Vaults => 2,
         NavSection::Keychain => 3,
-        NavSection::Snippets => 4,
         NavSection::Settings => 5,
         NavSection::KnownHosts => 6,
         NavSection::Logs => 7,
@@ -21249,501 +20775,6 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_snippet_save_run_pin_and_remove(cx: &mut TestAppContext) {
-        let _isolation = TestIsolation::acquire();
-        let (app, window) = open_test_app(cx);
-        let request = ConnectRequest::local_shell_with_config(
-            0,
-            LocalShellConfig {
-                program: crate::test_support::test_shell_program(),
-                args: Vec::new(),
-                cwd: Some(std::env::temp_dir().display().to_string()),
-            },
-        );
-
-        let (_workspace_id, pane_id) = window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.open_request_workspace(request, window, cx)
-                        .expect("local workspace should open")
-                })
-            })
-            .expect("window update should succeed");
-
-        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
-            app.pane(pane_id)
-                .is_some_and(|pane| pane.connected)
-                .then_some(())
-        });
-
-        let output_path =
-            std::env::temp_dir().join(format!("termirust-snippet-inert-{}", std::process::id()));
-        let _ = std::fs::remove_file(&output_path);
-        let snippet_command = format!("printf 'snippet-e2e\\n' > '{}'", output_path.display());
-
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    MultiplexApp::set_input_value(
-                        &app.snippet_inputs.label,
-                        "E2E Snippet",
-                        window,
-                        cx,
-                    );
-                    MultiplexApp::set_input_value(&app.snippet_inputs.group, "Ops", window, cx);
-                    MultiplexApp::set_input_value(
-                        &app.snippet_inputs.command,
-                        snippet_command,
-                        window,
-                        cx,
-                    );
-                    app.toggle_snippet_pinned(true, cx);
-                    app.save_snippet(window, cx);
-                })
-            })
-            .expect("window update should succeed");
-
-        let snippet_id = app.read_with(cx, |app, _| {
-            let snippet_id = app
-                .selected_snippet_id
-                .clone()
-                .expect("snippet should be selected");
-            let snippet = app
-                .saved
-                .snippets
-                .iter()
-                .find(|snippet| snippet.id == snippet_id)
-                .expect("saved snippet should exist");
-            assert_eq!(snippet.label, "E2E Snippet");
-            assert_eq!(snippet.group, "Ops");
-            assert!(snippet.pinned);
-            snippet_id
-        });
-
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    // Pinning says the snippet appears in the workspace quick actions, so it
-                    // has to be there, and inserting it is what pressing it does.
-                    assert!(app.render_pinned_snippet_actions(cx).is_some());
-                    app.insert_saved_snippet(&snippet_id, window, cx);
-                })
-            })
-            .expect("window update should succeed");
-
-        std::thread::sleep(TEST_POLL_INTERVAL);
-        assert!(!output_path.exists(), "Snippet insertion must not execute");
-        app.update(cx, |app, cx| {
-            assert!(app.send_input_bytes(pane_id, vec![b'\n'], cx));
-        });
-        // Waited on through the app rather than by polling the file alone. The app keeps taking
-        // the shell's output while it waits, where a bare poll left it unread: on Windows a
-        // pseudoconsole nobody reads fills its pipe and can stall the shell partway through
-        // echoing the command it was about to run. And when this gives up it prints every pane's
-        // terminal, saying whether the snippet arrived, whether Enter did, and what the shell
-        // answered. It failed twice on the Windows runner under nextest reporting only that
-        // nothing ran.
-        wait_for_app_state(cx, &app, Duration::from_secs(10), |_| {
-            std::fs::read_to_string(&output_path)
-                .ok()
-                .filter(|contents| contents == "snippet-e2e\n")
-                .map(|_| ())
-        });
-        assert_eq!(
-            std::fs::read_to_string(&output_path).expect("Snippet output should be readable"),
-            "snippet-e2e\n"
-        );
-        let _ = std::fs::remove_file(&output_path);
-
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.set_saved_snippet_pinned(&snippet_id, false, window, cx);
-                    assert!(app.render_pinned_snippet_actions(cx).is_none());
-                    app.remove_selected_snippet(window, cx);
-                })
-            })
-            .expect("window update should succeed");
-
-        app.read_with(cx, |app, _| {
-            assert!(
-                app.saved
-                    .snippets
-                    .iter()
-                    .all(|snippet| snippet.id != snippet_id)
-            );
-            assert!(app.selected_snippet_id.is_none());
-        });
-    }
-
-    #[gpui::test]
-    fn e2e_snippet_prompts_confirm_and_cancel(cx: &mut TestAppContext) {
-        let _isolation = TestIsolation::acquire();
-        let (app, window) = open_test_app(cx);
-        let request = ConnectRequest::local_shell_with_config(
-            0,
-            LocalShellConfig {
-                program: crate::test_support::test_shell_program(),
-                args: Vec::new(),
-                cwd: Some(std::env::temp_dir().display().to_string()),
-            },
-        );
-
-        let (_workspace_id, pane_id) = window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.open_request_workspace(request, window, cx)
-                        .expect("local workspace should open")
-                })
-            })
-            .expect("window update should succeed");
-
-        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
-            app.pane(pane_id)
-                .is_some_and(|pane| pane.connected)
-                .then_some(())
-        });
-
-        let output_path = std::env::temp_dir().join(format!(
-            "termirust-snippet-prompt-inert-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_file(&output_path);
-        let prompt_snippet = SavedSnippet {
-            id: SavedSnippet::snippet_id(),
-            label: "Prompt insertion".to_string(),
-            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
-            group: String::new(),
-            pinned: false,
-            command: format!("printf '{{{{?Word}}}}' > '{}'", output_path.display()),
-        };
-        let cancel_snippet = SavedSnippet {
-            id: SavedSnippet::snippet_id(),
-            label: "Cancelled insertion".to_string(),
-            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
-            group: String::new(),
-            pinned: false,
-            command: "printf '{{?CancelMe}}'".to_string(),
-        };
-        let prompt_id = prompt_snippet.id.clone();
-        let cancel_id = cancel_snippet.id.clone();
-
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.saved.upsert_snippet(prompt_snippet);
-                    app.saved.upsert_snippet(cancel_snippet);
-                    app.insert_saved_snippet(&prompt_id, window, cx);
-                })
-            })
-            .expect("window update should succeed");
-
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    let prompts = app
-                        .pending_snippet_prompts
-                        .as_ref()
-                        .expect("snippet prompts should be active");
-                    let first = prompts.fields.first().expect("prompt field should exist");
-                    MultiplexApp::set_input_value(&first.input, "hello-from-prompt", window, cx);
-                    app.confirm_snippet_prompts(cx);
-                })
-            })
-            .expect("window update should succeed");
-
-        std::thread::sleep(TEST_POLL_INTERVAL);
-        assert!(!output_path.exists(), "prompt review must not execute text");
-
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.insert_saved_snippet(&cancel_id, window, cx);
-                    assert!(app.pending_snippet_prompts.is_some());
-                    app.cancel_snippet_prompts(cx);
-                })
-            })
-            .expect("window update should succeed");
-
-        app.read_with(cx, |app, _| {
-            assert!(app.pending_snippet_prompts.is_none());
-            assert_eq!(
-                app.status_message,
-                localization::snippet_prompts_cancelled()
-            );
-        });
-    }
-
-    #[gpui::test]
-    fn e2e_snippet_stale_and_oversize_insertions_fail_closed(cx: &mut TestAppContext) {
-        let _isolation = TestIsolation::acquire();
-        let (app, window) = open_test_app(cx);
-        let request = ConnectRequest::local_shell_with_config(
-            0,
-            LocalShellConfig {
-                program: crate::test_support::test_shell_program(),
-                args: Vec::new(),
-                cwd: Some(std::env::temp_dir().display().to_string()),
-            },
-        );
-        let (_, pane_id) = window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.open_request_workspace(request, window, cx)
-                        .expect("local workspace should open")
-                })
-            })
-            .expect("window update should succeed");
-        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
-            app.pane(pane_id)
-                .is_some_and(|pane| pane.connected)
-                .then_some(())
-        });
-
-        let snippet = SavedSnippet {
-            id: SavedSnippet::snippet_id(),
-            label: "Reviewed multiline".to_string(),
-            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
-            group: String::new(),
-            pinned: false,
-            command: "printf first\nprintf second".to_string(),
-        };
-        let snippet_id = snippet.id.clone();
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.saved.upsert_snippet(snippet);
-                    app.insert_saved_snippet(&snippet_id, window, cx);
-                    assert!(app.pending_snippet_insert.is_some());
-                    app.saved
-                        .snippets
-                        .iter_mut()
-                        .find(|snippet| snippet.id == snippet_id)
-                        .expect("reviewed Snippet should exist")
-                        .command
-                        .push_str(" changed");
-                    assert!(!app.confirm_pending_snippet_insert(cx));
-                })
-            })
-            .expect("window update should succeed");
-        app.read_with(cx, |app, _| {
-            assert!(app.pending_snippet_insert.is_none());
-            assert_eq!(
-                app.error_message,
-                localization::snippet_error_stale_terminal()
-            );
-        });
-
-        let oversized = SavedSnippet {
-            id: SavedSnippet::snippet_id(),
-            label: "Oversized".to_string(),
-            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
-            group: String::new(),
-            pinned: false,
-            command: "x".repeat(multiplex_ui_contract::MAX_SNIPPET_INSERT_BYTES + 1),
-        };
-        let oversized_id = oversized.id.clone();
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.saved.upsert_snippet(oversized);
-                    app.insert_saved_snippet(&oversized_id, window, cx);
-                })
-            })
-            .expect("window update should succeed");
-        app.read_with(cx, |app, _| {
-            assert!(app.pending_snippet_insert.is_none());
-            assert!(app.pending_snippet_prompts.is_none());
-            assert_eq!(app.error_message, localization::snippet_error_oversize());
-        });
-    }
-
-    #[gpui::test]
-    fn e2e_snippets_toolbar_click_new_save_and_delete(cx: &mut TestAppContext) {
-        let _isolation = TestIsolation::acquire();
-        let mut saved = SavedState::default();
-        saved.settings.onboarding_dismissed = true;
-        let (app, window) = open_test_app_with_state(cx, saved);
-
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.activate_library_section(NavSection::Snippets, window, cx);
-                })
-            })
-            .expect("window update should succeed");
-
-        let empty_new_click = selector_click_center(window, cx, "snippets-empty-new");
-        let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(empty_new_click, gpui::Modifiers::none());
-
-        app.read_with(cx, |app, cx| {
-            assert_eq!(app.nav_section, NavSection::Snippets);
-            assert!(app.selected_snippet_id.is_none());
-            assert_eq!(app.snippet_inputs.label.read(cx).value(), "");
-            assert!(app.error_message.is_empty());
-        });
-
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    MultiplexApp::set_input_value(
-                        &app.snippet_inputs.label,
-                        "Toolbar Snippet",
-                        window,
-                        cx,
-                    );
-                    MultiplexApp::set_input_value(
-                        &app.snippet_inputs.command,
-                        "echo toolbar-snippet",
-                        window,
-                        cx,
-                    );
-                })
-            })
-            .expect("window update should succeed");
-
-        let save_click = selector_click_center(window, cx, "snippet-save");
-        let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(save_click, gpui::Modifiers::none());
-
-        let snippet_id = app.read_with(cx, |app, _| {
-            let snippet = app
-                .saved
-                .snippets
-                .iter()
-                .find(|snippet| snippet.label == "Toolbar Snippet")
-                .expect("saved snippet should exist");
-            assert_eq!(snippet.command, "echo toolbar-snippet");
-            snippet.id.clone()
-        });
-
-        app.update(cx, |app, _| {
-            assert_eq!(
-                app.selected_snippet_id.as_deref(),
-                Some(snippet_id.as_str())
-            );
-        });
-
-        let delete_click = selector_click_center(window, cx, "snippet-delete");
-        let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(delete_click, gpui::Modifiers::none());
-
-        app.read_with(cx, |app, cx| {
-            assert!(
-                app.saved
-                    .snippets
-                    .iter()
-                    .all(|snippet| snippet.id != snippet_id)
-            );
-            assert!(app.selected_snippet_id.is_none());
-            assert_eq!(app.snippet_inputs.label.read(cx).value(), "");
-            assert!(app.error_message.is_empty());
-        });
-    }
-
-    #[gpui::test]
-    fn e2e_snippet_new_button_click_clears_selected_snippet(cx: &mut TestAppContext) {
-        let _isolation = TestIsolation::acquire();
-        let mut saved = SavedState::default();
-        saved.settings.onboarding_dismissed = true;
-        saved.snippets.push(SavedSnippet {
-            id: "snippet-new-btn".to_string(),
-            label: "Snippet New Btn".to_string(),
-            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
-            group: "Ops".to_string(),
-            pinned: false,
-            command: "echo snippet-new-btn".to_string(),
-        });
-        let (app, window) = open_test_app_with_state(cx, saved);
-
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.activate_library_section(NavSection::Snippets, window, cx);
-                })
-            })
-            .expect("window update should succeed");
-
-        let row_click = selector_click_center(window, cx, "snippet-card-0");
-        let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(row_click, gpui::Modifiers::none());
-
-        app.read_with(cx, |app, cx| {
-            assert_eq!(app.selected_snippet_id.as_deref(), Some("snippet-new-btn"));
-            assert_eq!(app.snippet_inputs.label.read(cx).value(), "Snippet New Btn");
-            assert_eq!(
-                app.snippet_inputs.command.read(cx).value(),
-                "echo snippet-new-btn"
-            );
-        });
-
-        let new_click = selector_click_center(window, cx, "snippet-new");
-        let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(new_click, gpui::Modifiers::none());
-
-        app.read_with(cx, |app, cx| {
-            assert!(app.selected_snippet_id.is_none());
-            assert!(app.snippet_inputs.label.read(cx).value().is_empty());
-            assert!(app.snippet_inputs.command.read(cx).value().is_empty());
-            assert_eq!(app.status_message, "Snippet draft cleared.");
-            assert!(app.error_message.is_empty());
-        });
-    }
-
-    #[gpui::test]
-    fn e2e_snippet_row_click_loads_and_pins(cx: &mut TestAppContext) {
-        let _isolation = TestIsolation::acquire();
-        let mut saved = SavedState::default();
-        saved.settings.onboarding_dismissed = true;
-        saved.snippets.push(SavedSnippet {
-            id: "snippet-row".to_string(),
-            label: "Row Snippet".to_string(),
-            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
-            group: "Ops".to_string(),
-            pinned: false,
-            command: "echo row-snippet".to_string(),
-        });
-        let (app, window) = open_test_app_with_state(cx, saved);
-
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.activate_library_section(NavSection::Snippets, window, cx);
-                })
-            })
-            .expect("window update should succeed");
-
-        let row_click = selector_click_center(window, cx, "snippet-card-0");
-        let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(row_click, gpui::Modifiers::none());
-
-        app.read_with(cx, |app, cx| {
-            assert_eq!(app.selected_snippet_id.as_deref(), Some("snippet-row"));
-            assert_eq!(app.snippet_inputs.label.read(cx).value(), "Row Snippet");
-            assert_eq!(
-                app.snippet_inputs.command.read(cx).value(),
-                "echo row-snippet"
-            );
-            assert!(app.error_message.is_empty());
-        });
-
-        let pin_click = selector_click_center(window, cx, "snippet-pin-0");
-        let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(pin_click, gpui::Modifiers::none());
-
-        app.read_with(cx, |app, _| {
-            let snippet = app
-                .saved
-                .snippets
-                .iter()
-                .find(|snippet| snippet.id == "snippet-row")
-                .expect("snippet should exist");
-            assert!(snippet.pinned);
-        });
-    }
-
-    #[gpui::test]
     fn e2e_vault_cards_and_buttons_click_create_load_and_delete(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
@@ -22307,16 +21338,14 @@ sleep 1
                     );
                     app.save_vault_member(window, cx);
 
-                    app.snippet_vault_id = Some(vault_id.clone());
-                    MultiplexApp::set_input_value(&app.snippet_inputs.label, "Deploy", window, cx);
-                    MultiplexApp::set_input_value(&app.snippet_inputs.group, "Ops", window, cx);
-                    MultiplexApp::set_input_value(
-                        &app.snippet_inputs.command,
-                        "echo deploy",
-                        window,
-                        cx,
-                    );
-                    app.save_snippet(window, cx);
+                    app.saved.upsert_snippet(SavedSnippet {
+                        id: "legacy-vault-snippet".into(),
+                        label: "Deploy".into(),
+                        group: "Ops".into(),
+                        command: "echo deploy".into(),
+                        vault_id: Some(vault_id.clone()),
+                        ..SavedSnippet::default()
+                    });
 
                     app.open_editor_for_new_host(window, cx);
                     app.draft_vault_id = Some(vault_id.clone());
@@ -22670,20 +21699,13 @@ sleep 1
                     );
                     app.save_profile(window, cx);
 
-                    MultiplexApp::set_input_value(
-                        &app.snippet_inputs.label,
-                        "Export Snippet",
-                        window,
-                        cx,
-                    );
-                    MultiplexApp::set_input_value(&app.snippet_inputs.group, "Ops", window, cx);
-                    MultiplexApp::set_input_value(
-                        &app.snippet_inputs.command,
-                        "echo exported",
-                        window,
-                        cx,
-                    );
-                    app.save_snippet(window, cx);
+                    app.saved.upsert_snippet(SavedSnippet {
+                        id: "legacy-export-snippet".into(),
+                        label: "Export Snippet".into(),
+                        group: "Ops".into(),
+                        command: "echo exported".into(),
+                        ..SavedSnippet::default()
+                    });
 
                     assert!(app.export_portable_data_to_path(&export_path, cx));
 
@@ -26165,6 +25187,70 @@ sleep 1
     }
 
     #[gpui::test]
+    fn retired_snippets_are_absent_from_navigation_palette_and_suggestions(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let saved = SavedState {
+            snippets: vec![SavedSnippet {
+                id: "retired-command".into(),
+                label: "Retired command".into(),
+                command: "retired-unique-command".into(),
+                pinned: true,
+                ..SavedSnippet::default()
+            }],
+            ..SavedState::default()
+        };
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        assert!(visual.debug_bounds("nav-card-4").is_none());
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let request = ConnectRequest::local_shell_with_config(
+                        app.next_session_id(),
+                        LocalShellConfig::default(),
+                    );
+                    let (command_tx, _receiver) = tokio::sync::mpsc::unbounded_channel();
+                    let pane_id = app.register_pane(
+                        request.clone(),
+                        SessionRuntimeHandle { command_tx },
+                        cx.focus_handle(),
+                        cx.focus_handle(),
+                        cx,
+                    );
+                    app.open_spawned_pane_workspace(&request, pane_id);
+                    let pane = app.pane_mut(pane_id).unwrap();
+                    pane.connected = true;
+                    pane.current_input = "retired".into();
+                    MultiplexApp::set_input_value(
+                        &app.shell_inputs.command_palette,
+                        "retired",
+                        window,
+                        cx,
+                    );
+                    assert!(
+                        app.workspace_autocomplete_candidates()
+                            .iter()
+                            .all(|candidate| candidate.source != AutocompleteSource::Snippet)
+                    );
+                    assert!(
+                        app.command_palette_candidates(cx)
+                            .iter()
+                            .all(|candidate| candidate.source != AutocompleteSource::Snippet)
+                    );
+                    assert_eq!(
+                        app.saved.snippets.len(),
+                        1,
+                        "legacy backup data is retained"
+                    );
+                })
+            })
+            .unwrap();
+    }
+
+    #[gpui::test]
     fn e2e_library_nav_cards_click_switch_sections(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
@@ -26187,7 +25273,6 @@ sleep 1
             ("nav-card-9", NavSection::Presets),
             ("nav-card-2", NavSection::Vaults),
             ("nav-card-3", NavSection::Keychain),
-            ("nav-card-4", NavSection::Snippets),
             ("nav-card-6", NavSection::KnownHosts),
             ("nav-card-7", NavSection::Logs),
         ] {
@@ -28176,7 +27261,6 @@ sleep 1
                 Some(KeychainTab::Identities),
                 "identity-card",
             ),
-            (NavSection::Snippets, None, "snippet-card"),
         ] {
             window
                 .update(cx, |_, window, cx| {

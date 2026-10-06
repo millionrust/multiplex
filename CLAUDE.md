@@ -13,7 +13,7 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   to `projects.migrated.json` rather than deleted.
 - Workflow navigation surfaces Activity, Connections, Sessions, Files, Devices, and Settings
   (Cmd+1 to Cmd+6) as primary destinations; specialized presets, vaults, keys,
-  snippets, known hosts, and logs remain available as advanced tools.
+  known hosts and logs remain available as advanced tools.
 - Sessions presents the authoritative active or archived typed Session library across
   both app-attached and durable ownership routes, organized by group, with folder, preset,
   and ownership context on each row.
@@ -47,8 +47,7 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 - Per-host port-forwarding rules (local, remote reverse, dynamic SOCKS) that start automatically on connect.
 - Per-host jump-host chains.
 - SSH opens the remote shell directly; legacy automatic tmux preferences are ignored.
-- Saved snippets plus a per-workspace command palette for snippets, recent commands, and built-in tasks.
-- Snippet commands accept {{HOST}}, {{USER}}, {{PORT}}, {{TITLE}}, {{ADDRESS}} placeholders that expand against the active pane on send.
+- A per-workspace command palette offers recent commands and built-in tasks.
 - Per-host color tag, environment variables, description/notes, startup directory, and startup command.
 - Right-click context menu on terminal panes; per-pane Clear and Duplicate; Detach moves a pane into its own workspace tab.
 - Multi-line clipboard pastes are held behind a confirmation banner by default to prevent accidental script execution.
@@ -381,7 +380,7 @@ bounded rotation and retention. See [docs/diagnostics.md](docs/diagnostics.md).
 - Dropping a tab onto a terminal pane splits that pane.
 - Double-clicking the empty chrome area opens a new local terminal.
 - Active workspace search is local to the active pane; search and unread badges are per workspace tab.
-- Typing in a terminal pane offers suggestions above it, drawn from snippets, command history,
+- Typing in a terminal pane offers suggestions above it, drawn from command history,
   built-in templates, the browsed path, and recent output. Up and Down choose one, Enter accepts
   it in place of what was typed, and Escape puts them away, which is what the Settings shortcut
   list says. Nothing is offered for an empty line or on the alternate screen, so a full-screen

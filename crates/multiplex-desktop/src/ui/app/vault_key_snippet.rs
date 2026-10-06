@@ -7,7 +7,7 @@ use multiplex_ui_contract::{
 };
 
 use super::{KeyLifecycleDialog, KeychainTab, MultiplexApp, NavSection};
-use crate::models::{DEFAULT_VAULT_ID, SavedIdentity, SavedSnippet};
+use crate::models::{DEFAULT_VAULT_ID, SavedIdentity};
 use crate::sftp::AuthorizedKeyAction;
 
 impl MultiplexApp {
@@ -18,90 +18,9 @@ impl MultiplexApp {
         if let Some(dialog) = self.key_lifecycle_dialog.as_ref() {
             return Some(self.key_lifecycle_semantic_snapshot(dialog));
         }
-        if self.pending_snippet_prompts.is_some() {
-            return Some(snapshot(
-                VaultKeySnippetScreen::SnippetPrompts,
-                VaultKeySnippetSurfaceState::Reviewing,
-                Vec::new(),
-                vec![
-                    control(
-                        VaultKeySnippetAction::ConfirmSnippetPrompts,
-                        None,
-                        MessageId::SnippetConfirmInsertAction,
-                        false,
-                    ),
-                    control(
-                        VaultKeySnippetAction::CancelSnippetPrompts,
-                        None,
-                        MessageId::SnippetCancelInsertAction,
-                        false,
-                    ),
-                ],
-                self.activity_center.policy().recording_friendly,
-            ));
-        }
-        if let Some(pending) = self.pending_snippet_insert.as_ref() {
-            let snippet = self
-                .saved
-                .snippets
-                .iter()
-                .find(|snippet| snippet.id == pending.snippet_id);
-            let exact = snippet.is_some_and(|snippet| snippet.command == pending.source_command)
-                && self.active_pane().map(|pane| pane.id) == Some(pending.pane_id);
-            let rows = snippet
-                .map(|snippet| {
-                    vec![row(
-                        snippet_row_id(snippet),
-                        None,
-                        snippet.display_name(),
-                        MessageId::SnippetRowSaved,
-                        self.pane(pending.pane_id).map(|pane| pane.title.clone()),
-                        true,
-                        !exact,
-                        false,
-                        1,
-                        1,
-                    )]
-                })
-                .unwrap_or_default();
-            let row = rows.first().map(|row| row.id).unwrap_or_else(|| {
-                VaultKeySnippetRowId::snippet(
-                    0,
-                    stable_vault_key_snippet_value(&pending.snippet_id),
-                )
-            });
-            return Some(snapshot(
-                VaultKeySnippetScreen::SnippetInsertReview,
-                if exact {
-                    VaultKeySnippetSurfaceState::Reviewing
-                } else {
-                    VaultKeySnippetSurfaceState::Stale
-                },
-                rows,
-                vec![
-                    control(
-                        VaultKeySnippetAction::ConfirmSnippetInsert {
-                            snippet: row,
-                            pane_id: pending.pane_id,
-                        },
-                        None,
-                        MessageId::SnippetConfirmInsertAction,
-                        !exact,
-                    ),
-                    control(
-                        VaultKeySnippetAction::CancelSnippetInsert,
-                        None,
-                        MessageId::SnippetCancelInsertAction,
-                        false,
-                    ),
-                ],
-                self.activity_center.policy().recording_friendly,
-            ));
-        }
         match self.nav_section {
             NavSection::Vaults => Some(self.vaults_semantic_snapshot()),
             NavSection::Keychain => Some(self.keychain_semantic_snapshot()),
-            NavSection::Snippets => Some(self.snippets_semantic_snapshot()),
             _ => None,
         }
     }
@@ -293,93 +212,6 @@ impl MultiplexApp {
         )
     }
 
-    fn snippets_semantic_snapshot(&self) -> VaultKeySnippetSemanticSnapshot {
-        let count = self.saved.snippets.len().max(1);
-        let rows = self
-            .saved
-            .snippets
-            .iter()
-            .enumerate()
-            .map(|(index, snippet)| {
-                row(
-                    snippet_row_id(snippet),
-                    None,
-                    snippet.display_name(),
-                    MessageId::SnippetRowSaved,
-                    (!snippet.group.trim().is_empty()).then(|| snippet.group.clone()),
-                    self.selected_snippet_id.as_deref() == Some(snippet.id.as_str()),
-                    false,
-                    true,
-                    index + 1,
-                    count,
-                )
-            })
-            .collect::<Vec<_>>();
-        let target = self.active_pane().map(|pane| (pane.id, pane.title.clone()));
-        let mut controls = vec![
-            control(
-                VaultKeySnippetAction::NewSnippet,
-                None,
-                MessageId::SnippetNewAction,
-                false,
-            ),
-            control(
-                VaultKeySnippetAction::SaveSnippet,
-                None,
-                MessageId::CommonSave,
-                false,
-            ),
-        ];
-        for (snippet, row) in self
-            .saved
-            .snippets
-            .iter()
-            .zip(rows.iter().map(|row| row.id))
-        {
-            for (action, name) in [
-                (
-                    VaultKeySnippetAction::SelectSnippet(row),
-                    MessageId::SnippetSelectAction,
-                ),
-                (
-                    VaultKeySnippetAction::ToggleSnippetPinned(row),
-                    MessageId::SnippetPinAction,
-                ),
-                (
-                    VaultKeySnippetAction::DeleteSnippet(row),
-                    MessageId::SnippetDeleteAction,
-                ),
-            ] {
-                controls.push(control(action, Some(row), name, false));
-            }
-            let (pane_id, title) = target.clone().unwrap_or_default();
-            let mut insert = control(
-                VaultKeySnippetAction::InsertSnippetAsText {
-                    snippet: snippet_row_id(snippet),
-                    pane_id,
-                },
-                Some(row),
-                MessageId::SnippetInsertAction,
-                pane_id == 0,
-            );
-            insert.value = (pane_id != 0).then_some(title);
-            controls.push(insert);
-        }
-        snapshot(
-            VaultKeySnippetScreen::Snippets,
-            if rows.is_empty() {
-                VaultKeySnippetSurfaceState::Empty
-            } else if target.is_none() {
-                VaultKeySnippetSurfaceState::TerminalRequired
-            } else {
-                VaultKeySnippetSurfaceState::Ready
-            },
-            rows,
-            controls,
-            self.activity_center.policy().recording_friendly,
-        )
-    }
-
     fn key_lifecycle_semantic_snapshot(
         &self,
         dialog: &KeyLifecycleDialog,
@@ -517,32 +349,6 @@ impl MultiplexApp {
         }
     }
 
-    pub(super) fn begin_snippet_insert(
-        &mut self,
-        row: VaultKeySnippetRowId,
-        pane_id: u64,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.active_pane().map(|pane| pane.id) != Some(pane_id) {
-            self.error_message = crate::ui::localization::snippet_error_stale_terminal();
-            cx.notify();
-            return;
-        }
-        let Some(snippet_id) = self
-            .saved
-            .snippets
-            .iter()
-            .find(|snippet| snippet_row_id(snippet) == row)
-            .map(|snippet| snippet.id.clone())
-        else {
-            self.error_message = crate::ui::localization::snippet_error_stale();
-            cx.notify();
-            return;
-        };
-        self.prepare_snippet_insert(&snippet_id, pane_id, window, cx);
-    }
-
     fn activate_sensitive_row(
         &mut self,
         row: VaultKeySnippetRowId,
@@ -585,17 +391,7 @@ impl MultiplexApp {
                     self.use_identity(&identity, window, cx);
                 }
             }
-            Kind::Snippet => {
-                if let Some(id) = self
-                    .saved
-                    .snippets
-                    .iter()
-                    .find(|item| snippet_row_id(item) == row)
-                    .map(|item| item.id.clone())
-                {
-                    self.load_snippet_into_inputs(&id, window, cx);
-                }
-            }
+            Kind::Snippet => {}
             Kind::Host => {
                 let Some(KeyLifecycleDialog::HostPicker {
                     identity_id,
@@ -645,7 +441,6 @@ impl MultiplexApp {
             VaultKeySnippetAction::SaveVault => self.save_vault(window, cx),
             VaultKeySnippetAction::SelectVault(row)
             | VaultKeySnippetAction::UseKey(row)
-            | VaultKeySnippetAction::SelectSnippet(row)
             | VaultKeySnippetAction::SelectHost(row) => {
                 self.activate_sensitive_row(row, window, cx)
             }
@@ -709,47 +504,6 @@ impl MultiplexApp {
             }
             VaultKeySnippetAction::CancelKeyOperation => self.cancel_key_operation(cx),
             VaultKeySnippetAction::CloseKeyLifecycle => self.close_key_lifecycle(window, cx),
-            VaultKeySnippetAction::NewSnippet => self.clear_snippet_form(window, cx),
-            VaultKeySnippetAction::SaveSnippet => self.save_snippet(window, cx),
-            VaultKeySnippetAction::DeleteSnippet(row)
-                if self
-                    .selected_snippet_id
-                    .as_deref()
-                    .and_then(|id| self.saved.snippets.iter().find(|snippet| snippet.id == id))
-                    .is_some_and(|snippet| snippet_row_id(snippet) == row) =>
-            {
-                self.remove_selected_snippet(window, cx)
-            }
-            VaultKeySnippetAction::ToggleSnippetPinned(row) => {
-                if let Some((id, pinned)) = self
-                    .saved
-                    .snippets
-                    .iter()
-                    .find(|snippet| snippet_row_id(snippet) == row)
-                    .map(|snippet| (snippet.id.clone(), !snippet.pinned))
-                {
-                    self.set_saved_snippet_pinned(&id, pinned, window, cx);
-                }
-            }
-            VaultKeySnippetAction::InsertSnippetAsText { snippet, pane_id } => {
-                self.begin_snippet_insert(snippet, pane_id, window, cx)
-            }
-            VaultKeySnippetAction::ConfirmSnippetPrompts => self.confirm_snippet_prompts(cx),
-            VaultKeySnippetAction::CancelSnippetPrompts => self.cancel_snippet_prompts(cx),
-            VaultKeySnippetAction::ConfirmSnippetInsert { snippet, pane_id } => {
-                if self.pending_snippet_insert.as_ref().is_some_and(|pending| {
-                    pending.pane_id == pane_id
-                        && self
-                            .saved
-                            .snippets
-                            .iter()
-                            .find(|item| item.id == pending.snippet_id)
-                            .is_some_and(|item| snippet_row_id(item) == snippet)
-                }) {
-                    self.confirm_pending_snippet_insert(cx);
-                }
-            }
-            VaultKeySnippetAction::CancelSnippetInsert => self.cancel_pending_snippet_insert(cx),
             _ => {}
         }
     }
@@ -842,12 +596,6 @@ fn identity_row_id(identity: &SavedIdentity, tab: KeychainTab) -> VaultKeySnippe
         KeychainTab::Keys => VaultKeySnippetRowId::key(owner, value),
         KeychainTab::Identities => VaultKeySnippetRowId::identity(owner, value),
     }
-}
-fn snippet_row_id(snippet: &SavedSnippet) -> VaultKeySnippetRowId {
-    VaultKeySnippetRowId::snippet(
-        stable_vault_key_snippet_value(snippet.effective_vault_id()),
-        stable_vault_key_snippet_value(&snippet.id),
-    )
 }
 fn key_operation_owner(identity: &str, action: AuthorizedKeyAction) -> u128 {
     stable_vault_key_snippet_value(&format!("{identity}:{action:?}"))

@@ -1,11 +1,9 @@
-//! Overlay panels rendered on top of the workspace: snippet-prompts banner,
-//! multi-line paste confirmation, and the command palette modal.
+//! Workspace overlays: multi-line paste confirmation and the command palette.
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, Context, Div, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton,
-    ParentElement, SharedString, Stateful, StatefulInteractiveElement as _, Styled, Window, div,
-    px, relative,
+    ParentElement, Stateful, StatefulInteractiveElement as _, Styled, Window, div, px, relative,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
@@ -26,135 +24,6 @@ use crate::ui::theme;
 const VISIBLE_AUTOCOMPLETE_SUGGESTIONS: usize = 5;
 
 impl MultiplexApp {
-    pub(super) fn render_snippet_prompts_panel(&self, cx: &Context<Self>) -> Option<Div> {
-        let prompts = self.pending_snippet_prompts.as_ref()?;
-        let preview: SharedString = prompts
-            .source_command
-            .lines()
-            .next()
-            .unwrap_or("")
-            .chars()
-            .take(120)
-            .collect::<String>()
-            .into();
-        Some(
-            v_flex()
-                .w_full()
-                .px(px(theme::SHELL_BANNER_HORIZONTAL))
-                .py(px(theme::SHELL_SPACE_COMPACT))
-                .gap_2()
-                .bg(theme::with_alpha(theme::accent(), 0.16))
-                .border_b_1()
-                .border_color(theme::with_alpha(theme::accent(), 0.45))
-                .child(
-                    h_flex()
-                        .justify_between()
-                        .items_center()
-                        .child(
-                            v_flex()
-                                .gap_0p5()
-                                .child(
-                                    div()
-                                        .text_size(px(theme::TYPE_BODY_SIZE))
-                                        .font_semibold()
-                                        .text_color(theme::text_on_dark())
-                                        .child(localization::overlay_snippet_prompts_title()),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                        .text_color(theme::text_muted_dark())
-                                        .child(localization::overlay_command_preview(
-                                            preview.to_string(),
-                                        )),
-                                ),
-                        )
-                        .child(
-                            h_flex()
-                                .gap_2()
-                                .child(
-                                    Button::new("snippet-prompts-run")
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Accent,
-                                            cx,
-                                        ))
-                                        .label(localization::common_run())
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.confirm_snippet_prompts(cx);
-                                        })),
-                                )
-                                .child(
-                                    Button::new("snippet-prompts-cancel")
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::Neutral,
-                                            cx,
-                                        ))
-                                        .label(localization::common_cancel())
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.cancel_snippet_prompts(cx);
-                                        })),
-                                ),
-                        ),
-                )
-                .child(
-                    v_flex()
-                        .gap_2()
-                        .children(prompts.fields.iter().map(|field| {
-                            v_flex()
-                                .gap_1()
-                                .child(
-                                    div()
-                                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                                        .font_medium()
-                                        .text_color(theme::text_on_dark())
-                                        .child(field.name.clone()),
-                                )
-                                .child(Input::new(&field.input).small())
-                                .into_any_element()
-                        })),
-                ),
-        )
-    }
-
-    /// The snippets pinned to the workspace, as buttons that insert one into the active pane.
-    /// Pinning a snippet tells the user it will appear in the workspace quick actions, so this
-    /// is where it appears. Nothing is drawn while none are pinned.
-    pub(super) fn render_pinned_snippet_actions(&self, cx: &Context<Self>) -> Option<Div> {
-        let snippets = self.pinned_snippet_quick_actions();
-        if snippets.is_empty() || self.active_pane().is_none() {
-            return None;
-        }
-        Some(
-            h_flex()
-                .w_full()
-                .px(px(theme::SHELL_BANNER_HORIZONTAL))
-                .py(px(theme::SPACE_1))
-                .gap_2()
-                .items_center()
-                .flex_wrap()
-                .bg(theme::with_alpha(theme::success(), 0.08))
-                .border_b_1()
-                .border_color(theme::with_alpha(theme::success(), 0.25))
-                .children(snippets.into_iter().map(|snippet| {
-                    let snippet_id = snippet.id.clone();
-                    Button::new(SharedString::from(format!("pinned-snippet-{}", snippet.id)))
-                        .small()
-                        .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                        .label(snippet.label.clone())
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.insert_saved_snippet(&snippet_id, window, cx);
-                        }))
-                        .into_any_element()
-                })),
-        )
-    }
-
-    /// What the line being typed into the active pane could become, above the terminal, with
-    /// the chosen suggestion marked. Nothing is drawn until there is something to suggest, so a
-    /// pane nobody is typing into looks as it always has. Up and Down choose, Enter accepts,
-    /// Escape puts them away, which is what the Settings shortcut list says.
     pub(super) fn render_autocomplete_suggestions(&self) -> Option<Stateful<Div>> {
         let candidates = self.workspace_autocomplete_candidates();
         if candidates.is_empty() {
@@ -290,83 +159,6 @@ impl MultiplexApp {
                                 })
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.cancel_pending_paste(cx);
-                                })),
-                        ),
-                ),
-        )
-    }
-
-    pub(super) fn render_snippet_insert_review(&self, cx: &Context<Self>) -> Option<Div> {
-        let pending = self.pending_snippet_insert.as_ref()?;
-        let target = self
-            .pane(pending.pane_id)
-            .map(|pane| pane.title.clone())
-            .unwrap_or_else(localization::snippet_error_stale_terminal);
-        let line_count = pending.text.lines().count().max(1);
-        let preview = pending
-            .text
-            .lines()
-            .next()
-            .unwrap_or_default()
-            .chars()
-            .take(120)
-            .collect::<String>();
-        Some(
-            h_flex()
-                .w_full()
-                .px(px(theme::SHELL_BANNER_HORIZONTAL))
-                .py(px(theme::SPACE_3))
-                .gap_2()
-                .items_center()
-                .justify_between()
-                .bg(theme::with_alpha(theme::warning(), 0.16))
-                .border_b_1()
-                .border_color(theme::with_alpha(theme::warning(), 0.45))
-                .child(
-                    v_flex()
-                        .flex_1()
-                        .gap_0p5()
-                        .child(
-                            div()
-                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                                .font_medium()
-                                .text_color(theme::text_on_dark())
-                                .child(localization::snippet_insert_review_title()),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                .text_color(theme::text_muted_dark())
-                                .child(localization::snippet_insert_review_summary(
-                                    line_count, target,
-                                )),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                .text_color(theme::text_muted_dark())
-                                .child(localization::overlay_command_preview(preview)),
-                        ),
-                )
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Button::new("snippet-insert-confirm")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                                .label(localization::snippet_confirm_insert_action())
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.confirm_pending_snippet_insert(cx);
-                                })),
-                        )
-                        .child(
-                            Button::new("snippet-insert-cancel")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label(localization::snippet_cancel_insert_action())
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.cancel_pending_snippet_insert(cx);
                                 })),
                         ),
                 ),

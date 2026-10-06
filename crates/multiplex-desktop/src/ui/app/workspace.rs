@@ -1765,17 +1765,8 @@ impl MultiplexApp {
             .min_w_0()
             .min_h_0()
             .bg(theme::terminal_bg())
-            .when_some(self.render_snippet_prompts_panel(cx), |this, panel| {
-                this.child(panel)
-            })
-            .when_some(self.render_snippet_insert_review(cx), |this, panel| {
-                this.child(panel)
-            })
             .when_some(self.render_paste_confirmation(cx), |this, banner| {
                 this.child(banner)
-            })
-            .when_some(self.render_pinned_snippet_actions(cx), |this, actions| {
-                this.child(actions)
             })
             .when_some(self.render_autocomplete_suggestions(), |this, bar| {
                 this.child(bar)

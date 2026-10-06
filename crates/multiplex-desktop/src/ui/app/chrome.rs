@@ -1066,7 +1066,6 @@ impl MultiplexApp {
                         NavSection::Presets,
                         NavSection::Vaults,
                         NavSection::Keychain,
-                        NavSection::Snippets,
                         NavSection::KnownHosts,
                         NavSection::Logs,
                         NavSection::Activity,
