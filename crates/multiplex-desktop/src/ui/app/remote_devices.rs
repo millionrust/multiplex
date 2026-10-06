@@ -2616,12 +2616,7 @@ impl MultiplexApp {
 
     /// What another computer calls this one in its own device list.
     fn this_computer_name(&self) -> String {
-        // The other computer shows this in its own device list, so it names the machine, not
-        // the person: a hostname is the closest thing this app already knows.
-        std::env::var("HOSTNAME")
-            .ok()
-            .filter(|name| !name.is_empty())
-            .unwrap_or_else(|| "Multiplex desktop".to_owned())
+        multiplex_controller_listener::computer_name()
     }
 
     fn begin_controller_pairing(&mut self, cx: &mut Context<Self>) {

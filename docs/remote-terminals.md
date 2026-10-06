@@ -298,8 +298,8 @@ Existing tmux sessions keep running; `tmux kill-server` ends them.
   to its screen. When no desktop client is attached, tmux sizes the window to the phone.
 - **Sessions on a non-default tmux server.** Only the default socket (honoring
   `TMUX_TMPDIR`) is listed; servers started with `-L` or `-S` are not.
-- **Discovery over a VPN.** The listener announces itself with Bonjour (`_termirust._tcp`,
-  named by an opaque identifier, not the computer name) only on Wi-Fi and Ethernet.
+- **Discovery over a VPN.** The listener announces itself with Bonjour (`_multiplex._tcp`,
+  displaying the system computer name with a separate stable discovery identifier) only on Wi-Fi and Ethernet.
   Multicast does not cross Tailscale, so type the address once there; the phone then keeps
   every address it learns. It tries them together rather than in turn: the one that worked on
   this network first, then local addresses on the phone's own subnet, then Tailscale 250 ms

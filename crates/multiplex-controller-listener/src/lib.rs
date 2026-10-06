@@ -46,7 +46,7 @@ pub use devices::{
 };
 pub use discovery::{
     BONJOUR_SERVICE_TYPE, BonjourAdvertisement, BonjourAnnouncement, bonjour_advertisement,
-    discovery_id,
+    computer_name, discovery_id,
 };
 pub use error::{ListenerError, ListenerErrorCode};
 pub use firewall::{FirewallObservation, FirewallObserver, SystemFirewallObserver};

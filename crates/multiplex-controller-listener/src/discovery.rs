@@ -3,8 +3,8 @@
 //!
 //! Only LAN addresses are announced; VPN interfaces such as Tailscale are never used, because
 //! multicast does not cross them and announcing into a VPN would reach networks the user did
-//! not mean to. The announcement names the service by an opaque identifier derived from the Host
-//! fingerprint, never by the computer's name, and carries no secret: finding the computer is
+//! not mean to. The service uses the system computer name so a phone can identify it. Its opaque
+//! Host fingerprint identifier remains separate, and it carries no secret: finding the computer is
 //! not trusting it, and pairing still needs the code or offer.
 
 use std::net::IpAddr;
@@ -41,6 +41,14 @@ pub fn bonjour_advertisement(
     host: HostPublicKey,
     addresses: &[ListeningAddress],
 ) -> Option<BonjourAdvertisement> {
+    bonjour_advertisement_named(host, addresses, &computer_name())
+}
+
+fn bonjour_advertisement_named(
+    host: HostPublicKey,
+    addresses: &[ListeningAddress],
+    name: &str,
+) -> Option<BonjourAdvertisement> {
     let lan = addresses
         .iter()
         .filter(|address| address.kind == NetworkInterfaceKind::Lan && address.validate().is_ok())
@@ -54,7 +62,7 @@ pub fn bonjour_advertisement(
     interfaces.sort();
     interfaces.dedup();
     Some(BonjourAdvertisement {
-        instance: format!("Multiplex {}", id[..6].to_ascii_uppercase()),
+        instance: service_name(name),
         host_name: format!("termirust-{id}.local."),
         interfaces,
         addresses: lan
@@ -65,6 +73,58 @@ pub fn bonjour_advertisement(
         port,
         properties: vec![("v".into(), "1".into()), ("id".into(), id)],
     })
+}
+
+/// The user-facing machine name, shared by discovery and desktop pairing.
+pub fn computer_name() -> String {
+    #[cfg(target_os = "macos")]
+    if let Ok(output) = std::process::Command::new("/usr/sbin/scutil")
+        .args(["--get", "ComputerName"])
+        .output()
+        && output.status.success()
+        && let Ok(name) = String::from_utf8(output.stdout)
+        && !name.trim().is_empty()
+    {
+        return service_name(&name);
+    }
+    #[cfg(unix)]
+    {
+        let mut bytes = [0u8; 256];
+        // SAFETY: gethostname writes at most the supplied length into this writable buffer.
+        if unsafe { libc::gethostname(bytes.as_mut_ptr().cast(), bytes.len()) } == 0 {
+            let end = bytes
+                .iter()
+                .position(|byte| *byte == 0)
+                .unwrap_or(bytes.len());
+            if let Ok(name) = std::str::from_utf8(&bytes[..end])
+                && !name.trim().is_empty()
+            {
+                return service_name(name);
+            }
+        }
+    }
+    #[cfg(windows)]
+    if let Ok(name) = std::env::var("COMPUTERNAME")
+        && !name.trim().is_empty()
+    {
+        return service_name(&name);
+    }
+    "Multiplex desktop".to_owned()
+}
+
+fn service_name(name: &str) -> String {
+    // A DNS service instance is one label: at most 63 UTF-8 bytes.
+    let clean: String = name.trim().chars().filter(|ch| !ch.is_control()).collect();
+    let mut end = clean.len().min(63);
+    while !clean.is_char_boundary(end) {
+        end -= 1;
+    }
+    let bounded = clean[..end].trim();
+    if bounded.is_empty() {
+        "Multiplex desktop".to_owned()
+    } else {
+        bounded.to_owned()
+    }
 }
 
 /// A running Bonjour announcement that follows the listener's addresses.
@@ -167,15 +227,16 @@ mod tests {
     }
 
     #[test]
-    fn only_lan_addresses_are_announced_under_an_opaque_name() {
+    fn only_lan_addresses_are_announced_under_the_computer_name() {
         let host = HostPublicKey([7; 32]);
-        let advertisement = bonjour_advertisement(
+        let advertisement = bonjour_advertisement_named(
             host,
             &[
                 address("en0", NetworkInterfaceKind::Lan, "192.168.88.4:55000"),
                 address("en0", NetworkInterfaceKind::Lan, "[fd00::4]:55000"),
                 address("utun4", NetworkInterfaceKind::Vpn, "100.81.253.53:55000"),
             ],
+            "Sam’s MacBook",
         )
         .unwrap();
         let id = discovery_id(host);
@@ -190,11 +251,19 @@ mod tests {
         );
         assert_eq!(advertisement.port, 55_000);
         assert_eq!(advertisement.host_name, format!("termirust-{id}.local."));
-        assert!(advertisement.instance.starts_with("Multiplex "));
+        assert_eq!(advertisement.instance, "Sam’s MacBook");
         assert_eq!(
             advertisement.properties,
             [("v".to_owned(), "1".to_owned()), ("id".to_owned(), id)]
         );
+    }
+
+    #[test]
+    fn service_names_keep_unicode_and_fit_a_dns_label() {
+        assert_eq!(service_name("  Sam’s MacBook\n"), "Sam’s MacBook");
+        assert_eq!(service_name("\n\t"), "Multiplex desktop");
+        assert_eq!(service_name(&"é".repeat(40)), "é".repeat(31));
+        assert!(!computer_name().is_empty());
     }
 
     #[test]
