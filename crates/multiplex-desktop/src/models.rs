@@ -707,6 +707,8 @@ pub struct SavedSnippet {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AppSettings {
     #[serde(default)]
+    pub workspace_tabs_on_left: bool,
+    #[serde(default)]
     pub theme_preset: ThemePreset,
     #[serde(default = "default_terminal_font_size")]
     pub terminal_font_size: u16,
@@ -816,6 +818,7 @@ impl Default for AppSettings {
             theme_preset: ThemePreset::System,
             terminal_font_size: default_terminal_font_size(),
             onboarding_dismissed: false,
+            workspace_tabs_on_left: false,
             restore_workspaces_on_launch: default_restore_workspaces_on_launch(),
             session_log_limit: default_session_log_limit(),
             default_local_shell: default_local_shell_config(),

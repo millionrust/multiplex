@@ -1,7 +1,6 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use gpui::prelude::FluentBuilder as _;
 use gpui::{AppContext as _, Context, Entity, Window};
 use gpui_component::input::InputState;
 use multiplex_domain::{

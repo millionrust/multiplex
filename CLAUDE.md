@@ -16,14 +16,19 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   known hosts and logs remain available as advanced tools.
 - Sessions presents the authoritative active or archived typed Session library across
   both app-attached and durable ownership routes, organized by group, with folder, preset,
-  and ownership context on each row.
+  and ownership context on each row. CLI terminals also offer transient hover previews of
+  recent output through read-only Host connections, plus a confirmed Close terminal action
+  that stops the shell and its owned processes.
 - Files browses the local disk beside a connected host's files over SFTP. It used to carry a
   second tab holding a library of every Session artifact; that index was removed because nothing
   read it. Artifacts themselves remain: `multiplex-store`'s bounded repository, written by agents
   through the MCP server (`artifacts.create`, and the browser capture path) and shown on the
   Session that produced them, with preview, export, quarantine, restore, and purge there.
 - Single-row top chrome with custom in-app traffic lights (close / minimize / zoom); the macOS OS title-bar drag is taken over so the chrome stays draggable from its empty area.
-- Draggable workspace tabs that scroll horizontally when they overflow; double-click a tab to rename it; right-click a tab for Duplicate / Duplicate in a new window / Rename / Split / Close.
+- Flat, borderless workspace tabs scroll horizontally when they overflow. Double-click to
+  rename; right-click a tab for Duplicate / Duplicate in a new window / Rename / Split / Close.
+  Right-click the empty top chrome for New terminal or to move the tabs into a scrolling left
+  sidebar (and back to the top). The placement is saved in desktop settings.
 - Each workspace tab can contain split panes arranged as a recursive binary tree: dropping a tab onto a pane splits that pane, with arbitrary nesting and resizable dividers.
   Each split pane has a header (status, title, address, zoom, close); dragging it onto another
   pane moves it to that edge or, in the middle, swaps the two, with a sliding drop preview that

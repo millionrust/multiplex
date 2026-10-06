@@ -1335,6 +1335,8 @@ pub struct MultiplexApp {
     settings_section: multiplex_ui_contract::SettingsSectionId,
     host_editor_scroll: ScrollHandle,
     hosts_list_scroll: ScrollHandle,
+    chrome_context_menu: Option<Point<Pixels>>,
+    workspace_tab_menu_position: Option<Point<Pixels>>,
     tab_strip_scroll: ScrollHandle,
     tab_strip_scrolled_to: Option<u64>,
     launched_at: Instant,
@@ -1803,6 +1805,8 @@ impl MultiplexApp {
             settings_section: multiplex_ui_contract::SettingsSectionId::Appearance,
             host_editor_scroll: ScrollHandle::new(),
             hosts_list_scroll: ScrollHandle::new(),
+            chrome_context_menu: None,
+            workspace_tab_menu_position: None,
             tab_strip_scroll: ScrollHandle::new(),
             tab_strip_scrolled_to: None,
             launched_at: Instant::now(),
@@ -13494,7 +13498,27 @@ impl Render for MultiplexApp {
                 v_flex()
                     .size_full()
                     .child(self.render_top_chrome(window, cx))
-                    .child(div().flex_1().min_h_0().flex().flex_col().child(content)),
+                    .child(
+                        div()
+                            .flex()
+                            .flex_1()
+                            .min_h_0()
+                            .w_full()
+                            .overflow_hidden()
+                            .when(self.saved.settings.workspace_tabs_on_left, |this| {
+                                this.child(self.render_workspace_tab_sidebar(cx))
+                            })
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .min_h_0()
+                                    .h_full()
+                                    .flex()
+                                    .flex_col()
+                                    .child(content),
+                            ),
+                    ),
             )
             .when(
                 self.show_editor_panel
@@ -13505,8 +13529,11 @@ impl Render for MultiplexApp {
             .when(self.show_command_palette, |this| {
                 this.child(self.render_command_palette(window, cx))
             })
+            .when_some(self.chrome_context_menu, |this, position| {
+                this.child(self.render_chrome_context_menu_layer(position, window, cx))
+            })
             .when_some(self.open_workspace_tab_menu, |this, workspace_id| {
-                this.child(self.render_workspace_tab_context_menu_layer(workspace_id, cx))
+                this.child(self.render_workspace_tab_context_menu_layer(workspace_id, window, cx))
             })
             .when_some(self.pane_context_menu, |this, (pane_id, position)| {
                 this.child(self.render_pane_context_menu_layer(pane_id, position, cx))
@@ -13594,6 +13621,10 @@ impl MultiplexApp {
         }
 
         if event.keystroke.key.as_str() == "escape" {
+            if self.chrome_context_menu.take().is_some() {
+                cx.notify();
+                return true;
+            }
             if self.other_terminals.close_pending.is_some() {
                 if !self.other_terminals.stopping {
                     self.other_terminals.close_pending = None;
@@ -25103,6 +25134,50 @@ sleep 1
             assert!(app.selected_profile_id.is_none());
             assert_eq!(app.inputs.label.read(cx).value(), "");
             assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_empty_chrome_menu_opens_terminal_and_moves_tabs_left_and_back(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let open_menu = |cx: &mut TestAppContext| {
+            let click = selector_click_center(window, cx, "chrome-workspace-drop-tail");
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.simulate_mouse_down(click, MouseButton::Right, gpui::Modifiers::none());
+            visual.run_until_parked();
+            assert!(visual.debug_bounds("chrome-context-menu").is_some());
+        };
+        open_menu(cx);
+        let click = selector_click_center(window, cx, "chrome-menu-new-terminal");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(click, gpui::Modifiers::none());
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(app.active_workspace()?.active_pane_id)?;
+            pane.connected.then_some(())
+        });
+        let active = app.read_with(cx, |app, _| app.active_workspace_id.unwrap());
+        open_menu(cx);
+        let click = selector_click_center(window, cx, "chrome-menu-tab-position");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(click, gpui::Modifiers::none());
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        let sidebar = visual.debug_bounds("workspace-tab-sidebar").unwrap();
+        let tab = dynamic_selector_bounds(window, cx, format!("chrome-workspace-{active}"));
+        assert!(tab.origin.y >= sidebar.origin.y);
+        assert!(tab.origin.x >= sidebar.origin.x && tab.right() <= sidebar.right());
+        app.read_with(cx, |app, _| {
+            assert!(app.saved.settings.workspace_tabs_on_left);
+            assert_eq!(app.active_workspace_id, Some(active));
+        });
+        open_menu(cx);
+        let click = selector_click_center(window, cx, "chrome-menu-tab-position");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(click, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            assert!(!app.saved.settings.workspace_tabs_on_left);
+            assert_eq!(app.active_workspace_id, Some(active));
         });
     }
 

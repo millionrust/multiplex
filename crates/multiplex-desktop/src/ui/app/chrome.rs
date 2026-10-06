@@ -88,6 +88,7 @@ impl MultiplexApp {
         close_button: Option<AnyElement>,
     ) -> Stateful<Div> {
         let label: SharedString = label.into();
+        let id = id.into();
         h_flex()
             .id(id)
             .flex_shrink_0()
@@ -99,20 +100,15 @@ impl MultiplexApp {
             } else {
                 px(theme::SPACE_4)
             })
-            .h(px(theme::SHELL_COMPACT_CONTROL_HEIGHT))
-            .rounded(px(theme::SHELL_SPACE_DENSE))
-            .border_1()
-            .border_color(if active {
-                theme::with_alpha(theme::border(), 0.8)
-            } else {
-                gpui::transparent_black()
+            .h(px(theme::CHROME_HEIGHT))
+            .when(self.saved.settings.workspace_tabs_on_left, |this| {
+                this.w_full()
             })
             .bg(if active {
                 theme::chrome_tab_active()
             } else {
                 gpui::transparent_black()
             })
-            .when(active, |this| this.shadow(theme::popover_shadow()))
             .when(!active, |this| {
                 this.hover(|style| style.bg(theme::chrome_tab()))
             })
@@ -183,6 +179,7 @@ impl MultiplexApp {
     fn render_workspace_tab_context_menu(
         &self,
         workspace_id: u64,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let index = self
@@ -190,7 +187,27 @@ impl MultiplexApp {
             .iter()
             .position(|workspace| workspace.id == workspace_id)
             .unwrap_or(0);
-        let left = 230.0 + (index as f32 * 188.0);
+        let menu_width = theme::SHELL_WORKSPACE_MENU_WIDTH;
+        let requested_left = if self.saved.settings.workspace_tabs_on_left {
+            theme::HOST_SIDEBAR_WIDTH
+        } else {
+            self.workspace_tab_menu_position
+                .map(|position| f32::from(position.x))
+                .unwrap_or(theme::HOST_SIDEBAR_WIDTH)
+        };
+        let left = requested_left.min(
+            (f32::from(window.viewport_size().width) - menu_width - theme::SPACE_3)
+                .max(theme::SPACE_3),
+        );
+        let requested_top = if self.saved.settings.workspace_tabs_on_left {
+            theme::CHROME_HEIGHT + index as f32 * theme::CHROME_HEIGHT
+        } else {
+            theme::CHROME_HEIGHT
+        };
+        let menu_height = theme::SHELL_COMPACT_CONTROL_HEIGHT * 5.0 + theme::SPACE_4;
+        let top = requested_top.min(
+            (f32::from(window.viewport_size().height) - menu_height).max(theme::CHROME_HEIGHT),
+        );
         let can_split = self
             .workspace(workspace_id)
             .map(|workspace| workspace.pane_ids.len() < super::MAX_SPLIT_PANES)
@@ -199,7 +216,7 @@ impl MultiplexApp {
         v_flex()
             .id(("workspace-tab-menu", workspace_id))
             .absolute()
-            .top(px(theme::CHROME_HEIGHT - 2.))
+            .top(px(top))
             .left(px(left))
             .w(px(theme::SHELL_WORKSPACE_MENU_WIDTH))
             .p(px(theme::SHELL_SPACE_DENSE))
@@ -288,6 +305,7 @@ impl MultiplexApp {
     pub(super) fn render_workspace_tab_context_menu_layer(
         &self,
         workspace_id: u64,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         div()
@@ -310,7 +328,7 @@ impl MultiplexApp {
                     cx.notify();
                 }),
             )
-            .child(self.render_workspace_tab_context_menu(workspace_id, cx))
+            .child(self.render_workspace_tab_context_menu(workspace_id, window, cx))
     }
 
     fn open_workspace_tab_context_menu(
@@ -320,6 +338,8 @@ impl MultiplexApp {
         cx: &mut Context<Self>,
     ) {
         self.open_workspace_tab_menu = Some(workspace_id);
+        self.workspace_tab_menu_position = Some(window.mouse_position());
+        self.chrome_context_menu = None;
         self.activate_workspace(workspace_id, window, cx);
         cx.stop_propagation();
         cx.notify();
@@ -643,9 +663,6 @@ impl MultiplexApp {
             .pl(px(theme::SHELL_SPACE_COMPACT))
             .pr(px(theme::SHELL_SPACE_DENSE))
             .h(px(theme::SHELL_COMPACT_CONTROL_HEIGHT))
-            .rounded(px(theme::SHELL_SPACE_DENSE))
-            .border_1()
-            .border_color(theme::accent())
             .bg(theme::chrome_tab_active())
             .child(
                 Icon::new(IconName::SquareTerminal)
@@ -655,8 +672,221 @@ impl MultiplexApp {
             .child(
                 div()
                     .w(px(theme::SHELL_RENAME_FIELD_WIDTH))
-                    .child(Input::new(&self.tab_rename_input).small()),
+                    .child(Input::new(&self.tab_rename_input).small().appearance(false)),
             )
+    }
+
+    fn render_workspace_tabs(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        self.workspaces
+            .iter()
+            .map(|workspace| {
+                let workspace_id = workspace.id;
+                if self.tab_rename_workspace_id == Some(workspace_id) {
+                    return self
+                        .render_workspace_tab_rename(workspace_id)
+                        .into_any_element();
+                }
+                let close_id = workspace.id;
+                let active = self.active_workspace_id == Some(workspace.id);
+                let drag_info = WorkspaceTabDrag {
+                    workspace_id,
+                    title: workspace.title.clone(),
+                };
+                let indicators = self.workspace_indicators(workspace);
+                self.render_chrome_tab(
+                    ("chrome-workspace", workspace.id),
+                    Icon::new(IconName::SquareTerminal),
+                    workspace.title.clone(),
+                    active,
+                    Some(indicators),
+                    Some(
+                        div()
+                            .id(("chrome-close-wrap", workspace.id))
+                            .debug_selector(move || {
+                                format!("chrome-workspace-close-{}", workspace.id)
+                            })
+                            .size(px(theme::ICON_SIZE_MEDIUM))
+                            .rounded(px(theme::SPACE_2))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .text_color(theme::text_muted_dark())
+                            .hover(|style| {
+                                style
+                                    .bg(theme::with_alpha(theme::text_muted_dark(), 0.15))
+                                    .text_color(theme::text_main())
+                            })
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.open_workspace_tab_menu = None;
+                                this.close_workspace(close_id, cx);
+                            }))
+                            .child(Icon::new(IconName::Close).size(px(theme::ICON_SIZE_SMALL)))
+                            .into_any_element(),
+                    ),
+                )
+                .debug_selector(move || format!("chrome-workspace-{}", workspace_id))
+                .on_drag(drag_info, |drag: &WorkspaceTabDrag, _, _, cx| {
+                    cx.stop_propagation();
+                    cx.new(|_| WorkspaceTabDragPreview {
+                        title: drag.title.clone(),
+                    })
+                })
+                .drag_over::<WorkspaceTabDrag>(move |style, drag, _, _| {
+                    if drag.workspace_id == workspace_id {
+                        style
+                    } else {
+                        style
+                            .ml(px(theme::SPACE_1))
+                            .border_l_2()
+                            .border_color(theme::accent())
+                            .bg(theme::with_alpha(theme::accent(), 0.12))
+                    }
+                })
+                .on_drop(cx.listener(move |this, drag: &WorkspaceTabDrag, _, cx| {
+                    if drag.workspace_id != workspace_id {
+                        this.reorder_workspace_tabs(drag.workspace_id, Some(workspace_id), false);
+                        this.error_message.clear();
+                        cx.notify();
+                    }
+                }))
+                .cursor_grab()
+                .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                    if event.is_right_click() {
+                        this.open_workspace_tab_context_menu(workspace_id, window, cx);
+                    } else if event.click_count() >= 2 {
+                        this.open_workspace_tab_menu = None;
+                        this.start_workspace_rename_for(workspace_id, window, cx);
+                    } else {
+                        this.open_workspace_tab_menu = None;
+                        this.activate_workspace(workspace_id, window, cx);
+                    }
+                }))
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |this, _, window, cx| {
+                        this.open_workspace_tab_context_menu(workspace_id, window, cx);
+                    }),
+                )
+                .into_any_element()
+            })
+            .collect()
+    }
+
+    pub(super) fn render_workspace_tab_sidebar(&self, cx: &mut Context<Self>) -> AnyElement {
+        v_flex()
+            .id("workspace-tab-sidebar")
+            .debug_selector(|| "workspace-tab-sidebar".into())
+            .w(px(theme::HOST_SIDEBAR_WIDTH))
+            .flex_none()
+            .h_full()
+            .bg(theme::chrome_bg())
+            .child(
+                v_flex()
+                    .id("workspace-sidebar-scroll")
+                    .flex_1()
+                    .min_h_0()
+                    .track_scroll(&self.tab_strip_scroll)
+                    .overflow_y_scroll()
+                    .children(self.render_workspace_tabs(cx)),
+            )
+            .child(
+                Self::design_button("sidebar-new-terminal", theme::ActionTone::Neutral, cx)
+                    .label(localization::static_message(
+                        multiplex_ui_contract::MessageId::ChromeNewTerminal,
+                    ))
+                    .icon(IconName::Plus)
+                    .on_click(
+                        cx.listener(|this, _, window, cx| this.open_local_terminal(window, cx)),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    pub(super) fn render_chrome_context_menu_layer(
+        &self,
+        position: Point<Pixels>,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let left_tabs = self.saved.settings.workspace_tabs_on_left;
+        let width = theme::SHELL_WORKSPACE_MENU_WIDTH;
+        let left = f32::from(position.x).min(
+            (f32::from(window.viewport_size().width) - width - theme::SPACE_3).max(theme::SPACE_3),
+        );
+        div()
+            .id("chrome-context-menu-layer")
+            .absolute()
+            .inset_0()
+            .size_full()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.chrome_context_menu = None;
+                    cx.notify();
+                }),
+            )
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this, _, _, cx| {
+                    this.chrome_context_menu = None;
+                    cx.notify();
+                }),
+            )
+            .child(
+                v_flex()
+                    .id("chrome-context-menu")
+                    .debug_selector(|| "chrome-context-menu".into())
+                    .absolute()
+                    .left(px(left))
+                    .top(px(theme::CHROME_HEIGHT))
+                    .w(px(width))
+                    .p(px(theme::SPACE_2))
+                    .gap(px(theme::SPACE_1))
+                    .rounded(px(theme::CONTROL_RADIUS))
+                    .bg(theme::library_card())
+                    .shadow(theme::popover_shadow())
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(
+                        self.workspace_tab_menu_item(
+                            "chrome-menu-new-terminal",
+                            IconName::SquareTerminal,
+                            localization::static_message(
+                                multiplex_ui_contract::MessageId::ChromeNewTerminal,
+                            ),
+                            |this, window, cx| {
+                                this.chrome_context_menu = None;
+                                this.open_local_terminal(window, cx);
+                            },
+                            cx,
+                        )
+                        .debug_selector(|| "chrome-menu-new-terminal".into()),
+                    )
+                    .child(
+                        self.workspace_tab_menu_item(
+                            "chrome-menu-tab-position",
+                            IconName::PanelRight,
+                            localization::static_message(if left_tabs {
+                                multiplex_ui_contract::MessageId::ChromeTabsToTop
+                            } else {
+                                multiplex_ui_contract::MessageId::ChromeTabsToLeft
+                            }),
+                            move |this, window, cx| {
+                                this.chrome_context_menu = None;
+                                this.saved.settings.workspace_tabs_on_left = !left_tabs;
+                                this.tab_strip_scroll
+                                    .set_offset(point(px(theme::SPACE_0), px(theme::SPACE_0)));
+                                this.tab_strip_scrolled_to = None;
+                                this.persist_runtime_state();
+                                this.sync_terminal_layout(window, cx);
+                                cx.notify();
+                            },
+                            cx,
+                        )
+                        .debug_selector(|| "chrome-menu-tab-position".into()),
+                    ),
+            )
+            .into_any_element()
     }
 
     pub(super) fn render_top_chrome(&self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
@@ -683,18 +913,11 @@ impl MultiplexApp {
                     .justify_center()
                     .size(px(theme::SHELL_COMPACT_CONTROL_HEIGHT))
                     .rounded(px(theme::SHELL_SPACE_DENSE))
-                    .border_1()
-                    .border_color(if library_active {
-                        theme::with_alpha(theme::border(), 0.8)
-                    } else {
-                        gpui::transparent_black()
-                    })
                     .bg(if library_active {
                         theme::chrome_tab_active()
                     } else {
                         gpui::transparent_black()
                     })
-                    .when(library_active, |this| this.shadow(theme::popover_shadow()))
                     .when(!library_active, |this| {
                         this.hover(|style| style.bg(theme::chrome_tab()))
                     })
@@ -736,104 +959,10 @@ impl MultiplexApp {
                     .overflow_x_scroll()
                     .h_full()
                     .min_w(px(theme::SPACE_0))
-                    .gap(px(theme::SHELL_SPACE_DENSE))
-                    .children(self.workspaces.iter().map(|workspace| {
-                        let workspace_id = workspace.id;
-                        if self.tab_rename_workspace_id == Some(workspace_id) {
-                            return self
-                                .render_workspace_tab_rename(workspace_id)
-                                .into_any_element();
-                        }
-                        let close_id = workspace.id;
-                        let active = self.active_workspace_id == Some(workspace.id);
-                        let drag_info = WorkspaceTabDrag {
-                            workspace_id,
-                            title: workspace.title.clone(),
-                        };
-                        let indicators = self.workspace_indicators(workspace);
-                        self.render_chrome_tab(
-                            ("chrome-workspace", workspace.id),
-                            Icon::new(IconName::SquareTerminal),
-                            workspace.title.clone(),
-                            active,
-                            Some(indicators),
-                            Some(
-                                div()
-                                    .id(("chrome-close-wrap", workspace.id))
-                                    .debug_selector(move || {
-                                        format!("chrome-workspace-close-{}", workspace.id)
-                                    })
-                                    .size(px(theme::ICON_SIZE_MEDIUM))
-                                    .rounded(px(theme::SPACE_2))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .cursor_pointer()
-                                    .text_color(theme::text_muted_dark())
-                                    .hover(|style| {
-                                        style
-                                            .bg(theme::with_alpha(theme::text_muted_dark(), 0.15))
-                                            .text_color(theme::text_main())
-                                    })
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.open_workspace_tab_menu = None;
-                                        this.close_workspace(close_id, cx);
-                                    }))
-                                    .child(
-                                        Icon::new(IconName::Close).size(px(theme::ICON_SIZE_SMALL)),
-                                    )
-                                    .into_any_element(),
-                            ),
-                        )
-                        .debug_selector(move || format!("chrome-workspace-{}", workspace_id))
-                        .on_drag(drag_info, |drag: &WorkspaceTabDrag, _, _, cx| {
-                            cx.stop_propagation();
-                            cx.new(|_| WorkspaceTabDragPreview {
-                                title: drag.title.clone(),
-                            })
-                        })
-                        .drag_over::<WorkspaceTabDrag>(move |style, drag, _, _| {
-                            if drag.workspace_id == workspace_id {
-                                style
-                            } else {
-                                style
-                                    .ml(px(theme::SPACE_1))
-                                    .border_l_2()
-                                    .border_color(theme::accent())
-                                    .bg(theme::with_alpha(theme::accent(), 0.12))
-                            }
-                        })
-                        .on_drop(cx.listener(move |this, drag: &WorkspaceTabDrag, _, cx| {
-                            if drag.workspace_id != workspace_id {
-                                this.reorder_workspace_tabs(
-                                    drag.workspace_id,
-                                    Some(workspace_id),
-                                    false,
-                                );
-                                this.error_message.clear();
-                                cx.notify();
-                            }
-                        }))
-                        .cursor_grab()
-                        .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
-                            if event.is_right_click() {
-                                this.open_workspace_tab_context_menu(workspace_id, window, cx);
-                            } else if event.click_count() >= 2 {
-                                this.open_workspace_tab_menu = None;
-                                this.start_workspace_rename_for(workspace_id, window, cx);
-                            } else {
-                                this.open_workspace_tab_menu = None;
-                                this.activate_workspace(workspace_id, window, cx);
-                            }
-                        }))
-                        .on_mouse_down(
-                            MouseButton::Right,
-                            cx.listener(move |this, _, window, cx| {
-                                this.open_workspace_tab_context_menu(workspace_id, window, cx);
-                            }),
-                        )
-                        .into_any_element()
-                    }))
+                    .gap(px(theme::SPACE_0))
+                    .when(!self.saved.settings.workspace_tabs_on_left, |this| {
+                        this.children(self.render_workspace_tabs(cx))
+                    })
                     .child(
                         div()
                             .id("chrome-workspace-drop-tail")
@@ -850,6 +979,15 @@ impl MultiplexApp {
                                 cx.notify();
                             }))
                             .on_mouse_down(
+                                MouseButton::Right,
+                                cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                                    this.open_workspace_tab_menu = None;
+                                    this.chrome_context_menu = Some(event.position);
+                                    cx.stop_propagation();
+                                    cx.notify();
+                                }),
+                            )
+                            .on_mouse_down(
                                 MouseButton::Left,
                                 cx.listener(|_, event: &MouseDownEvent, window, cx| {
                                     // Only a plain single press starts a window drag;
@@ -862,7 +1000,7 @@ impl MultiplexApp {
                                 }),
                             )
                             .on_click(cx.listener(|this, event: &ClickEvent, window, cx| {
-                                if event.click_count() >= 2 {
+                                if !event.is_right_click() && event.click_count() >= 2 {
                                     this.open_workspace_tab_menu = None;
                                     this.open_local_terminal(window, cx);
                                 }
@@ -880,13 +1018,7 @@ impl MultiplexApp {
                     .items_center()
                     .justify_center()
                     .cursor_pointer()
-                    .border_1()
-                    .border_color(theme::with_alpha(theme::text_muted_dark(), 0.15))
-                    .hover(|style| {
-                        style
-                            .bg(theme::chrome_tab())
-                            .border_color(theme::with_alpha(theme::text_muted_dark(), 0.3))
-                    })
+                    .hover(|style| style.bg(theme::chrome_tab()))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.open_workspace_tab_menu = None;
                         this.open_local_terminal(window, cx);
@@ -908,13 +1040,7 @@ impl MultiplexApp {
                     .items_center()
                     .justify_center()
                     .cursor_pointer()
-                    .border_1()
-                    .border_color(theme::with_alpha(theme::text_muted_dark(), 0.15))
-                    .hover(|style| {
-                        style
-                            .bg(theme::chrome_tab())
-                            .border_color(theme::with_alpha(theme::text_muted_dark(), 0.3))
-                    })
+                    .hover(|style| style.bg(theme::chrome_tab()))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.open_workspace_tab_menu = None;
                         this.activate_library(window, cx);

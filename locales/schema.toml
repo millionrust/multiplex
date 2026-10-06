@@ -12290,6 +12290,21 @@ context = "Hover preview of recent CLI terminal output."
 description = "Terminal preview empty"
 
 [[messages]]
+id = "chrome-new-terminal"
+context = "Empty chrome area context menu action."
+description = "Chrome new-terminal"
+
+[[messages]]
+id = "chrome-tabs-to-left"
+context = "Empty chrome area context menu action."
+description = "Chrome tabs-to-left"
+
+[[messages]]
+id = "chrome-tabs-to-top"
+context = "Empty chrome area context menu action."
+description = "Chrome tabs-to-top"
+
+[[messages]]
 id = "other-terminals-close-action"
 context = "Confirmation and result for stopping a CLI terminal from Sessions."
 description = "Other terminal close-action"
