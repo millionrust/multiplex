@@ -23863,6 +23863,9 @@ sleep 1
             })
             .expect("canvas switch should succeed");
 
+        // ConPTY needs the shell prompt and canvas resize to settle before accepting input.
+        wait_for_quiet_pane(cx, &app, pane_id);
+
         app.update(cx, |app, cx| {
             // Turns mouse reporting on, reads the six bytes a click sends, and writes them out
             // visibly. The program prints them itself rather than leaving it to the terminal to
