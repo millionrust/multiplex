@@ -21,13 +21,14 @@ struct RemoteScreenView: View {
     /// rather than in a bar over the picture, which is where the picture goes.
     var onClose: (() -> Void)?
 
+    var embedsKeyboard = true
+    var onKeyboardVisibility: (Bool) -> Void = { _ in }
+
     @State private var zoomAnchor: CGFloat = 1
     @State private var showingKeyboard = false
     @State private var showingDisplays = false
     @State private var showingConnection = false
-    @State private var typed = ""
     @State private var now = Date()
-    @FocusState private var typing: Bool
 
     /// Drives the "no picture for a while" test; nothing arrives to trigger it by itself.
     private let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -47,12 +48,14 @@ struct RemoteScreenView: View {
                 picture
                     .frame(maxHeight: .infinity)
             }
-            if showingKeyboard, model.canControlKeyboard {
-                keyboard
-            }
             dock
         }
         .background(Color.mobileBackground)
+        .overlay(alignment: .bottom) {
+            if embedsKeyboard, showingKeyboard, model.canControlKeyboard, model.isDriving {
+                keyboard.padding(.bottom, 54)
+            }
+        }
         .onReceive(clock) { now = $0 }
         .confirmationDialog("Displays", isPresented: $showingDisplays, titleVisibility: .visible) {
             ForEach(model.displays, id: \.id) { display in
@@ -211,36 +214,11 @@ struct RemoteScreenView: View {
             .accessibilityLabel("Zoom \(model.zoomLabel)")
     }
 
-    /// The row of keys a text field cannot type, above a field that types everything else.
     private var keyboard: some View {
-        VStack(spacing: 8) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(RemoteScreenKey.accessory) { key in
-                        Button(key.label) { model.send(key: key) }
-                            .font(.footnote.monospaced())
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.secondary.opacity(0.16), in: RoundedRectangle(cornerRadius: 6))
-                            .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 12)
-            }
-            TextField("Type on this computer", text: $typed)
-                .textFieldStyle(.roundedBorder)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .focused($typing)
-                .onChange(of: typed) { _, text in
-                    guard !text.isEmpty else { return }
-                    model.send(text: text)
-                    typed = ""
-                }
-                .padding(.horizontal, 12)
+        RemoteScreenKeyboard(model: model) {
+            showingKeyboard = false
+            onKeyboardVisibility(false)
         }
-        .padding(.vertical, 8)
-        .background(Color.secondary.opacity(0.08))
     }
 
     private var dock: some View {
@@ -280,7 +258,7 @@ struct RemoteScreenView: View {
                     enabled: model.isDriving
                 ) {
                     showingKeyboard.toggle()
-                    typing = showingKeyboard
+                    onKeyboardVisibility(showingKeyboard)
                 }
             }
             if model.canControlPointer {
@@ -430,4 +408,43 @@ private struct RemoteScreenPointer: View {
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
+}
+
+struct RemoteScreenKeyboard: View {
+    @ObservedObject var model: RemoteScreenViewModel
+    let onHide: () -> Void
+    var body: some View {
+        FlowKeyboard(
+            onText: { text, modifiers in
+                if modifiers.control || modifiers.alt,
+                   let letter = text.lowercased().utf8.first, text.utf8.count == 1,
+                   letter >= 97, letter <= 122 {
+                    model.send(key: RemoteScreenKey(
+                        id: text, label: text, usage: UInt16(letter - 97 + 4),
+                        modifiers: (modifiers.shift ? 1 : 0) | (modifiers.control ? 2 : 0) | (modifiers.alt ? 4 : 0)
+                    ))
+                } else { model.send(text: text) }
+            },
+            onKey: { key, modifiers in
+                let usage: UInt16
+                switch key {
+                case .enter: usage = 0x28
+                case .backspace: usage = 0x2A
+                case .escape: usage = 0x29
+                case .tab: usage = 0x2B
+                case .left: usage = 0x50
+                case .right: usage = 0x4F
+                case .up: usage = 0x52
+                case .down: usage = 0x51
+                default: return
+                }
+                model.send(key: RemoteScreenKey(
+                    id: key.rawValue, label: key.rawValue, usage: usage,
+                    modifiers: (modifiers.shift ? 1 : 0) | (modifiers.control ? 2 : 0) | (modifiers.alt ? 4 : 0)
+                ))
+            },
+            onHide: onHide
+        )
+    }
+
 }

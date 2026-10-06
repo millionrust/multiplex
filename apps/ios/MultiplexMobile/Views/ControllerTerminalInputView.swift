@@ -37,7 +37,8 @@ struct ControllerTerminalInputView: UIViewRepresentable {
         view.returnKeyType = .default
         view.isScrollEnabled = false
         view.accessibilityLabel = "Terminal keyboard input"
-        view.inputAccessoryView = context.coordinator.makeAccessory(for: view)
+        // Hardware keyboards still use this responder; touch typing uses FlowKeyboard.
+        view.inputView = UIView(frame: .zero)
         return view
     }
 

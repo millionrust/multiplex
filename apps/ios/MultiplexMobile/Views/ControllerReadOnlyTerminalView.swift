@@ -88,6 +88,19 @@ struct ControllerReadOnlyTerminalView: View {
             } else {
                 watchbar
             }
+            if keyboardPresented, viewModel.canSendInput, !viewModel.privacyCovered {
+                FlowKeyboard(
+                    onText: { text, modifiers in
+                        viewModel.sendKeyboardBytes(TerminalInteraction.encodeCommittedText(text, modifiers: modifiers))
+                    },
+                    onKey: { key, modifiers in
+                        if let bytes = TerminalInteraction.encode(key, text: nil, modifiers: modifiers, applicationCursor: viewModel.screen.applicationCursor) {
+                            viewModel.sendKeyboardBytes(bytes)
+                        }
+                    },
+                    onHide: { keyboardPresented = false }
+                )
+            }
         }
         .background(Color.black)
     }
@@ -141,6 +154,7 @@ struct ControllerReadOnlyTerminalView: View {
     private var keyRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
+                keyCap("⌨", label: keyboardPresented ? "Hide keyboard" : "Show keyboard", on: keyboardPresented) { keyboardPresented.toggle() }
                 keyCap("esc") { send(.escape) }
                 keyCap("tab") { send(.tab) }
                 keyCap("ctrl", on: controlLatched) { controlLatched.toggle() }

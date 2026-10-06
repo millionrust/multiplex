@@ -467,6 +467,7 @@ private struct ControllerScreenViewerSheet: View {
     private var attached: ControllerTerminalViewModel? { controller.activeTerminal }
     var onSelectTerminal: (ControllerSessionSummary) -> Void = { _ in }
     var onCloseTerminal: () -> Void = {}
+    @State private var showingScreenKeyboard = false
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     /// Portrait has room under the picture; landscape gives the whole screen to it.
@@ -488,7 +489,9 @@ private struct ControllerScreenViewerSheet: View {
                 reconnecting: screens.reconnecting,
                 routeName: routeName,
                 fitsPicture: showTerminals,
-                onClose: onClose
+                onClose: onClose,
+                embedsKeyboard: !showTerminals,
+                onKeyboardVisibility: { showingScreenKeyboard = $0 }
             )
             if showTerminals {
                 ScreenTerminalTabs(
@@ -512,8 +515,12 @@ private struct ControllerScreenViewerSheet: View {
                         .background(Flow.canvas)
                 }
             }
+            if showTerminals, showingScreenKeyboard, model.isDriving {
+                RemoteScreenKeyboard(model: model) { showingScreenKeyboard = false }
+            }
         }
         .background(Flow.canvas)
+        .onChange(of: attached?.id) { _, _ in showingScreenKeyboard = false }
     }
 }
 
