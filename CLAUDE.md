@@ -26,7 +26,7 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   Session that produced them, with preview, export, quarantine, restore, and purge there.
 - Single-row top chrome with custom in-app traffic lights (close / minimize / zoom); the macOS OS title-bar drag is taken over so the chrome stays draggable from its empty area.
 - Flat, borderless workspace tabs scroll horizontally when they overflow. Double-click to
-  rename; right-click a tab for Duplicate / Duplicate in a new window / Rename / Split / Close.
+  rename; Enter or clicking outside saves, and Escape cancels. Right-click a tab for Duplicate / Duplicate in a new window / Rename / Split / Close.
   Right-click the empty top chrome for New terminal or to move the tabs into a scrolling left
   sidebar (and back to the top). The placement is saved in desktop settings.
 - Each workspace tab can contain split panes arranged as a recursive binary tree: dropping a tab onto a pane splits that pane, with arbitrary nesting and resizable dividers.

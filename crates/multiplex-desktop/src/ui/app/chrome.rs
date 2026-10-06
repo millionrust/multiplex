@@ -123,6 +123,9 @@ impl MultiplexApp {
             .child(
                 div()
                     .max_w(px(theme::SHELL_TAB_LABEL_MAXIMUM))
+                    .when(self.saved.settings.workspace_tabs_on_left, |this| {
+                        this.flex_1().min_w_0().max_w_full()
+                    })
                     .overflow_hidden()
                     .text_ellipsis()
                     .whitespace_nowrap()
@@ -652,28 +655,89 @@ impl MultiplexApp {
             ))
     }
 
-    /// A workspace tab in rename mode: an inline text field in place of the
-    /// label. Enter commits and Esc cancels (handled in `handle_global_key`).
-    fn render_workspace_tab_rename(&self, workspace_id: u64) -> Stateful<Div> {
+    /// Enter commits, Escape cancels, and clicking outside or losing focus saves.
+    fn render_workspace_tab_rename(
+        &self,
+        workspace_id: u64,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let active = self.active_workspace_id == Some(workspace_id);
         h_flex()
             .id(("chrome-workspace-rename", workspace_id))
+            .debug_selector(move || format!("chrome-workspace-rename-{workspace_id}"))
             .flex_shrink_0()
-            .gap(px(theme::SHELL_SPACE_DENSE))
+            .gap(px(theme::SPACE_3))
             .items_center()
-            .pl(px(theme::SHELL_SPACE_COMPACT))
+            .pl(px(theme::SPACE_4))
             .pr(px(theme::SHELL_SPACE_DENSE))
-            .h(px(theme::SHELL_COMPACT_CONTROL_HEIGHT))
-            .bg(theme::chrome_tab_active())
+            .h(px(theme::CHROME_HEIGHT))
+            .when(self.saved.settings.workspace_tabs_on_left, |this| {
+                this.w_full()
+            })
+            .bg(if active {
+                theme::chrome_tab_active()
+            } else {
+                gpui::transparent_black()
+            })
+            .on_mouse_up_out(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| this.apply_workspace_rename(cx)),
+            )
+            .on_mouse_up_out(
+                MouseButton::Right,
+                cx.listener(|this, _, _, cx| this.apply_workspace_rename(cx)),
+            )
             .child(
                 Icon::new(IconName::SquareTerminal)
                     .size(px(theme::ICON_SIZE_DEFAULT))
-                    .text_color(theme::accent()),
+                    .text_color(if active {
+                        theme::accent()
+                    } else {
+                        theme::text_muted_dark()
+                    }),
             )
             .child(
                 div()
-                    .w(px(theme::SHELL_RENAME_FIELD_WIDTH))
+                    .when(self.saved.settings.workspace_tabs_on_left, |this| {
+                        this.flex_1().min_w_0()
+                    })
+                    .when(!self.saved.settings.workspace_tabs_on_left, |this| {
+                        this.w(px(theme::SHELL_RENAME_FIELD_WIDTH))
+                    })
                     .child(Input::new(&self.tab_rename_input).small().appearance(false)),
             )
+            .child(self.render_workspace_tab_close_button(workspace_id, cx))
+    }
+
+    fn render_workspace_tab_close_button(
+        &self,
+        workspace_id: u64,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        div()
+            .id(("chrome-close-wrap", workspace_id))
+            .debug_selector(move || format!("chrome-workspace-close-{workspace_id}"))
+            .size(px(theme::ICON_SIZE_MEDIUM))
+            .flex_none()
+            .rounded(px(theme::SPACE_2))
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor_pointer()
+            .text_color(theme::text_muted_dark())
+            .hover(|style| {
+                style
+                    .bg(theme::with_alpha(theme::text_muted_dark(), 0.15))
+                    .text_color(theme::text_main())
+            })
+            .on_click(cx.listener(move |this, _, _, cx| {
+                cx.stop_propagation();
+                this.apply_workspace_rename(cx);
+                this.open_workspace_tab_menu = None;
+                this.close_workspace(workspace_id, cx);
+            }))
+            .child(Icon::new(IconName::Close).size(px(theme::ICON_SIZE_SMALL)))
+            .into_any_element()
     }
 
     fn render_workspace_tabs(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
@@ -683,10 +747,9 @@ impl MultiplexApp {
                 let workspace_id = workspace.id;
                 if self.tab_rename_workspace_id == Some(workspace_id) {
                     return self
-                        .render_workspace_tab_rename(workspace_id)
+                        .render_workspace_tab_rename(workspace_id, cx)
                         .into_any_element();
                 }
-                let close_id = workspace.id;
                 let active = self.active_workspace_id == Some(workspace.id);
                 let drag_info = WorkspaceTabDrag {
                     workspace_id,
@@ -699,31 +762,7 @@ impl MultiplexApp {
                     workspace.title.clone(),
                     active,
                     Some(indicators),
-                    Some(
-                        div()
-                            .id(("chrome-close-wrap", workspace.id))
-                            .debug_selector(move || {
-                                format!("chrome-workspace-close-{}", workspace.id)
-                            })
-                            .size(px(theme::ICON_SIZE_MEDIUM))
-                            .rounded(px(theme::SPACE_2))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .text_color(theme::text_muted_dark())
-                            .hover(|style| {
-                                style
-                                    .bg(theme::with_alpha(theme::text_muted_dark(), 0.15))
-                                    .text_color(theme::text_main())
-                            })
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.open_workspace_tab_menu = None;
-                                this.close_workspace(close_id, cx);
-                            }))
-                            .child(Icon::new(IconName::Close).size(px(theme::ICON_SIZE_SMALL)))
-                            .into_any_element(),
-                    ),
+                    Some(self.render_workspace_tab_close_button(workspace_id, cx)),
                 )
                 .debug_selector(move || format!("chrome-workspace-{}", workspace_id))
                 .on_drag(drag_info, |drag: &WorkspaceTabDrag, _, _, cx| {
@@ -989,7 +1028,8 @@ impl MultiplexApp {
                             )
                             .on_mouse_down(
                                 MouseButton::Left,
-                                cx.listener(|_, event: &MouseDownEvent, window, cx| {
+                                cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                                    this.apply_workspace_rename(cx);
                                     // Only a plain single press starts a window drag;
                                     // a double-click is handled on click-up below so
                                     // the native drag loop doesn't swallow it.

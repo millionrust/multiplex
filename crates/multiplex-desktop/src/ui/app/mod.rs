@@ -1349,6 +1349,7 @@ pub struct MultiplexApp {
     _command_palette_subscription: Subscription,
     _settings_search_subscription: Subscription,
     _replication_deletion_subscription: Subscription,
+    _tab_rename_subscription: Option<Subscription>,
     _window_bounds_subscription: Option<Subscription>,
     _window_activation_subscription: Option<Subscription>,
     _window_bounds_save_task: Option<Task<()>>,
@@ -1819,6 +1820,7 @@ impl MultiplexApp {
             _command_palette_subscription: command_palette_subscription,
             _settings_search_subscription: settings_search_subscription,
             _replication_deletion_subscription: replication_deletion_subscription,
+            _tab_rename_subscription: None,
             _window_bounds_subscription: None,
             _window_activation_subscription: None,
             _window_bounds_save_task: None,
@@ -1838,6 +1840,15 @@ impl MultiplexApp {
         app.show_editor_panel = false;
         app.selected_profile_id = None;
         app.selected_host_ids.clear();
+
+        app._tab_rename_subscription = Some(cx.subscribe(
+            &app.tab_rename_input,
+            |this, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Blur) {
+                    this.apply_workspace_rename(cx);
+                }
+            },
+        ));
 
         let window_bounds_subscription = cx.observe_window_bounds(window, |this, window, cx| {
             this.sync_terminal_layout(window, cx);
@@ -6311,6 +6322,7 @@ impl MultiplexApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.apply_workspace_rename(cx);
         let title = self
             .workspace(workspace_id)
             .map(|workspace| workspace.title.clone())
@@ -6328,28 +6340,29 @@ impl MultiplexApp {
             .focus(window);
         cx.notify();
     }
-    fn commit_workspace_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(workspace_id) = self.tab_rename_workspace_id else {
+    fn apply_workspace_rename(&mut self, cx: &mut Context<Self>) {
+        let Some(workspace_id) = self.tab_rename_workspace_id.take() else {
             return;
         };
         let new_title = self.tab_rename_input.read(cx).value().trim().to_string();
-        if new_title.is_empty() {
-            self.cancel_workspace_rename(window, cx);
-            return;
-        }
-        if let Some(workspace) = self.workspace_mut(workspace_id) {
+        if !new_title.is_empty()
+            && let Some(workspace) = self.workspace_mut(workspace_id)
+        {
             workspace.title = new_title.clone();
+            self.persist_runtime_state();
+            self.status_message = localization::workspace_renamed_status(new_title);
+            self.error_message.clear();
         }
-        self.tab_rename_workspace_id = None;
-        self.persist_runtime_state();
-        self.status_message = localization::workspace_renamed_status(new_title);
-        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn commit_workspace_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.apply_workspace_rename(cx);
         if let Some(pane_id) = self.active_pane().map(|pane| pane.id)
             && let Some(pane) = self.pane(pane_id)
         {
             pane.terminal_focus.focus(window);
         }
-        cx.notify();
     }
 
     fn cancel_workspace_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -22048,6 +22061,151 @@ sleep 1
             assert_eq!(app.active_workspace_id, Some(workspace_a));
             assert!(app.error_message.is_empty());
         });
+    }
+
+    #[gpui::test]
+    fn e2e_tab_rename_saves_on_click_away_and_keeps_sidebar_rows_aligned(cx: &mut TestAppContext) {
+        use gpui::Focusable as _;
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        window
+            .update(cx, |_, window, _| window.activate_window())
+            .unwrap();
+
+        let open = |cx: &mut TestAppContext| {
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        app.open_request_workspace(
+                            ConnectRequest::local_shell_with_config(
+                                0,
+                                LocalShellConfig {
+                                    program: crate::test_support::test_shell_program(),
+                                    args: Vec::new(),
+                                    cwd: Some(std::env::temp_dir().display().to_string()),
+                                },
+                            ),
+                            window,
+                            cx,
+                        )
+                        .unwrap()
+                        .0
+                    })
+                })
+                .unwrap()
+        };
+        let first = open(cx);
+        let second = open(cx);
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let first_pane = app.pane(app.workspace(first)?.active_pane_id)?;
+            let second_pane = app.pane(app.workspace(second)?.active_pane_id)?;
+            (first_pane.connected && second_pane.connected).then_some(())
+        });
+        for sidebar in [false, true] {
+            let title = if sidebar {
+                "Saved sidebar title"
+            } else {
+                "Saved top title"
+            };
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        app.saved.settings.workspace_tabs_on_left = sidebar;
+                        app.start_workspace_rename_for(first, window, cx);
+                        MultiplexApp::set_input_value(&app.tab_rename_input, title, window, cx);
+                        cx.notify();
+                    })
+                })
+                .unwrap();
+            let editing =
+                dynamic_selector_bounds(window, cx, format!("chrome-workspace-rename-{first}"));
+            let other = dynamic_selector_bounds(window, cx, format!("chrome-workspace-{second}"));
+            assert_eq!(editing.size.height, other.size.height);
+            if sidebar {
+                let first_close =
+                    dynamic_selector_bounds(window, cx, format!("chrome-workspace-close-{first}"));
+                let second_close =
+                    dynamic_selector_bounds(window, cx, format!("chrome-workspace-close-{second}"));
+                assert_eq!(first_close.right(), second_close.right());
+            }
+            VisualTestContext::from_window(window.into(), cx)
+                .simulate_click(editing.center(), gpui::Modifiers::none());
+            app.read_with(cx, |app, _| {
+                assert_eq!(app.tab_rename_workspace_id, Some(first))
+            });
+            VisualTestContext::from_window(window.into(), cx)
+                .simulate_click(other.center(), gpui::Modifiers::none());
+            app.read_with(cx, |app, _| {
+                assert_eq!(app.workspace(first).unwrap().title, title);
+                assert!(app.tab_rename_workspace_id.is_none());
+                assert_eq!(app.active_workspace_id, Some(second));
+            });
+            // Blur saves without taking focus back from the control the user selected.
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        app.workspace_mut(first).unwrap().search_visible = true;
+                        app.start_workspace_rename_for(first, window, cx);
+                        MultiplexApp::set_input_value(
+                            &app.tab_rename_input,
+                            "Focus saved",
+                            window,
+                            cx,
+                        );
+                    })
+                })
+                .unwrap();
+            VisualTestContext::from_window(window.into(), cx)
+                .update(|window, cx| window.draw(cx).clear());
+            VisualTestContext::from_window(window.into(), cx).run_until_parked();
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        app.shell_inputs
+                            .terminal_search
+                            .read(cx)
+                            .focus_handle(cx)
+                            .focus(window);
+                    })
+                })
+                .unwrap();
+            VisualTestContext::from_window(window.into(), cx)
+                .update(|window, cx| window.draw(cx).clear());
+            cx.run_until_parked();
+            app.read_with(cx, |app, _| {
+                assert!(app.tab_rename_workspace_id.is_none());
+                assert_eq!(app.workspace(first).unwrap().title, "Focus saved");
+            });
+            window
+                .update(cx, |_, window, cx| {
+                    app.read(cx)
+                        .shell_inputs
+                        .terminal_search
+                        .read(cx)
+                        .focus_handle(cx)
+                        .is_focused(window)
+                })
+                .map(|focused| assert!(focused))
+                .unwrap();
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        app.start_workspace_rename_for(first, window, cx);
+                        MultiplexApp::set_input_value(
+                            &app.tab_rename_input,
+                            "Cancelled",
+                            window,
+                            cx,
+                        );
+                        app.cancel_workspace_rename(window, cx);
+                    })
+                })
+                .unwrap();
+            cx.run_until_parked();
+            app.read_with(cx, |app, _| {
+                assert_eq!(app.workspace(first).unwrap().title, "Focus saved")
+            });
+        }
     }
 
     #[gpui::test]
