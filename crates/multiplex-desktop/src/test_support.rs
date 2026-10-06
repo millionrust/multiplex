@@ -359,12 +359,68 @@ impl TestIsolation {
     }
 }
 
+/// Durable shells outlive their frontend. Stop only Hosts recorded in this test's own store
+/// before removing the metadata needed to identify them.
+fn stop_test_hosts(root: &Path) {
+    let root = root.to_path_buf();
+    let _ = std::thread::spawn(move || {
+        let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        else {
+            return;
+        };
+        runtime.block_on(async {
+            for directory in ["console-sessions", "durable-sessions"] {
+                let Ok(entries) = fs::read_dir(root.join(directory)) else {
+                    continue;
+                };
+                for entry in entries.flatten() {
+                    let Ok(metadata) = multiplex_store::read_host_metadata(&entry.path()) else {
+                        continue;
+                    };
+                    let endpoint = multiplex_client::LocalEndpoint::new(
+                        crate::controller_runtime_parent(&root)
+                            .join(metadata.session_id.to_string()),
+                        metadata.session_id,
+                    );
+                    let cancel = tokio_util::sync::CancellationToken::new();
+                    let mut options = multiplex_client::ConnectOptions::local(
+                        metadata.session_id,
+                        rand::random(),
+                    );
+                    options.request_writer_lease = false;
+                    let _ = tokio::time::timeout(Duration::from_secs(2), async {
+                        let Ok(mut client) =
+                            multiplex_client::HostClient::connect(endpoint, options, &cancel).await
+                        else {
+                            return;
+                        };
+                        if client.host_instance_id() == Some(metadata.host_instance_id) {
+                            let _ = client
+                                .stop(
+                                    multiplex_domain::CommandId::new(),
+                                    multiplex_host_protocol::wire::StopMode::Force,
+                                    &cancel,
+                                )
+                                .await;
+                        }
+                    })
+                    .await;
+                }
+            }
+        });
+    })
+    .join();
+}
+
 impl Drop for TestIsolation {
     fn drop(&mut self) {
         dialog_paths()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clear();
+        stop_test_hosts(&self.temp_dir);
         set_test_app_dir_override(self.previous_config_dir.clone());
         set_test_ssh_dir_override(self.previous_ssh_dir.clone());
         let _ = fs::remove_dir_all(&self.temp_dir);
