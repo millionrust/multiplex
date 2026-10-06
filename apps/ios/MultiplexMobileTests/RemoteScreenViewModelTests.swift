@@ -34,6 +34,7 @@ final class RemoteScreenViewModelTests: XCTestCase {
         let image = try XCTUnwrap(context.makeImage())
         let sample = try XCTUnwrap(SharedScreenPictureSurface.sampleBuffer(image: image))
         let pixel = try XCTUnwrap(CMSampleBufferGetImageBuffer(sample))
+        XCTAssertNotNil(CVPixelBufferGetIOSurface(pixel), "iOS video and PiP rendering require a shareable IOSurface")
         XCTAssertEqual(CVPixelBufferGetWidth(pixel), 16)
         XCTAssertEqual(CVPixelBufferGetHeight(pixel), 9)
         XCTAssertTrue(CMSampleBufferDataIsReady(sample))

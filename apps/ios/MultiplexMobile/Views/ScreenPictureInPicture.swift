@@ -130,10 +130,14 @@ final class SharedScreenPictureSurface: UIView {
     static func sampleBuffer(image: CGImage) -> CMSampleBuffer? {
         guard image.width > 0, image.height > 0, image.width <= 8192, image.height <= 8192, image.width * image.height <= 8_388_608 else { return nil }
         var buffer: CVPixelBuffer?
-        let attributes = [kCVPixelBufferCGImageCompatibilityKey: true,
-                          kCVPixelBufferCGBitmapContextCompatibilityKey: true] as CFDictionary
+        let attributes: [CFString: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
+            kCVPixelBufferMetalCompatibilityKey: true,
+            kCVPixelBufferIOSurfacePropertiesKey: [:] as [String: Any],
+        ]
         guard CVPixelBufferCreate(kCFAllocatorDefault, image.width, image.height,
-                                  kCVPixelFormatType_32BGRA, attributes, &buffer) == kCVReturnSuccess,
+                                  kCVPixelFormatType_32BGRA, attributes as CFDictionary, &buffer) == kCVReturnSuccess,
               let buffer else { return nil }
         CVPixelBufferLockBaseAddress(buffer, [])
         defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
