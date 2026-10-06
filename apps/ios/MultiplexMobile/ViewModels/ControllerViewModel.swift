@@ -486,6 +486,7 @@ final class ControllerViewModel: ObservableObject {
     func suspend(allowPictureInPicture: Bool = true) {
         activeTerminal?.suspend()
         if allowPictureInPicture, let viewer = screens.viewer, viewer.pictureInPicture.start() { return }
+        screens.pauseViewerForBackground()
         stopLiveSettingsRefresh()
         terminalSelection?.cancel()
         activeTerminal?.suspend()
@@ -506,7 +507,10 @@ final class ControllerViewModel: ObservableObject {
     }
 
     func resume() {
-        if screens.viewer?.pictureInPicture.active == true {
+        if screens.viewer != nil, let selectedConnection {
+            screens.resumeViewer(connection: selectedConnection)
+            state = replacing(connection: .readyReadOnly, sessions: state.sessions)
+            startLiveSettingsRefresh()
             activeTerminal?.resume()
             return
         }

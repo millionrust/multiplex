@@ -31,6 +31,7 @@ final class ScreenPictureInPicture: NSObject, ObservableObject,
 
     @discardableResult
     func start() -> Bool {
+        if controller?.isPictureInPictureActive == true { active = true; return true }
         guard possible else { return active || starting }
         guard !active, !starting else { return true }
         starting = true

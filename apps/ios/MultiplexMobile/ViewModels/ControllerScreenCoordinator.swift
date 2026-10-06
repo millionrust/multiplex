@@ -99,6 +99,20 @@ final class ControllerScreenCoordinator: ObservableObject {
         reconnectAttempt = 0
     }
 
+    func pauseViewerForBackground() {
+        session?.cancel()
+        session = nil
+        reconnecting = false
+    }
+
+    func resumeViewer(connection: any ControllerConnecting) {
+        guard session == nil, let host = watchingHost, viewer != nil else { return }
+        reconnecting = true
+        generation += 1
+        run(host: host, connection: connection, preview: false,
+            surface: viewer?.selectedSurface, token: generation)
+    }
+
     func updateCapabilities(host: PairedHostRecord, connection: any ControllerConnecting) {
         guard let watchingHost, watchingHost.id == host.id,
               watchingHost.capabilityBits != host.capabilityBits else { return }
