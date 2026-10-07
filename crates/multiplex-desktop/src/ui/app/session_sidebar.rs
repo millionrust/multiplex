@@ -1788,32 +1788,24 @@ impl MultiplexApp {
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.start_worktree_in_a_folder(window, cx);
                             })),
-                    )
-                    .child(
-                        Self::design_button("group-new", theme::ActionTone::Neutral, cx)
-                            .disabled(!matches!(
-                                self.library.load_state,
-                                super::library_state::LibraryLoadState::Ready
-                            ))
-                            .debug_selector(|| "group-new".to_string())
-                            .icon(IconName::Plus)
-                            .label(localization::group_new_action())
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.open_group_editor(None, window, cx);
-                            })),
                     ),
             )
             .into_any_element()
     }
 
-    /// The Sessions page: sessions outside any group, then each group with its own.
+    /// The Sessions page presents one flat list, including records previously in groups.
     pub(super) fn render_session_sidebar(&self, cx: &Context<Self>) -> AnyElement {
-        let groups = self.library_groups();
-        let session_count = self.sessions_in_destination(None).len()
-            + groups
-                .iter()
-                .map(|group| self.sessions_in_destination(Some(group.id)).len())
-                .sum::<usize>();
+        let sessions: Vec<_> = self
+            .saved
+            .app_attached_sessions
+            .iter()
+            .filter(|session| {
+                self.sessions_in_destination(session.group_id)
+                    .iter()
+                    .any(|visible| visible.id == session.id)
+            })
+            .collect();
+        let session_count = sessions.len();
 
         v_flex()
             .id("session-sidebar")
@@ -1879,21 +1871,8 @@ impl MultiplexApp {
                     .p(px(theme::SPACE_4))
                     .gap(px(theme::SPACE_3))
                     .children(self.render_other_terminals(cx))
-                    .child(self.render_session_group(
-                        None,
-                        localization::group_ungrouped_label(),
-                        false,
-                        None,
-                        cx,
-                    ))
-                    .children(groups.iter().enumerate().map(|(index, group)| {
-                        self.render_session_group(
-                            Some(group.id),
-                            group.name.as_str().to_string(),
-                            group.collapsed,
-                            Some((index, groups.len())),
-                            cx,
-                        )
+                    .children(sessions.iter().enumerate().map(|(index, session)| {
+                        self.render_session_row(session, index, session_count, cx)
                     }))
                     .when(
                         session_count == 0 && self.other_terminals.terminals.is_empty(),
@@ -2398,8 +2377,6 @@ impl MultiplexApp {
         };
         let key = session_key(id);
         let selected = self.session_sidebar.selected_session == Some(id);
-        let groups = self.library_groups();
-        let current_group = session.group_id;
         let renaming = self.session_library.renaming == Some(id);
         let recognition = session
             .durable_host
@@ -2892,37 +2869,7 @@ impl MultiplexApp {
                                             this.move_session_by(id, 1, cx);
                                         })),
                                 )
-                                .child(
-                                    Button::new(("session-to-root", key))
-                                        .debug_selector(|| "session-to-root".to_string())
-                                        .small()
-                                        .selected(current_group.is_none())
-                                        .label(localization::group_move_to_root_action())
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.move_session_to(
-                                                id,
-                                                GroupDestination::Ungrouped,
-                                                None,
-                                                cx,
-                                            );
-                                        })),
-                                )
-                                .children(groups.into_iter().map(|group| {
-                                    let group_id = group.id;
-                                    Button::new(("session-to-group", group_key(group_id) ^ key))
-                                        .debug_selector(|| "session-to-group".to_string())
-                                        .small()
-                                        .selected(current_group == Some(group_id))
-                                        .label(localization::group_move_to_action(group.name.as_str()))
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.move_session_to(
-                                                id,
-                                                GroupDestination::Group(group_id),
-                                                None,
-                                                cx,
-                                            );
-                                        }))
-                                })),
+,
                         ),
                 )
             })
