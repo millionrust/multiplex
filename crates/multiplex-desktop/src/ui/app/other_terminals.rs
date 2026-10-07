@@ -25,6 +25,9 @@ use super::session_coordinator::SessionStartRequest;
 use super::{MultiplexApp, theme};
 use crate::ui::localization;
 
+/// Polling interval for startup metadata, independent of UI animation timing.
+pub(super) const CONSOLE_RENAME_RETRY_MILLIS: u64 = 50;
+
 /// How a terminal outside the app is reached.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum OtherTerminalKind {
@@ -321,6 +324,60 @@ impl MultiplexApp {
                 )
                 .into_any_element(),
         )
+    }
+
+    /// A just-started CLI can announce its terminal before writing its session record.
+    /// Read the pane's current title on every attempt so overlapping renames never save an old name.
+    pub(super) fn defer_console_title_rename(
+        &mut self,
+        pane_id: u64,
+        session_id: HostedSessionId,
+        session_dir: PathBuf,
+        cx: &mut Context<Self>,
+    ) {
+        cx.spawn(async move |this, cx| {
+            for _ in 0..160 {
+                let retry = this.update(cx, |app, cx| {
+                    let Some(title) = app
+                        .pane(pane_id)
+                        .filter(|pane| {
+                            crate::models::local_console_session_id(&pane.request)
+                                == Some(session_id)
+                        })
+                        .map(|pane| pane.request.title.clone())
+                    else {
+                        return false;
+                    };
+                    match multiplex_store::rename_console_session(&session_dir, session_id, &title)
+                    {
+                        Ok(()) => {
+                            app.refresh_other_terminals();
+                            cx.notify();
+                            false
+                        }
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+                        Err(_) => {
+                            app.error_message = localization::session_library_operation_failed();
+                            cx.notify();
+                            false
+                        }
+                    }
+                });
+                if !matches!(retry, Ok(true)) {
+                    return;
+                }
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(
+                        CONSOLE_RENAME_RETRY_MILLIS,
+                    ))
+                    .await;
+            }
+            let _ = this.update(cx, |app, cx| {
+                app.error_message = localization::session_library_operation_failed();
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     pub(super) fn request_tab_terminal_kill(&mut self, workspace_id: u64, cx: &mut Context<Self>) {

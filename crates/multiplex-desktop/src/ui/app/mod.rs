@@ -6362,18 +6362,22 @@ impl MultiplexApp {
             .pane(pane_id)
             .and_then(|pane| crate::models::local_console_session_id(&pane.request))
         {
-            let renamed = crate::storage::app_dir().ok().is_some_and(|root| {
-                multiplex_store::rename_console_session(
-                    &root.join("console-sessions").join(id.to_string()),
-                    id,
-                    title.as_str(),
-                )
-                .is_ok()
-            });
-            if !renamed {
+            let Ok(root) = crate::storage::app_dir() else {
                 self.error_message = localization::session_library_operation_failed();
                 cx.notify();
                 return;
+            };
+            let session_dir = root.join("console-sessions").join(id.to_string());
+            match multiplex_store::rename_console_session(&session_dir, id, title.as_str()) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    self.defer_console_title_rename(pane_id, id, session_dir, cx);
+                }
+                Err(_) => {
+                    self.error_message = localization::session_library_operation_failed();
+                    cx.notify();
+                    return;
+                }
             }
             self.refresh_other_terminals();
         } else if let Some(id) = self.pane(pane_id).and_then(|pane| {
@@ -31083,6 +31087,59 @@ sleep 1
             assert!(app.active_workspace_id.is_some());
             assert!(app.other_terminals.drawer_pane.is_none());
         });
+    }
+
+    #[gpui::test]
+    fn tab_rename_before_cli_record_is_ready_saves_the_latest_title(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let id = multiplex_domain::HostedSessionId::new();
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_local_terminal(window, cx);
+                    let workspace_id = app.active_workspace_id.unwrap();
+                    let pane_id = app.workspace(workspace_id).unwrap().active_pane_id;
+                    app.pane_mut(pane_id)
+                        .unwrap()
+                        .request
+                        .persistent_session_name = Some(format!("multiplex-cli:{id}"));
+                    for title in ["First rename", "Latest rename"] {
+                        app.start_workspace_rename_for(workspace_id, window, cx);
+                        MultiplexApp::set_input_value(&app.tab_rename_input, title, window, cx);
+                        app.apply_workspace_rename(cx);
+                        assert_eq!(app.workspace(workspace_id).unwrap().title, title);
+                    }
+                })
+            })
+            .unwrap();
+        let dir = crate::storage::app_dir()
+            .unwrap()
+            .join("console-sessions")
+            .join(id.to_string());
+        std::fs::create_dir_all(&dir).unwrap();
+        multiplex_store::write_console_session(
+            &dir,
+            &multiplex_store::ConsoleSessionRecord {
+                schema_version: multiplex_store::ConsoleSessionRecord::SCHEMA_VERSION,
+                session_id: id,
+                program: "sh".into(),
+                title_override: None,
+                working_directory: std::env::temp_dir(),
+                started_at: 0,
+            },
+        )
+        .unwrap();
+        let visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        cx.executor().advance_clock(Duration::from_millis(
+            super::other_terminals::CONSOLE_RENAME_RETRY_MILLIS * 2,
+        ));
+        visual.run_until_parked();
+        assert_eq!(
+            multiplex_store::read_console_session(&dir).unwrap().title(),
+            "Latest rename"
+        );
     }
 
     #[gpui::test]
