@@ -162,13 +162,11 @@ jobs:
             ~/.cargo/git
           key: cargo-sources-v1-${{ hashFiles('Cargo.lock') }}
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Restore Cargo compiler cache
+        uses: ./.github/actions/cargo-cache
         with:
-          # CI has been red, and rust-cache saves nothing from a failed job by default, so every
-          # run rebuilt the whole workspace from scratch.
-          cache-on-failure: true
+          generation: ci-rust-v1
 
-      # The MCP, browser and diagnostics gates search with ripgrep, which the runners lack.
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny@0.19.8,ripgrep,nextest
@@ -265,9 +263,8 @@ jobs:
       # 178 test executables, and link.exe is the slow step in each. The release job keeps link.exe,
       # since what it builds is what ships.
       CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld.exe
-      # sccache used to sit in front of rustc here. It served 24% of compiles on 1c16b4a while its
-      # thousand small entries filled the repository's 10 GB Actions cache and evicted every
-      # job's rust-cache, so it was removed.
+      # mr-boxington retains compiler work under one shared Windows test namespace.
+      # All shards compile the same targets; GitHub reserves one immutable cache entry per commit.
     steps:
       # Defender scans every file the build writes and every test binary the first time it runs.
       # Measured on this runner: a test binary with no tests in it took seven seconds to start,
@@ -289,15 +286,10 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Restore Cargo compiler cache
+        uses: ./.github/actions/cargo-cache
         with:
-          # CI has been red, and rust-cache saves nothing from a failed job by default, so every
-          # run rebuilt the whole workspace from scratch.
-          cache-on-failure: true
-          # The three shards build the same thing, so they share one cache, and one of them saves
-          # it rather than all three writing the same gigabytes.
-          shared-key: windows-test
-          save-if: ${{ matrix.shard == 1 }}
+          generation: ci-windows-test-v1
 
       - uses: taiki-e/install-action@v2
         with:
@@ -351,12 +343,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@1.98.1
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Restore Cargo compiler cache
+        uses: ./.github/actions/cargo-cache
         with:
-          # The test job's cache, restored and never saved over: a probe's build is a slice of
-          # that one and would only replace it with less.
-          shared-key: windows-test
-          save-if: false
+          generation: ci-windows-test-v1
 
       - uses: taiki-e/install-action@v2
         with:
@@ -446,14 +436,11 @@ jobs:
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Restore Cargo compiler cache
+        uses: ./.github/actions/cargo-cache
         with:
-          # CI has been red, and rust-cache saves nothing from a failed job by default, so every
-          # run rebuilt the whole workspace from scratch.
-          cache-on-failure: true
+          generation: ci-android-v1
 
-      # The Kotlin conformance tests call the generated bindings through JNA on the build
-      # machine, so they need the host build of the library the APK packages for each ABI.
       - name: Build Controller bindings for Kotlin unit tests
         # Unstripped, as the binding scripts build it into the same shared target directory; a
         # stripped build here would be thrown away and redone by the next step.
@@ -538,13 +525,11 @@ jobs:
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Restore Cargo compiler cache
+        uses: ./.github/actions/cargo-cache
         with:
-          cache-on-failure: true
+          generation: ci-ios-v1
 
-      # The Xcode project lists the generated bindings among its sources and links the frameworks
-      # built from the Rust crates. None of them are vendored, so the project cannot even be
-      # generated without them.
       - name: Build and sync the generated bindings and frameworks
         # As on Android: the runner's Xcode is whatever the image ships, and what is built here is
         # verified, not shipped.

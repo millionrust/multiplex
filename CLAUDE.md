@@ -341,8 +341,9 @@ ID is `com.millionrust.multiplex` on every platform.
    failing on a name collision, but publishes nothing.
 4. **Tag the commit the dry run built** and push the tag:
    `git tag -a vX.Y.Z <sha> -m "Multiplex X.Y.Z" && git push origin vX.Y.Z`. The tag build uses
-   the release profile as declared (one codegen unit, thin LTO) and saves no cache, so it takes
-   about 40 minutes. It always creates a **draft** prerelease; `scripts/verify/release-workflow.sh`
+   the release profile as declared (one codegen unit, thin LTO) and saves no compiled cache.
+   mr-boxington uses only its local backend for shipping, and GitHub compiler caches for CI
+   and dry runs (see `docs/building.md`). Estimate from the latest measured runs. It always creates a **draft** prerelease; `scripts/verify/release-workflow.sh`
    holds it to that, so no workflow ever publishes by itself.
 5. **Check the draft** (`gh release view vX.Y.Z`): twenty-one files — the universal macOS zip,
    the Linux `.tar.gz` and `.deb`, a zip and an `.msi` for each of Windows x64 and Arm64, the APK,

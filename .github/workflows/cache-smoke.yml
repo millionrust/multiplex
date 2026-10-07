@@ -1,0 +1,59 @@
+name: compiler cache smoke
+on:
+  workflow_dispatch:
+    inputs:
+      backend:
+        description: Check GitHub cache transport or the shipping local backend.
+        type: choice
+        options: [github, local]
+        default: github
+permissions:
+  contents: read
+jobs:
+  reuse:
+    name: Compiler reuse (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, macos-26, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.1
+      - name: Create an isolated compiler probe
+        shell: bash
+        run: |
+          mkdir -p dist/cache-smoke/src
+          node <<'JS'
+          const fs = require('node:fs');
+          fs.writeFileSync('dist/cache-smoke/Cargo.toml', '[package]\nname = "multiplex-cache-smoke"\nversion = "0.0.0"\nedition = "2024"\n[workspace]\n');
+          fs.writeFileSync('dist/cache-smoke/Cargo.lock', 'version = 4\n[[package]]\nname = "multiplex-cache-smoke"\nversion = "0.0.0"\n');
+          fs.writeFileSync('dist/cache-smoke/src/lib.rs', 'pub fn plus_one(value: u32) -> u32 { value + 1 }\n');
+          JS
+      - uses: ./.github/actions/cargo-cache
+        with:
+          backend: ${{ inputs.backend }}
+          generation: compiler-smoke-v1
+          mode: objects
+          save-on-workflow-dispatch: "true"
+      - name: Compile with ordinary Cargo
+        working-directory: dist/cache-smoke
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: target-first
+        run: cargo build --locked
+      - name: Restore compiler work into a different empty target directory
+        working-directory: dist/cache-smoke
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: target-second
+        run: |
+          cargo build --locked
+          mbx explain --last > explanation.log 2>&1
+          cat explanation.log
+          node <<'JS'
+          const fs = require('node:fs');
+          const report = fs.readFileSync('explanation.log', 'utf8').replace(/\x1b\[[0-9;]*m/g, '');
+          if (!/\b[1-9]\d* hit\b/.test(report)) throw new Error('No compiler cache hit was reported for the second target directory');
+          JS

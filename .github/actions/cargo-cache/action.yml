@@ -1,0 +1,53 @@
+name: Cargo compiler cache
+description: Set up pinned mr-boxington and route existing Cargo scripts through its shim.
+inputs:
+  backend:
+    description: GitHub transport for verification; local compiler reuse for shipping builds.
+    default: github
+  generation:
+    description: Separate compiler cache namespace for this build configuration.
+    default: multiplex-ci-v1
+  mode:
+    description: Target payload for normal builds, objects for isolated mobile targets.
+    default: target
+  save-on-workflow-dispatch:
+    description: Allow trusted dry runs to populate their own cache namespace.
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - name: Restore Cargo compiler work
+      uses: jdx/mr-boxington-action@d0825fbaf3cc36ca2609aa38e71046265a1f1e37 # v1
+      with:
+        version: 1.22.0
+        toolchain: 1.98.1
+        backend: ${{ inputs.backend }}
+        cache-generation: ${{ inputs.generation }}
+        github-cache-mode: ${{ inputs.mode }}
+        save-on-workflow-dispatch: ${{ inputs.save-on-workflow-dispatch }}
+    - name: Enable the Cargo shim for build and verification scripts
+      shell: bash
+      run: |
+        mbx setup --yes
+        node <<'JS'
+        const fs = require('node:fs');
+        const os = require('node:os');
+        const path = require('node:path');
+        const dataDirectory = process.platform === 'win32'
+          ? process.env.LOCALAPPDATA
+          : process.platform === 'darwin'
+            ? path.join(os.homedir(), 'Library', 'Application Support')
+            : process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share');
+        if (!dataDirectory) throw new Error('Cannot find the Cargo shim data directory');
+        const shimDirectory = path.join(dataDirectory, 'mbx', 'bin');
+        const shim = path.join(shimDirectory, process.platform === 'win32' ? 'cargo.exe' : 'cargo');
+        if (!fs.existsSync(shim)) throw new Error('mr-boxington did not install its Cargo shim');
+        fs.appendFileSync(process.env.GITHUB_PATH, `${shimDirectory}\n`);
+        // Packaging expects target/<triple>/release; mobile scripts select their own targets.
+        fs.appendFileSync(process.env.GITHUB_ENV, 'MBX_TARGET_VIEWS=0\n');
+        JS
+    - name: Verify compiler cache setup
+      shell: bash
+      run: |
+        mbx setup --status
+        mbx doctor

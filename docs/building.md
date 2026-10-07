@@ -161,25 +161,31 @@ package managers (Homebrew, scoop, AUR) pick them up.
 
 ## Build caches
 
-CI uses `Swatinem/rust-cache` after installing the pinned Rust toolchain. Its keys
-include the platform, toolchain, manifests and compiler environment. Windows test
-shards restore the same dependency cache and only shard 1 saves it. Failed CI jobs
-can save dependencies; workspace binaries are rebuilt before native terminal tests.
+CI uses pinned [mr-boxington](https://mr-boxington.jdx.dev/github-action) 1.22.0 after
+installing Rust 1.98.1. The shared local action installs its Cargo shim, so existing Cargo
+commands inside shell, Python, and mobile build scripts are covered. Linux/macOS baselines,
+Windows tests, Android, and iOS have separate cache generations; Windows test shards share
+one generation. Default-branch pushes populate the cache, while pull requests and the manual
+Windows probe only restore it. The action saves compiler work only when a job succeeds.
+The first run of each new generation is cold; warm-run timings and cache-hit reports are
+needed before claiming a speedup.
 
-Linux CI also fetches the locked dependency graph and immediately saves a portable
-`cargo-sources-v1-<Cargo.lock hash>` cache containing only the Cargo registry and Git
-sources. Every release platform restores this default-branch cache. Previously,
-release jobs had private `release-*` keys with saving disabled, so those keys could
-never be populated. Source caching avoids repeat downloads without storing seven
-more compiled target caches alongside CI's already substantial cache footprint.
+Linux CI still fetches the locked dependency graph and immediately saves the portable
+`cargo-sources-v1-<Cargo.lock hash>` cache. Releases restore those downloads. Dry runs also
+restore and save mr-boxington compiler caches in their own namespaces. Isolated mobile
+build directories use the objects payload; ordinary CI builds use the target payload.
 
-Tagged releases keep the optimized one-codegen-unit/thin-LTO profile. Dry runs use
-16 codegen units without LTO, so their compiled dependencies are not interchangeable.
-Mobile release scripts retain isolated temporary build directories; cached downloads
-speed fetching, but their native libraries still compile cleanly. CI mobile builds
-share a cached target directory because they verify artifacts rather than ship them.
-Cache hits do not prove build correctness: packaging checks, native tests, checksums
-and attestations still run. The release workflow remains a draft-only publisher.
+Tagged releases use mr-boxington's local backend: compiler work can be reused between
+build commands and isolated target directories on the same runner, with no shared compiler
+cache restored or saved. This follows its
+[production release guidance](https://mr-boxington.jdx.dev/github-action#production-releases).
+The one-codegen-unit/thin-LTO shipping profile remains unchanged; dry runs use 16 codegen
+units without LTO. `MBX_TARGET_VIEWS=0` keeps desktop outputs at the paths packaging expects
+and leaves the shipping mobile scripts' isolated directories intact. No shared shipping
+`MULTIPLEX_MOBILE_CARGO_TARGET_DIR` is introduced.
+
+Packaging checks, native tests, checksums and attestations still run. Release workflows
+create drafts only; publication remains a deliberate step after verification.
 
 Reference: [Pintail's CI](https://github.com/chittihq/pintail/blob/dev/.github/workflows/ci.yml)
 uses the same pinned-toolchain/dependency-cache pattern. Its

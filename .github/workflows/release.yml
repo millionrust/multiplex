@@ -70,13 +70,20 @@ jobs:
       - name: Restore locked dependency sources
         uses: actions/cache/restore@v4
         with:
-          # Seeded on dev by CI; tags can restore default-branch caches. Keep compiled
-          # release artifacts isolated instead of evicting CI's multi-platform target caches.
+          # Downloads remain shared; shipping compiler artifacts stay inside this runner.
           path: |
             ~/.cargo/registry
             ~/.cargo/git
           key: cargo-sources-v1-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-sources-v1-
+
+      - name: Set up Cargo compiler cache
+        uses: ./.github/actions/cargo-cache
+        with:
+          backend: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.tag != '') && 'local' || 'github' }}
+          generation: release-dry-${{ matrix.target.name }}-v1
+          mode: target
+          save-on-workflow-dispatch: "true"
 
       - name: Linux build dependencies
         if: matrix.target.bundle == 'linux'
@@ -310,8 +317,7 @@ jobs:
 
       - uses: actions/cache/restore@v4
         with:
-          # Seeded on dev by CI; tags can restore default-branch caches. Keep compiled
-          # release artifacts isolated instead of evicting CI's multi-platform target caches.
+          # Downloads remain shared; shipping compiler artifacts stay inside this runner.
           path: |
             ~/.cargo/registry
             ~/.cargo/git
@@ -320,6 +326,14 @@ jobs:
 
       # The bindings scripts pin this NDK. The runner image carries a different default, so the
       # pinned one is installed and named explicitly.
+      - name: Set up Cargo compiler cache
+        uses: ./.github/actions/cargo-cache
+        with:
+          backend: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.tag != '') && 'local' || 'github' }}
+          generation: release-dry-android-v1
+          mode: objects
+          save-on-workflow-dispatch: "true"
+
       - name: Install the pinned Android NDK
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.1.12297006" >/dev/null
@@ -382,13 +396,20 @@ jobs:
 
       - uses: actions/cache/restore@v4
         with:
-          # Seeded on dev by CI; tags can restore default-branch caches. Keep compiled
-          # release artifacts isolated instead of evicting CI's multi-platform target caches.
+          # Downloads remain shared; shipping compiler artifacts stay inside this runner.
           path: |
             ~/.cargo/registry
             ~/.cargo/git
           key: cargo-sources-v1-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-sources-v1-
+
+      - name: Set up Cargo compiler cache
+        uses: ./.github/actions/cargo-cache
+        with:
+          backend: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.tag != '') && 'local' || 'github' }}
+          generation: release-dry-ios-v1
+          mode: objects
+          save-on-workflow-dispatch: "true"
 
       - name: Build and sync the generated bindings and frameworks
         # The hosted runner ships whatever Xcode its image has, not necessarily the pinned one.
