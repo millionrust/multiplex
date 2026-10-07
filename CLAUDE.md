@@ -316,6 +316,9 @@ cargo run -p multiplex-ui-contract --bin generate-tokens  # after editing design
 
 ## Releasing
 
+Give an ETA at the start of every release, split into dry run, optimized builds, and publication.
+Update the estimate when runner queues, retries, or validation change it.
+
 `.github/workflows/release.yml` builds macOS (Apple silicon, and Intel cross-compiled on the same
 `macos-26` runner, merged with `lipo` by `scripts/build/macos-universal.sh` into one universal
 `Multiplex.app`), Linux, Windows on x64 and Arm64 (each a zip and a per-user MSI built with
