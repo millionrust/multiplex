@@ -1079,6 +1079,7 @@ mod tests {
                 schema_version: multiplex_store::ConsoleSessionRecord::SCHEMA_VERSION,
                 session_id,
                 program: "sh".to_owned(),
+                title_override: None,
                 working_directory: fixture.path().join("work"),
                 started_at: 1,
             },

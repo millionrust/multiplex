@@ -6348,14 +6348,53 @@ impl MultiplexApp {
             return;
         };
         let new_title = self.tab_rename_input.read(cx).value().trim().to_string();
-        if !new_title.is_empty()
-            && let Some(workspace) = self.workspace_mut(workspace_id)
+        let Ok(title) = multiplex_domain::SessionTitle::new(&new_title) else {
+            cx.notify();
+            return;
+        };
+        let Some(pane_id) = self
+            .workspace(workspace_id)
+            .map(|workspace| workspace.active_pane_id)
+        else {
+            return;
+        };
+        if let Some(id) = self
+            .pane(pane_id)
+            .and_then(|pane| crate::models::local_console_session_id(&pane.request))
         {
-            workspace.title = new_title.clone();
-            self.persist_runtime_state();
-            self.status_message = localization::workspace_renamed_status(new_title);
-            self.error_message.clear();
+            let renamed = crate::storage::app_dir().ok().is_some_and(|root| {
+                multiplex_store::rename_console_session(
+                    &root.join("console-sessions").join(id.to_string()),
+                    id,
+                    title.as_str(),
+                )
+                .is_ok()
+            });
+            if !renamed {
+                self.error_message = localization::session_library_operation_failed();
+                cx.notify();
+                return;
+            }
+            self.refresh_other_terminals();
+        } else if let Some(id) = self.pane(pane_id).and_then(|pane| {
+            pane.app_attached
+                .as_ref()
+                .map(|session| session.hosted_session_id)
+        }) && !self.mutate_session(id, multiplex_domain::SessionMutation::Rename(title))
+        {
+            cx.notify();
+            return;
         }
+        if let Some(workspace) = self.workspace_mut(workspace_id) {
+            workspace.title = new_title.clone();
+        }
+        if let Some(pane) = self.pane_mut(pane_id) {
+            pane.title = new_title.clone();
+            pane.request.title = new_title.clone();
+        }
+        self.persist_runtime_state();
+        self.status_message = localization::workspace_renamed_status(new_title);
+        self.error_message.clear();
         cx.notify();
     }
 

@@ -208,6 +208,7 @@ impl ShellLauncher {
             schema_version: ConsoleSessionRecord::SCHEMA_VERSION,
             session_id,
             program: display_name(&program),
+            title_override: None,
             working_directory,
             started_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

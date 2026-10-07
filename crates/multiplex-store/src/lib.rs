@@ -26,7 +26,7 @@ pub use atomic::{AtomicWriter, Durability, SystemAtomicWriter};
 pub use console_sessions::{
     CONSOLE_SESSION_RECORD, CONSOLE_SESSIONS_DIR, ConsoleSessionRecord, LiveConsoleSession,
     console_session_generation, console_sessions_root, live_console_sessions, read_console_session,
-    write_console_session,
+    rename_console_session, write_console_session,
 };
 pub use continuity::{
     ContinuityRepository, ContinuitySnapshot, ContinuityStoreError, MAX_CONTINUITY_LINKS,

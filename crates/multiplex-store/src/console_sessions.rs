@@ -30,6 +30,8 @@ pub struct ConsoleSessionRecord {
     pub session_id: HostedSessionId,
     /// The shell, as a person would name it: `pwsh`, `cmd`, `zsh`.
     pub program: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_override: Option<String>,
     pub working_directory: PathBuf,
     pub started_at: u64,
 }
@@ -39,6 +41,13 @@ impl ConsoleSessionRecord {
 
     /// "pwsh in projects", the way a tab would be named.
     pub fn title(&self) -> String {
+        if let Some(title) = self
+            .title_override
+            .as_ref()
+            .and_then(|title| multiplex_domain::SessionTitle::new(title).ok())
+        {
+            return title.as_str().to_owned();
+        }
         match self
             .working_directory
             .file_name()
@@ -71,6 +80,27 @@ pub fn write_console_session(
 ) -> std::io::Result<()> {
     let bytes = serde_json::to_vec_pretty(record).map_err(std::io::Error::other)?;
     fs::write(session_dir.join(CONSOLE_SESSION_RECORD), bytes)
+}
+
+/// Rename only the record belonging to this session, preserving launcher metadata.
+pub fn rename_console_session(
+    session_dir: &Path,
+    session_id: HostedSessionId,
+    title: &str,
+) -> std::io::Result<()> {
+    use crate::AtomicWriter as _;
+    let title = multiplex_domain::SessionTitle::new(title).map_err(|_| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid session title")
+    })?;
+    let mut record = read_console_session(session_dir)
+        .filter(|record| record.session_id == session_id)
+        .ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "session record unavailable")
+        })?;
+    record.title_override = Some(title.as_str().to_owned());
+    let bytes = serde_json::to_vec_pretty(&record).map_err(std::io::Error::other)?;
+    crate::SystemAtomicWriter.write(&session_dir.join(CONSOLE_SESSION_RECORD), &bytes)?;
+    Ok(())
 }
 
 /// The record in `session_dir`, when it is one the launcher wrote for that folder's session.
@@ -161,6 +191,7 @@ mod tests {
             schema_version: ConsoleSessionRecord::SCHEMA_VERSION,
             session_id,
             program: "pwsh".to_owned(),
+            title_override: None,
             working_directory: PathBuf::from("projects").join("multiplex"),
             started_at: 42,
         }
@@ -169,6 +200,24 @@ mod tests {
     #[test]
     fn a_session_is_titled_by_its_shell_and_folder() {
         assert_eq!(record(HostedSessionId::new()).title(), "pwsh in multiplex");
+    }
+
+    #[test]
+    fn a_renamed_console_title_survives_reload_and_preserves_identity() {
+        let root = tempfile::tempdir().unwrap();
+        let id = HostedSessionId::new();
+        let dir = root.path().join(id.to_string());
+        fs::create_dir(&dir).unwrap();
+        let original = record(id);
+        write_console_session(&dir, &original).unwrap();
+        rename_console_session(&dir, id, "Release monitor").unwrap();
+        let renamed = read_console_session(&dir).unwrap();
+        assert_eq!(renamed.title(), "Release monitor");
+        assert_eq!(renamed.session_id, id);
+        assert_eq!(renamed.working_directory, original.working_directory);
+        assert!(rename_console_session(&dir, HostedSessionId::new(), "Wrong target").is_err());
+        assert!(rename_console_session(&dir, id, " ").is_err());
+        assert_eq!(read_console_session(&dir).unwrap(), renamed);
     }
 
     #[test]
