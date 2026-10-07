@@ -1765,9 +1765,6 @@ impl MultiplexApp {
             .min_w_0()
             .min_h_0()
             .bg(theme::terminal_bg())
-            .when_some(self.render_paste_confirmation(cx), |this, banner| {
-                this.child(banner)
-            })
             .when_some(self.render_autocomplete_suggestions(), |this, bar| {
                 this.child(bar)
             })

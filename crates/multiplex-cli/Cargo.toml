@@ -1,13 +1,13 @@
 [package]
 name = "multiplex-cli"
-version = "0.0.11"
+version = "0.0.12"
 edition = "2024"
 rust-version.workspace = true
 description = "Stable one-shot local CLI for TermiRust"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-multiplex-env = { version = "0.0.11", path = "../multiplex-env" }
+multiplex-env = { version = "0.0.12", path = "../multiplex-env" }
 base64 = "0.22"
 ctrlc = "3.4"
 crossterm = { version = "0.29", features = ["event-stream"] }
@@ -19,16 +19,20 @@ rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
-multiplex-client = { version = "0.0.11", path = "../multiplex-client" }
-multiplex-controller-listener = { version = "0.0.11", path = "../multiplex-controller-listener" }
-multiplex-controller-security = { version = "0.0.11", path = "../multiplex-controller-security" }
-multiplex-domain = { version = "0.0.11", path = "../multiplex-domain" }
-multiplex-host-protocol = { version = "0.0.11", path = "../multiplex-host-protocol" }
-multiplex-session-host = { version = "0.0.11", path = "../multiplex-session-host" }
-multiplex-store = { version = "0.0.11", path = "../multiplex-store", features = ["os-keyring"] }
-tokio = { version = "1", features = ["io-util", "rt", "time"] }
+multiplex-client = { version = "0.0.12", path = "../multiplex-client" }
+multiplex-controller-listener = { version = "0.0.12", path = "../multiplex-controller-listener" }
+multiplex-controller-security = { version = "0.0.12", path = "../multiplex-controller-security" }
+multiplex-domain = { version = "0.0.12", path = "../multiplex-domain" }
+multiplex-host-protocol = { version = "0.0.12", path = "../multiplex-host-protocol" }
+multiplex-session-host = { version = "0.0.12", path = "../multiplex-session-host" }
+multiplex-store = { version = "0.0.12", path = "../multiplex-store", features = ["os-keyring"] }
+tokio = { version = "1", features = ["io-util", "rt", "time", "net", "sync"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 unicode-width = "0.2"
+vt100 = "0.16.2"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
 uuid = "1.22"
 zeroize = "=1.9.0"
 

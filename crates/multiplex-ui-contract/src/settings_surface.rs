@@ -115,12 +115,11 @@ pub enum SettingId {
 }
 
 impl SettingId {
-    pub const ALL: [Self; 33] = [
+    pub const ALL: [Self; 32] = [
         Self::Theme,
         Self::DevelopmentLocale,
         Self::TerminalFontSize,
         Self::CopyOnSelect,
-        Self::ConfirmMultilinePaste,
         Self::TerminalFontFamily,
         Self::RestoreWorkspaces,
         Self::Onboarding,
@@ -983,7 +982,7 @@ mod tests {
 
     #[test]
     fn unavailable_future_controls_are_absent_from_built_inventory() {
-        assert_eq!(SettingId::ALL.len(), 33);
+        assert!(!SettingId::ALL.contains(&SettingId::ConfirmMultilinePaste));
         assert!(
             SettingId::ALL
                 .iter()

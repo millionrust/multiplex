@@ -1,4 +1,4 @@
-//! Workspace overlays: multi-line paste confirmation and the command palette.
+//! Workspace overlays: autocomplete and the command palette.
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -87,75 +87,6 @@ impl MultiplexApp {
                                 ))
                                 .into_any_element()
                         }),
-                ),
-        )
-    }
-
-    pub(super) fn render_paste_confirmation(&self, cx: &Context<Self>) -> Option<Div> {
-        let pending = self.pending_paste.as_ref()?;
-        let line_count = pending.text.matches('\n').count() + 1;
-        let preview = pending
-            .text
-            .lines()
-            .next()
-            .unwrap_or("")
-            .chars()
-            .take(80)
-            .collect::<String>();
-        Some(
-            h_flex()
-                .w_full()
-                .px(px(theme::SHELL_BANNER_HORIZONTAL))
-                .py(px(theme::SPACE_3))
-                .gap_2()
-                .items_center()
-                .justify_between()
-                .bg(theme::with_alpha(theme::warning(), 0.16))
-                .border_b_1()
-                .border_color(theme::with_alpha(theme::warning(), 0.45))
-                .child(
-                    v_flex()
-                        .flex_1()
-                        .gap_0p5()
-                        .child(
-                            div()
-                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                                .font_medium()
-                                .text_color(theme::text_on_dark())
-                                .child(localization::overlay_paste_confirmation(line_count)),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                .text_color(theme::text_muted_dark())
-                                .child(localization::overlay_paste_preview(preview)),
-                        ),
-                )
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Self::design_button("paste-confirm", theme::ActionTone::Accent, cx)
-                                .debug_selector(|| "paste-confirm".to_string())
-                                .label(localization::overlay_paste_action())
-                                .on_mouse_down(MouseButton::Left, |_, _, cx| {
-                                    cx.stop_propagation();
-                                })
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.confirm_pending_paste(cx);
-                                })),
-                        )
-                        .child(
-                            Self::design_button("paste-cancel", theme::ActionTone::Neutral, cx)
-                                .debug_selector(|| "paste-cancel".to_string())
-                                .label(localization::common_cancel())
-                                .on_mouse_down(MouseButton::Left, |_, _, cx| {
-                                    cx.stop_propagation();
-                                })
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.cancel_pending_paste(cx);
-                                })),
-                        ),
                 ),
         )
     }

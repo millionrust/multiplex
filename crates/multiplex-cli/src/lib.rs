@@ -1,12 +1,14 @@
 //! Stable, bounded, one-shot local command surface for Multiplex.
 
 mod args;
+mod browser_api;
 mod contract;
 mod local;
 mod local_attach;
 mod remote_ssh;
 mod render;
 mod shell;
+pub mod web_server;
 
 use std::io::{self, Read, Write};
 use std::sync::Arc;

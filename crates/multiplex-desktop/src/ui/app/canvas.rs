@@ -6062,9 +6062,14 @@ impl MultiplexApp {
                 cx.notify();
                 return;
             };
-            self.pending_paste = Some(super::PendingPaste { pane_id, text });
-            self.status_message =
-                localization::static_message(multiplex_ui_contract::MessageId::AgentCanvasCopyContextIsReadyConfirmTheGuardedPasteToDeliverIt).to_string();
+            if !self.send_paste_bytes(pane_id, text, cx) {
+                self.context_handoff_review = None;
+                cx.notify();
+                return;
+            }
+            self.status_message = localization::static_message(
+                multiplex_ui_contract::MessageId::TerminalMultilinePasteDeliveredStatus,
+            );
         }
         self.context_handoff_review = None;
         self.error_message.clear();

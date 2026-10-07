@@ -1798,7 +1798,6 @@ impl MultiplexApp {
         let auto_reconnect_delay_secs = self.saved.settings.auto_reconnect_delay_secs;
         let ssh_keepalive_secs = self.saved.settings.ssh_keepalive_secs;
         let copy_on_select = self.saved.settings.copy_on_select;
-        let confirm_multiline_paste = self.saved.settings.confirm_multiline_paste;
         let session_log_count = self.saved.session_logs.len();
         let has_default_ssh_dir = self.saved.settings.default_ssh_startup_directory.is_some();
         let diagnostics_enabled = self.saved.settings.diagnostics_enabled;
@@ -1968,21 +1967,6 @@ impl MultiplexApp {
                     ),
                 ))
                 .child(self.settings_divider())
-                .child(self.settings_choice_row(
-                    library_copy(MessageId::SettingsConfirmMultilinePasteLabel),
-                    library_copy(MessageId::SettingsConfirmMultilinePasteDescription),
-                    self.segmented_control(
-                        "settings-confirm-paste",
-                        [
-                            (true, library_copy(MessageId::SettingsConfirmPasteValue)),
-                            (false, library_copy(MessageId::SettingsDirectPasteValue)),
-                        ],
-                        confirm_multiline_paste,
-                        false,
-                        cx,
-                        |this, enabled, _, cx| this.update_confirm_multiline_paste(enabled, cx),
-                    ),
-                ))
                 .child(self.settings_divider())
                 .child(self.settings_subhead(
                     library_copy(MessageId::SettingsTerminalFontFamilyLabel),

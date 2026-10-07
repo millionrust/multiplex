@@ -21,7 +21,7 @@ use multiplex_store::read_host_metadata;
 use super::hosted_session::{DurableLaunch, DurableSessionPaths};
 use super::launch_coordinator::{LaunchResolution, LaunchReviewError, LaunchReviewInput};
 use super::session_coordinator::SessionStartRequest;
-use super::{AppAttachedPaneState, MultiplexApp, PendingPaste, theme};
+use super::{AppAttachedPaneState, MultiplexApp, theme};
 use crate::agents::build_app_attached_launch_config;
 use crate::models::{ConnectRequest, SavedAppAttachedSession, SavedDurableHost};
 use crate::storage::{app_dir, save_saved_state};
@@ -499,25 +499,15 @@ impl MultiplexApp {
         self.refresh_saved_runtime_recognition(session_id);
 
         if let Some(input) = initial_input {
-            if self.saved.settings.confirm_multiline_paste
-                && (input.contains('\n') || input.contains('\r'))
-            {
-                self.pending_paste = Some(PendingPaste {
-                    pane_id,
-                    text: input,
-                });
-                self.status_message = localization::new_session_status_review_input();
-            } else {
-                let mut bytes = input.into_bytes();
-                bytes.push(b'\r');
-                if let Some(pane) = self.pane(pane_id) {
-                    let _ = pane
-                        .runtime
-                        .command_tx
-                        .send(crate::ssh::SessionCommand::Input(bytes));
-                }
-                self.status_message = localization::new_session_status_ready_input();
+            let mut bytes = input.into_bytes();
+            bytes.push(b'\r');
+            if let Some(pane) = self.pane(pane_id) {
+                let _ = pane
+                    .runtime
+                    .command_tx
+                    .send(crate::ssh::SessionCommand::Input(bytes));
             }
+            self.status_message = localization::new_session_status_ready_input();
         } else {
             self.status_message = localization::new_session_status_ready();
         }

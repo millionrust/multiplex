@@ -62,7 +62,7 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 - A per-workspace command palette offers recent commands and built-in tasks.
 - Per-host color tag, environment variables, description/notes, startup directory, and startup command.
 - Right-click context menu on terminal panes; per-pane Clear and Duplicate; Detach moves a pane into its own workspace tab.
-- Multi-line clipboard pastes are held behind a confirmation banner by default to prevent accidental script execution.
+- Clipboard pastes, including multiline text, are sent directly. Legacy confirmation preferences are ignored; bracketed paste is preserved when the terminal program requests it.
 - Per-workspace Broadcast Input toggle that fans typed/pasted bytes out to every connected pane.
 - Window size and position — including which monitor — persist across launches.
 - Bounded local diagnostics store only allowlisted operational metadata; raw terminal content, stderr, panic text, and backtraces are excluded. Users can preview an exact privacy-scanned bundle before saving it locally.
@@ -119,6 +119,16 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   the window, recorded under `console-sessions/` and listed to paired devices on every route.
   The window takes the writer lease only while typed in. Nothing outside the profile is wrapped.
   This is the only way to add terminals; the tmux startup change is retired.
+- Browser terminal access is opt-in from Remote Devices → This computer or Settings → Remote Devices.
+  Its On/Off control starts/stops an embedded Rust HTTP server, serving static browser assets from
+  `crates/multiplex-cli/assets/web-terminal` on localhost and available private LAN/Tailscale
+  interfaces. The UI opens the local viewer and copies network links and the per-run access code.
+  The viewer lists only live CLI Session Hosts; previews, input/read-only mode, pins, shared titles,
+  nested drag-and-drop splits, resize/Fit/Auto, immediate kill, selection/copy, dark/light themes,
+  and mobile keys are supported. No Node/Bun runtime is needed. Source lives in `apps/web-terminal`;
+  `scripts/build/browser-terminals.sh` rebuilds its embedded assets using Bun. The server is off
+  by default and stops when disabled or its owning window closes. LAN transport is HTTP; use an
+  encrypted tunnel for networks requiring encrypted browser transport.
 - Windows: the Session Host runs there too (named pipe with a single-SID DACL, a job object per
   session; `docs/decisions/windows-session-host.md`), the background listener starts from the
   user's `Run` key with a notification-area icon, and paired devices can view and control the

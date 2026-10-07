@@ -777,7 +777,7 @@ pub struct AppSettings {
 }
 
 fn default_confirm_multiline_paste() -> bool {
-    true
+    false
 }
 
 fn default_auto_reconnect_attempts() -> u8 {
@@ -6060,7 +6060,7 @@ mod tests {
         assert!(!from_legacy.copy_on_select);
         assert_eq!(from_legacy.auto_reconnect_attempts, 3);
         assert_eq!(from_legacy.auto_reconnect_delay_secs, 5);
-        assert!(from_legacy.confirm_multiline_paste);
+        assert!(!from_legacy.confirm_multiline_paste);
         assert!(from_legacy.mobile_devices.is_empty());
         assert!(from_legacy.mobile_device_keys.is_empty());
         assert!(from_legacy.diagnostics_enabled);

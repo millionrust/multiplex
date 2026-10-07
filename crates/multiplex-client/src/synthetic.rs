@@ -849,6 +849,8 @@ async fn send_state(
             has_writer_lease: writer_held,
             recording_paused: false,
             durable_sequence: 0,
+            viewport: None,
+            bracketed_paste: None,
         }),
         cancel,
     )

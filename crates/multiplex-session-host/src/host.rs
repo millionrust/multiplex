@@ -1637,6 +1637,11 @@ async fn send_state(
         ),
         Err(error) => return Err(error.into()),
     };
+    let (rows, columns, bracketed_paste) = {
+        let parser = state.parser.lock().await;
+        let (rows, columns) = parser.screen().size();
+        (rows, columns, parser.screen().bracketed_paste())
+    };
     send_message(
         stream,
         request_id,
@@ -1650,6 +1655,11 @@ async fn send_state(
             has_writer_lease: state.has_writer(connection_id).await,
             recording_paused: state.recording_paused.load(Ordering::Acquire),
             durable_sequence: state.durable_sequence.load(Ordering::Acquire),
+            viewport: Some(wire::Viewport {
+                columns: u32::from(columns),
+                rows: u32::from(rows),
+            }),
+            bracketed_paste: Some(bracketed_paste),
         }),
         cancel,
     )

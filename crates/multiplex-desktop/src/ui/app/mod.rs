@@ -889,12 +889,6 @@ impl SessionPane {
     }
 }
 
-#[derive(Clone)]
-struct PendingPaste {
-    pane_id: u64,
-    text: String,
-}
-
 struct WorkspaceTab {
     id: u64,
     title: String,
@@ -1323,7 +1317,6 @@ pub struct MultiplexApp {
     canvas_node_rename_input: Entity<InputState>,
     canvas_note_editor_input: Entity<InputState>,
     canvas_folder_editor_input: Entity<InputState>,
-    pending_paste: Option<PendingPaste>,
     sync_pull_force: bool,
     sync_pull_pending_warning: bool,
     replication_review: Option<DesktopReplicationReview>,
@@ -1794,7 +1787,6 @@ impl MultiplexApp {
             }),
             canvas_note_editor_input,
             canvas_folder_editor_input,
-            pending_paste: None,
             sync_pull_force: false,
             sync_pull_pending_warning: false,
             replication_review: None,
@@ -4590,8 +4582,8 @@ impl MultiplexApp {
         cx.notify();
     }
 
-    fn update_confirm_multiline_paste(&mut self, enabled: bool, cx: &mut Context<Self>) {
-        self.saved.settings.confirm_multiline_paste = enabled;
+    fn update_confirm_multiline_paste(&mut self, _enabled: bool, cx: &mut Context<Self>) {
+        self.saved.settings.confirm_multiline_paste = false;
         self.save_settings();
         self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
@@ -10691,18 +10683,6 @@ impl MultiplexApp {
         }
         text = text.replace("\r\n", "\n");
 
-        if self.saved.settings.confirm_multiline_paste && text.contains('\n') {
-            self.pending_paste = Some(PendingPaste {
-                pane_id,
-                text: text.clone(),
-            });
-            let line_count = text.matches('\n').count() + 1;
-            self.status_message = localization::terminal_multiline_paste_confirm_status(line_count);
-            self.error_message.clear();
-            cx.notify();
-            return true;
-        }
-
         self.send_paste_bytes(pane_id, text, cx)
     }
 
@@ -10747,28 +10727,6 @@ impl MultiplexApp {
         }
         self.activate_pane(pane_id, window, cx);
         self.send_paste_bytes(pane_id, text, cx)
-    }
-
-    fn confirm_pending_paste(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(pending) = self.pending_paste.take() else {
-            return false;
-        };
-        let result = self.send_paste_bytes(pending.pane_id, pending.text, cx);
-        if result {
-            self.status_message =
-                localization::static_message(MessageId::TerminalMultilinePasteDeliveredStatus);
-        }
-        cx.notify();
-        result
-    }
-
-    fn cancel_pending_paste(&mut self, cx: &mut Context<Self>) {
-        if self.pending_paste.take().is_some() {
-            self.status_message =
-                localization::static_message(MessageId::TerminalPasteCancelledStatus);
-            self.error_message.clear();
-            cx.notify();
-        }
     }
 
     fn handle_terminal_key(
@@ -13774,10 +13732,6 @@ impl MultiplexApp {
                 self.cancel_pane_rename(window, cx);
                 return true;
             }
-            if self.pending_paste.is_some() {
-                self.cancel_pending_paste(cx);
-                return true;
-            }
             if self.show_editor_panel {
                 self.close_editor_dialog(window, cx);
                 return true;
@@ -16395,7 +16349,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn e2e_canvas_local_shell_paste_confirmation_and_search(cx: &mut TestAppContext) {
+    fn e2e_canvas_local_shell_direct_paste_and_search(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let request = ConnectRequest::local_shell_with_config(
@@ -16433,34 +16387,13 @@ mod tests {
             .expect("canvas switch should succeed");
 
         cx.write_to_clipboard(gpui::ClipboardItem::new_string(
-            "printf 'paste-cancelled\\n'\nprintf 'paste-cancelled-2\\n'\n".to_string(),
-        ));
-        app.update(cx, |app, cx| assert!(app.paste_to_active_pane(cx)));
-        app.read_with(cx, |app, _| assert!(app.pending_paste.is_some()));
-        let cancel =
-            wait_for_selector_click_center(window, cx, "paste-cancel", Duration::from_secs(2));
-        VisualTestContext::from_window(window.into(), cx)
-            .simulate_click(cancel, gpui::Modifiers::none());
-        app.read_with(cx, |app, _| assert!(app.pending_paste.is_none()));
-
-        wait_for_app_state(cx, &app, Duration::from_secs(1), |app| {
-            let pane = app.pane(pane_id)?;
-            (!pane
-                .terminal
-                .all_rows_text()
-                .iter()
-                .any(|row| row.contains("paste-cancelled")))
-            .then_some(())
-        });
-
-        cx.write_to_clipboard(gpui::ClipboardItem::new_string(
             "printf 'paste-confirmed\\n'\nprintf 'search-target\\n'\n".to_string(),
         ));
-        app.update(cx, |app, cx| assert!(app.paste_to_active_pane(cx)));
-        let confirm =
-            wait_for_selector_click_center(window, cx, "paste-confirm", Duration::from_secs(2));
-        VisualTestContext::from_window(window.into(), cx)
-            .simulate_click(confirm, gpui::Modifiers::none());
+        app.update(cx, |app, cx| {
+            // Even a legacy saved preference must never gate a paste.
+            app.saved.settings.confirm_multiline_paste = true;
+            assert!(app.paste_to_active_pane(cx));
+        });
 
         wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
             let pane = app.pane(pane_id)?;
@@ -22826,20 +22759,6 @@ sleep 1
 
         app.read_with(cx, |app, _| {
             assert!(app.pane_context_menu.is_none());
-            assert!(app.pending_paste.is_some());
-        });
-
-        window
-            .update(cx, |_, _, cx| {
-                app.update(cx, |app, cx| {
-                    app.cancel_pending_paste(cx);
-                })
-            })
-            .expect("window update should succeed");
-
-        app.read_with(cx, |app, _| {
-            assert!(app.pending_paste.is_none());
-            assert_eq!(app.status_message, "Paste cancelled.");
         });
 
         window
@@ -26734,7 +26653,7 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_canvas_terminal_clipboard_shortcuts_copy_and_cancel_multiline_paste(
+    fn e2e_canvas_terminal_clipboard_shortcuts_copy_and_direct_multiline_paste(
         cx: &mut TestAppContext,
     ) {
         let _isolation = TestIsolation::acquire();
@@ -26825,36 +26744,17 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     assert!(app.handle_terminal_key(pane_id, &paste_event, window, cx));
-                    assert!(app.pending_paste.is_some());
                 })
             })
             .expect("window update should succeed");
 
-        let escape = KeyDownEvent {
-            keystroke: Keystroke::parse("escape").expect("escape should parse"),
-            is_held: false,
-        };
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    assert!(app.handle_global_key(&escape, window, cx));
-                })
-            })
-            .expect("window update should succeed");
-
-        app.read_with(cx, |app, _| {
-            assert!(app.pending_paste.is_none());
-            assert_eq!(app.status_message, "Paste cancelled.");
-        });
-
-        wait_for_app_state(cx, &app, Duration::from_secs(1), |app| {
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
             let pane = app.pane(pane_id)?;
-            (!pane
-                .terminal
+            pane.terminal
                 .all_rows_text()
                 .iter()
-                .any(|row| row.contains("escape-paste-cancelled")))
-            .then_some(())
+                .any(|row| row.contains("escape-paste-cancelled"))
+                .then_some(())
         });
     }
 
@@ -28725,11 +28625,11 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    MultiplexApp::set_input_value(&app.settings_inputs.search, "paste", window, cx);
+                    MultiplexApp::set_input_value(&app.settings_inputs.search, "copy", window, cx);
                 })
             })
             .expect("window update should succeed");
-        assert!(rendered(cx, "settings-confirm-paste-0"));
+        assert!(rendered(cx, "settings-copy-on-select-0"));
 
         let appearance_section = selector_click_center(window, cx, "settings-nav-0");
         let mut visual = VisualTestContext::from_window(window.into(), cx);

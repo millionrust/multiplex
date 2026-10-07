@@ -1,0 +1,33 @@
+{
+  "name": "multiplex-terminal-viewer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev --host 127.0.0.1",
+    "build": "nuxt generate",
+    "typecheck": "nuxt typecheck",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@fontsource-variable/dm-sans": "^5.2.8",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@tailwindcss/vite": "^4.1.13",
+    "@vueuse/core": "^15.0.0",
+    "@xterm/xterm": "^5.5.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-vue-next": "^0.468.0",
+    "nuxt": "^4.0.0",
+    "reka-ui": "^2.10.5",
+    "shadcn-nuxt": "^2.8.2",
+    "tailwind-merge": "^3.7.0",
+    "tailwindcss": "^4.1.13",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2",
+    "@types/node": "^26.6.2",
+    "typescript": "^5.9.0",
+    "vue-tsc": "^2.2.12"
+  }
+}

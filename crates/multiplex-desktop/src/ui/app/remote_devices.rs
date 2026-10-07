@@ -73,6 +73,7 @@ pub(super) struct RemoteDevicesState {
     listening_addresses: Vec<ListeningAddress>,
     listener_state: ListenerState,
     listener_process: Option<ControllerListenerProcess>,
+    browser_server: Option<multiplex_cli::web_server::BrowserServer>,
     desktop_pane_bridge: Option<multiplex_controller_listener::DesktopPaneBridgeEndpoint>,
     tmux_sessions: bool,
     screen_sharing: bool,
@@ -180,6 +181,7 @@ impl RemoteDevicesState {
                     listening_addresses: Vec::new(),
                     listener_state: ListenerState::Disabled,
                     listener_process: None,
+                    browser_server: None,
                     desktop_pane_bridge,
                     tmux_sessions,
                     screen_sharing,
@@ -257,6 +259,7 @@ impl RemoteDevicesState {
             listening_addresses: Vec::new(),
             listener_state: ListenerState::Disabled,
             listener_process: None,
+            browser_server: None,
             desktop_pane_bridge: None,
             tmux_sessions,
             screen_sharing,
@@ -304,6 +307,7 @@ impl RemoteDevicesState {
             listening_addresses: Vec::new(),
             listener_state: ListenerState::Failed(multiplex_domain::ListenerFailureCode::Internal),
             listener_process: None,
+            browser_server: None,
             desktop_pane_bridge: None,
             tmux_sessions: false,
             screen_sharing: false,
@@ -1048,11 +1052,146 @@ impl MultiplexApp {
     }
 
     /// Sharing this computer's screen: who may watch, and what macOS will ask for.
+    fn render_browser_terminal_controls(&self, cx: &Context<Self>) -> AnyElement {
+        let message = |id| localization::static_message(id);
+        let enabled = self.remote_devices.browser_server.is_some();
+        v_flex()
+            .id("browser-terminal-access")
+            .debug_selector(|| "browser-terminal-access".into())
+            .w_full()
+            .gap(px(theme::SPACE_3))
+            .p(px(theme::SPACE_4))
+            .rounded(px(theme::CONTROL_RADIUS))
+            .border_1()
+            .border_color(theme::soft_border())
+            .child(self.settings_choice_row(
+                message(MessageId::BrowserTerminalTitle),
+                message(MessageId::BrowserTerminalDescription),
+                self.segmented_control(
+                    "browser-terminal-enabled",
+                    [
+                        (false, message(MessageId::BrowserTerminalOff)),
+                        (true, message(MessageId::BrowserTerminalOn)),
+                    ],
+                    enabled,
+                    false,
+                    cx,
+                    |this, enabled, _, cx| {
+                        if enabled && this.remote_devices.browser_server.is_none() {
+                            let server = multiplex_cli::CliPaths::discover()
+                                .map_err(|_| ())
+                                .and_then(|paths| {
+                                    multiplex_cli::web_server::start(paths).map_err(|_| ())
+                                });
+                            match server {
+                                Ok(server) => {
+                                    this.remote_devices.browser_server = Some(server);
+                                    this.error_message.clear();
+                                }
+                                Err(()) => {
+                                    this.error_message = localization::static_message(
+                                        MessageId::BrowserTerminalStartFailed,
+                                    )
+                                }
+                            }
+                        } else if !enabled {
+                            this.remote_devices.browser_server = None;
+                        }
+                        cx.notify();
+                    },
+                ),
+            ))
+            .when_some(
+                self.remote_devices.browser_server.as_ref(),
+                |this, server| {
+                    let url = format!("http://{}", server.address);
+                    let code = server.access_code.clone();
+                    let open_url = url.clone();
+                    let copied_url = url.clone();
+                    this.children(
+                        server
+                            .addresses
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, address)| !address.ip().is_loopback())
+                            .map(|(index, address)| {
+                                let url = format!("http://{address}");
+                                let copied = url.clone();
+                                h_flex()
+                                    .gap(px(theme::SPACE_3))
+                                    .items_center()
+                                    .child(div().flex_1().min_w_0().truncate().child(url))
+                                    .child(
+                                        Self::design_button(
+                                            ("browser-terminal-copy-link", index),
+                                            theme::ActionTone::Neutral,
+                                            cx,
+                                        )
+                                        .icon(IconName::Copy)
+                                        .tooltip(message(MessageId::BrowserTerminalCopyLink))
+                                        .on_click(
+                                            move |_, _, cx| {
+                                                cx.write_to_clipboard(ClipboardItem::new_string(
+                                                    copied.clone(),
+                                                ))
+                                            },
+                                        ),
+                                    )
+                            }),
+                    )
+                    .child(
+                        h_flex()
+                            .gap(px(theme::SPACE_3))
+                            .items_center()
+                            .child(div().flex_1().min_w_0().truncate().child(url))
+                            .child(
+                                Self::design_button(
+                                    "browser-terminal-open",
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                )
+                                .icon(IconName::ExternalLink)
+                                .tooltip(localization::common_open())
+                                .on_click(move |_, _, cx| cx.open_url(&open_url)),
+                            )
+                            .child(
+                                Self::design_button(
+                                    "browser-terminal-copy-local-link",
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                )
+                                .icon(IconName::Copy)
+                                .tooltip(message(MessageId::BrowserTerminalCopyLink))
+                                .on_click(move |_, _, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(
+                                        copied_url.clone(),
+                                    ))
+                                }),
+                            )
+                            .child(
+                                Self::design_button(
+                                    "browser-terminal-copy-code",
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                )
+                                .icon(IconName::Copy)
+                                .tooltip(message(MessageId::BrowserTerminalCopyCode))
+                                .on_click(move |_, _, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(code.clone()))
+                                }),
+                            ),
+                    )
+                },
+            )
+            .into_any_element()
+    }
+
     fn render_remote_screens_section(&self, cx: &Context<Self>) -> AnyElement {
         let sharing = self.saved.settings.remote_screen_sharing;
         v_flex()
             .id("remote-screens")
             .debug_selector(|| "remote-screens".to_string())
+            .child(self.render_browser_terminal_controls(cx))
             .w_full()
             .min_w_0()
             .gap_3()

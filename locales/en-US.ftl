@@ -2651,3 +2651,11 @@ chrome-new-window = New window
 
 session-drawer-open-tab = Open as new tab
 chrome-kill-terminal = Kill terminal
+
+browser-terminal-title = Browser terminal access
+browser-terminal-description = View and control Multiplex terminals in browsers on this computer or your LAN/Tailscale devices. Enable the server, copy a link, and paste its access code.
+browser-terminal-off = Off
+browser-terminal-on = On
+browser-terminal-copy-code = Copy browser access code
+browser-terminal-start-failed = Could not start the browser terminal server.
+browser-terminal-copy-link = Copy browser viewer link
