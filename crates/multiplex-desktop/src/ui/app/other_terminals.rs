@@ -48,6 +48,7 @@ pub(super) struct OtherTerminalsState {
     pub terminals: Vec<OtherTerminal>,
     pub(super) close_pending: Option<OtherTerminal>,
     pub(super) stopping: bool,
+    pub(super) drawer_pane: Option<u64>,
 }
 
 impl MultiplexApp {
@@ -144,18 +145,22 @@ impl MultiplexApp {
                             .bg(theme::library_card())
                             .cursor_pointer()
                             .hover(|style| style.bg(theme::chrome_tab()))
-                            .when(self.other_terminals.close_pending.is_none(), |this| {
-                                this.tooltip(move |_, cx| {
-                                    cx.new(|cx| {
-                                        TerminalHoverPreview::new(
-                                            preview_terminal.clone(),
-                                            preview_font.clone(),
-                                            cx,
-                                        )
+                            .when(
+                                self.other_terminals.close_pending.is_none()
+                                    && self.other_terminals.drawer_pane.is_none(),
+                                |this| {
+                                    this.tooltip(move |_, cx| {
+                                        cx.new(|cx| {
+                                            TerminalHoverPreview::new(
+                                                preview_terminal.clone(),
+                                                preview_font.clone(),
+                                                cx,
+                                            )
+                                        })
+                                        .into()
                                     })
-                                    .into()
-                                })
-                            })
+                                },
+                            )
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.open_other_terminal(index, window, cx);
                             }))
@@ -356,6 +361,146 @@ impl MultiplexApp {
     }
 
     /// Attaches a CLI terminal in a pane through the durable Session Host protocol.
+    pub(super) fn close_session_drawer(&mut self, cx: &mut Context<Self>) {
+        if let Some(id) = self.other_terminals.drawer_pane.take()
+            && self.pane_workspace_id(id).is_none()
+        {
+            self.close_pane(id, cx);
+            self.unpublish_desktop_pane(id);
+            self.panes.retain(|pane| pane.id != id);
+        }
+        cx.notify();
+    }
+
+    pub(super) fn preview_library_session(
+        &mut self,
+        id: HostedSessionId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.close_session_drawer(cx);
+        let existing = self
+            .panes
+            .iter()
+            .find(|pane| {
+                pane.app_attached
+                    .as_ref()
+                    .is_some_and(|session| session.hosted_session_id == id)
+            })
+            .map(|pane| pane.id);
+        let pane_id = existing.or_else(|| {
+            let saved = self
+                .saved
+                .app_attached_sessions
+                .iter()
+                .find(|session| session.id == id && session.archived_at.is_none())
+                .cloned()?;
+            if saved.route != multiplex_domain::SessionLaunchRoute::DurableHost {
+                return None;
+            }
+            let mut request = crate::models::ConnectRequest::local_shell_with_config(
+                0,
+                self.saved.settings.default_local_shell.clone(),
+            );
+            request.title = saved.title.clone();
+            self.spawn_saved_durable_pane(request, &saved, window, cx)
+        });
+        self.other_terminals.drawer_pane = pane_id;
+        if let Some(pane_id) = pane_id {
+            self.activate_pane(pane_id, window, cx);
+        }
+        self.active_workspace_id = None;
+        cx.notify();
+    }
+
+    pub(super) fn render_session_drawer(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let pane = self.pane(self.other_terminals.drawer_pane?)?;
+        Some(
+            div()
+                .absolute()
+                .inset_0()
+                .flex()
+                .justify_end()
+                .bg(theme::modal_scrim())
+                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_mouse_down(gpui::MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                .child(
+                    v_flex()
+                        .id("session-terminal-drawer")
+                        .debug_selector(|| "session-terminal-drawer".into())
+                        .w(px(760.))
+                        .max_w_full()
+                        .h_full()
+                        .bg(theme::terminal_bg())
+                        .shadow(theme::popover_shadow())
+                        .child(
+                            h_flex()
+                                .p(px(theme::SPACE_3))
+                                .gap(px(theme::SPACE_3))
+                                .items_center()
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .truncate()
+                                        .child(pane.title.clone()),
+                                )
+                                .child(
+                                    Self::design_button(
+                                        "session-drawer-open-tab",
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    )
+                                    .debug_selector(|| "session-drawer-open-tab".into())
+                                    .label("Open as new tab")
+                                    .on_click(cx.listener(
+                                        |this, _, window, cx| {
+                                            let Some(id) = this.other_terminals.drawer_pane.take()
+                                            else {
+                                                return;
+                                            };
+                                            if this.pane_workspace_id(id).is_some() {
+                                                this.move_pane_to_new_workspace(id, window, cx);
+                                            } else if let Some(request) =
+                                                this.pane(id).map(|pane| pane.request.clone())
+                                            {
+                                                this.open_spawned_pane_workspace(&request, id);
+                                                this.activate_pane(id, window, cx);
+                                            }
+                                            this.sync_terminal_layout(window, cx);
+                                            this.persist_runtime_state();
+                                            cx.notify();
+                                        },
+                                    )),
+                                )
+                                .child(
+                                    Self::design_button(
+                                        "session-drawer-close",
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    )
+                                    .debug_selector(|| "session-drawer-close".into())
+                                    .label(localization::common_close())
+                                    .on_click(
+                                        cx.listener(|this, _, _, cx| this.close_session_drawer(cx)),
+                                    ),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_h_0()
+                                .child(self.render_terminal_pane(pane, window, cx)),
+                        ),
+                )
+                .into_any_element(),
+        )
+    }
+
     fn open_other_terminal(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(terminal) = self.other_terminals.terminals.get(index).cloned() else {
             return;
@@ -389,7 +534,8 @@ impl MultiplexApp {
                     cx.focus_handle().tab_stop(true),
                     cx,
                 );
-                self.open_spawned_pane_workspace(&request, pane_id);
+                self.close_session_drawer(cx);
+                self.other_terminals.drawer_pane = Some(pane_id);
                 self.sync_terminal_layout(window, cx);
                 if let Some(pane) = self.pane(pane_id) {
                     pane.terminal_focus.focus(window);

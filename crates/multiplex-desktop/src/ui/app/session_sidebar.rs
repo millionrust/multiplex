@@ -3,8 +3,8 @@ use std::time::{Duration, Instant};
 use crate::ui::action_button::ActionButton as Button;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, Context, InteractiveElement as _, IntoElement as _, ParentElement as _, Styled,
-    Window, div, px,
+    AnyElement, Context, InteractiveElement as _, IntoElement as _, ParentElement as _,
+    StatefulInteractiveElement as _, Styled, Window, div, px,
 };
 use gpui_component::button::ButtonVariants as _;
 use gpui_component::input::Input;
@@ -2439,6 +2439,9 @@ impl MultiplexApp {
             })
             .child(
                 h_flex()
+                    .id(("session-row-open", key))
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, window, cx| this.preview_library_session(id, window, cx)))
                     .justify_between()
                     .items_center()
                     .gap(px(theme::SPACE_3))
@@ -2533,6 +2536,7 @@ impl MultiplexApp {
                             .selected(selected)
                             .label(localization::session_library_inspector_title())
                             .on_click(cx.listener(move |this, _, _, cx| {
+                                cx.stop_propagation();
                                 this.select_session_for_move(id, cx);
                             })),
                     ),
@@ -2714,7 +2718,7 @@ impl MultiplexApp {
                                                 .icon(IconName::SquareTerminal)
                                                 .label(localization::common_open())
                                                 .on_click(cx.listener(move |this, _, window, cx| {
-                                                    this.open_session_from_entry(id, window, cx);
+                                                    this.preview_library_session(id, window, cx);
                                                 })),
                                         )
                                     },

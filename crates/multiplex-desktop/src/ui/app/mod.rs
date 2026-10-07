@@ -6298,6 +6298,9 @@ impl MultiplexApp {
     }
 
     fn active_pane(&self) -> Option<&SessionPane> {
+        if let Some(id) = self.other_terminals.drawer_pane {
+            return self.pane(id);
+        }
         let workspace = self.active_workspace()?;
         self.pane(workspace.active_pane_id)
     }
@@ -9073,6 +9076,20 @@ impl MultiplexApp {
     }
 
     fn pane_layouts(&self, window: &Window, cx: &Context<Self>) -> Vec<PaneLayout> {
+        if let Some(pane_id) = self.other_terminals.drawer_pane {
+            let (char_width, line_height) = self.terminal_metrics(window, cx);
+            return vec![self.with_rendered_grid(PaneLayout {
+                pane_id,
+                cell_x: 0.,
+                cell_y: 0.,
+                cell_width: 720.,
+                cell_height: 480.,
+                cols: 80,
+                rows: 24,
+                char_width,
+                line_height,
+            })];
+        }
         let Some(workspace) = self.active_workspace() else {
             return Vec::new();
         };
@@ -13547,6 +13564,9 @@ impl Render for MultiplexApp {
             })
             .when_some(self.pane_context_menu, |this, (pane_id, position)| {
                 this.child(self.render_pane_context_menu_layer(pane_id, position, cx))
+            })
+            .when_some(self.render_session_drawer(window, cx), |this, drawer| {
+                this.child(drawer)
             })
             .when_some(
                 self.render_other_terminal_close_dialog(cx),
@@ -31139,6 +31159,26 @@ sleep 1
         visual.simulate_click(cancel, gpui::Modifiers::none());
         app.read_with(cx, |app, _| {
             assert!(app.other_terminals.close_pending.is_none())
+        });
+        visual.run_until_parked();
+        let open = selector_click_center(window, cx, "other-terminal-open-0");
+        visual.simulate_click(open, gpui::Modifiers::none());
+        visual.run_until_parked();
+        assert!(visual.debug_bounds("session-terminal-drawer").is_some());
+        app.read_with(cx, |app, _| {
+            assert!(
+                app.workspaces.is_empty(),
+                "a Sessions click must not create a tab"
+            );
+            assert!(app.active_workspace_id.is_none());
+            assert!(app.other_terminals.drawer_pane.is_some());
+        });
+        let promote = selector_click_center(window, cx, "session-drawer-open-tab");
+        visual.simulate_click(promote, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.workspaces.len(), 1);
+            assert!(app.active_workspace_id.is_some());
+            assert!(app.other_terminals.drawer_pane.is_none());
         });
     }
 
