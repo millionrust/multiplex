@@ -509,7 +509,7 @@ impl MultiplexApp {
                     v_flex()
                         .id("session-terminal-drawer")
                         .debug_selector(|| "session-terminal-drawer".into())
-                        .w(px(760.))
+                        .w(px(theme::DIALOG_WIDE_WIDTH))
                         .max_w_full()
                         .h_full()
                         .bg(theme::terminal_bg())
@@ -533,7 +533,9 @@ impl MultiplexApp {
                                         cx,
                                     )
                                     .debug_selector(|| "session-drawer-open-tab".into())
-                                    .label("Open as new tab")
+                                    .label(localization::static_message(
+                                        MessageId::SessionDrawerOpenTab,
+                                    ))
                                     .on_click(cx.listener(
                                         |this, _, window, cx| {
                                             let Some(id) = this.other_terminals.drawer_pane.take()

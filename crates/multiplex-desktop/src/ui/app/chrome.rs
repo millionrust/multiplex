@@ -294,7 +294,9 @@ impl MultiplexApp {
                 self.workspace_tab_menu_item(
                     ("workspace-tab-menu-kill", workspace_id),
                     IconName::Delete,
-                    "Kill terminal",
+                    localization::static_message(
+                        multiplex_ui_contract::MessageId::ChromeKillTerminal,
+                    ),
                     move |this, _, cx| this.request_tab_terminal_kill(workspace_id, cx),
                     cx,
                 )

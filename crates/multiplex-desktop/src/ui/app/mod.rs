@@ -10907,7 +10907,9 @@ impl MultiplexApp {
         let previous_active_pane = self
             .active_workspace()
             .map(|workspace| workspace.active_pane_id);
-        if let Some(workspace_id) = self.pane_workspace_id(pane_id) {
+        if self.other_terminals.drawer_pane != Some(pane_id)
+            && let Some(workspace_id) = self.pane_workspace_id(pane_id)
+        {
             if let Some(workspace) = self.workspace_mut(workspace_id) {
                 workspace.active_pane_id = pane_id;
             }
@@ -25767,10 +25769,14 @@ sleep 1
                         Some("Accessible durable session")
                     );
                     assert_eq!(app.saved.app_attached_sessions.len(), saved_count);
+                    assert_eq!(app.panes.len(), pane_count + 1);
+                    assert!(app.workspaces.is_empty());
+                    assert!(app.other_terminals.drawer_pane.is_some());
+                    app.close_session_drawer(cx);
                     assert_eq!(app.panes.len(), pane_count);
                 })
             })
-            .expect("accessible row activation should update selection");
+            .expect("accessible row activation should open a terminal drawer");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         assert!(visual.debug_bounds("session-sidebar").is_some());
         assert!(visual.debug_bounds("session-row").is_some());
@@ -26046,10 +26052,10 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_session_sidebar_group_move_guard_undo_and_restart(cx: &mut TestAppContext) {
+    fn sessions_keep_legacy_group_records_visible_in_a_flat_list(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
-        let (session_id, origin) = window
+        let (session_id, _origin) = window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     let session_id = multiplex_domain::HostedSessionId::new();
@@ -26088,187 +26094,42 @@ sleep 1
             })
             .expect("fixture setup should update");
 
-        let _ = selector_click_center(window, cx, "session-sidebar");
-        let _ = selector_click_center(window, cx, "group-new");
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.open_group_editor(None, window, cx);
                     MultiplexApp::set_input_value(
                         &app.group_name_input,
-                        localization::group_editor_new_title(),
+                        "Legacy group",
                         window,
                         cx,
                     );
-                })
-            })
-            .expect("group name should update");
-        let _ = wait_for_selector_click_center(window, cx, "group-save", Duration::from_secs(2));
-        // Exercise the same actions as the rendered controls, including when their expanding
-        // rows extend beyond the test window. Removal and undo below use this route too.
-        window
-            .update(cx, |_, _, cx| {
-                app.update(cx, |app, cx| app.save_group_editor(cx))
-            })
-            .expect("group should save");
-        let group_id = app.read_with(cx, |app, _| {
-            let snapshot = app
-                .library
-                .snapshot
-                .as_ref()
-                .expect("library snapshot should exist");
-            assert_eq!(snapshot.groups.len(), 1);
-            snapshot.groups[0].id
-        });
-
-        let _ = selector_click_center(window, cx, "session-move");
-        window
-            .update(cx, |_, _, cx| {
-                app.update(cx, |app, cx| {
-                    app.select_session_for_move(session_id, cx);
-                })
-            })
-            .expect("session move controls should open");
-        let _ =
-            wait_for_selector_click_center(window, cx, "session-to-group", Duration::from_secs(2));
-        window
-            .update(cx, |_, _, cx| {
-                app.update(cx, |app, cx| {
+                    app.save_group_editor(cx);
+                    let group_id = app.library.snapshot.as_ref().unwrap().groups[0].id;
                     app.move_session_to(
                         session_id,
                         multiplex_domain::GroupDestination::Group(group_id),
                         None,
                         cx,
                     );
+                    app.set_group_collapsed(group_id, true, cx);
+                    cx.notify();
                 })
             })
-            .expect("session should move into the group");
-        app.read_with(cx, |app, _| {
-            let session = app
-                .saved
-                .app_attached_sessions
-                .iter()
-                .find(|session| session.id == session_id)
-                .expect("session should remain present");
-            assert_eq!(session.group_id, Some(group_id));
-            assert_eq!(session.origin, origin);
-            assert_eq!(
-                session.state,
-                multiplex_domain::HostedSessionState::RunningAppAttached
-            );
-        });
-
-        let _ = selector_click_center(window, cx, "group-disclosure");
-        window
-            .update(cx, |_, _, cx| {
-                app.update(cx, |app, cx| app.set_group_collapsed(group_id, true, cx))
-            })
-            .expect("group should collapse");
-        app.read_with(cx, |app, _| {
-            assert!(
-                app.library
-                    .snapshot
-                    .as_ref()
-                    .and_then(|snapshot| snapshot.groups.first())
-                    .is_some_and(|group| group.collapsed)
-            );
-        });
-
-        let _ = selector_click_center(window, cx, "group-remove");
-        window
-            .update(cx, |_, _, cx| {
-                app.update(cx, |app, cx| app.begin_group_removal(group_id, cx))
-            })
-            .expect("guarded group removal should open");
-        let _ = wait_for_selector_click_center(
-            window,
-            cx,
-            "group-remove-cancel",
-            Duration::from_secs(2),
-        );
-        window
-            .update(cx, |_, _, cx| {
-                app.update(cx, |app, cx| app.cancel_group_removal(cx))
-            })
-            .expect("group removal should cancel");
-        app.read_with(cx, |app, _| {
-            assert_eq!(app.saved.app_attached_sessions[0].group_id, Some(group_id));
-            assert_eq!(
-                app.library
-                    .snapshot
-                    .as_ref()
-                    .expect("snapshot should exist")
-                    .groups
-                    .len(),
-                1
-            );
-        });
-
-        let _ = selector_click_center(window, cx, "group-remove");
-        window
-            .update(cx, |_, _, cx| {
-                app.update(cx, |app, cx| app.begin_group_removal(group_id, cx))
-            })
-            .expect("guarded group removal should reopen");
-        let _ = wait_for_selector_click_center(
-            window,
-            cx,
-            "group-remove-to-root",
-            Duration::from_secs(2),
-        );
-        window
-            .update(cx, |_, _, cx| {
-                app.update(cx, |app, cx| {
-                    app.remove_group_to(
-                        group_id,
-                        Some(multiplex_domain::GroupDestination::Ungrouped),
-                        cx,
-                    );
-                })
-            })
-            .expect("group sessions should move to root");
-        app.read_with(cx, |app, _| {
-            assert!(
-                app.library
-                    .snapshot
-                    .as_ref()
-                    .expect("snapshot should exist")
-                    .groups
-                    .is_empty()
-            );
-            assert_eq!(app.saved.app_attached_sessions[0].group_id, None);
-            assert_eq!(app.saved.app_attached_sessions[0].origin, origin);
-        });
-
-        let _ = wait_for_selector_click_center(window, cx, "group-undo", Duration::from_secs(2));
-        window
-            .update(cx, |_, _, cx| {
-                app.update(cx, |app, cx| app.undo_organization(cx))
-            })
-            .expect("group removal should undo");
-        app.read_with(cx, |app, _| {
-            assert_eq!(app.saved.app_attached_sessions[0].group_id, Some(group_id));
-            assert_eq!(app.saved.app_attached_sessions[0].origin, origin);
-            assert!(
-                app.library
-                    .snapshot
-                    .as_ref()
-                    .and_then(|snapshot| snapshot.groups.first())
-                    .is_some_and(|group| group.collapsed)
-            );
-        });
-
-        let persisted = load_saved_state().expect("saved state should reload");
-        let (restarted, _) = open_test_app_with_state(cx, persisted);
-        restarted.read_with(cx, |app, _| {
-            assert_eq!(app.saved.app_attached_sessions[0].group_id, Some(group_id));
-            assert!(
-                app.library
-                    .snapshot
-                    .as_ref()
-                    .and_then(|snapshot| snapshot.groups.first())
-                    .is_some_and(|group| group.collapsed)
-            );
+            .unwrap();
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        assert!(visual.debug_bounds("session-row").is_some());
+        assert!(visual.debug_bounds("group-new").is_none());
+        assert!(visual.debug_bounds("session-group-header").is_none());
+        app.update(cx, |app, cx| {
+            let snapshot = app.product_session_semantic_snapshot(cx).unwrap();
+            assert_eq!(snapshot.rows.len(), 1);
+            assert!(snapshot.rows[0].parent.is_none());
+            assert!(!snapshot.controls.iter().any(|control| matches!(
+                control.action,
+                multiplex_ui_contract::ProductSessionAction::AddGroup
+            )));
         });
     }
 

@@ -2648,3 +2648,6 @@ other-terminals-closed = Terminal closed.
 other-terminals-close-failed = Unable to close this terminal. Check whether it is still running and try again.
 
 chrome-new-window = New window
+
+session-drawer-open-tab = Open as new tab
+chrome-kill-terminal = Kill terminal

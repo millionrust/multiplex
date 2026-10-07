@@ -995,6 +995,20 @@ impl MultiplexApp {
             .collect()
     }
 
+    fn flat_visible_sessions(&self) -> Vec<SavedAppAttachedSession> {
+        self.session_library
+            .visible_sessions_all()
+            .into_iter()
+            .filter_map(|metadata| {
+                self.saved
+                    .app_attached_sessions
+                    .iter()
+                    .find(|record| record.id == metadata.id)
+                    .cloned()
+            })
+            .collect()
+    }
+
     fn group_session_count(&self, id: GroupId) -> usize {
         self.saved
             .app_attached_sessions
@@ -1107,50 +1121,17 @@ impl MultiplexApp {
             super::NavSection::Sessions => ProductSessionScreen::Sessions,
             _ => return None,
         };
-        // Sessions outside any group come first, then each group with its own sessions under it.
-        // A Project used to sit above both; nothing does now.
         let mut rows = Vec::new();
-        let ungrouped = self.sessions_in_destination(None);
-        let groups = self.library_groups();
-        let top_level_count = ungrouped.len() + groups.len();
+        let sessions = self.flat_visible_sessions();
         append_accessible_session_rows(
             &mut rows,
-            &ungrouped,
+            &sessions,
             None,
             &self.session_library,
             self.session_sidebar.selected_session,
             0,
-            top_level_count,
+            sessions.len(),
         );
-        for (group_index, group) in groups.iter().enumerate() {
-            let group_row_id = accessible_group_id(group.id);
-            rows.push(AccessibleCollectionRow {
-                id: group_row_id,
-                parent: None,
-                level: HierarchyLevel::Group,
-                name: group.name.as_str().to_string(),
-                status: MessageId::ProductSurfaceStateReady,
-                selected: false,
-                expanded: Some(!group.collapsed),
-                unread: false,
-                disabled: false,
-                position: ungrouped.len() + group_index + 1,
-                set_size: top_level_count.max(1),
-            });
-            if !group.collapsed {
-                let sessions = self.sessions_in_destination(Some(group.id));
-                let session_count = sessions.len();
-                append_accessible_session_rows(
-                    &mut rows,
-                    &sessions,
-                    Some(group_row_id),
-                    &self.session_library,
-                    self.session_sidebar.selected_session,
-                    0,
-                    session_count,
-                );
-            }
-        }
 
         let dialog = self.product_destructive_presentation(cx);
         let controls = self.product_session_controls(screen, cx);
@@ -1183,99 +1164,6 @@ impl MultiplexApp {
                 None,
             ));
             return controls;
-        }
-
-        controls.push(product_button(
-            ProductSessionAction::AddGroup,
-            MessageId::GroupNewAction,
-            None,
-        ));
-        let groups = self.library_groups();
-        for (index, group) in groups.iter().enumerate() {
-            let group_id = accessible_group_id(group.id);
-            controls.push(product_button(
-                ProductSessionAction::ToggleGroup(group_id),
-                if group.collapsed {
-                    MessageId::GroupExpandAction
-                } else {
-                    MessageId::GroupCollapseAction
-                },
-                Some(group_id),
-            ));
-            let mut move_up = product_button(
-                ProductSessionAction::MoveGroup(group_id, ProductMoveDirection::Up),
-                MessageId::GroupMoveUpAction,
-                Some(group_id),
-            );
-            move_up.disabled = index == 0;
-            controls.push(move_up);
-            let mut move_down = product_button(
-                ProductSessionAction::MoveGroup(group_id, ProductMoveDirection::Down),
-                MessageId::GroupMoveDownAction,
-                Some(group_id),
-            );
-            move_down.disabled = index + 1 == groups.len();
-            controls.push(move_down);
-            controls.extend([
-                product_button(
-                    ProductSessionAction::RenameGroup(group_id),
-                    MessageId::GroupRenameAction,
-                    Some(group_id),
-                ),
-                product_button(
-                    ProductSessionAction::RemoveGroup(group_id),
-                    MessageId::GroupRemoveAction,
-                    Some(group_id),
-                ),
-            ]);
-        }
-        if self.session_sidebar.pending_undo.is_some() {
-            controls.push(product_button(
-                ProductSessionAction::UndoOrganization,
-                MessageId::GroupUndoAction,
-                None,
-            ));
-        }
-        if self.session_sidebar.editor.is_some() {
-            controls.extend([
-                product_text_field(
-                    ProductSessionAction::SetGroupName,
-                    MessageId::GroupNameField,
-                    self.group_name_input.read(cx).value().to_string(),
-                    false,
-                ),
-                product_button(ProductSessionAction::SaveGroup, MessageId::CommonSave, None),
-                product_button(
-                    ProductSessionAction::CancelGroup,
-                    MessageId::CommonCancel,
-                    None,
-                ),
-            ]);
-        }
-        if let Some(pending) = self.session_sidebar.pending_removal.as_ref() {
-            let mut move_to_root = product_button(
-                ProductSessionAction::RemoveGroupTo(accessible_group_id(pending.group_id), None),
-                MessageId::GroupMoveToRootAction,
-                None,
-            );
-            move_to_root.in_dialog = true;
-            controls.push(move_to_root);
-            for destination in groups
-                .iter()
-                .filter(|destination| destination.id != pending.group_id)
-            {
-                let mut move_to_group = product_button(
-                    ProductSessionAction::RemoveGroupTo(
-                        accessible_group_id(pending.group_id),
-                        Some(accessible_group_id(destination.id)),
-                    ),
-                    MessageId::GroupMoveSessionAction,
-                    None,
-                );
-                move_to_group.value = Some(destination.name.as_str().to_string());
-                move_to_group.in_dialog = true;
-                controls.push(move_to_group);
-            }
         }
 
         if screen == ProductSessionScreen::Sessions {
@@ -1390,11 +1278,6 @@ impl MultiplexApp {
                 down.disabled = index + 1 == sessions.len();
                 controls.push(down);
             }
-            controls.push(product_button(
-                ProductSessionAction::MoveSessionToRoot(row_id),
-                MessageId::GroupMoveToRootAction,
-                Some(row_id),
-            ));
         }
         if metadata.archived_at.is_none() {
             let mut archive = product_button(
@@ -1527,7 +1410,12 @@ impl MultiplexApp {
                         let id = HostedSessionId::from_uuid(uuid::Uuid::from_u128(row.value));
                         if self.session_library.session(id).is_some() {
                             self.session_sidebar.selected_session = Some(id);
-                            self.session_list_focus.focus(window);
+                            if matches!(command, ProductSessionAccessibilityCommand::ActivateRow(_))
+                            {
+                                self.preview_library_session(id, window, cx);
+                            } else {
+                                self.session_list_focus.focus(window);
+                            }
                             self.refresh_artifacts(id, cx);
                         }
                     }
@@ -1662,7 +1550,7 @@ impl MultiplexApp {
                 }
                 ProductSessionAction::OpenSession(row) => {
                     if let Some(id) = accessible_session_row_id(row) {
-                        self.open_session_from_entry(id, window, cx);
+                        self.preview_library_session(id, window, cx);
                     }
                 }
                 ProductSessionAction::StopSession(row) => {
@@ -1795,16 +1683,7 @@ impl MultiplexApp {
 
     /// The Sessions page presents one flat list, including records previously in groups.
     pub(super) fn render_session_sidebar(&self, cx: &Context<Self>) -> AnyElement {
-        let sessions: Vec<_> = self
-            .saved
-            .app_attached_sessions
-            .iter()
-            .filter(|session| {
-                self.sessions_in_destination(session.group_id)
-                    .iter()
-                    .any(|visible| visible.id == session.id)
-            })
-            .collect();
+        let sessions = self.flat_visible_sessions();
         let session_count = sessions.len();
 
         v_flex()
@@ -1832,32 +1711,6 @@ impl MultiplexApp {
             .when_some(
                 self.session_library.pending_stop_archive_review,
                 |this, id| this.child(self.render_stop_archive_review(id, cx)),
-            )
-            .when(self.session_sidebar.pending_undo.is_some(), |this| {
-                this.child(
-                    h_flex()
-                        .id("group-undo-banner")
-                        .justify_end()
-                        .px(px(theme::SPACE_5))
-                        .pt(px(theme::SPACE_3))
-                        .child(
-                            Button::new("group-undo")
-                                .debug_selector(|| "group-undo".to_string())
-                                .small()
-                                .icon(IconName::Undo2)
-                                .label(localization::group_undo_action())
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.undo_organization(cx);
-                                })),
-                        ),
-                )
-            })
-            .when_some(self.session_sidebar.editor.as_ref(), |this, editor| {
-                this.child(self.render_group_editor(editor, cx))
-            })
-            .when_some(
-                self.session_sidebar.pending_removal.as_ref(),
-                |this, pending| this.child(self.render_group_removal(pending, cx)),
             )
             .when_some(
                 self.session_library.pending_removal.as_ref(),

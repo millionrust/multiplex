@@ -6,7 +6,7 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 
 - Host library UI inspired by Terminus-style launchers, with groups, tags, vaults, batch selection, and bulk actions.
 - There are no Projects. A session records the folder it runs in and nothing else stands between
-  them; New Session asks for the folder. Sessions are organized only by groups, which live in the
+  them; New Session asks for the folder. Sessions are shown as one flat list. Legacy group records remain in the
   store's `library.json` beside managed worktrees. A store from 0.0.5 or earlier is carried
   forward once on open (`multiplex-store/src/legacy_projects.rs`): its groups and worktrees move
   from `projects.json`, each session is given its Project's folder, and `projects.json` is renamed
@@ -15,8 +15,10 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   (Cmd+1 to Cmd+6) as primary destinations; specialized vaults and keys,
   known hosts and logs remain available as advanced tools.
 - Sessions presents the authoritative active or archived typed Session library across
-  both app-attached and durable ownership routes, organized by group, with folder, preset,
-  and ownership context on each row. CLI terminals also offer transient hover previews of
+  both app-attached and durable ownership routes, with folder, preset, and ownership context on
+  each row. Group controls and group sections are absent. Clicking a terminal opens a live side
+  drawer; its "Open as new tab" action promotes it into a workspace tab. Closing the drawer
+  disconnects its temporary viewer and leaves the CLI session running. CLI terminals also offer transient hover previews of
   recent output through read-only Host connections, plus a confirmed Close terminal action
   that stops the shell and its owned processes.
 - Files browses the local disk beside a connected host's files over SFTP. It used to carry a

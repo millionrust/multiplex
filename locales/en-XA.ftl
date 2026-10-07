@@ -506,6 +506,7 @@ canvas-tool-zoom-reset-tooltip = ⟦Žøøɱ ţø 100% (Çɱð+Øþţîøñ+0)~~
 certificate-file-choose-status = ⟦Çĥøøšé åñ ØþéñŠŠĤ ûšéŕ çéŕţîƒîçåţé ƒîļé.~~~~~~~~~~~~~~⟧
 certificate-file-selected-status = ⟦ØþéñŠŠĤ ûšéŕ çéŕţîƒîçåţé šéļéçţéð.~~~~~~~~~~~~⟧
 chrome-home-tooltip = ⟦Ĥøɱé⟧
+chrome-kill-terminal = ⟦Ķîļļ ţéŕɱîñåļ~~~~⟧
 chrome-new-terminal = ⟦Ñéŵ ţéŕɱîñåļ~~~⟧
 chrome-new-window = ⟦Ñéŵ ŵîñðøŵ~~⟧
 chrome-tabs-to-left = ⟦Ṁøṽé ţåƀš ţø ţĥé ļéƒţ~~~~~~~⟧
@@ -1696,6 +1697,7 @@ session-count = { $count ->
    *[other] { $count }⟦ åçţîṽé šéššîøñš~~~~~⟧
     [zero] ⟦Ñø åçţîṽé šéššîøñš~~~~~~⟧
     }
+session-drawer-open-tab = ⟦Øþéñ åš ñéŵ ţåƀ~~~~⟧
 session-history-active-status = ⟦Åçţîṽé~⟧
 session-history-count = { $count ->
     [many] { $count }⟦ šéššîøñš~~⟧

@@ -12333,3 +12333,13 @@ description = "Other terminal close-failed"
 id = "chrome-new-window"
 context = "Empty chrome area context menu and new window shortcut."
 description = "Chrome new window"
+
+[[messages]]
+id = "session-drawer-open-tab"
+context = "Top action in the Sessions live terminal drawer."
+description = "Promote the drawer terminal into a workspace tab."
+
+[[messages]]
+id = "chrome-kill-terminal"
+context = "Workspace tab context menu."
+description = "Stop the terminal in the clicked tab after confirmation."

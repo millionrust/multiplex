@@ -506,6 +506,7 @@ canvas-tool-zoom-reset-tooltip = ⁧(0+noitpO+dmC) %001 ot mooZ⁩
 certificate-file-choose-status = ⁧.elif etacifitrec resu HSSnepO na esoohC⁩
 certificate-file-selected-status = ⁧.detceles etacifitrec resu HSSnepO⁩
 chrome-home-tooltip = ⁧emoH⁩
+chrome-kill-terminal = ⁧lanimret lliK⁩
 chrome-new-terminal = ⁧lanimret weN⁩
 chrome-new-window = ⁧wodniw weN⁩
 chrome-tabs-to-left = ⁧tfel eht ot sbat evoM⁩
@@ -1696,6 +1697,7 @@ session-count = { $count ->
    *[other] { $count }⁧snoisses evitca ⁩
     [zero] ⁧snoisses evitca oN⁩
     }
+session-drawer-open-tab = ⁧bat wen sa nepO⁩
 session-history-active-status = ⁧evitcA⁩
 session-history-count = { $count ->
     [many] { $count }⁧snoisses ⁩
