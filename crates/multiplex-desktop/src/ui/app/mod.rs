@@ -31166,7 +31166,7 @@ sleep 1
     }
 
     #[gpui::test]
-    fn tab_kill_confirmation_tracks_the_clicked_tab(cx: &mut TestAppContext) {
+    fn tab_kill_immediately_targets_the_clicked_tab(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         window.update(cx, |_, window, cx| app.update(cx, |app, cx| {
@@ -31182,7 +31182,8 @@ sleep 1
             assert_eq!(pending.title, "first terminal");
             let expected = crate::models::local_console_session_id(&app.pane(first_pane).unwrap().request).unwrap();
             assert!(matches!(pending.kind, super::other_terminals::OtherTerminalKind::Console { session_id, .. } if session_id == expected));
-            assert!(!app.other_terminals.stopping, "killing must await confirmation");
+            assert!(app.other_terminals.stopping, "killing must start without confirmation");
+            assert!(app.other_terminals.force_stopping);
         })).unwrap();
     }
 

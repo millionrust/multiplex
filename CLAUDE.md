@@ -17,10 +17,13 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 - Sessions presents the authoritative active or archived typed Session library across
   both app-attached and durable ownership routes, with folder, preset, and ownership context on
   each row. Group controls and group sections are absent. Clicking a terminal opens a live side
-  drawer; its "Open as new tab" action promotes it into a workspace tab. Closing the drawer
-  disconnects its temporary viewer and leaves the CLI session running. CLI terminals also offer transient hover previews of
-  recent output through read-only Host connections, plus a confirmed Close terminal action
-  that stops the shell and its owned processes.
+  drawer that pushes the page aside; its "Open as new tab" action promotes it into a workspace tab.
+  Closing the drawer disconnects its temporary viewer and leaves the CLI session running.
+  Session actions and drawer controls use icons with tooltips. CLI terminals also offer transient
+  hover previews of recent output through read-only Host connections, a confirmed Close terminal
+  action for graceful shutdown, and an immediate Kill terminal action that force-stops the shell
+  and its owned processes without a graceful delay or confirmation. Kill is also available in the
+  drawer and the clicked workspace tab's context menu.
 - Files browses the local disk beside a connected host's files over SFTP. It used to carry a
   second tab holding a library of every Session artifact; that index was removed because nothing
   read it. Artifacts themselves remain: `multiplex-store`'s bounded repository, written by agents

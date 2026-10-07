@@ -54,6 +54,7 @@ pub(super) struct OtherTerminalsState {
     pub terminals: Vec<OtherTerminal>,
     pub(super) close_pending: Option<OtherTerminal>,
     pub(super) stopping: bool,
+    pub(super) force_stopping: bool,
     pub(super) drawer_pane: Option<u64>,
 }
 
@@ -199,7 +200,8 @@ impl MultiplexApp {
                                     cx,
                                 )
                                 .debug_selector(move || format!("other-terminal-open-{index}"))
-                                .label(localization::other_terminals_open_action())
+                                .icon(IconName::PanelRightOpen)
+                                .tooltip(localization::other_terminals_open_action())
                                 .on_click(cx.listener(
                                     move |this, _, window, cx| {
                                         cx.stop_propagation();
@@ -214,9 +216,11 @@ impl MultiplexApp {
                                     cx,
                                 )
                                 .debug_selector(move || format!("other-terminal-close-{index}"))
-                                .label(localization::static_message(
+                                .icon(IconName::CircleX)
+                                .tooltip(localization::static_message(
                                     MessageId::OtherTerminalsCloseAction,
                                 ))
+                                .disabled(self.other_terminals.stopping)
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
                                         cx.stop_propagation();
@@ -224,6 +228,34 @@ impl MultiplexApp {
                                             this.other_terminals.terminals.get(index).cloned();
                                         this.error_message.clear();
                                         cx.notify();
+                                    },
+                                )),
+                            )
+                            .child(
+                                Self::design_button(
+                                    ("other-terminal-kill", index),
+                                    theme::ActionTone::Danger,
+                                    cx,
+                                )
+                                .debug_selector(move || format!("other-terminal-kill-{index}"))
+                                .icon(IconName::Delete)
+                                .tooltip(localization::static_message(
+                                    MessageId::ChromeKillTerminal,
+                                ))
+                                .disabled(self.other_terminals.stopping)
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        cx.stop_propagation();
+                                        if this.other_terminals.stopping {
+                                            return;
+                                        }
+                                        this.other_terminals.close_pending =
+                                            this.other_terminals.terminals.get(index).cloned();
+                                        this.error_message.clear();
+                                        this.confirm_other_terminal_close(
+                                            multiplex_host_protocol::wire::StopMode::Force,
+                                            cx,
+                                        );
                                     },
                                 )),
                             )
@@ -237,6 +269,9 @@ impl MultiplexApp {
         &self,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
+        if self.other_terminals.force_stopping {
+            return None;
+        }
         let pending = self.other_terminals.close_pending.as_ref()?;
         Some(
             div()
@@ -296,7 +331,8 @@ impl MultiplexApp {
                                         cx,
                                     )
                                     .debug_selector(|| "other-terminal-close-cancel".into())
-                                    .label(localization::common_cancel())
+                                    .icon(IconName::Close)
+                                    .tooltip(localization::common_cancel())
                                     .disabled(self.other_terminals.stopping)
                                     .on_click(cx.listener(
                                         |this, _, _, cx| {
@@ -312,12 +348,18 @@ impl MultiplexApp {
                                         cx,
                                     )
                                     .debug_selector(|| "other-terminal-close-confirm".into())
-                                    .label(localization::static_message(
+                                    .icon(IconName::CircleX)
+                                    .tooltip(localization::static_message(
                                         MessageId::OtherTerminalsCloseAction,
                                     ))
                                     .loading(self.other_terminals.stopping)
                                     .on_click(cx.listener(
-                                        |this, _, _, cx| this.confirm_other_terminal_close(cx),
+                                        |this, _, _, cx| {
+                                            this.confirm_other_terminal_close(
+                                                multiplex_host_protocol::wire::StopMode::Graceful,
+                                                cx,
+                                            )
+                                        },
                                     )),
                                 ),
                         ),
@@ -382,10 +424,20 @@ impl MultiplexApp {
 
     pub(super) fn request_tab_terminal_kill(&mut self, workspace_id: u64, cx: &mut Context<Self>) {
         self.open_workspace_tab_menu = None;
-        let Some(pane) = self
+        let Some(pane_id) = self
             .workspace(workspace_id)
-            .and_then(|workspace| self.pane(workspace.active_pane_id))
+            .map(|workspace| workspace.active_pane_id)
         else {
+            return;
+        };
+        self.request_pane_terminal_kill(pane_id, cx);
+    }
+
+    fn request_pane_terminal_kill(&mut self, pane_id: u64, cx: &mut Context<Self>) {
+        if self.other_terminals.stopping {
+            return;
+        }
+        let Some(pane) = self.pane(pane_id) else {
             return;
         };
         let kind = self
@@ -397,7 +449,7 @@ impl MultiplexApp {
             detail: pane.endpoint.clone(),
         });
         self.error_message.clear();
-        cx.notify();
+        self.confirm_other_terminal_close(multiplex_host_protocol::wire::StopMode::Force, cx);
     }
 
     fn terminal_kind_for_pane(&self, pane_id: u64) -> Option<OtherTerminalKind> {
@@ -425,7 +477,11 @@ impl MultiplexApp {
         })
     }
 
-    fn confirm_other_terminal_close(&mut self, cx: &mut Context<Self>) {
+    fn confirm_other_terminal_close(
+        &mut self,
+        mode: multiplex_host_protocol::wire::StopMode,
+        cx: &mut Context<Self>,
+    ) {
         if self.other_terminals.stopping {
             return;
         }
@@ -441,12 +497,14 @@ impl MultiplexApp {
             return;
         }
         self.other_terminals.stopping = true;
+        self.other_terminals.force_stopping =
+            mode == multiplex_host_protocol::wire::StopMode::Force;
         cx.notify();
         cx.spawn(async move |this, cx| {
             let kind = pending.kind.clone();
             let stopped = cx
                 .background_executor()
-                .spawn(async move { stop_other_terminal(&kind) })
+                .spawn(async move { stop_other_terminal(&kind, mode) })
                 .await;
             let refreshed = if stopped.is_ok() {
                 cx.background_executor()
@@ -457,6 +515,7 @@ impl MultiplexApp {
             };
             let _ = this.update(cx, |app, cx| {
                 app.other_terminals.stopping = false;
+                app.other_terminals.force_stopping = false;
                 if stopped.is_ok() {
                     let OtherTerminalKind::Console { session_id, .. } = pending.kind else {
                         return;
@@ -583,7 +642,8 @@ impl MultiplexApp {
                                 cx,
                             )
                             .debug_selector(|| "session-drawer-open-tab".into())
-                            .label(localization::static_message(
+                            .icon(IconName::ExternalLink)
+                            .tooltip(localization::static_message(
                                 MessageId::SessionDrawerOpenTab,
                             ))
                             .on_click(cx.listener(
@@ -607,12 +667,29 @@ impl MultiplexApp {
                         )
                         .child(
                             Self::design_button(
+                                "session-drawer-kill",
+                                theme::ActionTone::Danger,
+                                cx,
+                            )
+                            .debug_selector(|| "session-drawer-kill".into())
+                            .icon(IconName::Delete)
+                            .tooltip(localization::static_message(MessageId::ChromeKillTerminal))
+                            .loading(self.other_terminals.force_stopping)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                if let Some(id) = this.other_terminals.drawer_pane {
+                                    this.request_pane_terminal_kill(id, cx);
+                                }
+                            })),
+                        )
+                        .child(
+                            Self::design_button(
                                 "session-drawer-close",
                                 theme::ActionTone::Neutral,
                                 cx,
                             )
                             .debug_selector(|| "session-drawer-close".into())
-                            .label(localization::common_close())
+                            .icon(IconName::PanelRightClose)
+                            .tooltip(localization::common_close())
                             .on_click(cx.listener(|this, _, _, cx| this.close_session_drawer(cx))),
                         ),
                 )
@@ -870,10 +947,12 @@ fn preview_lines(terminal: &crate::terminal::TerminalState) -> Vec<String> {
     lines
 }
 
-fn stop_other_terminal(kind: &OtherTerminalKind) -> Result<(), ()> {
+fn stop_other_terminal(
+    kind: &OtherTerminalKind,
+    mode: multiplex_host_protocol::wire::StopMode,
+) -> Result<(), ()> {
     use multiplex_client::{ConnectOptions, HostClient, LocalEndpoint};
     use multiplex_domain::CommandId;
-    use multiplex_host_protocol::wire;
     use rand::RngCore as _;
     use tokio_util::sync::CancellationToken;
     let OtherTerminalKind::Console {
@@ -907,7 +986,7 @@ fn stop_other_terminal(kind: &OtherTerminalKind) -> Result<(), ()> {
                 return Err(());
             }
             client
-                .stop(CommandId::new(), wire::StopMode::Graceful, &cancel)
+                .stop(CommandId::new(), mode, &cancel)
                 .await
                 .map_err(|_| ())?;
             client.disconnect();
@@ -923,6 +1002,18 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn preview_preserves_writer_control_and_close_stops_the_owned_host() {
+        preview_and_stop(multiplex_host_protocol::wire::StopMode::Graceful).await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn force_kill_skips_graceful_deadlines_for_a_signal_resistant_shell() {
+        preview_and_stop(multiplex_host_protocol::wire::StopMode::Force).await;
+    }
+
+    #[cfg(unix)]
+    async fn preview_and_stop(mode: multiplex_host_protocol::wire::StopMode) {
+        let force = mode == multiplex_host_protocol::wire::StopMode::Force;
         use multiplex_client::{ConnectOptions, HostClient, LocalEndpoint};
         use multiplex_domain::{HostInstanceId, HostedSessionId};
         use multiplex_session_host::{LaunchDescriptor, StopDeadlines};
@@ -948,14 +1039,26 @@ mod tests {
             runtime_detection: None,
             arguments: vec![
                 "-c".into(),
-                "printf 'preview-job-ready\\r\\n'; sleep 30".into(),
+                if force {
+                    "trap '' INT TERM; printf 'preview-job-ready\\r\\n'; sleep 30".into()
+                } else {
+                    "printf 'preview-job-ready\\r\\n'; sleep 30".into()
+                },
             ],
             environment: BTreeMap::new(),
             cwd: Some(root),
             columns: 93,
             rows: 27,
             journal_limits: multiplex_store::JournalLimits::default(),
-            stop_deadlines: StopDeadlines::default(),
+            stop_deadlines: if force {
+                StopDeadlines {
+                    interrupt_millis: 5_000,
+                    terminate_millis: 5_000,
+                    total_millis: 5_000,
+                }
+            } else {
+                StopDeadlines::default()
+            },
         };
         let host = multiplex_session_host::start(descriptor).await.unwrap();
         let cancel = CancellationToken::new();
@@ -992,11 +1095,18 @@ mod tests {
         assert!(found);
         assert!(writer.get_state(&cancel).await.unwrap().has_writer_lease);
         let request = kind.clone();
-        tokio::task::spawn_blocking(move || super::stop_other_terminal(&request))
+        let started = std::time::Instant::now();
+        tokio::task::spawn_blocking(move || super::stop_other_terminal(&request, mode))
             .await
             .unwrap()
             .unwrap();
         host.wait().await.unwrap();
+        if force {
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(2),
+                "force kill must not wait through the five-second graceful deadline"
+            );
+        }
     }
 
     #[test]
