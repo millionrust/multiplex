@@ -49,11 +49,9 @@ jobs:
         env:
           CARGO_TARGET_DIR: target-second
         run: |
-          cargo build --locked
-          mbx explain --last > explanation.log 2>&1
-          cat explanation.log
+          cargo build --locked 2>&1 | tee second-build.log
           node <<'JS'
           const fs = require('node:fs');
-          const report = fs.readFileSync('explanation.log', 'utf8').replace(/\x1b\[[0-9;]*m/g, '');
-          if (!/\b[1-9]\d* hit\b/.test(report)) throw new Error('No compiler cache hit was reported for the second target directory');
+          const report = fs.readFileSync('second-build.log', 'utf8').replace(/\x1b\[[0-9;]*m/g, '');
+          if (!/object cache: [1-9]\d* hits/.test(report)) throw new Error('No compiler cache hit was reported for the second target directory');
           JS
