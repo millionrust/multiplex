@@ -31119,7 +31119,11 @@ sleep 1
             .center();
         visual.simulate_click(close, gpui::Modifiers::none());
         visual.run_until_parked();
-        assert!(visual.debug_bounds("other-terminal-close-dialog").is_some());
+        let dialog = visual.debug_bounds("other-terminal-close-dialog").unwrap();
+        assert!(
+            dialog.size.height < px(360.),
+            "the terminal confirmation should fit its content, not fill the window: {dialog:?}"
+        );
         app.read_with(cx, |app, _| {
             assert!(
                 app.active_workspace_id.is_none(),

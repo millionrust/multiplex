@@ -10,7 +10,6 @@
 
 use gpui::prelude::FluentBuilder as _;
 use gpui_component::Disableable as _;
-use gpui_component::scroll::ScrollableElement as _;
 use std::path::PathBuf;
 
 use gpui::{
@@ -145,15 +144,17 @@ impl MultiplexApp {
                             .bg(theme::library_card())
                             .cursor_pointer()
                             .hover(|style| style.bg(theme::chrome_tab()))
-                            .tooltip(move |_, cx| {
-                                cx.new(|cx| {
-                                    TerminalHoverPreview::new(
-                                        preview_terminal.clone(),
-                                        preview_font.clone(),
-                                        cx,
-                                    )
+                            .when(self.other_terminals.close_pending.is_none(), |this| {
+                                this.tooltip(move |_, cx| {
+                                    cx.new(|cx| {
+                                        TerminalHoverPreview::new(
+                                            preview_terminal.clone(),
+                                            preview_font.clone(),
+                                            cx,
+                                        )
+                                    })
+                                    .into()
                                 })
-                                .into()
                             })
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.open_other_terminal(index, window, cx);
@@ -246,7 +247,9 @@ impl MultiplexApp {
                         .w(px(theme::DIALOG_MAX_WIDTH))
                         .max_w_full()
                         .max_h_full()
-                        .overflow_y_scrollbar()
+                        // The scrollbar wrapper forces full height, stretching this confirmation.
+                        // Native overflow keeps the dialog sized to its contents.
+                        .overflow_y_scroll()
                         .p(px(theme::SPACE_5))
                         .gap(px(theme::SPACE_4))
                         .rounded(px(theme::CONTROL_RADIUS))
