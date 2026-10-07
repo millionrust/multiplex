@@ -31040,8 +31040,11 @@ sleep 1
         visual.simulate_click(close, gpui::Modifiers::none());
         visual.run_until_parked();
         let dialog = visual.debug_bounds("other-terminal-close-dialog").unwrap();
+        let viewport_height = window
+            .update(cx, |_, window, _| window.viewport_size().height)
+            .unwrap();
         assert!(
-            dialog.size.height < px(360.),
+            dialog.size.height < viewport_height / 2.,
             "the terminal confirmation should fit its content, not fill the window: {dialog:?}"
         );
         app.read_with(cx, |app, _| {
