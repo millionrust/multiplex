@@ -28,6 +28,9 @@ use crate::ui::localization;
 /// How a terminal outside the app is reached.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum OtherTerminalKind {
+    Pane {
+        pane_id: u64,
+    },
     /// A Session Host started by `multiplex-cli shell`: the same protocol a durable Session uses.
     Console {
         session_id: HostedSessionId,
@@ -320,6 +323,51 @@ impl MultiplexApp {
         )
     }
 
+    pub(super) fn request_tab_terminal_kill(&mut self, workspace_id: u64, cx: &mut Context<Self>) {
+        self.open_workspace_tab_menu = None;
+        let Some(pane) = self
+            .workspace(workspace_id)
+            .and_then(|workspace| self.pane(workspace.active_pane_id))
+        else {
+            return;
+        };
+        let kind = self
+            .terminal_kind_for_pane(pane.id)
+            .unwrap_or(OtherTerminalKind::Pane { pane_id: pane.id });
+        self.other_terminals.close_pending = Some(OtherTerminal {
+            kind,
+            title: pane.title.clone(),
+            detail: pane.endpoint.clone(),
+        });
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn terminal_kind_for_pane(&self, pane_id: u64) -> Option<OtherTerminalKind> {
+        let pane = self.pane(pane_id)?;
+        if let Some(id) = crate::models::local_console_session_id(&pane.request) {
+            let app_root = crate::storage::app_dir().ok()?;
+            return Some(OtherTerminalKind::Console {
+                session_id: id,
+                session_dir: app_root.join("console-sessions").join(id.to_string()),
+                runtime_root: crate::controller_runtime_parent(&app_root),
+            });
+        }
+        let id = pane.app_attached.as_ref()?.hosted_session_id;
+        let host = self
+            .saved
+            .app_attached_sessions
+            .iter()
+            .find(|saved| saved.id == id)?
+            .durable_host
+            .as_ref()?;
+        Some(OtherTerminalKind::Console {
+            session_id: id,
+            session_dir: host.session_dir.clone().into(),
+            runtime_root: host.runtime_root.clone().into(),
+        })
+    }
+
     fn confirm_other_terminal_close(&mut self, cx: &mut Context<Self>) {
         if self.other_terminals.stopping {
             return;
@@ -327,6 +375,14 @@ impl MultiplexApp {
         let Some(pending) = self.other_terminals.close_pending.clone() else {
             return;
         };
+        if let OtherTerminalKind::Pane { pane_id } = pending.kind {
+            self.other_terminals.close_pending = None;
+            self.close_pane(pane_id, cx);
+            self.active_workspace_id = None;
+            self.nav_section = super::NavSection::Sessions;
+            cx.notify();
+            return;
+        }
         self.other_terminals.stopping = true;
         cx.notify();
         cx.spawn(async move |this, cx| {
@@ -345,6 +401,27 @@ impl MultiplexApp {
             let _ = this.update(cx, |app, cx| {
                 app.other_terminals.stopping = false;
                 if stopped.is_ok() {
+                    let OtherTerminalKind::Console { session_id, .. } = pending.kind else {
+                        return;
+                    };
+                    let pane_ids: Vec<_> =
+                        app.panes
+                            .iter()
+                            .filter(|pane| {
+                                crate::models::local_console_session_id(&pane.request)
+                                    == Some(session_id)
+                                    || pane.app_attached.as_ref().is_some_and(|session| {
+                                        session.hosted_session_id == session_id
+                                    })
+                            })
+                            .map(|pane| pane.id)
+                            .collect();
+                    app.other_terminals.drawer_pane = None;
+                    for id in pane_ids {
+                        app.close_pane(id, cx);
+                    }
+                    app.active_workspace_id = None;
+                    app.nav_section = super::NavSection::Sessions;
                     app.other_terminals.close_pending = None;
                     app.other_terminals.terminals = refreshed;
                     app.error_message.clear();
@@ -506,6 +583,7 @@ impl MultiplexApp {
             return;
         };
         match terminal.kind {
+            OtherTerminalKind::Pane { .. } => return,
             OtherTerminalKind::Console {
                 session_id,
                 session_dir,
@@ -682,7 +760,10 @@ fn read_terminal_preview(kind: &OtherTerminalKind) -> Result<Vec<String>, ()> {
         session_id,
         runtime_root,
         ..
-    } = kind;
+    } = kind
+    else {
+        return Err(());
+    };
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -751,7 +832,10 @@ fn stop_other_terminal(kind: &OtherTerminalKind) -> Result<(), ()> {
         session_id,
         session_dir,
         runtime_root,
-    } = kind;
+    } = kind
+    else {
+        return Err(());
+    };
     let expected = multiplex_store::read_host_metadata(session_dir)
         .map_err(|_| ())?
         .host_instance_id;

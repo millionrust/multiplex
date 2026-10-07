@@ -31183,6 +31183,27 @@ sleep 1
     }
 
     #[gpui::test]
+    fn tab_kill_confirmation_tracks_the_clicked_tab(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        window.update(cx, |_, window, cx| app.update(cx, |app, cx| {
+            app.open_local_terminal(window, cx);
+            let first = app.active_workspace_id.unwrap();
+            let first_pane = app.workspace(first).unwrap().active_pane_id;
+            app.pane_mut(first_pane).unwrap().title = "first terminal".into();
+            app.open_local_terminal(window, cx);
+            let second = app.active_workspace_id.unwrap();
+            app.request_tab_terminal_kill(first, cx);
+            assert_eq!(app.active_workspace_id, Some(second), "the menu must not switch to another tab");
+            let pending = app.other_terminals.close_pending.as_ref().unwrap();
+            assert_eq!(pending.title, "first terminal");
+            let expected = crate::models::local_console_session_id(&app.pane(first_pane).unwrap().request).unwrap();
+            assert!(matches!(pending.kind, super::other_terminals::OtherTerminalKind::Console { session_id, .. } if session_id == expected));
+            assert!(!app.other_terminals.stopping, "killing must await confirmation");
+        })).unwrap();
+    }
+
+    #[gpui::test]
     fn the_top_bar_offers_an_update_only_when_there_is_one(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);

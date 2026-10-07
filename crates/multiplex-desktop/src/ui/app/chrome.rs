@@ -207,7 +207,7 @@ impl MultiplexApp {
         } else {
             theme::CHROME_HEIGHT
         };
-        let menu_height = theme::SHELL_COMPACT_CONTROL_HEIGHT * 5.0 + theme::SPACE_4;
+        let menu_height = theme::SHELL_COMPACT_CONTROL_HEIGHT * 6.0 + theme::SPACE_4;
         let top = requested_top.min(
             (f32::from(window.viewport_size().height) - menu_height).max(theme::CHROME_HEIGHT),
         );
@@ -289,6 +289,16 @@ impl MultiplexApp {
                     .h(px(theme::BORDER_HAIRLINE))
                     .my(px(theme::SPACE_1))
                     .bg(theme::soft_border()),
+            )
+            .child(
+                self.workspace_tab_menu_item(
+                    ("workspace-tab-menu-kill", workspace_id),
+                    IconName::Delete,
+                    "Kill terminal",
+                    move |this, _, cx| this.request_tab_terminal_kill(workspace_id, cx),
+                    cx,
+                )
+                .debug_selector(move || format!("workspace-tab-menu-kill-{workspace_id}")),
             )
             .child(
                 self.workspace_tab_menu_item(
