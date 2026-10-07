@@ -79,6 +79,10 @@ impl ActionButton {
         self.icon = Some(icon.into());
         self
     }
+    pub fn loading(mut self, loading: bool) -> Self {
+        self.inner = self.inner.loading(loading);
+        self
+    }
     pub fn tooltip(mut self, tooltip: impl Into<SharedString>) -> Self {
         self.inner = self.inner.tooltip(tooltip);
         self

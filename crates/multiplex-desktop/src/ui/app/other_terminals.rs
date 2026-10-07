@@ -315,7 +315,7 @@ impl MultiplexApp {
                                     .label(localization::static_message(
                                         MessageId::OtherTerminalsCloseAction,
                                     ))
-                                    .disabled(self.other_terminals.stopping)
+                                    .loading(self.other_terminals.stopping)
                                     .on_click(cx.listener(
                                         |this, _, _, cx| this.confirm_other_terminal_close(cx),
                                     )),
