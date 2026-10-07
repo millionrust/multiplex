@@ -554,84 +554,73 @@ impl MultiplexApp {
     ) -> Option<AnyElement> {
         let pane = self.pane(self.other_terminals.drawer_pane?)?;
         Some(
-            div()
-                .absolute()
-                .inset_0()
-                .flex()
-                .justify_end()
-                .bg(theme::modal_scrim())
-                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .on_mouse_down(gpui::MouseButton::Right, |_, _, cx| cx.stop_propagation())
+            v_flex()
+                .id("session-terminal-drawer")
+                .debug_selector(|| "session-terminal-drawer".into())
+                .w_full()
+                .max_w(px(theme::DIALOG_WIDE_WIDTH))
+                .flex_shrink_0()
+                .h_full()
+                .bg(theme::terminal_bg())
+                .border_l_1()
+                .border_color(theme::border())
                 .child(
-                    v_flex()
-                        .id("session-terminal-drawer")
-                        .debug_selector(|| "session-terminal-drawer".into())
-                        .w(px(theme::DIALOG_WIDE_WIDTH))
-                        .max_w_full()
-                        .h_full()
-                        .bg(theme::terminal_bg())
-                        .shadow(theme::popover_shadow())
-                        .child(
-                            h_flex()
-                                .p(px(theme::SPACE_3))
-                                .gap(px(theme::SPACE_3))
-                                .items_center()
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .min_w_0()
-                                        .truncate()
-                                        .child(pane.title.clone()),
-                                )
-                                .child(
-                                    Self::design_button(
-                                        "session-drawer-open-tab",
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    )
-                                    .debug_selector(|| "session-drawer-open-tab".into())
-                                    .label(localization::static_message(
-                                        MessageId::SessionDrawerOpenTab,
-                                    ))
-                                    .on_click(cx.listener(
-                                        |this, _, window, cx| {
-                                            let Some(id) = this.other_terminals.drawer_pane.take()
-                                            else {
-                                                return;
-                                            };
-                                            if this.pane_workspace_id(id).is_some() {
-                                                this.move_pane_to_new_workspace(id, window, cx);
-                                            } else if let Some(request) =
-                                                this.pane(id).map(|pane| pane.request.clone())
-                                            {
-                                                this.open_spawned_pane_workspace(&request, id);
-                                                this.activate_pane(id, window, cx);
-                                            }
-                                            this.sync_terminal_layout(window, cx);
-                                            this.persist_runtime_state();
-                                            cx.notify();
-                                        },
-                                    )),
-                                )
-                                .child(
-                                    Self::design_button(
-                                        "session-drawer-close",
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    )
-                                    .debug_selector(|| "session-drawer-close".into())
-                                    .label(localization::common_close())
-                                    .on_click(
-                                        cx.listener(|this, _, _, cx| this.close_session_drawer(cx)),
-                                    ),
-                                ),
-                        )
+                    h_flex()
+                        .p(px(theme::SPACE_3))
+                        .gap(px(theme::SPACE_3))
+                        .items_center()
                         .child(
                             div()
                                 .flex_1()
-                                .min_h_0()
-                                .child(self.render_terminal_pane(pane, window, cx)),
+                                .min_w_0()
+                                .truncate()
+                                .child(pane.title.clone()),
+                        )
+                        .child(
+                            Self::design_button(
+                                "session-drawer-open-tab",
+                                theme::ActionTone::Neutral,
+                                cx,
+                            )
+                            .debug_selector(|| "session-drawer-open-tab".into())
+                            .label(localization::static_message(
+                                MessageId::SessionDrawerOpenTab,
+                            ))
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
+                                    let Some(id) = this.other_terminals.drawer_pane.take() else {
+                                        return;
+                                    };
+                                    if this.pane_workspace_id(id).is_some() {
+                                        this.move_pane_to_new_workspace(id, window, cx);
+                                    } else if let Some(request) =
+                                        this.pane(id).map(|pane| pane.request.clone())
+                                    {
+                                        this.open_spawned_pane_workspace(&request, id);
+                                        this.activate_pane(id, window, cx);
+                                    }
+                                    this.sync_terminal_layout(window, cx);
+                                    this.persist_runtime_state();
+                                    cx.notify();
+                                },
+                            )),
+                        )
+                        .child(
+                            Self::design_button(
+                                "session-drawer-close",
+                                theme::ActionTone::Neutral,
+                                cx,
+                            )
+                            .debug_selector(|| "session-drawer-close".into())
+                            .label(localization::common_close())
+                            .on_click(cx.listener(|this, _, _, cx| this.close_session_drawer(cx))),
                         ),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_h_0()
+                        .child(self.render_terminal_pane(pane, window, cx)),
                 )
                 .into_any_element(),
         )

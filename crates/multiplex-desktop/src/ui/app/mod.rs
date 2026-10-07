@@ -13519,6 +13519,8 @@ impl Render for MultiplexApp {
             self.render_library_shell(window, cx).into_any_element()
         };
 
+        let session_drawer = self.render_session_drawer(window, cx);
+
         div()
             .id("app-root")
             .size_full()
@@ -13582,14 +13584,29 @@ impl Render for MultiplexApp {
                             })
                             .child(
                                 div()
+                                    .id("workspace-content")
+                                    .debug_selector(|| "workspace-content".into())
                                     .flex_1()
                                     .min_w_0()
                                     .min_h_0()
                                     .h_full()
                                     .flex()
                                     .flex_col()
+                                    .overflow_hidden()
                                     .child(content),
-                            ),
+                            )
+                            .when_some(session_drawer, |this, drawer| {
+                                this.child(
+                                    div()
+                                        .w(gpui::relative(0.5))
+                                        .max_w(px(theme::DIALOG_WIDE_WIDTH))
+                                        .flex_shrink_0()
+                                        .h_full()
+                                        .min_w_0()
+                                        .overflow_hidden()
+                                        .child(drawer),
+                                )
+                            }),
                     ),
             )
             .when(
@@ -13609,9 +13626,6 @@ impl Render for MultiplexApp {
             })
             .when_some(self.pane_context_menu, |this, (pane_id, position)| {
                 this.child(self.render_pane_context_menu_layer(pane_id, position, cx))
-            })
-            .when_some(self.render_session_drawer(window, cx), |this, drawer| {
-                this.child(drawer)
             })
             .when_some(
                 self.render_other_terminal_close_dialog(cx),
@@ -31071,7 +31085,16 @@ sleep 1
         let open = selector_click_center(window, cx, "other-terminal-open-0");
         visual.simulate_click(open, gpui::Modifiers::none());
         visual.run_until_parked();
-        assert!(visual.debug_bounds("session-terminal-drawer").is_some());
+        let drawer = visual.debug_bounds("session-terminal-drawer").unwrap();
+        let content = visual.debug_bounds("workspace-content").unwrap();
+        assert!(
+            content.origin.x + content.size.width <= drawer.origin.x,
+            "the drawer must push the page aside rather than overlap it"
+        );
+        assert_eq!(
+            drawer.origin.y, content.origin.y,
+            "chrome remains above the drawer"
+        );
         app.read_with(cx, |app, _| {
             assert!(
                 app.workspaces.is_empty(),
