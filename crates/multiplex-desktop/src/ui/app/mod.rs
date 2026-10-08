@@ -31081,7 +31081,8 @@ sleep 1
             let pending = app.other_terminals.close_pending.as_ref().unwrap();
             assert_eq!(pending.title, "first terminal");
             let expected = crate::models::local_console_session_id(&app.pane(first_pane).unwrap().request).unwrap();
-            assert!(matches!(pending.kind, super::other_terminals::OtherTerminalKind::Console { session_id, .. } if session_id == expected));
+            assert!(matches!(&pending.kind, super::other_terminals::OtherTerminalKind::Console { session_id, runtime_root, .. }
+                if *session_id == expected && *runtime_root == crate::controller_runtime_parent(&crate::storage::app_dir().unwrap()).join(expected.to_string())));
             assert!(app.other_terminals.stopping, "killing must start without confirmation");
             assert!(app.other_terminals.force_stopping);
         })).unwrap();

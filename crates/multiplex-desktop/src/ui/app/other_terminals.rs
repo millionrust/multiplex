@@ -459,7 +459,7 @@ impl MultiplexApp {
             return Some(OtherTerminalKind::Console {
                 session_id: id,
                 session_dir: app_root.join("console-sessions").join(id.to_string()),
-                runtime_root: crate::controller_runtime_parent(&app_root),
+                runtime_root: crate::controller_runtime_parent(&app_root).join(id.to_string()),
             });
         }
         let id = pane.app_attached.as_ref()?.hosted_session_id;
@@ -506,13 +506,10 @@ impl MultiplexApp {
                 .background_executor()
                 .spawn(async move { stop_other_terminal(&kind, mode) })
                 .await;
-            let refreshed = if stopped.is_ok() {
-                cx.background_executor()
-                    .spawn(async { read_other_terminals(crate::storage::app_dir().ok()) })
-                    .await
-            } else {
-                Vec::new()
-            };
+            let refreshed = cx
+                .background_executor()
+                .spawn(async { read_other_terminals(crate::storage::app_dir().ok()) })
+                .await;
             let _ = this.update(cx, |app, cx| {
                 app.other_terminals.stopping = false;
                 app.other_terminals.force_stopping = false;
@@ -544,6 +541,10 @@ impl MultiplexApp {
                     app.status_message =
                         localization::static_message(MessageId::OtherTerminalsClosed);
                 } else {
+                    app.other_terminals.terminals = refreshed;
+                    if mode == multiplex_host_protocol::wire::StopMode::Force {
+                        app.other_terminals.close_pending = None;
+                    }
                     app.error_message =
                         localization::static_message(MessageId::OtherTerminalsCloseFailed);
                 }
@@ -947,6 +948,19 @@ fn preview_lines(terminal: &crate::terminal::TerminalState) -> Vec<String> {
     lines
 }
 
+/// A stop acknowledgement can race with the Host exiting and closing its endpoint.
+/// Only a matching terminal's recorded exit counts as success; an unreachable live
+/// Host or a replacement Host must remain an error.
+fn terminal_has_exited(session_dir: &std::path::Path, session_id: HostedSessionId) -> bool {
+    multiplex_store::read_host_metadata(session_dir).is_ok_and(|metadata| {
+        metadata.session_id == session_id
+            && matches!(
+                metadata.lifecycle,
+                multiplex_domain::HostLifecycle::Exited | multiplex_domain::HostLifecycle::Failed
+            )
+    })
+}
+
 fn stop_other_terminal(
     kind: &OtherTerminalKind,
     mode: multiplex_host_protocol::wire::StopMode,
@@ -963,6 +977,9 @@ fn stop_other_terminal(
     else {
         return Err(());
     };
+    if terminal_has_exited(session_dir, *session_id) {
+        return Ok(());
+    }
     let expected = multiplex_store::read_host_metadata(session_dir)
         .map_err(|_| ())?
         .host_instance_id;
@@ -970,7 +987,7 @@ fn stop_other_terminal(
         .enable_all()
         .build()
         .map_err(|_| ())?;
-    runtime.block_on(async {
+    let result = runtime.block_on(async {
         tokio::time::timeout(std::time::Duration::from_secs(8), async {
             let cancel = CancellationToken::new();
             let mut nonce = [0; 32];
@@ -994,7 +1011,12 @@ fn stop_other_terminal(
         })
         .await
         .map_err(|_| ())?
-    })
+    });
+    if result.is_err() && terminal_has_exited(session_dir, *session_id) {
+        Ok(())
+    } else {
+        result
+    }
 }
 
 #[cfg(test)]
@@ -1101,6 +1123,11 @@ mod tests {
             .unwrap()
             .unwrap();
         host.wait().await.unwrap();
+        let already_closed = kind.clone();
+        tokio::task::spawn_blocking(move || super::stop_other_terminal(&already_closed, mode))
+            .await
+            .unwrap()
+            .expect("closing an already-exited terminal must succeed");
         if force {
             assert!(
                 started.elapsed() < std::time::Duration::from_secs(2),
