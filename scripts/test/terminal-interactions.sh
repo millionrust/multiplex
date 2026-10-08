@@ -6,7 +6,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 cargo build -p multiplex-cli -p multiplex-session-host --bins --locked
 cargo nextest run -p multiplex --bin multiplex --locked --no-fail-fast -E '
     test(ui::keys::) | test(terminal::tests::) |
-    test(e2e_vim_) | test(e2e_shell_history_) | test(e2e_terminal_links_) |
+    test(e2e_status_bar_layout_) | test(e2e_vim_) | test(e2e_shell_history_) | test(e2e_terminal_links_) |
     test(e2e_copy_on_select_) | test(e2e_pane_context_menu_click_) |
     test(e2e_canvas_terminal_clipboard_) | test(e2e_canvas_mouse_reporting_) |
     test(e2e_workspace_tab_click_) | test(e2e_tab_rename_saves_) |

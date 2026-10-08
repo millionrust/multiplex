@@ -31110,6 +31110,30 @@ sleep 1
         );
     }
 
+    #[gpui::test]
+    fn e2e_status_bar_layout_buttons_remain_clickable_with_window_drag(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_local_terminal(window, cx);
+                })
+            })
+            .unwrap();
+        for (selector, mode) in [
+            ("workspace-layout-canvas", WorkspaceLayoutMode::Canvas),
+            ("workspace-layout-split", WorkspaceLayoutMode::Split),
+        ] {
+            let click = selector_click_center(window, cx, selector);
+            VisualTestContext::from_window(window.into(), cx)
+                .simulate_click(click, gpui::Modifiers::none());
+            app.read_with(cx, |app, _| {
+                assert_eq!(app.active_workspace().unwrap().layout_mode, mode)
+            });
+        }
+    }
+
     #[cfg(unix)]
     #[gpui::test]
     fn e2e_terminal_links_click_opens_browser(cx: &mut TestAppContext) {

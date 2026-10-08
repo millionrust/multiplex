@@ -1804,6 +1804,17 @@ impl MultiplexApp {
             .bg(theme::terminal_panel())
             .text_size(px(theme::TYPE_CAPTION_SIZE))
             .text_color(theme::text_muted_dark())
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    this.apply_workspace_rename(cx);
+                    if event.click_count == 1 {
+                        crate::platform_mac::start_window_drag(cx);
+                        window.start_window_move();
+                    }
+                    cx.stop_propagation();
+                }),
+            )
             .when_some(self.active_pane(), |bar, pane| {
                 bar.child(
                     h_flex()
@@ -1835,6 +1846,8 @@ impl MultiplexApp {
             })
             .child(
                 h_flex()
+                    // Status-bar buttons must retain clicks instead of starting a window drag.
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .flex_shrink_0()
                     .items_center()
                     .gap(px(theme::SPACE_MICRO))
