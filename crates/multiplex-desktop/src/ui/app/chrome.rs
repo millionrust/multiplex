@@ -594,6 +594,10 @@ impl MultiplexApp {
         match cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
+                window_min_size: Some(size(
+                    px(theme::WINDOW_MINIMUM_WIDTH),
+                    px(theme::WINDOW_MINIMUM_HEIGHT),
+                )),
                 is_movable: !cfg!(target_os = "macos"),
                 titlebar: Some(TitlebarOptions {
                     title: Some(localization::shell_app_title().into()),

@@ -590,6 +590,9 @@ pub const SEGMENT_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
 pub const SECURITY_DIALOG_MAXIMUM: f32 = DesignTokens::new(ThemeKind::System)
     .layout_security_dialog_maximum()
     .0;
+pub const WINDOW_MINIMUM_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_window_minimum_width()
+    .0;
 pub const WINDOW_MINIMUM_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
     .layout_window_minimum_height()
     .0;

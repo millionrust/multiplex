@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "599e318c45920eec85235207403c8342ec965bf5f16d817dc6d34bc506d75590",
+  "sourceSha256": "bcf92dd46b98b61ddb803580dfd8cb32a4c6493b3fc39c61d7641b5f70c5f51c",
   "statuses": [
     {
       "color": "color.status.attention",
@@ -2224,31 +2224,31 @@
       }
     },
     {
-      "allowedUse": "Window constraints after responsive migration.",
+      "allowedUse": "Main and additional desktop window constraints.",
       "category": "dimension",
       "description": "Responsive desktop minimum window height target.",
       "key": "layout.window.minimum_height",
       "reducedMotion": null,
       "values": {
-        "dark": "640",
-        "high_contrast": "640",
-        "light": "640",
-        "recording_friendly": "640",
-        "system": "640"
+        "dark": "240",
+        "high_contrast": "240",
+        "light": "240",
+        "recording_friendly": "240",
+        "system": "240"
       }
     },
     {
-      "allowedUse": "Window constraints after responsive migration.",
+      "allowedUse": "Main and additional desktop window constraints.",
       "category": "dimension",
       "description": "Responsive desktop minimum window width target.",
       "key": "layout.window.minimum_width",
       "reducedMotion": null,
       "values": {
-        "dark": "960",
-        "high_contrast": "960",
-        "light": "960",
-        "recording_friendly": "960",
-        "system": "960"
+        "dark": "360",
+        "high_contrast": "360",
+        "light": "360",
+        "recording_friendly": "360",
+        "system": "360"
       }
     },
     {

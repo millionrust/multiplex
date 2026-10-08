@@ -581,15 +581,15 @@ values = { system = "420", light = "420", dark = "420", high_contrast = "420", r
 key = "layout.window.minimum_width"
 category = "dimension"
 description = "Responsive desktop minimum window width target."
-allowed_use = "Window constraints after responsive migration."
-values = { system = "960", light = "960", dark = "960", high_contrast = "960", recording_friendly = "960" }
+allowed_use = "Main and additional desktop window constraints."
+values = { system = "360", light = "360", dark = "360", high_contrast = "360", recording_friendly = "360" }
 
 [[tokens]]
 key = "layout.window.minimum_height"
 category = "dimension"
 description = "Responsive desktop minimum window height target."
-allowed_use = "Window constraints after responsive migration."
-values = { system = "640", light = "640", dark = "640", high_contrast = "640", recording_friendly = "640" }
+allowed_use = "Main and additional desktop window constraints."
+values = { system = "240", light = "240", dark = "240", high_contrast = "240", recording_friendly = "240" }
 
 [[tokens]]
 key = "layout.window.default_width"
