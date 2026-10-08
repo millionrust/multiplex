@@ -548,6 +548,56 @@ impl TerminalState {
         Some(self.line_text(self.visible_line(row)))
     }
 
+    /// Resolve explicit OSC 8 links or printed HTTP(S) URLs at a visible cell.
+    /// Grid columns, rather than string offsets, keep hits correct after wide text.
+    pub fn browser_url_at(&self, row: u16, col: u16) -> Option<String> {
+        let grid = self.term.grid();
+        if usize::from(row) >= grid.screen_lines() || usize::from(col) >= grid.columns() {
+            return None;
+        }
+        let line = self.visible_line(row);
+        let cell = &grid[line][Column(usize::from(col))];
+        if let Some(link) = cell.hyperlink() {
+            return browser_url(link.uri());
+        }
+        let last = Column(grid.columns().saturating_sub(1));
+        let mut first = line.0;
+        let top = -(grid.history_size() as i32);
+        while first > top
+            && line.0 - first < 64
+            && grid[Line(first - 1)][last].flags.contains(Flags::WRAPLINE)
+        {
+            first -= 1;
+        }
+        let mut text = String::new();
+        let mut hit = None;
+        let mut current = first;
+        loop {
+            for column in 0..grid.columns() {
+                let cell = &grid[Line(current)][Column(column)];
+                if current == line.0 && column == usize::from(col) {
+                    hit = Some(text.len());
+                }
+                if cell
+                    .flags
+                    .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
+                {
+                    continue;
+                }
+                text.push(cell.c);
+                text.extend(cell.zerowidth().into_iter().flatten());
+            }
+            if current >= grid.screen_lines() as i32 - 1
+                || current - first >= 64
+                || !grid[Line(current)][last].flags.contains(Flags::WRAPLINE)
+            {
+                break;
+            }
+            current += 1;
+        }
+        printed_browser_url_at(&text, hit?)
+    }
+
     /// Every row of history followed by the live screen, without trailing blanks.
     pub fn all_rows_text(&self) -> Vec<String> {
         let grid = self.term.grid();
@@ -918,8 +968,78 @@ fn rgb_color(r: u8, g: u8, b: u8) -> Hsla {
     hex_color(((r as u32) << 16) | ((g as u32) << 8) | (b as u32))
 }
 
+fn browser_url(value: &str) -> Option<String> {
+    let url = reqwest::Url::parse(value).ok()?;
+    (matches!(url.scheme(), "http" | "https") && url.host_str().is_some()).then(|| value.to_owned())
+}
+
+fn printed_browser_url_at(text: &str, hit: usize) -> Option<String> {
+    let boundary = |ch: char| ch.is_whitespace() || matches!(ch, '\'' | '"' | '<' | '>');
+    let start = text[..hit]
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| boundary(*ch))
+        .map_or(0, |(index, ch)| index + ch.len_utf8());
+    let end = text[hit..]
+        .char_indices()
+        .find(|(_, ch)| boundary(*ch))
+        .map_or(text.len(), |(index, _)| hit + index);
+    let token = &text[start..end];
+    let offset = token.find("https://").or_else(|| token.find("http://"))?;
+    let mut candidate = token[offset..].trim_end_matches(['.', ',', ';', '!']);
+    for (open, close) in [('(', ')'), ('[', ']'), ('{', '}')] {
+        while candidate.ends_with(close)
+            && candidate.matches(close).count() > candidate.matches(open).count()
+        {
+            candidate = &candidate[..candidate.len() - close.len_utf8()];
+        }
+    }
+    (hit >= start + offset && hit < start + offset + candidate.len())
+        .then(|| browser_url(candidate))
+        .flatten()
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn browser_links_resolve_wrapped_urls_and_wide_text() {
+        let mut terminal = super::TerminalState::new(super::TerminalSize::new(18, 5, 0, 0), 100);
+        terminal.process_bytes("你好 https://example.com/long/path\r\n".as_bytes());
+        assert_eq!(
+            terminal.browser_url_at(0, 8).as_deref(),
+            Some("https://example.com/long/path")
+        );
+        assert_eq!(
+            terminal.browser_url_at(1, 4).as_deref(),
+            Some("https://example.com/long/path")
+        );
+        assert_eq!(terminal.browser_url_at(0, 0), None);
+    }
+
+    #[test]
+    fn browser_links_support_osc8_labels_and_reject_non_browser_schemes() {
+        let mut terminal = super::TerminalState::new(super::TerminalSize::new(80, 5, 0, 0), 100);
+        terminal.process_bytes(b"\x1b]8;;https://example.com/docs\x1b\\Read docs\x1b]8;;\x1b\\\r\n\x1b]8;;file:///tmp/private\x1b\\File\x1b]8;;\x1b\\");
+        assert_eq!(
+            terminal.browser_url_at(0, 3).as_deref(),
+            Some("https://example.com/docs")
+        );
+        assert_eq!(terminal.browser_url_at(1, 1), None);
+    }
+
+    #[test]
+    fn browser_links_exclude_surrounding_punctuation_and_non_links() {
+        let mut terminal = super::TerminalState::new(super::TerminalSize::new(80, 5, 0, 0), 100);
+        terminal.process_bytes(b"(https://example.com/docs). javascript:alert(1)");
+        assert_eq!(
+            terminal.browser_url_at(0, 5).as_deref(),
+            Some("https://example.com/docs")
+        );
+        assert_eq!(terminal.browser_url_at(0, 0), None);
+        assert_eq!(terminal.browser_url_at(0, 25), None);
+        assert_eq!(terminal.browser_url_at(0, 30), None);
+    }
+
     #[test]
     fn captured_selection_keeps_unicode_and_wrapped_text_while_output_changes() {
         let mut terminal = super::TerminalState::new(super::TerminalSize::new(4, 3, 0, 0), 20);

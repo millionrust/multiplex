@@ -11003,7 +11003,20 @@ impl MultiplexApp {
         let input_authorized = self
             .pane(pane_id)
             .is_some_and(SessionPane::input_authorized);
-        if input_authorized && !event.modifiers.shift && self.pane_uses_mouse_reporting(pane_id) {
+        let clicked_link = event.button == MouseButton::Left
+            && self
+                .mouse_cell_position(pane_id, event.position, window, cx)
+                .and_then(|pos| {
+                    self.pane(pane_id)?
+                        .terminal
+                        .browser_url_at(pos.row, pos.col)
+                })
+                .is_some();
+        if input_authorized
+            && !event.modifiers.shift
+            && !clicked_link
+            && self.pane_uses_mouse_reporting(pane_id)
+        {
             if let Some(data) = self.mouse_report_bytes(
                 pane_id,
                 event.position,
@@ -11118,6 +11131,26 @@ impl MultiplexApp {
                 let _ = self.send_input_bytes(pane_id, data, cx);
             }
             return;
+        }
+
+        let clicked_url = if event.button == MouseButton::Left
+            && event.click_count == 1
+            && !event.modifiers.shift
+        {
+            self.pane(pane_id).and_then(|pane| {
+                let selection = pane.selection?;
+                let released = self.mouse_cell_position(pane_id, event.position, window, cx)?;
+                (selection.anchor == selection.head
+                    && released.row == selection.anchor.row
+                    && released.col == selection.anchor.col)
+                    .then(|| pane.terminal.browser_url_at(released.row, released.col))
+                    .flatten()
+            })
+        } else {
+            None
+        };
+        if let Some(url) = clicked_url {
+            cx.open_url(&url);
         }
 
         let copy_on_select = self.saved.settings.copy_on_select;
@@ -31075,6 +31108,84 @@ sleep 1
             multiplex_store::read_console_session(&dir).unwrap().title(),
             "Latest rename"
         );
+    }
+
+    #[cfg(unix)]
+    #[gpui::test]
+    fn e2e_terminal_links_click_opens_browser(cx: &mut TestAppContext) {
+        run_terminal_link_click(cx, false);
+    }
+
+    #[cfg(unix)]
+    #[gpui::test]
+    fn e2e_terminal_links_drag_selects_without_opening_browser(cx: &mut TestAppContext) {
+        run_terminal_link_click(cx, true);
+    }
+
+    #[cfg(unix)]
+    fn run_terminal_link_click(cx: &mut TestAppContext, drag: bool) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let (_, pane_id) = window.update(cx, |_, window, cx| app.update(cx, |app, cx| {
+            app.open_request_workspace(ConnectRequest::local_shell_with_config(0, LocalShellConfig {
+                program: "/bin/bash".into(),
+                args: vec!["-c".into(), "printf 'https://example.com/docs\\r\\n'; exec /bin/bash --noprofile --norc -i".into()],
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            }), window, cx).unwrap()
+        })).unwrap();
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            (pane.connected
+                && pane
+                    .terminal
+                    .all_rows_text()
+                    .join("\n")
+                    .contains("https://example.com/docs"))
+            .then_some(())
+        });
+        wait_for_quiet_pane(cx, &app, pane_id);
+        VisualTestContext::from_window(window.into(), cx).run_until_parked();
+        let click = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let pane = app.pane(pane_id).unwrap();
+                    let row = (0..pane.terminal.size().rows)
+                        .find(|row| pane.terminal.browser_url_at(*row, 3).is_some())
+                        .unwrap();
+                    let layout = app.pane_layout_for(pane_id, window, cx).unwrap();
+                    point(
+                        px(layout.cell_x + layout.char_width * 3.5),
+                        px(layout.cell_y + layout.line_height * (f32::from(row) + 0.5)),
+                    )
+                })
+            })
+            .unwrap();
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        if drag {
+            let end = click + point(px(70.), px(0.));
+            visual.simulate_mouse_down(click, MouseButton::Left, gpui::Modifiers::none());
+            visual.simulate_mouse_move(end, Some(MouseButton::Left), gpui::Modifiers::none());
+            visual.simulate_mouse_up(end, MouseButton::Left, gpui::Modifiers::none());
+            assert!(cx.opened_url().is_none());
+            app.read_with(cx, |app, _| {
+                assert!(app.pane(pane_id).unwrap().selection.is_some())
+            });
+        } else {
+            visual.simulate_click(click, gpui::Modifiers::none());
+            assert_eq!(cx.opened_url().as_deref(), Some("https://example.com/docs"));
+        }
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.send_input_bytes_broadcast(pane_id, b"exit\r".to_vec(), cx));
+                })
+            })
+            .unwrap();
+        wait_for_app_state(cx, &app, Duration::from_secs(5), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.closed)
+                .then_some(())
+        });
     }
 
     #[cfg(unix)]
