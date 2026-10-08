@@ -2656,6 +2656,14 @@ browser-terminal-title = Browser terminal access
 browser-terminal-description = View and control Multiplex terminals in browsers on this computer or your LAN/Tailscale devices. Enable the server, copy a link, and paste its access code.
 browser-terminal-off = Off
 browser-terminal-on = On
-browser-terminal-copy-code = Copy browser access code
+browser-terminal-copy-code = Copy access code
 browser-terminal-start-failed = Could not start the browser terminal server.
-browser-terminal-copy-link = Copy browser viewer link
+browser-terminal-copy-link = Copy link
+
+browser-terminal-local-link = On this computer
+browser-terminal-open = Open browser
+browser-terminal-access-code = Access code
+browser-terminal-code-hint = Paste this code into the browser sign-in page. A new code is created each time you turn the server on.
+browser-terminal-network-links = On other devices · LAN / Tailscale
+browser-terminal-link-copied = Browser link copied.
+browser-terminal-code-copied = Browser access code copied.

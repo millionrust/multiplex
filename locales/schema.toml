@@ -12346,35 +12346,70 @@ description = "Stop the terminal in the clicked tab after confirmation."
 
 [[messages]]
 id = "browser-terminal-title"
-context = "Opt-in embedded browser terminal server controls."
-description = "Browser terminal access control"
+context = "Browser access."
+description = "Viewer."
 
 [[messages]]
 id = "browser-terminal-description"
-context = "Opt-in embedded browser terminal server controls."
-description = "Browser terminal access control"
+context = "Browser access."
+description = "Viewer."
 
 [[messages]]
 id = "browser-terminal-off"
-context = "Opt-in embedded browser terminal server controls."
-description = "Browser terminal access control"
+context = "Browser access."
+description = "Viewer."
 
 [[messages]]
 id = "browser-terminal-on"
-context = "Opt-in embedded browser terminal server controls."
-description = "Browser terminal access control"
+context = "Browser access."
+description = "Viewer."
 
 [[messages]]
 id = "browser-terminal-copy-code"
-context = "Opt-in embedded browser terminal server controls."
-description = "Browser terminal access control"
+context = "Browser access."
+description = "Viewer."
 
 [[messages]]
 id = "browser-terminal-start-failed"
-context = "Opt-in embedded browser terminal server controls."
-description = "Browser terminal access control"
+context = "Browser access."
+description = "Viewer."
 
 [[messages]]
 id = "browser-terminal-copy-link"
-context = "Copy private-network browser terminal viewer URL."
-description = "Copy browser viewer link"
+context = "Browser access."
+description = "Viewer."
+
+[[messages]]
+id = "browser-terminal-local-link"
+context = "Browser access."
+description = "Viewer."
+
+[[messages]]
+id = "browser-terminal-open"
+context = "Browser access."
+description = "Viewer."
+
+[[messages]]
+id = "browser-terminal-access-code"
+context = "Browser access."
+description = "Viewer."
+
+[[messages]]
+id = "browser-terminal-code-hint"
+context = "Browser access."
+description = "Viewer."
+
+[[messages]]
+id = "browser-terminal-network-links"
+context = "Browser access."
+description = "Viewer."
+
+[[messages]]
+id = "browser-terminal-link-copied"
+context = "Browser access."
+description = "Viewer."
+
+[[messages]]
+id = "browser-terminal-code-copied"
+context = "Browser access."
+description = "Viewer."

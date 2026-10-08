@@ -1108,7 +1108,114 @@ impl MultiplexApp {
                     let code = server.access_code.clone();
                     let open_url = url.clone();
                     let copied_url = url.clone();
-                    this.children(
+                    this.child(
+                        v_flex()
+                            .gap(px(theme::SPACE_2))
+                            .child(
+                                div()
+                                    .font_medium()
+                                    .child(message(MessageId::BrowserTerminalLocalLink)),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap(px(theme::SPACE_3))
+                                    .items_center()
+                                    .child(div().flex_1().min_w_0().truncate().child(url))
+                                    .child(
+                                        Self::design_button(
+                                            "browser-terminal-open",
+                                            theme::ActionTone::Accent,
+                                            cx,
+                                        )
+                                        .icon(IconName::ExternalLink)
+                                        .label(message(MessageId::BrowserTerminalOpen))
+                                        .on_click(move |_, _, cx| cx.open_url(&open_url)),
+                                    )
+                                    .child(
+                                        Self::design_button(
+                                            "browser-terminal-copy-local-link",
+                                            theme::ActionTone::Neutral,
+                                            cx,
+                                        )
+                                        .icon(IconName::Copy)
+                                        .label(message(MessageId::BrowserTerminalCopyLink))
+                                        .on_click(
+                                            cx.listener(move |this, _, _, cx| {
+                                                cx.write_to_clipboard(ClipboardItem::new_string(
+                                                    copied_url.clone(),
+                                                ));
+                                                this.status_message = localization::static_message(
+                                                    MessageId::BrowserTerminalLinkCopied,
+                                                );
+                                                cx.notify();
+                                            }),
+                                        ),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .gap(px(theme::SPACE_2))
+                            .child(
+                                div()
+                                    .font_medium()
+                                    .child(message(MessageId::BrowserTerminalAccessCode)),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap(px(theme::SPACE_3))
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .font_family(
+                                                theme::current_design_tokens().font_mono_family().0,
+                                            )
+                                            .child(server.access_code.clone()),
+                                    )
+                                    .child(
+                                        Self::design_button(
+                                            "browser-terminal-copy-code",
+                                            theme::ActionTone::Neutral,
+                                            cx,
+                                        )
+                                        .icon(IconName::Copy)
+                                        .label(message(MessageId::BrowserTerminalCopyCode))
+                                        .on_click(
+                                            cx.listener(move |this, _, _, cx| {
+                                                cx.write_to_clipboard(ClipboardItem::new_string(
+                                                    code.clone(),
+                                                ));
+                                                this.status_message = localization::static_message(
+                                                    MessageId::BrowserTerminalCodeCopied,
+                                                );
+                                                cx.notify();
+                                            }),
+                                        ),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(message(MessageId::BrowserTerminalCodeHint)),
+                            ),
+                    )
+                    .when(
+                        server
+                            .addresses
+                            .iter()
+                            .any(|address| !address.ip().is_loopback()),
+                        |this| {
+                            this.child(
+                                div()
+                                    .font_medium()
+                                    .child(message(MessageId::BrowserTerminalNetworkLinks)),
+                            )
+                        },
+                    )
+                    .children(
                         server
                             .addresses
                             .iter()
@@ -1128,58 +1235,20 @@ impl MultiplexApp {
                                             cx,
                                         )
                                         .icon(IconName::Copy)
-                                        .tooltip(message(MessageId::BrowserTerminalCopyLink))
+                                        .label(message(MessageId::BrowserTerminalCopyLink))
                                         .on_click(
-                                            move |_, _, cx| {
+                                            cx.listener(move |this, _, _, cx| {
                                                 cx.write_to_clipboard(ClipboardItem::new_string(
                                                     copied.clone(),
-                                                ))
-                                            },
+                                                ));
+                                                this.status_message = localization::static_message(
+                                                    MessageId::BrowserTerminalLinkCopied,
+                                                );
+                                                cx.notify();
+                                            }),
                                         ),
                                     )
                             }),
-                    )
-                    .child(
-                        h_flex()
-                            .gap(px(theme::SPACE_3))
-                            .items_center()
-                            .child(div().flex_1().min_w_0().truncate().child(url))
-                            .child(
-                                Self::design_button(
-                                    "browser-terminal-open",
-                                    theme::ActionTone::Neutral,
-                                    cx,
-                                )
-                                .icon(IconName::ExternalLink)
-                                .tooltip(localization::common_open())
-                                .on_click(move |_, _, cx| cx.open_url(&open_url)),
-                            )
-                            .child(
-                                Self::design_button(
-                                    "browser-terminal-copy-local-link",
-                                    theme::ActionTone::Neutral,
-                                    cx,
-                                )
-                                .icon(IconName::Copy)
-                                .tooltip(message(MessageId::BrowserTerminalCopyLink))
-                                .on_click(move |_, _, cx| {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(
-                                        copied_url.clone(),
-                                    ))
-                                }),
-                            )
-                            .child(
-                                Self::design_button(
-                                    "browser-terminal-copy-code",
-                                    theme::ActionTone::Neutral,
-                                    cx,
-                                )
-                                .icon(IconName::Copy)
-                                .tooltip(message(MessageId::BrowserTerminalCopyCode))
-                                .on_click(move |_, _, cx| {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(code.clone()))
-                                }),
-                            ),
                     )
                 },
             )
