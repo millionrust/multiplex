@@ -31186,7 +31186,7 @@ sleep 1
             .unwrap();
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         if drag {
-            let end = click + point(px(70.), px(0.));
+            let end = click + point(px(crate::ui::theme::SPACE_9), gpui::Pixels::ZERO);
             visual.simulate_mouse_down(click, MouseButton::Left, gpui::Modifiers::none());
             visual.simulate_mouse_move(end, Some(MouseButton::Left), gpui::Modifiers::none());
             visual.simulate_mouse_up(end, MouseButton::Left, gpui::Modifiers::none());
@@ -31362,7 +31362,13 @@ sleep 1
                 .then_some(())
         });
         if narrow {
-            cx.simulate_window_resize(*window, size(px(360.), px(240.)));
+            cx.simulate_window_resize(
+                *window,
+                size(
+                    px(crate::ui::theme::WINDOW_MINIMUM_WIDTH),
+                    px(crate::ui::theme::WINDOW_MINIMUM_HEIGHT),
+                ),
+            );
             VisualTestContext::from_window(window.into(), cx).run_until_parked();
         }
         let press = |key: &str, cx: &mut TestAppContext| {
