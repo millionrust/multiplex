@@ -10800,6 +10800,18 @@ impl MultiplexApp {
             return false;
         }
 
+        // A literal pasted newline is understood by shells and editors that enable
+        // bracketed paste, without submitting their input. Other TUIs receive Shift+Enter.
+        if event.keystroke.key == "enter"
+            && event.keystroke.modifiers.shift
+            && !event.keystroke.modifiers.control
+            && !event.keystroke.modifiers.alt
+            && !event.keystroke.modifiers.platform
+            && pane.terminal.bracketed_paste()
+        {
+            return self.send_paste_bytes(pane_id, "\n".into(), cx);
+        }
+
         if event.keystroke.modifiers.shift {
             let rows = i32::from(pane.terminal.size().rows.max(1));
             match event.keystroke.key.as_str() {
@@ -31062,6 +31074,218 @@ sleep 1
         assert_eq!(
             multiplex_store::read_console_session(&dir).unwrap().title(),
             "Latest rename"
+        );
+    }
+
+    #[cfg(unix)]
+    #[gpui::test]
+    fn e2e_shell_history_arrows_execute_the_selected_command(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let fixture = tempfile::tempdir().unwrap();
+        let output = fixture.path().join("history.txt");
+        let (app, window) = open_test_app(cx);
+        let (_, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(
+                        ConnectRequest::local_shell_with_config(
+                            0,
+                            LocalShellConfig {
+                                program: "/bin/bash".into(),
+                                args: vec!["--noprofile".into(), "--norc".into(), "-i".into()],
+                                cwd: Some(fixture.path().display().to_string()),
+                            },
+                        ),
+                        window,
+                        cx,
+                    )
+                    .unwrap()
+                })
+            })
+            .unwrap();
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+        wait_for_quiet_pane(cx, &app, pane_id);
+        let press = |key: &str, cx: &mut TestAppContext| {
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        assert!(app.handle_terminal_key(
+                            pane_id,
+                            &KeyDownEvent {
+                                keystroke: Keystroke::parse(key).unwrap(),
+                                is_held: false
+                            },
+                            window,
+                            cx
+                        ));
+                    })
+                })
+                .unwrap();
+        };
+        for (value, expected) in [("one", "one\n"), ("two", "one\ntwo\n")] {
+            window
+                .update(cx, |_, _, cx| {
+                    app.update(cx, |app, cx| {
+                        assert!(app.send_input_bytes_broadcast(
+                            pane_id,
+                            format!("printf '{value}\\n' >> '{}'", output.display()).into_bytes(),
+                            cx
+                        ));
+                    })
+                })
+                .unwrap();
+            press("enter", cx);
+            wait_for_app_state(cx, &app, Duration::from_secs(5), |_| {
+                (std::fs::read_to_string(&output).ok().as_deref() == Some(expected)).then_some(())
+            });
+        }
+        press("up", cx);
+        press("enter", cx);
+        wait_for_app_state(cx, &app, Duration::from_secs(5), |_| {
+            (std::fs::read_to_string(&output).ok().as_deref() == Some("one\ntwo\ntwo\n"))
+                .then_some(())
+        });
+        for key in ["up", "up", "up", "enter"] {
+            press(key, cx);
+        }
+        wait_for_app_state(cx, &app, Duration::from_secs(5), |_| {
+            (std::fs::read_to_string(&output).ok().as_deref() == Some("one\ntwo\ntwo\none\n"))
+                .then_some(())
+        });
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.send_input_bytes_broadcast(pane_id, b"exit\r".to_vec(), cx));
+                })
+            })
+            .unwrap();
+        wait_for_app_state(cx, &app, Duration::from_secs(5), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.closed)
+                .then_some(())
+        });
+    }
+
+    // A real full-screen editor consumes input from the app's key handlers and
+    // writes the resulting document, so cursor/newline bugs cannot pass by merely
+    // making the terminal snapshot look correct.
+    #[cfg(unix)]
+    #[gpui::test]
+    fn e2e_vim_multiline_navigation_and_submit(cx: &mut TestAppContext) {
+        run_vim_keyboard_scenario(cx, false);
+    }
+
+    #[cfg(unix)]
+    #[gpui::test]
+    fn e2e_vim_navigation_after_narrow_resize(cx: &mut TestAppContext) {
+        run_vim_keyboard_scenario(cx, true);
+    }
+
+    #[cfg(unix)]
+    fn run_vim_keyboard_scenario(cx: &mut TestAppContext, narrow: bool) {
+        let _isolation = TestIsolation::acquire();
+        let editor = ["/usr/bin/vim", "/bin/vim"]
+            .into_iter()
+            .find(|path| std::path::Path::new(path).is_file())
+            .expect("the Unix terminal integration suite requires Vim");
+        let fixture = tempfile::tempdir().unwrap();
+        let document = fixture.path().join("edited.txt");
+        let (app, window) = open_test_app(cx);
+        let (_, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(
+                        ConnectRequest::local_shell_with_config(
+                            0,
+                            LocalShellConfig {
+                                program: editor.into(),
+                                args: vec![
+                                    "-Nu".into(),
+                                    "NONE".into(),
+                                    "-n".into(),
+                                    "-i".into(),
+                                    "NONE".into(),
+                                    document.display().to_string(),
+                                ],
+                                cwd: Some(fixture.path().display().to_string()),
+                            },
+                        ),
+                        window,
+                        cx,
+                    )
+                    .unwrap()
+                })
+            })
+            .unwrap();
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            (pane.connected && pane.terminal.alternate_screen() && pane.terminal.bracketed_paste())
+                .then_some(())
+        });
+        if narrow {
+            cx.simulate_window_resize(*window, size(px(360.), px(240.)));
+            VisualTestContext::from_window(window.into(), cx).run_until_parked();
+        }
+        let press = |key: &str, cx: &mut TestAppContext| {
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        let mut keystroke = Keystroke::parse(key).unwrap();
+                        if key.len() == 1 {
+                            keystroke.key_char = Some(key.into());
+                        }
+                        assert!(
+                            app.handle_terminal_key(
+                                pane_id,
+                                &KeyDownEvent {
+                                    keystroke,
+                                    is_held: false
+                                },
+                                window,
+                                cx
+                            ),
+                            "key {key}"
+                        );
+                    })
+                })
+                .unwrap();
+        };
+        press("i", cx);
+        for key in ["a", "l", "p", "h", "a"] {
+            press(key, cx);
+        }
+        press("shift-enter", cx);
+        for key in ["b", "e", "t", "a"] {
+            press(key, cx);
+        }
+        for key in [
+            "left", "left", "X", "delete", "home", "1", "up", "home", "2", "escape",
+        ] {
+            press(key, cx);
+        }
+        // Navigating the TUI must never open the shell autocomplete UI.
+        app.read_with(cx, |app, _| {
+            assert!(app.workspace_autocomplete_candidates().is_empty())
+        });
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.send_input_bytes_broadcast(pane_id, b":wq\r".to_vec(), cx));
+                })
+            })
+            .unwrap();
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.closed)
+                .then_some(())
+        });
+        assert_eq!(
+            std::fs::read_to_string(document).unwrap(),
+            "2alpha\n1beXa\n"
         );
     }
 

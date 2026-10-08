@@ -16,6 +16,28 @@ pub fn encode_terminal_key(
     modifiers: TerminalModifiers,
     application_cursor: bool,
 ) -> Option<Vec<u8>> {
+    // Modified Enter must remain distinguishable from submitting the current line.
+    if key == "enter" && modifiers.shift && !modifiers.control && !modifiers.alt {
+        return Some(b"\x1b[13;2u".to_vec());
+    }
+    let modifier = 1
+        + u8::from(modifiers.shift)
+        + 2 * u8::from(modifiers.alt)
+        + 4 * u8::from(modifiers.control);
+    if modifier > 1 {
+        let cursor = match key {
+            "up" => Some('A'),
+            "down" => Some('B'),
+            "right" => Some('C'),
+            "left" => Some('D'),
+            "home" => Some('H'),
+            "end" => Some('F'),
+            _ => None,
+        };
+        if let Some(final_byte) = cursor {
+            return Some(format!("\x1b[1;{modifier}{final_byte}").into_bytes());
+        }
+    }
     let mut bytes = if modifiers.control {
         vec![encode_control_char(key)?]
     } else {
@@ -949,5 +971,38 @@ mod tests {
             alternate_scroll_keys(-3, true),
             b"\x1bOB\x1bOB\x1bOB".to_vec()
         );
+    }
+}
+
+#[cfg(test)]
+mod modified_key_regressions {
+    use super::*;
+    #[test]
+    fn shift_enter_is_distinct_from_submit() {
+        assert_eq!(
+            encode_terminal_input(&Keystroke::parse("shift-enter").unwrap(), false),
+            Some(b"\x1b[13;2u".to_vec())
+        );
+        assert_eq!(
+            encode_terminal_input(&Keystroke::parse("enter").unwrap(), false),
+            Some(b"\r".to_vec())
+        );
+    }
+    #[test]
+    fn modified_navigation_survives_application_cursor_mode() {
+        for application in [false, true] {
+            for (key, bytes) in [
+                ("ctrl-left", "\x1b[1;5D"),
+                ("alt-right", "\x1b[1;3C"),
+                ("shift-up", "\x1b[1;2A"),
+                ("ctrl-shift-end", "\x1b[1;6F"),
+            ] {
+                assert_eq!(
+                    encode_terminal_input(&Keystroke::parse(key).unwrap(), application),
+                    Some(bytes.as_bytes().to_vec()),
+                    "{key}"
+                );
+            }
+        }
     }
 }
