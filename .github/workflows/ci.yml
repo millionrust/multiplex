@@ -162,14 +162,18 @@ jobs:
             ~/.cargo/git
           key: cargo-sources-v1-${{ hashFiles('Cargo.lock') }}
 
+      # Install plugins beside real Cargo before mr-boxington takes over its path.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.19.8,ripgrep,nextest
+
       - name: Restore Cargo compiler cache
         uses: ./.github/actions/cargo-cache
         with:
           generation: ci-rust-v1
 
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-deny@0.19.8,ripgrep,nextest
+      - name: Verify Cargo test runner discovery
+        run: cargo nextest --version
 
       - name: Linux build dependencies
         if: runner.os == 'Linux'
@@ -286,14 +290,18 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      # Install plugins beside real Cargo before mr-boxington takes over its path.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
       - name: Restore Cargo compiler cache
         uses: ./.github/actions/cargo-cache
         with:
           generation: ci-windows-test-v1
 
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: nextest
+      - name: Verify Cargo test runner discovery
+        run: cargo nextest --version
 
       # Every feature, deliberately: Windows is where an optional dependency is likeliest to break,
       # and the release contract in scripts/verify/release-workflow.sh holds this job to it.
@@ -343,14 +351,18 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@1.98.1
 
+      # Install plugins beside real Cargo before mr-boxington takes over its path.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
       - name: Restore Cargo compiler cache
         uses: ./.github/actions/cargo-cache
         with:
           generation: ci-windows-test-v1
 
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: nextest
+      - name: Verify Cargo test runner discovery
+        run: cargo nextest --version
 
       - name: Run the chosen command
         # A whole command rather than arguments to one, so a single probe can compare runners,
