@@ -207,6 +207,12 @@ pub(crate) async fn run_attach(
     } else {
         None
     };
+    #[cfg(windows)]
+    let mut stdout: Box<dyn Write> = if style == AttachStyle::RawShell {
+        Box::new(crate::windows_console::MouseModeWriter::new(stdout))
+    } else {
+        Box::new(stdout)
+    };
     // Enter raw input before announcing readiness or replaying output. Otherwise tcsetattr can
     // discard keys queued during restore, even though the native PTY already exists.
     let _native_raw_mode = if style == AttachStyle::RawShell {

@@ -23908,6 +23908,10 @@ sleep 1
         // uses native handles rather than a POSIX shell's emulated terminal modes.
         unsafe {
             assert_ne!(
+                SetConsoleMode(GetStdHandle((-10_i32) as u32), 0x0200 | 0x0080),
+                0
+            );
+            assert_ne!(
                 // ENABLE_EXTENDED_FLAGS makes clearing Quick Edit effective;
                 // otherwise ConPTY suppresses mouse negotiation despite MOUSE_INPUT.
                 SetConsoleMode(GetStdHandle((-10_i32) as u32), 0x0200 | 0x0010 | 0x0080),
@@ -24031,6 +24035,7 @@ sleep 1
                 .is_some_and(|pane| pane.terminal.mouse_protocol_mode() != MouseProtocolMode::None)
                 .then_some(())
         });
+        eprintln!("canvas mouse probe: terminal negotiated mouse mode");
 
         window
             .update(cx, |_, window, cx| {

@@ -4,7 +4,7 @@
 //! instead, so it must ask ConPTY for VT input and enable VT output before replay.
 
 use std::ffi::c_void;
-use std::io;
+use std::io::{self, Write};
 
 #[link(name = "kernel32")]
 unsafe extern "system" {
@@ -37,12 +37,71 @@ impl RawVtModeGuard {
         for (index, flag) in [0x0200, 0x0001 | 0x0004].into_iter().enumerate() {
             let (handle, mode) = guard.saved[index];
             // SAFETY: these handles were validated above and remain process-owned.
-            if unsafe { SetConsoleMode(handle as *mut c_void, mode | flag) } == 0 {
+            let next_mode = if index == 0 {
+                // Extended flags are required to clear Quick Edit. Start without
+                // mouse capture; the Host's output enables it only for a TUI.
+                (mode | flag | 0x0080) & !(0x0040 | 0x0010)
+            } else {
+                mode | flag
+            };
+            if unsafe { SetConsoleMode(handle as *mut c_void, next_mode) } == 0 {
                 // Dropping the guard also rolls back a partially enabled mode.
                 return Err(io::Error::last_os_error());
             }
         }
         Ok(guard)
+    }
+}
+
+/// ConPTY consumes VT mouse requests instead of forwarding them through a
+/// nested console. Mirror the Host's requested mode into this console's native
+/// input mode, which makes ConPTY negotiate mouse reporting with the frontend.
+pub(crate) struct MouseModeWriter<W> {
+    writer: W,
+    parser: vt100::Parser,
+    mouse_enabled: bool,
+}
+
+impl<W: Write> MouseModeWriter<W> {
+    pub(crate) fn new(writer: W) -> Self {
+        Self {
+            writer,
+            parser: vt100::Parser::new(2, 2, 0),
+            mouse_enabled: false,
+        }
+    }
+}
+
+impl<W: Write> Write for MouseModeWriter<W> {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let written = self.writer.write(bytes)?;
+        self.parser.process(&bytes[..written]);
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.writer.flush()?;
+        let enabled = self.parser.screen().mouse_protocol_mode() != vt100::MouseProtocolMode::None;
+        if enabled != self.mouse_enabled {
+            // SAFETY: the process-owned input handle and writable mode are
+            // validated by GetConsoleMode, then used only by SetConsoleMode.
+            unsafe {
+                let handle = GetStdHandle((-10_i32) as u32);
+                let mut mode = 0;
+                if GetConsoleMode(handle, &mut mode) == 0 {
+                    return Err(io::Error::last_os_error());
+                }
+                mode = (mode | 0x0200 | 0x0080) & !(0x0040 | 0x0010);
+                if enabled {
+                    mode |= 0x0010;
+                }
+                if SetConsoleMode(handle, mode) == 0 {
+                    return Err(io::Error::last_os_error());
+                }
+            }
+            self.mouse_enabled = enabled;
+        }
+        Ok(())
     }
 }
 
