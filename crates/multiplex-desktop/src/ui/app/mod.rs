@@ -23908,7 +23908,9 @@ sleep 1
         // uses native handles rather than a POSIX shell's emulated terminal modes.
         unsafe {
             assert_ne!(
-                SetConsoleMode(GetStdHandle((-10_i32) as u32), 0x0200 | 0x0010),
+                // ENABLE_EXTENDED_FLAGS makes clearing Quick Edit effective;
+                // otherwise ConPTY suppresses mouse negotiation despite MOUSE_INPUT.
+                SetConsoleMode(GetStdHandle((-10_i32) as u32), 0x0200 | 0x0010 | 0x0080),
                 0
             );
             assert_ne!(
