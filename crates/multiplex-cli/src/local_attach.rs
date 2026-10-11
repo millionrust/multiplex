@@ -196,6 +196,17 @@ pub(crate) async fn run_attach(
     verify_host_identity(&mut client, validated.request.expected_host_instance_id)?;
 
     let mut stdout = std::io::stdout().lock();
+    // Enable VT before raw mode snapshots it. Drop raw mode first, then restore
+    // the original VT flags, including when readiness/replay fails.
+    #[cfg(windows)]
+    let _windows_vt_mode = if style == AttachStyle::RawShell {
+        Some(
+            crate::windows_console::RawVtModeGuard::enable()
+                .map_err(|_| terminal_unavailable("virtual terminal mode is unavailable"))?,
+        )
+    } else {
+        None
+    };
     // Enter raw input before announcing readiness or replaying output. Otherwise tcsetattr can
     // discard keys queued during restore, even though the native PTY already exists.
     let _native_raw_mode = if style == AttachStyle::RawShell {

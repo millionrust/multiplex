@@ -23889,10 +23889,68 @@ sleep 1
         wait_for_window_count(cx, 2, Duration::from_secs(10));
     }
 
+    /// Native Windows TUI fixture. MSYS/Cygwin's stty changes console input modes
+    /// incompatibly with ConPTY VT mouse negotiation (Microsoft terminal #376/#6859).
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "child process fixture for the native canvas mouse end-to-end test"]
+    fn windows_native_mouse_probe_child() {
+        if std::env::var("MULTIPLEX_NATIVE_MOUSE_PROBE_CHILD").as_deref() != Ok("1") {
+            return;
+        }
+        use std::io::{Read as _, Write as _};
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn GetStdHandle(which: u32) -> *mut std::ffi::c_void;
+            fn SetConsoleMode(handle: *mut std::ffi::c_void, mode: u32) -> i32;
+        }
+        // Raw VT input with mouse events, and processed VT output. The fixture
+        // uses native handles rather than a POSIX shell's emulated terminal modes.
+        unsafe {
+            assert_ne!(
+                SetConsoleMode(GetStdHandle((-10_i32) as u32), 0x0200 | 0x0010),
+                0
+            );
+            assert_ne!(
+                SetConsoleMode(GetStdHandle((-11_i32) as u32), 0x0001 | 0x0004),
+                0
+            );
+        }
+        std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_secs(20));
+            std::process::exit(3);
+        });
+        let mut output = std::io::stdout();
+        output
+            .write_all(b"\x1b[?1000h\x1b[?1006h\r\nnative-mouse-ready\r\n")
+            .unwrap();
+        output.flush().unwrap();
+        let mut input = std::io::stdin();
+        let mut received = Vec::new();
+        loop {
+            let mut byte = [0];
+            input.read_exact(&mut byte).unwrap();
+            received.push(byte[0]);
+            assert!(received.len() <= 64, "unexpected mouse input frame");
+            if byte[0] == b'M' {
+                break;
+            }
+        }
+        assert!(
+            received.starts_with(b"\x1b[<0;"),
+            "a left press must arrive as an SGR mouse frame"
+        );
+        output
+            .write_all(b"\x1b[?1000l\x1b[?1006l\r\nnative-mouse-input-received\r\n")
+            .unwrap();
+        output.flush().unwrap();
+    }
+
     #[gpui::test]
     fn e2e_canvas_mouse_reporting_sends_bytes_to_terminal_app(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
+        #[cfg(not(windows))]
         let request = ConnectRequest::local_shell_with_config(
             0,
             LocalShellConfig {
@@ -23901,6 +23959,27 @@ sleep 1
                 cwd: Some(std::env::temp_dir().display().to_string()),
             },
         );
+        #[cfg(windows)]
+        let request = {
+            let mut request = ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: std::env::current_exe().unwrap().display().to_string(),
+                    args: vec![
+                        "--ignored".into(),
+                        "--exact".into(),
+                        "ui::app::tests::windows_native_mouse_probe_child".into(),
+                        "--nocapture".into(),
+                        "--test-threads=1".into(),
+                    ],
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            );
+            request
+                .environment
+                .push(("MULTIPLEX_NATIVE_MOUSE_PROBE_CHILD".into(), "1".into()));
+            request
+        };
 
         let (workspace_id, pane_id) = window
             .update(cx, |_, window, cx| {
@@ -23932,6 +24011,7 @@ sleep 1
         // ConPTY needs the shell prompt and canvas resize to settle before accepting input.
         wait_for_quiet_pane(cx, &app, pane_id);
 
+        #[cfg(not(windows))]
         app.update(cx, |app, cx| {
             // Turns mouse reporting on, reads the six bytes a click sends, and writes them out
             // visibly. The program prints them itself rather than leaving it to the terminal to
@@ -23970,7 +24050,16 @@ sleep 1
             pane.terminal
                 .all_rows_text()
                 .iter()
-                .any(|row| row.contains("^[[M"))
+                .any(|row| {
+                    #[cfg(windows)]
+                    {
+                        row.contains("native-mouse-input-received")
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        row.contains("^[[M")
+                    }
+                })
                 .then_some(())
         });
     }

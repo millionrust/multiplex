@@ -235,3 +235,6 @@ pub(crate) fn help_data() -> CliData {
         ],
     })
 }
+
+#[cfg(windows)]
+mod windows_console;
