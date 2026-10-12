@@ -735,6 +735,20 @@ fn requests_cursor_position(output: &[u8]) -> bool {
     output.windows(4).any(|window| window == b"\x1b[6n")
 }
 
+fn terminal_snapshot_bytes(screen: &vt100::Screen) -> Vec<u8> {
+    // Restore mode state as well as pixels: a reconnected TUI still needs
+    // mouse reports, application keys and bracketed paste. Clear mouse modes
+    // first because vt100 omits a disabled mode when formatting from defaults.
+    let mut bytes = if screen.alternate_screen() {
+        b"\x1b[?1049h".to_vec()
+    } else {
+        b"\x1b[?1049l".to_vec()
+    };
+    bytes.extend_from_slice(b"\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l");
+    bytes.extend_from_slice(&screen.state_formatted());
+    bytes
+}
+
 fn without_cursor_position_requests(output: &[u8]) -> Vec<u8> {
     let mut kept = Vec::with_capacity(output.len());
     let mut index = 0;
@@ -800,7 +814,7 @@ async fn process_output(
                 boundary: sequence,
                 columns: u32::from(columns),
                 rows: u32::from(rows),
-                terminal_bytes: parser.screen().contents_formatted(),
+                terminal_bytes: terminal_snapshot_bytes(parser.screen()),
             };
             journal.compact(&snapshot)?;
         } else if last_sync.elapsed() >= HEARTBEAT_INTERVAL {
@@ -1561,7 +1575,7 @@ async fn serve_attach(
                 // instead of returning a gap that every reconnect repeats.
                 let parser = state.parser.lock().await;
                 let (rows, columns) = parser.screen().size();
-                let terminal_bytes = parser.screen().contents_formatted();
+                let terminal_bytes = terminal_snapshot_bytes(parser.screen());
                 if terminal_bytes.len() as u64 > MAX_REPLAY_BYTES {
                     return Err(HostError::new(HostErrorCode::ResourceLimit));
                 }
@@ -1977,6 +1991,35 @@ fn monotonic_nanos() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn snapshot_restores_tui_modes_and_clears_them_when_the_program_exits() {
+        let mut source = vt100::Parser::new(24, 80, 0);
+        source.process(b"\x1b[?1049h\x1b[?1000h\x1b[?1006h\x1b[?2004h\x1b[?1hTUI");
+        let mut replay = vt100::Parser::new(24, 80, 0);
+        replay.process(&super::terminal_snapshot_bytes(source.screen()));
+        assert_eq!(replay.screen().contents(), source.screen().contents());
+        assert!(replay.screen().alternate_screen());
+        assert!(replay.screen().bracketed_paste());
+        assert!(replay.screen().application_cursor());
+        assert_eq!(
+            replay.screen().mouse_protocol_mode(),
+            source.screen().mouse_protocol_mode()
+        );
+        assert_eq!(
+            replay.screen().mouse_protocol_encoding(),
+            source.screen().mouse_protocol_encoding()
+        );
+        source.process(b"\x1b[?1049l\x1b[?1000l\x1b[?1006l\x1b[?2004l\x1b[?1lSHELL");
+        replay.process(&super::terminal_snapshot_bytes(source.screen()));
+        assert!(!replay.screen().alternate_screen());
+        assert!(!replay.screen().bracketed_paste());
+        assert!(!replay.screen().application_cursor());
+        assert_eq!(
+            replay.screen().mouse_protocol_mode(),
+            vt100::MouseProtocolMode::None
+        );
+        assert_eq!(replay.screen().contents(), source.screen().contents());
+    }
     use super::*;
 
     /// A program every platform has, now that these tests run on Windows too.

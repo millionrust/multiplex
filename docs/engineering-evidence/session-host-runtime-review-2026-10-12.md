@@ -41,6 +41,11 @@ entire application or third-party terminal emulators.
    Edit during raw attachment, and restores prior modes on exit. Native Windows
    end-to-end validation is tracked separately before release publication.
 
+6. **Medium: snapshots omitted TUI input modes.** Snapshot rendering now restores
+   alternate-screen state, mouse mode/encoding, bracketed paste and application
+   keys along with the visible cells. The regression also verifies that returning
+   to the shell clears stale mouse modes.
+
 ## Evidence
 
 - 137 Store/CLI/Host library checks passed after the bounded-cache/resize changes.
@@ -49,6 +54,8 @@ entire application or third-party terminal emulators.
 - 193 Store/Host checks passed after reconnect changes, including a real shell
   producing 9 MiB of logs, reconnecting twice, then accepting input and returning
   fresh output. The new retained-sequence open/compact/reopen check also passed.
+- All 52 desktop terminal interaction checks passed with freshly built helpers;
+  the additional TUI snapshot-mode round-trip regression passed.
 - An isolated 8 MiB journal experiment measured approximately 1.45 ms per idle
   disk scan versus 8 ns per cached empty-tail lookup on this machine. This is a
   journal microbenchmark, not a measurement of complete Host CPU or network cost.
@@ -75,3 +82,6 @@ entire application or third-party terminal emulators.
   its isolated store; existing production shells must remain untouched.
 - GitHub Windows repeated mouse validation and the final release builds must pass
   before publishing these changes.
+- Existing detached Hosts keep their old executable code across app updates.
+  The Host fixes apply to newly started sessions; the review does not restart or
+  terminate the user's running shells.
