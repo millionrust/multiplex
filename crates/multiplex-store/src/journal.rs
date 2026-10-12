@@ -243,6 +243,7 @@ pub struct JournalStore {
     active_bytes: u64,
     total_bytes: u64,
     latest_sequence: OutputSequence,
+    earliest_sequence: Option<OutputSequence>,
     base_sequence: OutputSequence,
     recording_paused: bool,
     has_gap: bool,
@@ -279,6 +280,7 @@ impl JournalStore {
             .unwrap_or(OutputSequence::ZERO);
         let mut total_bytes = 0_u64;
         let mut latest_sequence = base_sequence;
+        let mut earliest_sequence = None;
         let mut has_gap = false;
         for (position, (_, path)) in segments.iter().enumerate() {
             let is_last = position + 1 == segments.len();
@@ -290,6 +292,9 @@ impl JournalStore {
                 .checked_add(bytes.len() as u64)
                 .ok_or_else(|| JournalError::new(JournalErrorCode::ResourceLimit))?;
             let scan = scan_journal_bytes(&bytes, latest_sequence)?;
+            if earliest_sequence.is_none() {
+                earliest_sequence = scan.frames.first().map(|frame| frame.sequence);
+            }
             if let Some(last) = scan.frames.last() {
                 latest_sequence = last.sequence;
             }
@@ -321,6 +326,8 @@ impl JournalStore {
             active_bytes,
             total_bytes,
             latest_sequence,
+            earliest_sequence: earliest_sequence
+                .or_else(|| (base_sequence != OutputSequence::ZERO).then_some(base_sequence)),
             base_sequence,
             recording_paused: has_gap || total_bytes >= limits.hard_bytes,
             has_gap,
@@ -332,6 +339,15 @@ impl JournalStore {
 
     pub fn latest_sequence(&self) -> OutputSequence {
         self.latest_sequence
+    }
+
+    /// Validated retained boundaries, without replaying payloads just to ask
+    /// for operational state. Only this store appends and compacts its journal.
+    pub fn sequence_bounds(&self) -> (Option<OutputSequence>, Option<OutputSequence>) {
+        (
+            self.earliest_sequence,
+            (self.latest_sequence != OutputSequence::ZERO).then_some(self.latest_sequence),
+        )
     }
 
     pub fn recording_paused(&self) -> bool {
@@ -372,6 +388,9 @@ impl JournalStore {
         write_frame_bytes(&mut self.active, &bytes)?;
         self.active_bytes = self.active_bytes.saturating_add(encoded_len);
         self.total_bytes = self.total_bytes.saturating_add(encoded_len);
+        if self.earliest_sequence.is_none() || self.latest_sequence == self.base_sequence {
+            self.earliest_sequence = Some(frame.sequence);
+        }
         self.latest_sequence = frame.sequence;
         self.live_bytes += encoded_len as usize;
         self.live_frames.push_back(frame.clone());
@@ -496,6 +515,7 @@ impl JournalStore {
             }
         }
         self.base_sequence = snapshot.boundary;
+        self.earliest_sequence = Some(snapshot.boundary);
         self.live_frames.clear();
         self.live_bytes = 0;
         self.live_boundary = snapshot.boundary;
@@ -900,6 +920,36 @@ mod tests {
             store.read_live_from(OutputSequence::ZERO).unwrap_err().code,
             JournalErrorCode::HistoryUnavailable
         );
+    }
+
+    #[test]
+    fn retained_sequence_bounds_match_replay_across_reopen_and_compaction() {
+        let fixture = tempfile::tempdir().unwrap();
+        let lease =
+            HostLease::acquire(fixture.path().join("session"), HostInstanceId::new()).unwrap();
+        let mut store = JournalStore::open(&lease, JournalLimits::default()).unwrap();
+        assert_eq!(store.sequence_bounds(), (None, None));
+        for sequence in 1..=3 {
+            store.append(&frame(sequence, b"output")).unwrap();
+        }
+        let read = store.read_from(OutputSequence::ZERO).unwrap();
+        assert_eq!(store.sequence_bounds(), (read.earliest, read.latest));
+        drop(store);
+        let mut store = JournalStore::open(&lease, JournalLimits::default()).unwrap();
+        assert_eq!(store.sequence_bounds(), (read.earliest, read.latest));
+        store
+            .compact(&TerminalSnapshot {
+                boundary: OutputSequence::new(3),
+                columns: 80,
+                rows: 24,
+                terminal_bytes: b"snapshot".to_vec(),
+            })
+            .unwrap();
+        let read = store.read_from(OutputSequence::new(3)).unwrap();
+        assert_eq!(store.sequence_bounds(), (read.earliest, read.latest));
+        store.append(&frame(4, b"after snapshot")).unwrap();
+        let read = store.read_from(OutputSequence::new(3)).unwrap();
+        assert_eq!(store.sequence_bounds(), (read.earliest, read.latest));
     }
 
     #[test]

@@ -89,6 +89,88 @@ async fn oversized_resize_is_rejected_without_allocating_or_disconnecting_other_
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn heavy_log_reconnect_uses_a_snapshot_and_continues_live_input() {
+    let fixture = tempfile::tempdir().unwrap();
+    let session_id = HostedSessionId::new();
+    let mut descriptor = descriptor(fixture.path(), session_id, "/bin/sh");
+    descriptor.arguments = vec!["-c".into(), "head -c 9437184 /dev/zero | tr '\\000' x; printf '\\nHEAVY-LOG-READY\\n'; while IFS= read -r line; do printf 'RECONNECTED:%s\\n' \"$line\"; done".into()];
+    let host = start(descriptor).await.unwrap();
+    let endpoint = LocalEndpoint::new(host.runtime_root(), session_id);
+    let cancel = CancellationToken::new();
+    let mut client = HostClient::connect(
+        endpoint.clone(),
+        ConnectOptions::local(session_id, [3; 32]),
+        &cancel,
+    )
+    .await
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let boundary = loop {
+        let _ = client
+            .attach(multiplex_domain::OutputSequence::ZERO, 80, 24, &cancel)
+            .await
+            .unwrap();
+        if let Some(snapshot) = client.take_last_snapshot()
+            && String::from_utf8_lossy(&snapshot.terminal_bytes).contains("HEAVY-LOG-READY")
+        {
+            break snapshot.boundary_sequence;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "heavy log did not become reconnectable"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    client.disconnect();
+    let mut client = HostClient::connect(
+        endpoint,
+        ConnectOptions::local(session_id, [4; 32]),
+        &cancel,
+    )
+    .await
+    .unwrap();
+    client
+        .attach(multiplex_domain::OutputSequence::ZERO, 80, 24, &cancel)
+        .await
+        .unwrap();
+    assert!(
+        client.take_last_snapshot().is_some(),
+        "second reconnect must also work"
+    );
+    assert!(
+        client
+            .input(
+                multiplex_domain::CommandId::new(),
+                b"after-reconnect\n".to_vec(),
+                &cancel
+            )
+            .await
+            .unwrap()
+    );
+    loop {
+        let output = client
+            .attach(
+                multiplex_domain::OutputSequence::new(boundary),
+                80,
+                24,
+                &cancel,
+            )
+            .await
+            .unwrap();
+        let bytes: Vec<_> = output.into_iter().flat_map(|frame| frame.bytes).collect();
+        if String::from_utf8_lossy(&bytes).contains("RECONNECTED:after-reconnect") {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "reconnected log session stopped delivering output"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    host.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shutdown_joins_tasks_and_kills_owned_grandchild() {
     let fixture = tempfile::tempdir().unwrap();
     let pid_file = fixture.path().join("grandchild.pid");

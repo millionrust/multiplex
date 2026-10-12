@@ -21,7 +21,7 @@ use multiplex_host_protocol::{
     negotiate_protocol, opaque_endpoint_name, payload_kind,
 };
 use multiplex_store::{
-    AppendOutcome, HostLease, HostMetadata, JournalFrame, JournalKind, JournalStore,
+    AppendOutcome, HostLease, HostMetadata, JournalFrame, JournalKind, JournalRead, JournalStore,
     TerminalSnapshot, load_snapshot, read_host_metadata,
 };
 use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -754,6 +754,9 @@ async fn process_output(
     mut bytes: Vec<u8>,
     last_sync: &mut Instant,
 ) -> Result<(), HostError> {
+    // Keep the screen model and its journal boundary coherent for live replay
+    // snapshots. Compaction/reconnect takes these locks in the same order.
+    let mut journal = state.journal.lock().await;
     let cursor_reply = {
         let mut parser = state.parser.lock().await;
         parser.process(&bytes);
@@ -788,7 +791,6 @@ async fn process_output(
             flags: 0,
             payload: bytes,
         };
-        let mut journal = state.journal.lock().await;
         if journal.append(&frame)? == AppendOutcome::RecordingPausedDiskLimit {
             state.recording_paused.store(true, Ordering::Release);
         } else if journal.compaction_due() {
@@ -806,6 +808,7 @@ async fn process_output(
             *last_sync = Instant::now();
         }
     }
+    drop(journal);
     state
         .submit_activity(
             "pty-output",
@@ -1532,33 +1535,69 @@ async fn serve_attach(
     let mut snapshot = None;
     let initial_read = {
         let journal = state.journal.lock().await;
-        journal.read_live_from(from)
+        let mut read = journal.read_live_from(from);
+        if read
+            .as_ref()
+            .is_err_and(|error| error.code == multiplex_store::JournalErrorCode::HistoryUnavailable)
+            && let Some(available) = load_snapshot(&state.descriptor.session_dir)?
+        {
+            // Keep compaction excluded until both the snapshot and its tail
+            // have been read; otherwise its boundary can disappear between them.
+            read = journal.read_live_from(available.boundary);
+            snapshot = Some(available);
+        }
+        if let Ok(replay) = &read {
+            let mut bytes = 0_u64;
+            let mut records = 0_u32;
+            for frame in &replay.frames {
+                if frame.kind == JournalKind::Output {
+                    bytes = bytes.saturating_add(frame.payload.len() as u64);
+                    records = records.saturating_add(1);
+                }
+            }
+            if bytes > request.maximum_replay_bytes || records > request.maximum_replay_records {
+                // A long-running log can exceed the replay limit long before
+                // disk compaction. Reconnect at the coherent current screen
+                // instead of returning a gap that every reconnect repeats.
+                let parser = state.parser.lock().await;
+                let (rows, columns) = parser.screen().size();
+                let terminal_bytes = parser.screen().contents_formatted();
+                if terminal_bytes.len() as u64 > MAX_REPLAY_BYTES {
+                    return Err(HostError::new(HostErrorCode::ResourceLimit));
+                }
+                snapshot = Some(TerminalSnapshot {
+                    boundary: journal.latest_sequence(),
+                    columns: u32::from(columns),
+                    rows: u32::from(rows),
+                    terminal_bytes,
+                });
+                let (earliest, latest) = journal.sequence_bounds();
+                read = Ok(JournalRead {
+                    earliest,
+                    latest,
+                    frames: Vec::new(),
+                    has_gap: false,
+                });
+            }
+        }
+        read
     };
     let read = match initial_read {
         Ok(read) => read,
         Err(error) if error.code == multiplex_store::JournalErrorCode::HistoryUnavailable => {
-            let Some(available) = load_snapshot(&state.descriptor.session_dir)? else {
-                send_error(
-                    stream,
-                    request_id,
-                    wire::ErrorCode::SequenceGap,
-                    wire::RecoveryHint::Replay,
-                    error
-                        .expected_sequence
-                        .map(OutputSequence::get)
-                        .unwrap_or(0),
-                    cancel,
-                )
-                .await?;
-                return Ok(());
-            };
-            let read = state
-                .journal
-                .lock()
-                .await
-                .read_live_from(available.boundary)?;
-            snapshot = Some(available);
-            read
+            send_error(
+                stream,
+                request_id,
+                wire::ErrorCode::SequenceGap,
+                wire::RecoveryHint::Replay,
+                error
+                    .expected_sequence
+                    .map(OutputSequence::get)
+                    .unwrap_or(0),
+                cancel,
+            )
+            .await?;
+            return Ok(());
         }
         Err(error) => return Err(error.into()),
     };
@@ -1638,21 +1677,9 @@ async fn send_state(
     connection_id: u64,
     cancel: &CancellationToken,
 ) -> Result<(), HostError> {
-    let read = state.journal.lock().await.read_from(OutputSequence::ZERO);
-    let (earliest, latest) = match read {
-        Ok(read) => (
-            read.earliest.unwrap_or(OutputSequence::ZERO).get(),
-            read.latest.unwrap_or(OutputSequence::ZERO).get(),
-        ),
-        Err(error) if error.code == multiplex_store::JournalErrorCode::HistoryUnavailable => (
-            error
-                .expected_sequence
-                .map(OutputSequence::get)
-                .unwrap_or(0),
-            state.latest_sequence.load(Ordering::Acquire),
-        ),
-        Err(error) => return Err(error.into()),
-    };
+    let (earliest, latest) = state.journal.lock().await.sequence_bounds();
+    let earliest = earliest.unwrap_or(OutputSequence::ZERO).get();
+    let latest = latest.unwrap_or(OutputSequence::ZERO).get();
     let (rows, columns, bracketed_paste) = {
         let parser = state.parser.lock().await;
         let (rows, columns) = parser.screen().size();
