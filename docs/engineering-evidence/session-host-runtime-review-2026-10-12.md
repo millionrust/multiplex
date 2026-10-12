@@ -65,6 +65,12 @@ entire application or third-party terminal emulators.
   still held files in a prior isolated test directory. Production sessions were
   not terminated as part of inspection. This count alone does not establish a
   per-Host heap leak.
+- An ownership-checked audit authenticated 85 stale test Hosts whose original
+  test-parent PIDs were no longer alive. Force requests were sent only after
+  matching each saved Host identity; all 85 stops succeeded. A following process
+  snapshot counted 95 Hosts, approximately 12.6% aggregate CPU and 470 MiB RSS.
+  These are time-separated observations, not a controlled benchmark of the code
+  change. Unreachable/mismatched entries and production sessions were untouched.
 
 ## Limits and follow-up
 
