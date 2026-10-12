@@ -282,8 +282,7 @@ pub(crate) async fn run_attach(
             &mut client,
             &mut stdout,
             &mut watermark,
-            validated.request.columns,
-            validated.request.rows,
+            (validated.request.columns, validated.request.rows),
             state
                 .viewport
                 .map(|viewport| (viewport.columns, viewport.rows)),
@@ -422,12 +421,12 @@ async fn run_raw_shell(
     client: &mut HostClient,
     stdout: &mut impl Write,
     watermark: &mut OutputSequence,
-    mut columns: u16,
-    mut rows: u16,
+    viewport: (u16, u16),
     mut host_viewport: Option<(u32, u32)>,
     cancellation: &Cancellation,
     cancel: &CancellationToken,
 ) -> Result<(), CliError> {
+    let (mut columns, mut rows) = viewport;
     let (input_tx, mut input_rx) = tokio::sync::mpsc::channel(8);
     std::thread::spawn(move || {
         let mut stdin = std::io::stdin().lock();
@@ -451,10 +450,9 @@ async fn run_raw_shell(
             bytes = input_rx.recv() => {
                 let Some(bytes) = bytes else { break; };
                 let viewport = (u32::from(columns), u32::from(rows));
-                if lease.take(client, cancel).await && host_viewport != Some(viewport) {
-                    if client.resize(CommandId::new(), viewport.0, viewport.1, cancel).await.map_err(map_resize_after_dispatch)? {
-                        host_viewport = Some(viewport);
-                    }
+                if lease.take(client, cancel).await && host_viewport != Some(viewport)
+                    && client.resize(CommandId::new(), viewport.0, viewport.1, cancel).await.map_err(map_resize_after_dispatch)? {
+                    host_viewport = Some(viewport);
                 }
                 send_shell_input(client, &mut lease, bytes, stdout, cancel).await?;
             }
@@ -466,10 +464,9 @@ async fn run_raw_shell(
                     if (columns, rows) != (next_columns, next_rows) {
                         columns = next_columns;
                         rows = next_rows;
-                        if lease.take(client, cancel).await {
-                            if client.resize(CommandId::new(), u32::from(columns), u32::from(rows), cancel).await.map_err(map_resize_after_dispatch)? {
-                                host_viewport = Some((u32::from(columns), u32::from(rows)));
-                            }
+                        if lease.take(client, cancel).await
+                            && client.resize(CommandId::new(), u32::from(columns), u32::from(rows), cancel).await.map_err(map_resize_after_dispatch)? {
+                            host_viewport = Some((u32::from(columns), u32::from(rows)));
                         }
                     }
                 }
