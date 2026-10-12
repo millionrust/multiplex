@@ -284,6 +284,9 @@ pub(crate) async fn run_attach(
             &mut watermark,
             validated.request.columns,
             validated.request.rows,
+            state
+                .viewport
+                .map(|viewport| (viewport.columns, viewport.rows)),
             cancellation,
             &async_cancel,
         )
@@ -421,6 +424,7 @@ async fn run_raw_shell(
     watermark: &mut OutputSequence,
     mut columns: u16,
     mut rows: u16,
+    mut host_viewport: Option<(u32, u32)>,
     cancellation: &Cancellation,
     cancel: &CancellationToken,
 ) -> Result<(), CliError> {
@@ -446,8 +450,11 @@ async fn run_raw_shell(
         tokio::select! {
             bytes = input_rx.recv() => {
                 let Some(bytes) = bytes else { break; };
-                if lease.take(client, cancel).await {
-                    client.resize(CommandId::new(), u32::from(columns), u32::from(rows), cancel).await.map_err(map_resize_after_dispatch)?;
+                let viewport = (u32::from(columns), u32::from(rows));
+                if lease.take(client, cancel).await && host_viewport != Some(viewport) {
+                    if client.resize(CommandId::new(), viewport.0, viewport.1, cancel).await.map_err(map_resize_after_dispatch)? {
+                        host_viewport = Some(viewport);
+                    }
                 }
                 send_shell_input(client, &mut lease, bytes, stdout, cancel).await?;
             }
@@ -460,11 +467,16 @@ async fn run_raw_shell(
                         columns = next_columns;
                         rows = next_rows;
                         if lease.take(client, cancel).await {
-                            client.resize(CommandId::new(), u32::from(columns), u32::from(rows), cancel).await.map_err(map_resize_after_dispatch)?;
+                            if client.resize(CommandId::new(), u32::from(columns), u32::from(rows), cancel).await.map_err(map_resize_after_dispatch)? {
+                                host_viewport = Some((u32::from(columns), u32::from(rows)));
+                            }
                         }
                     }
                 }
                 let state = poll_output(client, stdout, watermark, columns, rows, cancel).await?;
+                if let Some(viewport) = state.viewport {
+                    host_viewport = Some((viewport.columns, viewport.rows));
+                }
                 lease.release_if_idle(client, cancel).await;
                 if lifecycle_terminal(decode_host_lifecycle(state.lifecycle)?) { break; }
             }

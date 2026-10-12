@@ -1296,6 +1296,9 @@ async fn serve_connection(
                 if rows == 0 || cols == 0 {
                     return Err(HostError::new(HostErrorCode::Protocol));
                 }
+                if rows > 1_000 || cols > 1_000 {
+                    return Err(HostError::new(HostErrorCode::ResourceLimit));
+                }
                 let rows = rows.max(MIN_ROWS);
                 handle_mutation(
                     &mut stream,
@@ -1306,24 +1309,33 @@ async fn serve_connection(
                         command_bytes: &request.command_id,
                         payload: &envelope.payload,
                         apply: || {
-                            state
+                            let master = state
                                 .master
                                 .lock()
-                                .map_err(|_| HostError::new(HostErrorCode::Io))?
-                                .resize(PtySize {
-                                    rows,
-                                    cols,
-                                    pixel_width: 0,
-                                    pixel_height: 0,
-                                })
+                                .map_err(|_| HostError::new(HostErrorCode::Io))?;
+                            let size = master
+                                .get_size()
                                 .map_err(|_| HostError::new(HostErrorCode::PtyUnavailable))?;
+                            if size.rows != rows || size.cols != cols {
+                                master
+                                    .resize(PtySize {
+                                        rows,
+                                        cols,
+                                        pixel_width: 0,
+                                        pixel_height: 0,
+                                    })
+                                    .map_err(|_| HostError::new(HostErrorCode::PtyUnavailable))?;
+                            }
                             Ok(())
                         },
                     },
                     &cancel,
                 )
                 .await?;
-                state.parser.lock().await.screen_mut().set_size(rows, cols);
+                let mut parser = state.parser.lock().await;
+                if parser.screen().size() != (rows, cols) {
+                    parser.screen_mut().set_size(rows, cols);
+                }
             }
             Some(envelope_payload::Message::InterruptRequest(request)) => {
                 require_session(&request.session_id, &state)?;
@@ -1520,7 +1532,7 @@ async fn serve_attach(
     let mut snapshot = None;
     let initial_read = {
         let journal = state.journal.lock().await;
-        journal.read_from(from)
+        journal.read_live_from(from)
     };
     let read = match initial_read {
         Ok(read) => read,
@@ -1540,7 +1552,11 @@ async fn serve_attach(
                 .await?;
                 return Ok(());
             };
-            let read = state.journal.lock().await.read_from(available.boundary)?;
+            let read = state
+                .journal
+                .lock()
+                .await
+                .read_live_from(available.boundary)?;
             snapshot = Some(available);
             read
         }

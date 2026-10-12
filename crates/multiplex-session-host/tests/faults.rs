@@ -55,6 +55,40 @@ async fn pre_ready_cancellation_creates_no_host_state() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn oversized_resize_is_rejected_without_allocating_or_disconnecting_other_viewers() {
+    let fixture = tempfile::tempdir().unwrap();
+    let session_id = HostedSessionId::new();
+    let mut descriptor = descriptor(fixture.path(), session_id, "/bin/sleep");
+    descriptor.arguments = vec!["30".into()];
+    let host = start(descriptor).await.unwrap();
+    let endpoint = LocalEndpoint::new(host.runtime_root(), session_id);
+    let cancel = CancellationToken::new();
+    let mut observer = HostClient::connect(
+        endpoint.clone(),
+        ConnectOptions::local_read_only(session_id, [1; 32]),
+        &cancel,
+    )
+    .await
+    .unwrap();
+    let mut writer = HostClient::connect(
+        endpoint,
+        ConnectOptions::local(session_id, [2; 32]),
+        &cancel,
+    )
+    .await
+    .unwrap();
+    assert!(
+        writer
+            .resize(multiplex_domain::CommandId::new(), 65_535, 65_535, &cancel)
+            .await
+            .is_err()
+    );
+    let viewport = observer.get_state(&cancel).await.unwrap().viewport.unwrap();
+    assert_eq!((viewport.columns, viewport.rows), (80, 24));
+    host.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shutdown_joins_tasks_and_kills_owned_grandchild() {
     let fixture = tempfile::tempdir().unwrap();
     let pid_file = fixture.path().join("grandchild.pid");

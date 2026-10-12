@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read as _, Seek as _, SeekFrom, Write};
@@ -24,6 +25,8 @@ const FORMAT_VERSION: u16 = 1;
 const NONCRITICAL_FLAG: u32 = 1;
 const SNAPSHOT_HEADER_BYTES: usize = 28;
 const RECOVERY_FILE: &str = "recovery-tail.trj";
+const LIVE_REPLAY_BYTES: usize = 4 * 1024 * 1024;
+const LIVE_REPLAY_RECORDS: usize = 4096;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u16)]
@@ -243,6 +246,9 @@ pub struct JournalStore {
     base_sequence: OutputSequence,
     recording_paused: bool,
     has_gap: bool,
+    live_frames: VecDeque<JournalFrame>,
+    live_bytes: usize,
+    live_boundary: OutputSequence,
 }
 
 impl fmt::Debug for JournalStore {
@@ -318,6 +324,9 @@ impl JournalStore {
             base_sequence,
             recording_paused: has_gap || total_bytes >= limits.hard_bytes,
             has_gap,
+            live_frames: VecDeque::new(),
+            live_bytes: 0,
+            live_boundary: latest_sequence,
         })
     }
 
@@ -364,6 +373,14 @@ impl JournalStore {
         self.active_bytes = self.active_bytes.saturating_add(encoded_len);
         self.total_bytes = self.total_bytes.saturating_add(encoded_len);
         self.latest_sequence = frame.sequence;
+        self.live_bytes += encoded_len as usize;
+        self.live_frames.push_back(frame.clone());
+        while self.live_bytes > LIVE_REPLAY_BYTES || self.live_frames.len() > LIVE_REPLAY_RECORDS {
+            if let Some(removed) = self.live_frames.pop_front() {
+                self.live_bytes -= removed.encoded_len()?;
+                self.live_boundary = removed.sequence;
+            }
+        }
         if matches!(frame.kind, JournalKind::Lifecycle | JournalKind::Exit) {
             self.active.sync_data().map_err(JournalError::io)?;
         }
@@ -420,6 +437,29 @@ impl JournalStore {
         })
     }
 
+    /// Live viewers usually ask for the tail they just consumed. Serve that
+    /// tail from a bounded cache instead of decoding the entire disk journal
+    /// on every poll. Historical replay still validates the journal on disk.
+    pub fn read_live_from(&self, from: OutputSequence) -> Result<JournalRead, JournalError> {
+        if self.has_gap || from < self.live_boundary || from < self.base_sequence {
+            return self.read_from(from);
+        }
+        let mut frames: Vec<_> = self
+            .live_frames
+            .iter()
+            .rev()
+            .take_while(|frame| frame.sequence > from)
+            .cloned()
+            .collect();
+        frames.reverse();
+        Ok(JournalRead {
+            earliest: self.live_frames.front().map(|frame| frame.sequence),
+            latest: (self.latest_sequence != OutputSequence::ZERO).then_some(self.latest_sequence),
+            frames,
+            has_gap: false,
+        })
+    }
+
     pub fn compact(&mut self, snapshot: &TerminalSnapshot) -> Result<(), JournalError> {
         if snapshot.boundary == OutputSequence::ZERO
             || snapshot.boundary != self.latest_sequence
@@ -456,6 +496,9 @@ impl JournalStore {
             }
         }
         self.base_sequence = snapshot.boundary;
+        self.live_frames.clear();
+        self.live_bytes = 0;
+        self.live_boundary = snapshot.boundary;
         if !self.has_gap && self.total_bytes < self.limits.hard_bytes {
             self.recording_paused = false;
         }
@@ -803,6 +846,100 @@ mod tests {
             flags: 0,
             payload: payload.to_vec(),
         }
+    }
+
+    #[test]
+    fn live_replay_avoids_disk_scans_and_retains_only_bounded_recent_frames() {
+        let fixture = tempfile::tempdir().unwrap();
+        let lease =
+            HostLease::acquire(fixture.path().join("session"), HostInstanceId::new()).unwrap();
+        let mut store = JournalStore::open(&lease, JournalLimits::default()).unwrap();
+        let payload = vec![b'x'; 2048];
+        for sequence in 1..=5000 {
+            store.append(&frame(sequence, &payload)).unwrap();
+        }
+        assert!(store.live_bytes <= LIVE_REPLAY_BYTES);
+        assert!(store.live_frames.len() <= LIVE_REPLAY_RECORDS);
+        assert!(store.live_boundary > OutputSequence::ZERO);
+        // Historical requests still replay from validated disk records.
+        assert_eq!(
+            store
+                .read_live_from(OutputSequence::ZERO)
+                .unwrap()
+                .frames
+                .len(),
+            5000
+        );
+        assert_eq!(
+            store
+                .read_live_from(OutputSequence::new(4998))
+                .unwrap()
+                .frames,
+            vec![frame(4999, &payload), frame(5000, &payload)]
+        );
+        // Corrupt the on-disk tail deliberately: disk replay observes it, while
+        // live tail and idle polls use already validated, owned memory.
+        store.active.write_all(b"torn").unwrap();
+        assert!(store.read_from(OutputSequence::new(5000)).unwrap().has_gap);
+        for _ in 0..1000 {
+            let live = store.read_live_from(OutputSequence::new(5000)).unwrap();
+            assert!(!live.has_gap);
+            assert!(live.frames.is_empty());
+        }
+        store
+            .compact(&TerminalSnapshot {
+                boundary: OutputSequence::new(5000),
+                columns: 80,
+                rows: 24,
+                terminal_bytes: b"snapshot".to_vec(),
+            })
+            .unwrap();
+        assert!(store.live_frames.is_empty());
+        assert_eq!(store.live_bytes, 0);
+        assert_eq!(
+            store.read_live_from(OutputSequence::ZERO).unwrap_err().code,
+            JournalErrorCode::HistoryUnavailable
+        );
+    }
+
+    #[test]
+    #[ignore = "measures idle replay cost with a populated journal"]
+    fn live_replay_cost_does_not_scale_with_idle_journal_history() {
+        let fixture = tempfile::tempdir().unwrap();
+        let lease =
+            HostLease::acquire(fixture.path().join("session"), HostInstanceId::new()).unwrap();
+        let mut store = JournalStore::open(&lease, JournalLimits::default()).unwrap();
+        for sequence in 1..=2048 {
+            store.append(&frame(sequence, &vec![b'x'; 4096])).unwrap();
+        }
+        let from = OutputSequence::new(2048);
+        let began = std::time::Instant::now();
+        for _ in 0..20 {
+            assert!(
+                std::hint::black_box(&store)
+                    .read_from(std::hint::black_box(from))
+                    .unwrap()
+                    .frames
+                    .is_empty()
+            );
+        }
+        let disk = began.elapsed();
+        let began = std::time::Instant::now();
+        for _ in 0..2000 {
+            assert!(
+                std::hint::black_box(&store)
+                    .read_live_from(std::hint::black_box(from))
+                    .unwrap()
+                    .frames
+                    .is_empty()
+            );
+        }
+        let live = began.elapsed();
+        eprintln!(
+            "idle replay: disk scan per poll {:?}; bounded live cache per poll {:?}",
+            disk / 20,
+            live / 2000
+        );
     }
 
     #[test]
