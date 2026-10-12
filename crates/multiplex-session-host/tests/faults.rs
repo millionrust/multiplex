@@ -171,6 +171,42 @@ async fn heavy_log_reconnect_uses_a_snapshot_and_continues_live_input() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn full_history_replays_after_output_scrolls_off_the_host_viewport() {
+    let fixture = tempfile::tempdir().unwrap();
+    let session_id = HostedSessionId::new();
+    let mut descriptor = descriptor(fixture.path(), session_id, "/bin/sh");
+    descriptor.arguments = vec!["-c".into(), "awk 'BEGIN { print \"HISTORY-BEGIN\"; for (i=0; i<15000; i++) print \"line\"; print \"HISTORY-END\"; }'; sleep 30".into()];
+    let host = start(descriptor).await.unwrap();
+    let cancel = CancellationToken::new();
+    let mut client = HostClient::connect(
+        LocalEndpoint::new(host.runtime_root(), session_id),
+        ConnectOptions::local_read_only(session_id, [5; 32]),
+        &cancel,
+    )
+    .await
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let output = client
+            .attach(multiplex_domain::OutputSequence::ZERO, 80, 24, &cancel)
+            .await
+            .unwrap();
+        let bytes: Vec<_> = output.into_iter().flat_map(|frame| frame.bytes).collect();
+        let text = String::from_utf8_lossy(&bytes);
+        if text.contains("HISTORY-END") {
+            assert!(
+                text.contains("HISTORY-BEGIN"),
+                "the journal must keep the history discarded by the viewport model"
+            );
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    host.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shutdown_joins_tasks_and_kills_owned_grandchild() {
     let fixture = tempfile::tempdir().unwrap();
     let pid_file = fixture.path().join("grandchild.pid");

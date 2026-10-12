@@ -532,7 +532,10 @@ pub async fn start_with_cancel(
         parser: Mutex::new(vt100::Parser::new(
             descriptor.rows.max(MIN_ROWS),
             descriptor.columns,
-            10_000,
+            // The journal owns history; this model is used only for the
+            // current viewport, replies and snapshots. Keeping another 10,000
+            // rows here grows every Host during sustained log output.
+            0,
         )),
         activity: RwLock::new(ActivityAggregate {
             generation: occupant_generation,

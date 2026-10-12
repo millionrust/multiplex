@@ -46,6 +46,13 @@ entire application or third-party terminal emulators.
    keys along with the visible cells. The regression also verifies that returning
    to the shell clears stale mouse modes.
 
+7. **Medium: each Host retained unused duplicate scrollback.** The Host's parser
+   kept 10,000 rows although every consumer reads only the visible viewport.
+   History is already retained by the journal and frontends. The Host now keeps
+   no parser scrollback. A real-shell regression prints 15,000 lines and verifies
+   that both beginning/end markers remain available through journal replay; the
+   9 MiB reconnect/input test also passes with this change.
+
 ## Evidence
 
 - 137 Store/CLI/Host library checks passed after the bounded-cache/resize changes.
@@ -78,9 +85,9 @@ entire application or third-party terminal emulators.
   repeated history scans are a concrete scaling defect; final steady-state CPU
   and memory should also be measured under the user's ongoing desktop log load.
 - Host PTY and activity queues are bounded (64 output frames, 128 activity events);
-  mutation/nonce caches and simultaneous connections are bounded. Scrollback
-  retains up to 10,000 lines, so continued output can legitimately increase
-  memory until that bound; a leak has not been demonstrated.
+  mutation/nonce caches and simultaneous connections are bounded. The Host screen
+  model now retains only its viewport. Frontends retain their own scrollback; a
+  per-Host heap leak has not been demonstrated.
 - Historical replay can still decode disk history once when outside the live
   cache. Its temporary cost is distinct from the eliminated per-poll scans.
 - Old test-process accumulation requires ownership-verified cleanup. The current
