@@ -133,6 +133,12 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   session; `docs/decisions/windows-session-host.md`), the background listener starts from the
   user's `Run` key with a notification-area icon, and paired devices can view and control the
   screen.
+- Terminal MCP server (off by default; Remote Devices → This computer, or
+  `MULTIPLEX_TERMINAL_MCP=1`): Streamable HTTP on 127.0.0.1 behind a bearer token, plus
+  `multiplex terminal-mcp --stdio`, letting agents list every window's panes, read screen and
+  scrollback, type text and named keys, wait for output, scroll, focus, open and close them.
+  `src/terminal_mcp/` holds the transport, protocol and process-wide hub; each window answers
+  on its own loop in `ui/app/terminal_mcp.rs`. See `docs/terminal-mcp.md`.
 - Saved host groups can open directly as SSH Fleet canvases. The fleet panel
   summarizes connection and tmux state and provides guarded reconnect,
   broadcast-input, and disconnect controls without removing canvas nodes.

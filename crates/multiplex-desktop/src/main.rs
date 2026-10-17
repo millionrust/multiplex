@@ -24,6 +24,7 @@ mod ssh_auth;
 mod ssh_keys;
 mod storage;
 mod terminal;
+mod terminal_mcp;
 #[cfg(test)]
 mod test_support;
 mod ui;
@@ -311,6 +312,23 @@ fn main() {
         return;
     }
     if std::env::args().nth(1).as_deref() == Some(ARTIFACT_PREVIEW_MODE) {
+    if std::env::args().nth(1).as_deref() == Some(terminal_mcp::stdio::COMMAND) {
+        attach_parent_console();
+        if std::env::args().nth(2).as_deref() != Some(terminal_mcp::stdio::STDIO_FLAG)
+            || std::env::args().nth(3).is_some()
+        {
+            eprintln!("usage: multiplex terminal-mcp --stdio");
+            std::process::exit(2);
+        }
+        let result = crate::storage::app_dir()
+            .map_err(|error| error.to_string())
+            .and_then(|app_dir| terminal_mcp::stdio::run(&app_dir));
+        if let Err(error) = result {
+            eprintln!("error[terminal-mcp]: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
         std::process::exit(crate::artifact_preview::run_worker_mode());
     }
     if std::env::args().nth(1).as_deref() == Some("--cli-shell") {

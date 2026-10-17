@@ -86,7 +86,6 @@ pub fn terminal_paste_requires_confirmation(bytes: &[u8], threshold: usize) -> b
     bytes.len() > threshold || bytes.contains(&b'\n') || bytes.contains(&b'\r')
 }
 
-#[cfg(test)]
 pub fn wrap_terminal_paste(bytes: &[u8], bracketed: bool) -> Vec<u8> {
     if !bracketed {
         return bytes.to_vec();

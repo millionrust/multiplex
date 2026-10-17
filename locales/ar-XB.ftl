@@ -2413,6 +2413,22 @@ terminal-announcement-truncated = ⁧devomer saw tuptuo weiver lanimret redlO⁩
 terminal-cleared-status = ⁧.deraelc lanimreT⁩
 terminal-exit-action = ⁧sucof lanimret evaeL⁩
 terminal-input-action = ⁧tupni lanimret esU⁩
+terminal-mcp-config-copied = ⁧.deipoc noitarugifnoc tneilc PCM⁩
+terminal-mcp-copy-config = ⁧gifnoc tneilc ypoC⁩
+terminal-mcp-copy-token = ⁧nekot ypoC⁩
+terminal-mcp-copy-url = ⁧LRU ypoC⁩
+terminal-mcp-description = ⁧.ereh lanimret yreve slortnoc nekot eht gnidloh gnihtynA .meht llorcs dna ,meht otni epyt ,kcabllorcs dna sneercs rieht daer ,slanimret nepo eht tsil retupmoc siht no stob dna stnega IA teL⁩
+terminal-mcp-hint = ⁧.gninnur si ppa eht elihw ”oidts-- pcm-lanimret xelpitlum“ nur nac LRU a gninepo fo daetsni dnammoc a trats taht stneilC .ylno retupmoc siht no snetsil tI⁩
+terminal-mcp-off = ⁧ffO⁩
+terminal-mcp-on = ⁧nO⁩
+terminal-mcp-rotate-token = ⁧nekot weN⁩
+terminal-mcp-start-failed = ⁧.revres PCM lanimret eht trats ton dluoC⁩
+terminal-mcp-title = ⁧revres PCM lanimreT⁩
+terminal-mcp-token-copied = ⁧.deipoc nekot PCM lanimreT⁩
+terminal-mcp-token-label = ⁧nekot reraeB⁩
+terminal-mcp-token-rotated = ⁧.desufer era eno dlo eht gnisu stneilC .nekot wen a edaM⁩
+terminal-mcp-url-copied = ⁧.deipoc LRU PCM lanimreT⁩
+terminal-mcp-url-label = ⁧LRU revreS⁩
 terminal-multiline-paste-confirm-status = { $count ->
     [many] { $count }⁧.enap evitca eht ot dnes ot mrifnoC .draobpilc eht no senil ⁩
     [one] ⁧.enap evitca eht ot ti dnes ot mrifnoC .draobpilc eht no si enil enO⁩

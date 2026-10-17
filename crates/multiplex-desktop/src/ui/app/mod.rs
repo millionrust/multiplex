@@ -41,6 +41,7 @@ mod settings_surface;
 mod sftp;
 mod split_tree;
 mod terminal_grid;
+mod terminal_mcp;
 mod transcript_export;
 mod types;
 mod updates;
@@ -824,6 +825,8 @@ struct SessionPane {
     user_closed: bool,
     app_attached: Option<AppAttachedPaneState>,
     controller_session_id: HostedSessionId,
+    /// Recent output for the terminal MCP server's waits, kept only while it runs.
+    terminal_mcp_output: crate::terminal_mcp::OutputLog,
 }
 
 struct AppAttachedPaneState {
@@ -852,6 +855,9 @@ impl SessionPane {
     }
 
     fn append_accessible_output(&mut self, data: &[u8], sequence: Option<u64>) {
+        if crate::terminal_mcp::hub().is_running() {
+            self.terminal_mcp_output.record(data);
+        }
         self.terminal_accessibility.append(data, sequence);
         self.terminal_announcements.observe_output(data.len());
         if let Some(announcement) = self
@@ -1161,6 +1167,8 @@ pub struct MultiplexApp {
     remote_devices: RemoteDevicesState,
     remote_terminals: remote_terminals::RemoteTerminalsState,
     updates: updates::UpdateState,
+    /// This window's queue of terminal MCP calls; dropping it leaves the window out of them.
+    terminal_mcp_calls: Option<crate::terminal_mcp::WindowCalls>,
     desktop_panes: DesktopPaneRegistry,
     _desktop_pane_bridge_server: Option<DesktopPaneBridgeServer>,
     dev_url_ui: DevUrlUiState,
@@ -1638,6 +1646,7 @@ impl MultiplexApp {
             remote_devices,
             remote_terminals: remote_terminals::RemoteTerminalsState::open_default(),
             updates: updates::UpdateState::open(),
+            terminal_mcp_calls: Some(crate::terminal_mcp::hub().register_window()),
             desktop_panes,
             _desktop_pane_bridge_server: desktop_pane_bridge_server,
             dev_url_ui: DevUrlUiState::open_default(cx),
@@ -1913,6 +1922,29 @@ impl MultiplexApp {
             }
         })
         .detach();
+
+        // Calls from the terminal MCP server are answered on this window's loop, where its
+        // panes live.
+        if let Some(waker) = app.terminal_mcp_calls.as_ref().map(|calls| calls.waker()) {
+            cx.spawn_in(window, async move |this, cx| {
+                loop {
+                    waker.notified().await;
+                    if cx
+                        .update(|window, cx| {
+                            this.update(cx, |app, cx| app.answer_terminal_mcp_calls(window, cx))
+                        })
+                        .ok()
+                        .and_then(Result::ok)
+                        .is_none()
+                    {
+                        return;
+                    }
+                }
+            })
+            .detach();
+        }
+        #[cfg(not(test))]
+        app.apply_terminal_mcp_setting();
 
         // One-shot capture once the window has settled, so its frame and
         // display id are recorded even if the user never moves the window.
@@ -7330,6 +7362,7 @@ impl MultiplexApp {
             user_closed: false,
             app_attached: None,
             controller_session_id,
+            terminal_mcp_output: Default::default(),
         });
 
         if let Some(pane) = self.panes.last_mut()

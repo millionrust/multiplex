@@ -470,7 +470,6 @@ impl TerminalState {
         self.mode().contains(TermMode::BRACKETED_PASTE)
     }
 
-    #[cfg(test)]
     pub fn cursor_position(&self) -> (u16, u16) {
         let point = self.term.grid().cursor.point;
         (
@@ -479,7 +478,6 @@ impl TerminalState {
         )
     }
 
-    #[cfg(test)]
     pub fn cursor_visible(&self) -> bool {
         self.mode().contains(TermMode::SHOW_CURSOR)
     }

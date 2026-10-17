@@ -1261,6 +1261,7 @@ impl MultiplexApp {
             .id("remote-screens")
             .debug_selector(|| "remote-screens".to_string())
             .child(self.render_browser_terminal_controls(cx))
+            .child(self.render_terminal_mcp_controls(cx))
             .w_full()
             .min_w_0()
             .gap_3()

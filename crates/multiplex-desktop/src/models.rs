@@ -761,6 +761,10 @@ pub struct AppSettings {
     /// Only tell the person about new versions instead of downloading them in the background.
     #[serde(default)]
     pub manual_updates: bool,
+    /// Runs the terminal MCP server, which lets agents on this computer read and type into the
+    /// open terminals.
+    #[serde(default)]
+    pub terminal_mcp_enabled: bool,
     /// What the compositor's portal gave us for reopening a screen grant without asking again.
     /// Only Wayland produces one; it is opaque and names no screen.
     #[serde(default)]
@@ -841,6 +845,7 @@ impl Default for AppSettings {
             remote_tmux_sessions: false,
             remote_screen_sharing: false,
             manual_updates: false,
+            terminal_mcp_enabled: false,
             remote_screen_restore_token: None,
             persistent_remote_sessions: default_persistent_remote_sessions(),
             persistent_sessions_adopted: false,

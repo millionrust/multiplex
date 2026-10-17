@@ -12413,3 +12413,83 @@ description = "Viewer."
 id = "browser-terminal-code-copied"
 context = "Browser access."
 description = "Viewer."
+
+[[messages]]
+id = "terminal-mcp-title"
+context = "Terminal MCP server."
+description = "Settings."
+
+[[messages]]
+id = "terminal-mcp-description"
+context = "Terminal MCP server."
+description = "Settings."
+
+[[messages]]
+id = "terminal-mcp-off"
+context = "Terminal MCP server."
+description = "Settings."
+
+[[messages]]
+id = "terminal-mcp-on"
+context = "Terminal MCP server."
+description = "Settings."
+
+[[messages]]
+id = "terminal-mcp-start-failed"
+context = "Terminal MCP server."
+description = "Settings."
+
+[[messages]]
+id = "terminal-mcp-url-label"
+context = "Terminal MCP server."
+description = "Settings."
+
+[[messages]]
+id = "terminal-mcp-token-label"
+context = "Terminal MCP server."
+description = "Settings."
+
+[[messages]]
+id = "terminal-mcp-copy-url"
+context = "Terminal MCP server."
+description = "Settings."
+
+[[messages]]
+id = "terminal-mcp-copy-token"
+context = "Terminal MCP server."
+description = "Settings."
+
+[[messages]]
+id = "terminal-mcp-copy-config"
+context = "Terminal MCP server."
+description = "Settings."
+
+[[messages]]
+id = "terminal-mcp-rotate-token"
+context = "Terminal MCP server."
+description = "Settings."
+
+[[messages]]
+id = "terminal-mcp-url-copied"
+context = "Terminal MCP server."
+description = "Settings."
+
+[[messages]]
+id = "terminal-mcp-token-copied"
+context = "Terminal MCP server."
+description = "Settings."
+
+[[messages]]
+id = "terminal-mcp-config-copied"
+context = "Terminal MCP server."
+description = "Settings."
+
+[[messages]]
+id = "terminal-mcp-token-rotated"
+context = "Terminal MCP server."
+description = "Settings."
+
+[[messages]]
+id = "terminal-mcp-hint"
+context = "Terminal MCP server."
+description = "Settings."

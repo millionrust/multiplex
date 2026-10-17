@@ -8,7 +8,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 const SUPPORTED_SCHEMA_VERSION: u16 = 1;
-const MAX_SCHEMA_BYTES: usize = 384 * 1024;
+const MAX_SCHEMA_BYTES: usize = 512 * 1024;
 const MAX_CATALOG_BYTES: usize = 512 * 1024;
 const MAX_MESSAGES: usize = 4_096;
 const MAX_ARGS_PER_MESSAGE: usize = 16;
