@@ -14,6 +14,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::DesktopPaneBridgeEndpoint;
 use crate::desktop_pane_bridge::DesktopPaneBridgeClient;
+use crate::git;
 use crate::tmux_sessions::{self, DiscoveredTmuxSession, TMUX_RUNTIME_ID, TmuxSessionSource};
 use crate::{
     ControllerBackendFactory, ControllerCommand, ControllerCommandEnvelope,
@@ -303,6 +304,63 @@ impl ControllerConnectionBackend for HostConnectionBackend {
                 code: "create_session_unavailable".to_owned(),
                 completion_unknown: false,
             }]),
+            ControllerCommand::GitOverview {
+                session_id,
+                worktree,
+                ..
+            } => {
+                self.git(command_id, session_id, GitRequest::Overview { worktree })
+                    .await
+            }
+            ControllerCommand::GitLog {
+                session_id,
+                worktree,
+                offset,
+                limit,
+                ..
+            } => {
+                self.git(
+                    command_id,
+                    session_id,
+                    GitRequest::Log {
+                        worktree,
+                        offset,
+                        limit,
+                    },
+                )
+                .await
+            }
+            ControllerCommand::GitDiff {
+                session_id,
+                worktree,
+                commit,
+                path,
+                ..
+            } => {
+                self.git(
+                    command_id,
+                    session_id,
+                    GitRequest::Diff {
+                        worktree,
+                        commit,
+                        path,
+                    },
+                )
+                .await
+            }
+            ControllerCommand::GitSwitch {
+                session_id,
+                worktree,
+                branch,
+                ..
+            } => {
+                self.git(
+                    command_id,
+                    session_id,
+                    GitRequest::Switch { worktree, branch },
+                )
+                .await
+            }
             // A command from a newer device: refused by name, and the connection carries on.
             ControllerCommand::Unsupported => Ok(vec![ControllerResponse::Error {
                 command_id,
@@ -637,6 +695,58 @@ impl HostConnectionBackend {
 
     /// The generation a command must present, asking tmux when the id is neither durable
     /// nor in the last tmux listing.
+    /// Answers a Git command in the folder the session's shell is in now.
+    async fn git(
+        &mut self,
+        command_id: multiplex_domain::CommandId,
+        session_id: HostedSessionId,
+        request: GitRequest,
+    ) -> Result<Vec<ControllerResponse>, ListenerError> {
+        let Some(folder) = self.session_folder(session_id).await else {
+            return Ok(vec![error_with_code(command_id, "git_folder_unknown")]);
+        };
+        tokio::task::spawn_blocking(move || {
+            vec![git_answer(command_id, session_id, &folder, request)]
+        })
+        .await
+        .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))
+    }
+
+    /// Where a session's shell is now: its process's current directory where the platform can
+    /// say, otherwise the folder it started in. A tmux session answers with its active pane's.
+    async fn session_folder(&mut self, session_id: HostedSessionId) -> Option<PathBuf> {
+        let durable = self.sessions.session_data_path(session_id);
+        if let Ok(metadata) = read_host_metadata(&durable)
+            && metadata.session_id == session_id
+        {
+            if let Some(folder) = live_shell_folder(&metadata) {
+                return Some(folder);
+            }
+            let snapshot = self.sessions.load().ok()?;
+            return snapshot
+                .sessions
+                .iter()
+                .find(|session| session.id == session_id)
+                .map(|session| session.folder.as_path().to_owned());
+        }
+        let console = self.console_root.join(session_id.to_string());
+        if let Some(record) = multiplex_store::read_console_session(&console)
+            && record.session_id == session_id
+        {
+            return read_host_metadata(&console)
+                .ok()
+                .filter(|metadata| metadata.session_id == session_id)
+                .and_then(|metadata| live_shell_folder(&metadata))
+                .or(Some(record.working_directory));
+        }
+        let found = self.tmux.resolve(session_id).await?;
+        self.tmux
+            .source
+            .as_ref()?
+            .current_path(&found.session)
+            .await
+    }
+
     async fn resolve_occupant_generation(
         &mut self,
         session_id: HostedSessionId,
@@ -883,6 +993,115 @@ impl HostConnectionBackend {
 /// The runtime paired devices see for a shell `multiplex-cli shell` started.
 pub const CONSOLE_RUNTIME_ID: &str = "shell";
 
+/// A Git command, once its session has been found.
+enum GitRequest {
+    Overview {
+        worktree: Option<String>,
+    },
+    Log {
+        worktree: Option<String>,
+        offset: u32,
+        limit: u16,
+    },
+    Diff {
+        worktree: Option<String>,
+        commit: Option<String>,
+        path: Option<String>,
+    },
+    Switch {
+        worktree: Option<String>,
+        branch: String,
+    },
+}
+
+impl GitRequest {
+    fn worktree(&self) -> Option<&str> {
+        match self {
+            Self::Overview { worktree }
+            | Self::Log { worktree, .. }
+            | Self::Diff { worktree, .. }
+            | Self::Switch { worktree, .. } => worktree.as_deref(),
+        }
+    }
+}
+
+fn git_answer(
+    command_id: multiplex_domain::CommandId,
+    session_id: HostedSessionId,
+    folder: &std::path::Path,
+    request: GitRequest,
+) -> ControllerResponse {
+    let answer = || -> Result<ControllerResponse, git::GitError> {
+        let Some(root) = git::view(folder, request.worktree())? else {
+            return Ok(match request {
+                GitRequest::Overview { .. } => ControllerResponse::GitOverview {
+                    command_id,
+                    session_id,
+                    repository: None,
+                },
+                _ => error_with_code(command_id, "git_not_repository"),
+            });
+        };
+        Ok(match request {
+            GitRequest::Overview { .. } => {
+                let terminal_root = git::worktree_root(folder)?.unwrap_or_else(|| root.clone());
+                ControllerResponse::GitOverview {
+                    command_id,
+                    session_id,
+                    repository: Some(git::overview(folder, &terminal_root, &root)?),
+                }
+            }
+            GitRequest::Log { offset, limit, .. } => {
+                let (commits, next_offset) = git::log(&root, offset, limit)?;
+                ControllerResponse::GitLog {
+                    command_id,
+                    session_id,
+                    commits,
+                    next_offset,
+                }
+            }
+            GitRequest::Diff { commit, path, .. } => ControllerResponse::GitDiff {
+                command_id,
+                session_id,
+                diff: git::diff(&root, commit.as_deref(), path.as_deref())?,
+            },
+            GitRequest::Switch { branch, .. } => {
+                let (switched, message) = git::switch(&root, &branch)?;
+                ControllerResponse::GitSwitched {
+                    command_id,
+                    session_id,
+                    switched,
+                    branch,
+                    message,
+                }
+            }
+        })
+    };
+    answer().unwrap_or_else(|error| error_with_code(command_id, error.code()))
+}
+
+/// The current directory of a session's shell while its Host is serving. A Host that is not
+/// serving may have left a process id another process now has, so it is not asked.
+fn live_shell_folder(metadata: &multiplex_store::HostMetadata) -> Option<PathBuf> {
+    if !matches!(
+        metadata.lifecycle,
+        multiplex_domain::HostLifecycle::Starting
+            | multiplex_domain::HostLifecycle::Ready
+            | multiplex_domain::HostLifecycle::Stopping
+    ) {
+        return None;
+    }
+    git::process_folder(metadata.process_token?.platform_identity())
+}
+
+fn error_with_code(command_id: multiplex_domain::CommandId, code: &str) -> ControllerResponse {
+    ControllerResponse::Error {
+        command_id,
+        code: code.to_owned(),
+        completion_unknown: false,
+    }
+}
+
 fn console_session_summary(
     session: &multiplex_store::LiveConsoleSession,
     capabilities: &[ControllerSessionCapability],
@@ -1008,6 +1227,196 @@ mod tests {
     use crate::{
         DesktopPaneBridgeServer, DesktopPaneRegistration, DesktopPaneRegistry, DesktopPaneTransport,
     };
+
+    /// A phone reads the repository a launcher shell has `cd`ed into, not the folder it started
+    /// in, and switches its branch.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn git_follows_the_shell_into_its_repository() {
+        let fixture = tempfile::tempdir().unwrap();
+        let fixture_path = fixture.path().canonicalize().unwrap();
+        let repo = fixture_path.join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .current_dir(&repo)
+                .args(["-c", "user.name=Ada", "-c", "user.email=ada@example.com"])
+                .args(args)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .output()
+                .is_ok_and(|output| output.status.success())
+        };
+        if !git(&["init", "-q", "-b", "main"]) {
+            return;
+        }
+        std::fs::write(repo.join("readme.md"), "hello\n").unwrap();
+        assert!(git(&["add", "readme.md"]));
+        assert!(git(&["commit", "-q", "-m", "Say hello"]));
+        assert!(git(&["branch", "feature"]));
+        std::fs::write(repo.join("readme.md"), "hello\nworld\n").unwrap();
+
+        let runtime = tempfile::Builder::new()
+            .prefix("mx-git-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let library_root = fixture_path.join("library");
+        let data_root = fixture_path.join("durable-sessions");
+        let sessions = SessionRepository::open(library_root.clone(), data_root.clone()).unwrap();
+        let library = LibraryRepository::open(library_root).unwrap();
+        let console_root = multiplex_store::console_sessions_root(&data_root);
+        let session_id = HostedSessionId::new();
+        let session_dir = console_root.join(session_id.to_string());
+        std::fs::create_dir_all(&session_dir).unwrap();
+        let host = multiplex_session_host::start(multiplex_session_host::LaunchDescriptor {
+            format_version: multiplex_session_host::LaunchDescriptor::FORMAT_VERSION,
+            session_id,
+            host_instance_id: multiplex_domain::HostInstanceId::new(),
+            expected_occupant_generation: None,
+            runtime_root: runtime.path().join(session_id.to_string()),
+            session_dir: session_dir.clone(),
+            executable: std::fs::canonicalize("/bin/sh").unwrap(),
+            runtime_detection: None,
+            arguments: vec![
+                "-c".to_owned(),
+                format!("cd '{}' && while :; do sleep 1; done", repo.display()),
+            ],
+            environment: std::collections::BTreeMap::from([(
+                "PATH".to_owned(),
+                "/usr/bin:/bin".to_owned(),
+            )]),
+            cwd: Some(fixture_path.clone()),
+            columns: 80,
+            rows: 24,
+            journal_limits: multiplex_store::JournalLimits::default(),
+            stop_deadlines: multiplex_session_host::StopDeadlines::default(),
+        })
+        .await
+        .unwrap();
+        multiplex_store::write_console_session(
+            &session_dir,
+            &multiplex_store::ConsoleSessionRecord {
+                schema_version: multiplex_store::ConsoleSessionRecord::SCHEMA_VERSION,
+                session_id,
+                program: "sh".to_owned(),
+                title_override: None,
+                working_directory: fixture_path.clone(),
+                started_at: 1,
+            },
+        )
+        .unwrap();
+        let mut backend = HostConnectionBackend {
+            sessions,
+            library,
+            runtime_parent: runtime.path().to_path_buf(),
+            capabilities: ControllerCapabilities::default()
+                .with(ControllerCapability::ObserveSessions)
+                .with(ControllerCapability::AttachOutput)
+                .with(ControllerCapability::SendInput),
+            clients: HashMap::new(),
+            active_attach: None,
+            pending_output: VecDeque::new(),
+            desktop_pane_bridge_endpoint: None,
+            desktop_pane_bridge: None,
+            live_commands: HashSet::new(),
+            live_attach: false,
+            console_root,
+            tmux: TmuxConnectionState::new(None),
+        };
+        let generation = backend.occupant_generation(session_id).unwrap();
+        let cancel = CancellationToken::new();
+        let mut send = async |command: ControllerCommand| {
+            let envelope = ControllerCommandEnvelope::new(CommandId::new(), 1, 1, command);
+            let context = backend.command_context(&envelope, &cancel).await.unwrap();
+            assert_eq!(context.occupant_generation, Some(generation));
+            let mut responses = backend.execute(envelope, &cancel).await.unwrap();
+            assert_eq!(responses.len(), 1);
+            responses.remove(0)
+        };
+
+        // The shell `cd`s once it starts, so ask until its folder is the repository.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let repository = loop {
+            let response = send(ControllerCommand::GitOverview {
+                session_id,
+                occupant_generation: generation,
+                worktree: None,
+            })
+            .await;
+            if let ControllerResponse::GitOverview {
+                repository: Some(repository),
+                ..
+            } = response
+            {
+                break repository;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the shell never reached the repository"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        };
+        assert_eq!(repository.folder, repo.display().to_string());
+        assert_eq!(repository.branch.as_deref(), Some("main"));
+        assert_eq!(repository.changes.len(), 1);
+
+        let ControllerResponse::GitLog {
+            commits,
+            next_offset,
+            ..
+        } = send(ControllerCommand::GitLog {
+            session_id,
+            occupant_generation: generation,
+            worktree: None,
+            offset: 0,
+            limit: 20,
+        })
+        .await
+        else {
+            panic!("expected history");
+        };
+        assert_eq!(commits.len(), 1);
+        assert_eq!(commits[0].subject, "Say hello");
+        assert_eq!(next_offset, None);
+
+        let ControllerResponse::GitDiff { diff, .. } = send(ControllerCommand::GitDiff {
+            session_id,
+            occupant_generation: generation,
+            worktree: None,
+            commit: None,
+            path: None,
+        })
+        .await
+        else {
+            panic!("expected a diff");
+        };
+        assert!(diff.patch.contains("+world"));
+
+        let ControllerResponse::GitSwitched { switched, .. } = send(ControllerCommand::GitSwitch {
+            session_id,
+            occupant_generation: generation,
+            worktree: None,
+            branch: "feature".to_owned(),
+        })
+        .await
+        else {
+            panic!("expected a switch");
+        };
+        assert!(switched);
+
+        let ControllerResponse::Error { code, .. } = send(ControllerCommand::GitOverview {
+            session_id,
+            occupant_generation: generation,
+            worktree: Some("/".to_owned()),
+        })
+        .await
+        else {
+            panic!("a folder outside the repository is refused");
+        };
+        assert_eq!(code, "git_unknown_worktree");
+        drop(backend);
+        drop(host);
+    }
 
     /// A shell `multiplex-cli shell` started is a Session Host the listener never launched and a
     /// record beside the durable sessions; a paired device lists it and attaches to it like any.

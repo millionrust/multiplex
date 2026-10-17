@@ -813,7 +813,13 @@ fn response_security(
             SecurityCapability::ObserveScreens,
             control_payload_limit(),
         ),
-        ControllerResponse::Completed { .. } | ControllerResponse::Error { .. } => (
+        // A Git answer is authorized as the command that asked for it was.
+        ControllerResponse::Completed { .. }
+        | ControllerResponse::Error { .. }
+        | ControllerResponse::GitOverview { .. }
+        | ControllerResponse::GitLog { .. }
+        | ControllerResponse::GitDiff { .. }
+        | ControllerResponse::GitSwitched { .. } => (
             ControllerFrameKind::Control,
             command_capability,
             control_payload_limit(),

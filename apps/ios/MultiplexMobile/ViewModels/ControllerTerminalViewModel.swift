@@ -118,6 +118,22 @@ final class ControllerTerminalViewModel: ObservableObject, Identifiable {
         return hostAllows && sessionAllows
     }
 
+    /// The repository this terminal's shell is in, read on a connection of its own so the
+    /// terminal stays attached while the phone looks at it.
+    func makeGitViewModel() -> ControllerGitViewModel {
+        let connection = connection
+        return ControllerGitViewModel(
+            host: host,
+            target: ControllerGitTarget(
+                sessionID: identity.sessionID,
+                occupantGeneration: identity.occupantGeneration
+            ),
+            sessionTitle: sessionTitle,
+            canSwitch: supportsWriterControl,
+            makeConnection: { try await connection.independentConnection() }
+        )
+    }
+
     /// Whether the phone keeps the host terminal's size instead of resizing it to fit the
     /// phone. Resizing a desktop terminal makes its shell redraw the prompt at the phone's
     /// width, which can leave stray prompt lines on the desktop when it grows back.

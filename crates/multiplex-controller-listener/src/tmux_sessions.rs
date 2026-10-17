@@ -198,6 +198,34 @@ impl TmuxSessionSource {
         }
     }
 
+    /// The folder the session's active pane is in, as tmux reports it.
+    pub(crate) async fn current_path(&self, session: &TmuxSession) -> Option<std::path::PathBuf> {
+        let tmux = self.tmux()?;
+        let target = session.session_target().to_owned();
+        self.runtime()
+            .spawn_blocking(move || {
+                let output = tmux
+                    .command()
+                    .args([
+                        "display-message",
+                        "-p",
+                        "-t",
+                        &target,
+                        "#{pane_current_path}",
+                    ])
+                    .stdin(std::process::Stdio::null())
+                    .output()
+                    .ok()?;
+                let path = String::from_utf8(output.stdout).ok()?;
+                let path = path.trim_end_matches(['\n', '\r']);
+                (output.status.success() && path.starts_with('/'))
+                    .then(|| std::path::PathBuf::from(path))
+            })
+            .await
+            .ok()
+            .flatten()
+    }
+
     /// The generation a Controller must present for this session. It advances each time a
     /// host for the session goes away, so a phone holding output from an earlier host is
     /// told to start over instead of resuming from a watermark the new host never had.

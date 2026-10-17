@@ -65,6 +65,7 @@ targets:
       - MultiplexMobile/Terminal/TerminalGrid.swift
       - MultiplexMobile/Terminal/TerminalInputEncoding.swift
       - MultiplexMobile/ViewModels/ControllerScreenCoordinator.swift
+      - MultiplexMobile/ViewModels/ControllerGitViewModel.swift
       - MultiplexMobile/ViewModels/ControllerTerminalViewModel.swift
       - MultiplexMobile/ViewModels/ControllerViewModel.swift
       - MultiplexMobile/ViewModels/HostListViewModel.swift
@@ -75,6 +76,7 @@ targets:
       - MultiplexMobile/Views/FlowKeyboard.swift
       - MultiplexMobile/Views/ScreenPictureInPicture.swift
       - MultiplexMobile/Views/RemoteScreenView.swift
+      - MultiplexMobile/Views/ControllerGitView.swift
       - MultiplexMobile/Views/ControllerPresentation.swift
       - MultiplexMobile/Views/ControllerQRCodeScanner.swift
       - MultiplexMobile/Views/ControllerReadOnlyTerminalView.swift
@@ -143,6 +145,7 @@ targets:
       - MultiplexMobileTests/ControllerPairingFleetTests.swift
       - MultiplexMobileTests/ControllerRouteRaceTests.swift
       - MultiplexMobileTests/ControllerReadOnlyTerminalTests.swift
+      - MultiplexMobileTests/ControllerGitTests.swift
       - MultiplexMobileTests/ControllerTerminalViewModelTests.swift
       - MultiplexMobileTests/ControllerWriterTests.swift
       - MultiplexMobileTests/TerminalConformanceV1Tests.swift

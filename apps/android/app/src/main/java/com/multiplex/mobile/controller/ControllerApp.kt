@@ -41,6 +41,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
@@ -159,6 +160,9 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
 
     BackHandler(enabled = activeTerminal != null) { viewModel.detachTerminal() }
     BackHandler(enabled = activeTerminal == null && openHostId != null) { openHostId = null }
+
+    val git by viewModel.git.collectAsState()
+    git?.let { model -> GitDialog(model, onClose = viewModel::closeGit) }
 
     val screenViewer = viewModel.screens.viewer
     BackHandler(enabled = screenViewer != null) { viewModel.closeScreen() }
@@ -333,6 +337,7 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                         onConfirmPaste = viewModel::confirmTerminalPaste,
                         onCancelPaste = viewModel::cancelTerminalPaste,
                         onViewportChanged = viewModel::updateTerminalViewport,
+                        onOpenGit = viewModel::openGit,
                     )
                 } else if (state.hosts.isEmpty()) {
                     EmptyFleet(onPair = { showPairing = true })
@@ -647,7 +652,7 @@ private fun LabelHeading(text: String) {
 
 /** `.items`: one rounded group, its rows divided by a hairline. */
 @Composable
-private fun ItemGroup(content: @Composable ColumnScope.() -> Unit) {
+internal fun ItemGroup(content: @Composable ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(16.dp)
     Column(
         Modifier
@@ -661,7 +666,7 @@ private fun ItemGroup(content: @Composable ColumnScope.() -> Unit) {
 
 /** `.item`: a 40-unit round lead, a title, and a small line under it. */
 @Composable
-private fun GroupItem(
+internal fun GroupItem(
     title: String,
     subtitle: String? = null,
     subtitleAttention: Boolean = false,
@@ -705,7 +710,7 @@ private fun GroupItem(
 
 /** The 40-unit circle a `.item` leads with. */
 @Composable
-private fun ItemLead(attention: Boolean = false, content: @Composable () -> Unit) {
+internal fun ItemLead(attention: Boolean = false, content: @Composable () -> Unit) {
     Box(
         Modifier
             .size(40.dp)
@@ -803,7 +808,7 @@ private fun HostList(
 
 /** `.group-label`: the quiet heading over a group of rows. */
 @Composable
-private fun GroupLabel(text: String) {
+internal fun GroupLabel(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.labelMedium,
@@ -1720,6 +1725,8 @@ internal fun ControllerTerminalScreen(
     onConfirmPaste: () -> Unit,
     onCancelPaste: () -> Unit,
     onViewportChanged: (Int, Int, Boolean) -> Unit,
+    /** Opens the repository the terminal's shell is in; absent where the page is not offered. */
+    onOpenGit: (() -> Unit)? = null,
 ) {
     var followOutput by remember { mutableStateOf(true) }
     var keyboardRequest by remember { mutableLongStateOf(0L) }
@@ -1934,6 +1941,18 @@ internal fun ControllerTerminalScreen(
                                 expanded = showOptions,
                                 onDismissRequest = { showOptions = false },
                             ) {
+                                if (onOpenGit != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(com.multiplex.mobile.R.string.git_open)) },
+                                        onClick = {
+                                            showOptions = false
+                                            onOpenGit()
+                                        },
+                                        leadingIcon = {
+                                            Icon(Icons.Outlined.AccountTree, contentDescription = null)
+                                        },
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = {
                                         Text(

@@ -56,6 +56,17 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
             application.getSharedPreferences("controller-routes-v1", 0),
         ),
     )
+    /** A third, for the Git page, so reading a repository never ends the terminal it is about. */
+    private val gitConnection = ControllerConnection(
+        secureBlobs,
+        phoneNetwork = AndroidPhoneNetworkSource(
+            application,
+            application.getSharedPreferences("controller-routes-v1", 0),
+        ),
+    )
+    private val _git = MutableStateFlow<ControllerGitModel?>(null)
+    /** The Git page over the attached terminal, while it is open. */
+    val git: StateFlow<ControllerGitModel?> = _git.asStateFlow()
     private val routePreferences = application.getSharedPreferences("controller-routes-v1", 0)
     private val routeCoordinator = AndroidControllerRouteCoordinator(routeConnections.availability())
     private val discovery = ControllerHostDiscovery(application)
@@ -574,7 +585,34 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         enqueueTerminalInput(prepared, PendingInputKind.PASTE, true)
     }
 
+    /**
+     * Opens the Git page for the attached terminal. Only the private network carries Git; the
+     * page says so on the other routes rather than the menu hiding it.
+     */
+    fun openGit() {
+        val runtime = terminalRuntime ?: return
+        val generation = runtime.session.occupantGeneration ?: return
+        _git.value?.let { previous -> viewModelScope.launch { previous.stop() } }
+        val model = ControllerGitModel(
+            scope = viewModelScope,
+            host = runtime.host,
+            target = GitTarget(runtime.session.id, generation),
+            sessionTitle = runtime.session.title,
+            canSwitch = runtime.supportsWriter,
+            connection = if (runtime.route == ControllerRemoteRouteKind.PRIVATE_NETWORK) gitConnection else null,
+        )
+        _git.value = model
+        model.load()
+    }
+
+    fun closeGit() {
+        val model = _git.value ?: return
+        _git.value = null
+        viewModelScope.launch { model.stop() }
+    }
+
     fun detachTerminal() {
+        closeGit()
         val runtime = terminalRuntime
         val held = runtime?.writer?.lease == WriterLeaseState.Held
         operation?.cancel()
@@ -675,6 +713,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         terminalResize?.cancel()
         terminalRuntime?.terminal?.close()
         routeConnections.close()
+        gitConnection.close()
         discovery.close()
         super.onCleared()
     }

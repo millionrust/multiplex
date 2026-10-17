@@ -97,6 +97,13 @@ interface ControllerConnecting : AutoCloseable {
         viewport: TerminalViewport,
     ): CreatedSession = throw ControllerConnectionException.CapabilityDenied
 
+    /**
+     * Asks about the Git repository [target]'s shell is in. A route that cannot carry it says
+     * so, rather than every caller knowing which can.
+     */
+    suspend fun git(host: PairedHostRecord, target: GitTarget, request: GitRequest): GitAnswer =
+        throw ControllerConnectionException.HostError("git_route_unavailable")
+
     suspend fun cancel()
 }
 

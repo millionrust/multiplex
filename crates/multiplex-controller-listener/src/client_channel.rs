@@ -230,7 +230,11 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ControllerClientChannel<S> {
                 true,
             ),
             ControllerResponse::Completed { command_id, .. }
-            | ControllerResponse::Error { command_id, .. } => (
+            | ControllerResponse::Error { command_id, .. }
+            | ControllerResponse::GitOverview { command_id, .. }
+            | ControllerResponse::GitLog { command_id, .. }
+            | ControllerResponse::GitDiff { command_id, .. }
+            | ControllerResponse::GitSwitched { command_id, .. } => (
                 ControllerFrameKind::Control,
                 *self
                     .pending
@@ -264,6 +268,10 @@ fn response_command_id(response: &ControllerResponse) -> Option<CommandId> {
         | ControllerResponse::Detached { command_id }
         | ControllerResponse::ScreenOpened { command_id, .. }
         | ControllerResponse::SessionCreated { command_id, .. }
+        | ControllerResponse::GitOverview { command_id, .. }
+        | ControllerResponse::GitLog { command_id, .. }
+        | ControllerResponse::GitDiff { command_id, .. }
+        | ControllerResponse::GitSwitched { command_id, .. }
         | ControllerResponse::Error { command_id, .. } => Some(*command_id),
         ControllerResponse::Output { .. } | ControllerResponse::Unknown => None,
     }

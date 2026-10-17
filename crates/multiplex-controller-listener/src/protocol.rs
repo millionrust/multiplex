@@ -20,6 +20,14 @@ pub const MAX_SNAPSHOT_CHUNK_BYTES: usize = 128 * 1024;
 pub const SCREEN_TICKET_BYTES: usize = 32;
 /// The longest folder, shell or title a device may name when it starts a terminal.
 pub const MAX_CREATE_SESSION_FIELD_BYTES: usize = 1_024;
+/// The longest path, worktree or branch a device may name in a Git command.
+pub const MAX_GIT_FIELD_BYTES: usize = 4_096;
+/// The most commits one page of Git history carries.
+pub const MAX_GIT_LOG_PAGE: u16 = 100;
+/// What a Git answer is trimmed to, leaving room in a control frame for its envelope.
+pub const MAX_GIT_RESPONSE_BYTES: usize = MAX_CONTROL_PAYLOAD_BYTES - 2 * 1024;
+/// The most patch text read before trimming it to fit [`MAX_GIT_RESPONSE_BYTES`].
+pub const MAX_GIT_DIFF_PATCH_BYTES: usize = 256 * 1024;
 
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -150,6 +158,46 @@ pub enum ControllerCommand {
         columns: u32,
         rows: u32,
     },
+    /// The Git repository the terminal's folder is in: branch, changes, branches, worktrees.
+    ///
+    /// Reading a repository is reading what the terminal could show, so it needs what watching
+    /// a terminal needs. `worktree` shows another worktree of the same repository instead.
+    GitOverview {
+        session_id: HostedSessionId,
+        occupant_generation: OccupantGeneration,
+        #[serde(default)]
+        worktree: Option<String>,
+    },
+    /// One page of history from `HEAD`, newest first.
+    GitLog {
+        session_id: HostedSessionId,
+        occupant_generation: OccupantGeneration,
+        #[serde(default)]
+        worktree: Option<String>,
+        offset: u32,
+        limit: u16,
+    },
+    /// A commit's changes, or the uncommitted ones when `commit` is absent; `path` narrows the
+    /// patch to one file.
+    GitDiff {
+        session_id: HostedSessionId,
+        occupant_generation: OccupantGeneration,
+        #[serde(default)]
+        worktree: Option<String>,
+        #[serde(default)]
+        commit: Option<String>,
+        #[serde(default)]
+        path: Option<String>,
+    },
+    /// Switches the worktree to a branch, as `git switch` would. Changing what the terminal's
+    /// folder holds is as much as typing `git switch` into it, so it needs `SendInput`.
+    GitSwitch {
+        session_id: HostedSessionId,
+        occupant_generation: OccupantGeneration,
+        #[serde(default)]
+        worktree: Option<String>,
+        branch: String,
+    },
     /// A command from a newer device than this build.
     ///
     /// Decoding it rather than failing is what lets the wire grow: an unknown command used to
@@ -174,6 +222,10 @@ impl ControllerCommand {
             Self::OpenScreen => BridgeCommandKind::OpenScreen,
             Self::CloseScreen => BridgeCommandKind::CloseScreen,
             Self::CreateSession { .. } => BridgeCommandKind::CreateSession,
+            Self::GitOverview { .. } | Self::GitLog { .. } | Self::GitDiff { .. } => {
+                BridgeCommandKind::GitRead
+            }
+            Self::GitSwitch { .. } => BridgeCommandKind::GitSwitch,
             Self::Unsupported => BridgeCommandKind::Unsupported,
         }
     }
@@ -191,7 +243,11 @@ impl ControllerCommand {
             | Self::Input { session_id, .. }
             | Self::Resize { session_id, .. }
             | Self::Approval { session_id, .. }
-            | Self::Detach { session_id, .. } => Some(*session_id),
+            | Self::Detach { session_id, .. }
+            | Self::GitOverview { session_id, .. }
+            | Self::GitLog { session_id, .. }
+            | Self::GitDiff { session_id, .. }
+            | Self::GitSwitch { session_id, .. } => Some(*session_id),
         }
     }
 
@@ -227,6 +283,22 @@ impl ControllerCommand {
                 ..
             }
             | Self::Detach {
+                occupant_generation,
+                ..
+            }
+            | Self::GitOverview {
+                occupant_generation,
+                ..
+            }
+            | Self::GitLog {
+                occupant_generation,
+                ..
+            }
+            | Self::GitDiff {
+                occupant_generation,
+                ..
+            }
+            | Self::GitSwitch {
                 occupant_generation,
                 ..
             } => Some(*occupant_generation),
@@ -284,9 +356,78 @@ impl ControllerCommand {
             {
                 Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
             }
+            Self::GitOverview { worktree, .. } if !valid_git_worktree(worktree.as_deref()) => {
+                Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
+            }
+            Self::GitLog {
+                worktree,
+                offset,
+                limit,
+                ..
+            } if !valid_git_worktree(worktree.as_deref())
+                || *limit == 0
+                || *limit > MAX_GIT_LOG_PAGE
+                || *offset > 1_000_000 =>
+            {
+                Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
+            }
+            Self::GitDiff {
+                worktree,
+                commit,
+                path,
+                ..
+            } if !valid_git_worktree(worktree.as_deref())
+                || commit
+                    .as_deref()
+                    .is_some_and(|commit| !valid_git_commit(commit))
+                || path.as_deref().is_some_and(|path| !valid_git_path(path)) =>
+            {
+                Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
+            }
+            Self::GitSwitch {
+                worktree, branch, ..
+            } if !valid_git_worktree(worktree.as_deref()) || !valid_git_branch(branch) => {
+                Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
+            }
             _ => Ok(()),
         }
     }
+}
+
+/// An absolute path of a worktree the overview listed.
+fn valid_git_worktree(worktree: Option<&str>) -> bool {
+    worktree.is_none_or(|worktree| {
+        !worktree.is_empty()
+            && worktree.len() <= MAX_GIT_FIELD_BYTES
+            && !worktree.contains('\0')
+            && std::path::Path::new(worktree).is_absolute()
+    })
+}
+
+/// A full or abbreviated object id: never a ref name or an option.
+fn valid_git_commit(commit: &str) -> bool {
+    (4..=64).contains(&commit.len()) && commit.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+/// A path inside the worktree, relative to its top.
+fn valid_git_path(path: &str) -> bool {
+    !path.is_empty()
+        && path.len() <= MAX_GIT_FIELD_BYTES
+        && !path.contains('\0')
+        && !path.starts_with('/')
+        && !path.split('/').any(|part| part == "..")
+}
+
+/// A branch as the overview named it. Git checks the rest; this keeps out what could be read
+/// as an option or reach outside `refs/`.
+fn valid_git_branch(branch: &str) -> bool {
+    !branch.is_empty()
+        && branch.len() <= 256
+        && !branch.starts_with('-')
+        && !branch.contains("..")
+        && !branch
+            .chars()
+            .any(|character| character.is_control() || character.is_whitespace())
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -353,9 +494,148 @@ pub enum ControllerResponse {
         session_id: HostedSessionId,
         occupant_generation: OccupantGeneration,
     },
+    /// The repository the terminal's folder is in, or `None` when it is in none.
+    GitOverview {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        repository: Option<GitRepository>,
+    },
+    GitLog {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        commits: Vec<GitCommit>,
+        next_offset: Option<u32>,
+    },
+    GitDiff {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        diff: GitDiff,
+    },
+    /// Whether the switch happened, with what git said either way.
+    GitSwitched {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        switched: bool,
+        branch: String,
+        message: String,
+    },
     /// A response from a newer computer than this build, which the reader skips.
     #[serde(other)]
     Unknown,
+}
+
+/// A worktree's state as a phone shows it. Paths are on the computer's filesystem.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct GitRepository {
+    /// The terminal's folder.
+    pub folder: String,
+    /// The top of the worktree shown.
+    pub root: String,
+    /// `None` when `HEAD` is detached.
+    pub branch: Option<String>,
+    /// `None` before the first commit.
+    pub head: Option<String>,
+    pub upstream: Option<String>,
+    pub ahead: u32,
+    pub behind: u32,
+    pub changes: Vec<GitChange>,
+    pub changes_truncated: bool,
+    /// Local branches, then remote ones, most recently committed to first.
+    pub branches: Vec<GitBranch>,
+    pub branches_truncated: bool,
+    pub worktrees: Vec<GitWorktree>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GitChangeStatus {
+    Modified,
+    Added,
+    Deleted,
+    Renamed,
+    Copied,
+    TypeChanged,
+    Untracked,
+    Conflicted,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct GitChange {
+    pub path: String,
+    pub original_path: Option<String>,
+    pub status: GitChangeStatus,
+    pub staged: bool,
+    pub unstaged: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct GitBranch {
+    /// `main`, or `origin/main` for a remote one.
+    pub name: String,
+    pub remote: bool,
+    /// Checked out in the worktree shown.
+    pub current: bool,
+    pub upstream: Option<String>,
+    pub commit: String,
+    pub subject: String,
+    pub unix_time: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct GitWorktree {
+    pub path: String,
+    pub branch: Option<String>,
+    pub head: Option<String>,
+    /// The worktree shown.
+    pub current: bool,
+    /// The worktree the terminal is in.
+    pub terminal: bool,
+    pub locked: bool,
+    pub prunable: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct GitCommit {
+    pub oid: String,
+    pub short: String,
+    pub subject: String,
+    pub author: String,
+    pub unix_time: u64,
+    pub parents: u32,
+    /// Branches and tags pointing at it.
+    pub refs: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct GitCommitDetail {
+    pub oid: String,
+    pub short: String,
+    pub author: String,
+    pub email: String,
+    pub unix_time: u64,
+    pub parents: Vec<String>,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct GitDiff {
+    /// The commit shown, or `None` for uncommitted changes.
+    pub commit: Option<GitCommitDetail>,
+    pub files: Vec<GitDiffFile>,
+    pub files_truncated: bool,
+    /// Unified diff text, cut at a line when it is too long to send.
+    pub patch: String,
+    pub patch_truncated: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct GitDiffFile {
+    pub path: String,
+    pub original_path: Option<String>,
+    pub status: GitChangeStatus,
+    /// `None` for a binary file or one not yet tracked.
+    pub additions: Option<u32>,
+    pub deletions: Option<u32>,
 }
 
 impl fmt::Debug for ControllerResponse {
@@ -522,6 +802,13 @@ fn validate_response(response: &ControllerResponse) -> Result<(), ListenerError>
         {
             Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
         }
+        ControllerResponse::GitLog {
+            commits,
+            next_offset,
+            ..
+        } if commits.len() > usize::from(MAX_GIT_LOG_PAGE) || next_offset == &Some(0) => {
+            Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
+        }
         ControllerResponse::ScreenOpened { ticket, .. } if ticket.len() != SCREEN_TICKET_BYTES => {
             Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
         }
@@ -557,6 +844,10 @@ fn response_kind(response: &ControllerResponse) -> &'static str {
         ControllerResponse::Detached { .. } => "detached",
         ControllerResponse::ScreenOpened { .. } => "screen_opened",
         ControllerResponse::SessionCreated { .. } => "session_created",
+        ControllerResponse::GitOverview { .. } => "git_overview",
+        ControllerResponse::GitLog { .. } => "git_log",
+        ControllerResponse::GitDiff { .. } => "git_diff",
+        ControllerResponse::GitSwitched { .. } => "git_switched",
         ControllerResponse::Unknown => "unknown",
         ControllerResponse::Error { .. } => "error",
     }
@@ -565,6 +856,89 @@ fn response_kind(response: &ControllerResponse) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn git_commands_carry_bounded_arguments_and_the_right_capability() {
+        let session_id = HostedSessionId::new();
+        let generation = OccupantGeneration::new(1);
+        let diff = |commit: Option<&str>, path: Option<&str>| ControllerCommand::GitDiff {
+            session_id,
+            occupant_generation: generation,
+            worktree: None,
+            commit: commit.map(str::to_owned),
+            path: path.map(str::to_owned),
+        };
+        assert!(
+            diff(Some("1a2b3c4d"), Some("src/main.rs"))
+                .validate()
+                .is_ok()
+        );
+        assert!(diff(Some("HEAD"), None).validate().is_err());
+        assert!(diff(Some("--output=x"), None).validate().is_err());
+        assert!(diff(None, Some("../secret")).validate().is_err());
+        assert!(diff(None, Some("/etc/passwd")).validate().is_err());
+        let switch = |branch: &str| ControllerCommand::GitSwitch {
+            session_id,
+            occupant_generation: generation,
+            worktree: None,
+            branch: branch.to_owned(),
+        };
+        assert!(switch("feature/login").validate().is_ok());
+        assert!(switch("-f").validate().is_err());
+        assert!(switch("a b").validate().is_err());
+        let overview = |worktree: &str| ControllerCommand::GitOverview {
+            session_id,
+            occupant_generation: generation,
+            worktree: Some(worktree.to_owned()),
+        };
+        assert!(overview("relative/path").validate().is_err());
+        let log = |limit: u16| ControllerCommand::GitLog {
+            session_id,
+            occupant_generation: generation,
+            worktree: None,
+            offset: 0,
+            limit,
+        };
+        assert!(log(0).validate().is_err());
+        assert!(log(MAX_GIT_LOG_PAGE + 1).validate().is_err());
+
+        // Reading is watching; switching is typing.
+        assert_eq!(
+            log(10).kind().capability(),
+            multiplex_domain::ControllerCapability::AttachOutput
+        );
+        assert_eq!(
+            switch("main").kind().capability(),
+            multiplex_domain::ControllerCapability::SendInput
+        );
+        assert!(switch("main").kind().addresses_a_session());
+        assert!(!switch("main").kind().requires_writer_lease());
+        assert_eq!(switch("main").session_id(), Some(session_id));
+        assert_eq!(log(1).occupant_generation(), Some(generation));
+    }
+
+    #[test]
+    fn git_responses_round_trip_and_older_readers_skip_them() {
+        let response = ControllerResponse::GitSwitched {
+            command_id: CommandId::new(),
+            session_id: HostedSessionId::new(),
+            switched: false,
+            branch: "main".to_owned(),
+            message: "error: Your local changes would be overwritten".to_owned(),
+        };
+        let bytes = encode_response(&response, MAX_CONTROL_PAYLOAD_BYTES).unwrap();
+        assert!(String::from_utf8_lossy(&bytes).contains("\"kind\":\"git_switched\""));
+        assert_eq!(
+            decode_response(&bytes, MAX_CONTROL_PAYLOAD_BYTES).unwrap(),
+            response
+        );
+        let unknown =
+            br#"{"kind":"git_blame","command_id":"00000000-0000-0000-0000-000000000000"}"#;
+        assert!(matches!(
+            decode_response(unknown, MAX_CONTROL_PAYLOAD_BYTES),
+            Ok(ControllerResponse::Unknown)
+        ));
+    }
 
     #[test]
     fn commands_round_trip_and_debug_never_contains_input_bytes() {

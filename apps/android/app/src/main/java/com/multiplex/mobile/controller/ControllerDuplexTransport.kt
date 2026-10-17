@@ -9,6 +9,9 @@ import java.net.Socket
 internal interface ControllerDuplexTransport : Closeable {
     val input: InputStream
     val output: OutputStream
+
+    /** Waits up to [millis] for each read from now on, for a request that may take longer. */
+    fun setReadTimeout(millis: Int) = Unit
 }
 
 internal fun interface ControllerTransportFactory {
@@ -38,6 +41,10 @@ private class SocketControllerTransport(
 ) : ControllerDuplexTransport {
     override val input: InputStream = socket.getInputStream()
     override val output: OutputStream = socket.getOutputStream()
+
+    override fun setReadTimeout(millis: Int) {
+        socket.soTimeout = millis
+    }
 
     override fun close() {
         socket.close()

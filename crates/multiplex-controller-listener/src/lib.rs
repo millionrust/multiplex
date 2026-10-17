@@ -13,6 +13,7 @@ mod discovery;
 mod error;
 mod firewall;
 mod framing;
+mod git;
 mod handshake;
 mod host_backend;
 mod interfaces;
@@ -78,9 +79,10 @@ pub use process_protocol::{
 };
 pub use protocol::{
     ApprovalDecision, ControllerCommand, ControllerCommandEnvelope, ControllerResponse,
-    ControllerSessionCapability, ControllerSessionOrigin, ControllerSessionSummary,
-    MAX_SESSION_PAGE_BYTES, MAX_SNAPSHOT_CHUNK_BYTES, decode_command, decode_response,
-    encode_command, encode_response,
+    ControllerSessionCapability, ControllerSessionOrigin, ControllerSessionSummary, GitBranch,
+    GitChange, GitChangeStatus, GitCommit, GitCommitDetail, GitDiff, GitDiffFile, GitRepository,
+    GitWorktree, MAX_GIT_LOG_PAGE, MAX_SESSION_PAGE_BYTES, MAX_SNAPSHOT_CHUNK_BYTES,
+    decode_command, decode_response, encode_command, encode_response,
 };
 pub use queue::{BoundedFrameQueue, QueueClass};
 pub use rate_limit::{AuthRateLimiter, SourceBucket, SourceBucketKey};

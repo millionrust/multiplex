@@ -19,6 +19,10 @@ pub enum BridgeCommandKind {
     CloseScreen,
     /// Starting a terminal on this computer.
     CreateSession,
+    /// Reading the Git repository a terminal's folder is in.
+    GitRead,
+    /// Switching that repository's branch.
+    GitSwitch,
     /// A command this build does not know, which is refused before it is authorized.
     Unsupported,
 }
@@ -37,6 +41,10 @@ impl BridgeCommandKind {
             // checked per screen frame, once the session carries input.
             Self::OpenScreen | Self::CloseScreen => ControllerCapability::ObserveScreens,
             Self::CreateSession => ControllerCapability::CreateSession,
+            // What a terminal's repository holds is what the terminal could print, and switching
+            // its branch is what typing `git switch` into it would do.
+            Self::GitRead => ControllerCapability::AttachOutput,
+            Self::GitSwitch => ControllerCapability::SendInput,
             // Never reached: the runtime refuses an unknown command before asking what it needs.
             // Naming the narrowest capability keeps a mistake here a refusal, not a grant.
             Self::Unsupported => ControllerCapability::ObserveSessions,

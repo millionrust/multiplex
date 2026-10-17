@@ -909,6 +909,16 @@ fn execute_desktop_command(
         | ControllerCommand::CloseScreen
         | ControllerCommand::CreateSession { .. }
         | ControllerCommand::Unsupported => vec![error_response(command_id)],
+        // A pane the app holds itself is an SSH session or a tmux client: its folder is on
+        // another machine or behind tmux, not something this computer can run Git in.
+        ControllerCommand::GitOverview { .. }
+        | ControllerCommand::GitLog { .. }
+        | ControllerCommand::GitDiff { .. }
+        | ControllerCommand::GitSwitch { .. } => vec![ControllerResponse::Error {
+            command_id,
+            code: "git_not_local".to_owned(),
+            completion_unknown: false,
+        }],
         ControllerCommand::Attach {
             session_id,
             occupant_generation,

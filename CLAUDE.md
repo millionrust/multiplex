@@ -113,6 +113,11 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   tmux, can only be checked and removed now; nothing turns it on. On macOS a LaunchAgent
   (`multiplex controller-service`) that keeps the LAN listener up after the app quits.
   See `docs/remote-terminals.md`.
+- A terminal's ⋮ menu on both phones opens **Git** for the repository its shell is in now
+  (live cwd from the Session Host's pid, or tmux `pane_current_path`): changes, paged history,
+  branches with switch, worktrees, and commit and file diffs. The listener runs bounded Git
+  (`multiplex-controller-listener/src/git.rs`); reads need AttachOutput, switching SendInput.
+  Private-network route only; desktop SSH panes answer `git_not_local`.
 - A "Multiplex" terminal profile, added from Devices to Windows Terminal (a fragment file),
   iTerm2 (a dynamic profile), or VS Code (one marked block in `settings.json`), runs
   `multiplex-cli shell`: the user's own shell in a Session Host, started detached so it outlives

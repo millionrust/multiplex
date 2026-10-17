@@ -29,6 +29,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.DataInputStream
@@ -858,6 +860,87 @@ class ControllerConnection internal constructor(
                     require(created.kind == "session_created" && created.commandId == commandId)
                     require(created.occupantGeneration > 0)
                     CreatedSession(created.sessionId, created.occupantGeneration)
+                } finally {
+                    runCatching { session.finish() }
+                    session.close()
+                }
+            } finally {
+                socket.close()
+                if (activeTransport === socket) activeTransport = null
+            }
+        }
+    }
+
+    override suspend fun git(
+        host: PairedHostRecord,
+        target: GitTarget,
+        request: GitRequest,
+    ): GitAnswer = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            cancelUnlocked(deleteCreatedKey = true)
+            host.validate()
+            val required = if (request.requiresInput) INPUT_CAPABILITY else ATTACH_CAPABILITY
+            if (host.capabilityBits and required != required) {
+                throw ControllerConnectionException.CapabilityDenied
+            }
+            val socket = openHost(host)
+            activeTransport = socket
+            try {
+                val input = DataInputStream(socket.input)
+                val output = DataOutputStream(socket.output)
+                val hostKey = Base64.getDecoder().decode(host.hostStaticPublicKey)
+                val start = ConnectionStartRequest(
+                    staticKeyId = host.deviceStaticKeyId,
+                    ephemeralPrivateKey = randomBytes(32),
+                    hostStaticPublicKey = hostKey,
+                    identityGeneration = host.identityGeneration.toULong(),
+                    revocationEpoch = host.revocationEpoch.toULong(),
+                    requestedCapabilityBits =
+                        (host.capabilityBits and ALL_SUPPORTED_CAPABILITIES).toUShort(),
+                    clientNonce = randomBytes(32),
+                    nowMillis = uptimeMillis().toULong(),
+                )
+                output.write(AUTH_PREFACE)
+                output.write(engine.connectionPrelude(start))
+                output.flush()
+                val challenge = ByteArray(36).also(input::readFully)
+                val session = engine.connectionStart(start, challenge)
+                try {
+                    writeFrame(output, session.handshakeOutbound(uptimeMillis().toULong()), MAX_HANDSHAKE_BYTES)
+                    val publicResult = session.handshakeReceiveAccept(
+                        readFrame(input, MAX_HANDSHAKE_BYTES),
+                        uptimeMillis().toULong(),
+                    )
+                    require(publicResult.hostStaticPublicKey.contentEquals(hostKey))
+                    require(publicResult.identityGeneration.toLong() == host.identityGeneration)
+                    require(publicResult.revocationEpoch.toLong() == host.revocationEpoch)
+                    if (publicResult.grantedCapabilityBits.toInt() and required != required) {
+                        throw ControllerConnectionException.CapabilityDenied
+                    }
+                    val commandId = UUID.randomUUID().toString()
+                    val payload = buildJsonObject {
+                        put("version", 1)
+                        put("command_id", commandId)
+                        put("session_generation", host.sessionGeneration)
+                        // Switching may run the repository's checkout hooks.
+                        put("deadline_millis", clockMillis() + 90_000)
+                        put("command", request.command(target))
+                    }.toString().encodeToByteArray()
+                    require(payload.size <= MAX_SECURE_FRAME_BYTES)
+                    val sealed = session.sealFrame(
+                        ControllerFrameKind.CONTROL,
+                        if (request.requiresInput) ControllerCapability.SEND_INPUT
+                        else ControllerCapability.ATTACH_OUTPUT,
+                        host.revocationEpoch.toULong(),
+                        payload,
+                    )
+                    // The computer gives Git a minute to switch branch; read past that.
+                    socket.setReadTimeout(90_000)
+                    writeFrame(output, sealed, MAX_SECURE_FRAME_BYTES)
+                    val opened = session.openFrame(readFrame(input, MAX_SECURE_FRAME_BYTES))
+                    require(opened.kind == ControllerFrameKind.CONTROL)
+                    require(opened.revocationEpoch.toLong() == host.revocationEpoch)
+                    GitAnswer.decode(opened.payload.decodeToString(), commandId)
                 } finally {
                     runCatching { session.finish() }
                     session.close()

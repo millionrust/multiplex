@@ -61,6 +61,21 @@ reachable from then on.
 - Local app panes also run `multiplex-cli shell`; their saved UUID reattaches to the same
   detached Session Host after restart. They share the CLI console inventory with external
   terminals. SSH opens the remote shell directly; old automatic tmux preferences are ignored.
+- **Git from the terminal page.** A terminal's ⋮ menu (iPhone and Android) opens **Git** for
+  the repository its shell is in *now*: the listener reads the shell's live folder from its
+  process (`proc_pidinfo` on macOS, `/proc/<pid>/cwd` on Linux) or tmux's
+  `pane_current_path`, falling back to the folder it started in. The page shows uncommitted
+  changes, paged history, local and remote branches, and the repository's worktrees; tapping a
+  commit or a file shows its diff. Reading needs **See terminal output** (`AttachOutput`);
+  switching branch (`git switch`, or `git switch --track` for a remote branch) needs **Type into
+  terminals** (`SendInput`) but not the writer lease, since it is what typing the command would
+  do. Showing another worktree changes only what the page shows. Git runs on the computer with
+  prompts, optional locks, external diff and textconv turned off, each call in its own process
+  group under a timeout, and every answer trimmed to fit one control frame
+  (`crates/multiplex-controller-listener/src/git.rs`). The commands are `git_overview`,
+  `git_log`, `git_diff` and `git_switch`. The phone sends them on a connection of its own, so
+  the terminal stays attached. Only the private network route carries them. Desktop SSH panes
+  answer `git_not_local`, because their folder is on another machine.
 
 Not yet: approval prompts answered from the phone (`Approval` returns an error on both
 backends), and any relay UI on the desktop (relay is CLI-only).

@@ -219,6 +219,12 @@ protocol ControllerConnecting: Sendable {
         title: String?,
         viewport: TerminalViewportState
     ) async throws -> CreatedControllerSession
+    /// Reads or switches the Git repository a terminal's shell is in. One request per connection.
+    func git(
+        host: PairedHostRecord,
+        target: ControllerGitTarget,
+        request: ControllerGitRequest
+    ) async throws -> ControllerGitAnswer
     func forgetDeviceSecret(host: PairedHostRecord) async throws
     func cancel() async
     /// What the last attempt to reach `hostID` suggests telling the person, if anything.
@@ -1621,6 +1627,103 @@ actor ControllerConnectionActor: ControllerConnecting {
             throw ControllerConnectionError.malformedResponse
         }
         return try Self.createdSession(from: opened.payload, commandID: commandID)
+    }
+
+    /// Reads or switches the repository a terminal's shell is in, on a connection of its own.
+    ///
+    /// Reading asks for what watching the terminal needs and switching for what typing into it
+    /// does, so a phone that may only watch is refused a switch by the computer as well as here.
+    func git(
+        host: PairedHostRecord,
+        target: ControllerGitTarget,
+        request: ControllerGitRequest
+    ) async throws -> ControllerGitAnswer {
+        // Not `cancel()` first: the Git page runs on a connection of its own and may read
+        // history and a diff at once, and neither should end the other.
+        let required = request.requiresInput ? Self.inputCapability : Self.attachCapability
+        guard host.schemaVersion == PairedHostRecord.currentSchemaVersion,
+              host.capabilityBits & required == required else {
+            throw ControllerConnectionError.capabilityDenied
+        }
+        let requested = host.capabilityBits & Self.supportedCapabilityBits
+        let (network, _) = try await openHostConnection(host)
+        connection = network
+        let start = ConnectionStartRequest(
+            staticKeyId: host.deviceStaticKeyId,
+            ephemeralPrivateKey: try Self.randomBytes(count: 32),
+            hostStaticPublicKey: host.hostStaticPublicKey,
+            identityGeneration: host.identityGeneration,
+            revocationEpoch: host.revocationEpoch,
+            requestedCapabilityBits: requested,
+            clientNonce: try Self.randomBytes(count: 32),
+            nowMillis: Self.uptimeMillis()
+        )
+        let authentication: AuthenticatedSessionResult = try await withTimeout(Self.handshakeTimeout) {
+            try await Self.send(Self.authenticationPreface, over: network)
+            let prelude = try self.securityEngine.connectionPrelude(request: start)
+            try await Self.send(prelude, over: network)
+            let challenge = try await Self.receiveExactly(36, over: network)
+            let session = try self.securityEngine.connectionStart(
+                request: start,
+                challengeBytes: challenge
+            )
+            let hello = try session.handshakeOutbound(nowMillis: Self.uptimeMillis())
+            try await Self.sendFrame(hello, maximum: Self.maxHandshakeFrameBytes, over: network)
+            let accept = try await Self.receiveFrame(
+                maximum: Self.maxHandshakeFrameBytes,
+                over: network
+            )
+            let result = try session.handshakeReceiveAccept(
+                message: accept,
+                nowMillis: Self.uptimeMillis()
+            )
+            return AuthenticatedSessionResult(publicResult: result, session: session)
+        }
+        let publicResult = authentication.publicResult
+        let authenticatedSession = authentication.session
+        defer {
+            try? authenticatedSession.finish()
+            network.cancel()
+            if connection === network { connection = nil }
+        }
+        guard publicResult.hostStaticPublicKey == host.hostStaticPublicKey,
+              publicResult.identityGeneration == host.identityGeneration,
+              publicResult.revocationEpoch == host.revocationEpoch,
+              publicResult.grantedCapabilityBits & ~Self.supportedCapabilityBits == 0 else {
+            throw ControllerConnectionError.authenticationFailed
+        }
+        guard publicResult.grantedCapabilityBits & required == required else {
+            throw ControllerConnectionError.capabilityDenied
+        }
+
+        let commandID = UUID()
+        var command = request.command
+        command["session_id"] = target.sessionID.uuidString.lowercased()
+        command["occupant_generation"] = target.occupantGeneration
+        let envelope: [String: Any] = [
+            "version": 1,
+            "command_id": commandID.uuidString.lowercased(),
+            "session_generation": host.sessionGeneration,
+            // Switching may run the repository's checkout hooks.
+            "deadline_millis": Self.wallClockMillis().saturatingAdd(90_000),
+            "command": command,
+        ]
+        let payload = try JSONSerialization.data(withJSONObject: envelope)
+        let sealed = try authenticatedSession.sealFrame(
+            kind: .control,
+            capability: request.requiresInput ? .sendInput : .attachOutput,
+            revocationEpoch: host.revocationEpoch,
+            payload: payload
+        )
+        try await Self.sendFrame(sealed, maximum: Self.maxSecureFrameBytes, over: network)
+        let response = try await withTimeout(.seconds(90)) {
+            try await Self.receiveFrame(maximum: Self.maxSecureFrameBytes, over: network)
+        }
+        let opened = try authenticatedSession.openFrame(frame: response)
+        guard opened.kind == .control, opened.revocationEpoch == host.revocationEpoch else {
+            throw ControllerConnectionError.malformedResponse
+        }
+        return try ControllerGitAnswer.decode(opened.payload, commandID: commandID)
     }
 
     /// A field the person left empty is not a suggestion; the computer's own default answers.

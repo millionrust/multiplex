@@ -17,6 +17,7 @@ struct ControllerReadOnlyTerminalView: View {
     @State private var controlLatched = false
     @State private var displayedTerminalFontSize = 14.0
     @State private var displayedTerminalColumns = 40
+    @State private var git: ControllerGitViewModel?
 
     var body: some View {
         // Under a screen this is one pane among others: the tab strip above it already carries
@@ -62,6 +63,9 @@ struct ControllerReadOnlyTerminalView: View {
         .tint(.green)
         .onAppear { viewModel.start() }
         .onDisappear { viewModel.detach() }
+        .sheet(item: $git) { model in
+            ControllerGitView(model: model)
+        }
         .confirmationDialog(
             "Send pasted text to this terminal?",
             isPresented: Binding(
@@ -342,6 +346,9 @@ struct ControllerReadOnlyTerminalView: View {
 
     private var terminalMenu: some View {
         Menu {
+            Button("Git", systemImage: "arrow.triangle.branch") {
+                git = viewModel.makeGitViewModel()
+            }
             Section("Text Size") {
                 Button("Decrease", systemImage: "minus") {
                     terminalFontSize = max(
