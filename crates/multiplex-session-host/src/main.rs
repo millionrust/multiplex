@@ -43,5 +43,6 @@ async fn run() -> Result<(), HostError> {
     .map_err(|_| HostError::new(multiplex_session_host::HostErrorCode::Io))?;
     writeln!(std::io::stdout()).map_err(HostError::io)?;
     std::io::stdout().flush().map_err(HostError::io)?;
+    host.stop_when_owner_exits();
     host.wait().await
 }

@@ -7736,6 +7736,10 @@ impl MultiplexApp {
     }
 
     fn reconnect_pane(&mut self, pane_id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        // A reconnect the user asks for starts a fresh run of automatic attempts.
+        if let Some(pane) = self.pane_mut(pane_id) {
+            pane.auto_reconnect_attempts = 0;
+        }
         self.reconnect_pane_with_focus(pane_id, true, window, cx);
     }
 
@@ -7777,17 +7781,27 @@ impl MultiplexApp {
                 pane.ever_connected,
                 pane.connect_log.clone(),
                 pane.show_connect_log,
+                pane.auto_reconnect_attempts,
             )
         });
         request.session_id = self.next_session_id();
         let new_pane_id = self.spawn_pane(request.clone(), window, cx);
-        if let Some((last_error, ever_connected, connect_log, show_connect_log)) = carried
+        if let Some((
+            last_error,
+            ever_connected,
+            connect_log,
+            show_connect_log,
+            auto_reconnect_attempts,
+        )) = carried
             && let Some(pane) = self.pane_mut(new_pane_id)
         {
             pane.last_error = last_error;
             pane.ever_connected = ever_connected;
             pane.connect_log.splice(0..0, connect_log);
             pane.show_connect_log = show_connect_log;
+            // The replacement pane inherits the count, or a host that never answers would be
+            // retried forever: each new pane would start again from zero.
+            pane.auto_reconnect_attempts = auto_reconnect_attempts;
         }
 
         if let Some(workspace_id) = workspace_id
@@ -8355,6 +8369,7 @@ impl MultiplexApp {
                         pane.status = "Live".to_string();
                         pane.last_error = None;
                         pane.ever_connected = true;
+                        pane.auto_reconnect_attempts = 0;
                         pane.connect_log
                             .push(localization::terminal_pane_log_connected());
                         pane.set_accessible_lifecycle(TerminalLifecycle::Live);
@@ -19080,6 +19095,72 @@ sleep 1
             (rows_a.iter().any(|row| row.contains("broadcast-hit"))
                 && rows_b.iter().any(|row| row.contains("broadcast-hit")))
             .then_some(())
+        });
+    }
+
+    #[gpui::test]
+    fn auto_reconnect_gives_up_on_a_host_that_never_answers(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.auto_reconnect_attempts = 2;
+        saved.settings.auto_reconnect_delay_secs = 1;
+        // Nothing listens here once the probe listener is dropped, so every attempt is refused.
+        let port = allocate_local_port();
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let request = ConnectRequest {
+            session_id: 0,
+            title: "Unreachable".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: "127.0.0.1".to_string(),
+            port,
+            username: "nobody".to_string(),
+            auth: Some(AuthConfig::PrivateKey {
+                key_path: docker_ssh_private_key_path(),
+                passphrase: None,
+            }),
+            jump_host: None,
+            outbound_proxy: None,
+            startup_directory: None,
+            startup_command: None,
+            start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
+            terminal_scrollback_rows: 10_000,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+            environment: Vec::new(),
+        };
+        let (workspace_id, _) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        // The first connect fails, then two automatic attempts fail, and then it stops.
+        wait_for_window_app_state(cx, window, &app, Duration::from_secs(20), |app| {
+            let pane = app.pane(app.workspace(workspace_id)?.active_pane_id)?;
+            (pane.auto_reconnect_attempts == 2
+                && pane.auto_reconnect_at.is_none()
+                && !pane.status.starts_with("Reconnecting"))
+            .then_some(())
+        });
+        let settled_pane_id = app.read_with(cx, |app, _| {
+            app.workspace(workspace_id).unwrap().active_pane_id
+        });
+        cx.executor().advance_clock(Duration::from_secs(3));
+        std::thread::sleep(Duration::from_millis(2_500));
+        cx.run_until_parked();
+        app.read_with(cx, |app, _| {
+            let pane_id = app.workspace(workspace_id).unwrap().active_pane_id;
+            assert_eq!(
+                pane_id, settled_pane_id,
+                "no further reconnect should start"
+            );
+            assert!(app.pane(pane_id).unwrap().auto_reconnect_at.is_none());
         });
     }
 

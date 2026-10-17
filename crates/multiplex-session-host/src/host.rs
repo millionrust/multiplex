@@ -101,6 +101,18 @@ impl std::fmt::Debug for SessionHostHandle {
 }
 
 impl SessionHostHandle {
+    /// Stops this Host once the process named by
+    /// [`OWNER_PROCESS_VARIABLE`](crate::OWNER_PROCESS_VARIABLE) has exited, when one is named.
+    /// Only a Host's own process calls this: it reads that process's environment.
+    pub fn stop_when_owner_exits(&self) {
+        if let Some(owner) = crate::owner::owner_from_environment() {
+            tokio::spawn(crate::owner::stop_when_owner_exits(
+                owner,
+                self.cancel.clone(),
+            ));
+        }
+    }
+
     pub fn runtime_root(&self) -> &Path {
         &self.runtime_root
     }

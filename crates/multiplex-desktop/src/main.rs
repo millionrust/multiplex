@@ -73,6 +73,7 @@ fn run_session_host_mode() -> Result<(), multiplex_session_host::HostError> {
         std::io::stdout()
             .flush()
             .map_err(multiplex_session_host::HostError::io)?;
+        host.stop_when_owner_exits();
         host.wait().await
     })
 }

@@ -26,6 +26,8 @@ pub struct SessionHostHandle {
 }
 
 impl SessionHostHandle {
+    pub fn stop_when_owner_exits(&self) {}
+
     pub fn runtime_root(&self) -> &Path {
         &self.runtime_root
     }

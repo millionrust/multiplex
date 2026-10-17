@@ -353,7 +353,14 @@ fn launch_host_process(
         journal_limits: JournalLimits::default(),
         stop_deadlines: StopDeadlines::default(),
     };
-    let mut process = Command::new(host_executable)
+    let mut command = Command::new(host_executable);
+    // A Host a test starts stops when the test process does, even when its cleanup never runs.
+    #[cfg(test)]
+    command.env(
+        multiplex_session_host::OWNER_PROCESS_VARIABLE,
+        std::process::id().to_string(),
+    );
+    let mut process = command
         .arg("--session-host")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

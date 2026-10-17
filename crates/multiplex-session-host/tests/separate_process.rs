@@ -228,3 +228,51 @@ async fn a_one_row_terminal_keeps_its_host_running() {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
 }
+
+/// A Host a test starts must not outlive the test, whose own cleanup is skipped when a runner
+/// kills it. With an owner named, the Host stops itself once that process has gone.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_host_with_an_owner_stops_once_the_owner_exits() {
+    let fixture = tempfile::tempdir().unwrap();
+    let session_id = HostedSessionId::new();
+    let descriptor = descriptor(&fixture, session_id);
+    let mut owner = Command::new("/bin/sleep").arg("60").spawn().unwrap();
+    let mut process = Command::new(env!("CARGO_BIN_EXE_multiplex-session-host"))
+        .env(
+            multiplex_session_host::OWNER_PROCESS_VARIABLE,
+            owner.id().to_string(),
+        )
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    serde_json::to_writer(process.stdin.as_mut().unwrap(), &descriptor).unwrap();
+    process.stdin.take().unwrap().flush().unwrap();
+    let mut ready = String::new();
+    BufReader::new(process.stdout.take().unwrap())
+        .read_line(&mut ready)
+        .unwrap();
+    assert!(ready.contains("host_ready"));
+
+    tokio::time::sleep(Duration::from_millis(1_500)).await;
+    assert!(
+        process.try_wait().unwrap().is_none(),
+        "the Host stopped while its owner was alive"
+    );
+
+    owner.kill().unwrap();
+    owner.wait().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let status = loop {
+        if let Some(status) = process.try_wait().unwrap() {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            let _ = process.kill();
+            panic!("the Host outlived its owner");
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    };
+    assert!(status.success(), "the Host should stop cleanly: {status:?}");
+}

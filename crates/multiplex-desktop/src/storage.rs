@@ -116,6 +116,11 @@ pub(crate) fn app_dir() -> Result<PathBuf> {
 
     let path = if let Some(explicit_dir) = multiplex_env::var_os("MULTIPLEX_CONFIG_DIR") {
         PathBuf::from(explicit_dir)
+    } else if cfg!(test) {
+        // The override is per thread, so a test's work on another thread arrives here without
+        // it. A test build never falls through to the developer's own app directory: test
+        // fixtures saved there were restored by the real app and retried for days.
+        std::env::temp_dir().join(format!("multiplex-test-unscoped-{}", std::process::id()))
     } else {
         resolve_app_dir(&dirs::config_dir().unwrap_or(std::env::current_dir()?))?
     };

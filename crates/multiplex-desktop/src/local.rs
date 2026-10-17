@@ -283,6 +283,19 @@ fn build_command(request: &ConnectRequest, shell: &LocalShellConfig) -> Result<B
     for arg in &shell.args {
         command.arg(arg);
     }
+    // A test's shell runs in a `multiplex-cli shell` of its own, which finds its store from the
+    // environment and cannot see the test's app directory override. Without this it records
+    // its Session in the developer's real store, where it shows up among their own.
+    #[cfg(test)]
+    if let Ok(directory) = crate::storage::app_dir() {
+        command.env("MULTIPLEX_CONFIG_DIR", directory);
+    }
+    // A Host a test starts stops when the test process does, even when its cleanup never runs.
+    #[cfg(test)]
+    command.env(
+        multiplex_session_host::OWNER_PROCESS_VARIABLE,
+        std::process::id().to_string(),
+    );
     for (key, value) in &request.environment {
         command.env(key, value);
     }
