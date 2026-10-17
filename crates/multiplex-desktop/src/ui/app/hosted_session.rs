@@ -42,6 +42,82 @@ const LIVE_POLL_INTERVAL: Duration = Duration::from_millis(
         .0 as u64,
 );
 const MAX_STARTUP_HANDSHAKES: usize = 8;
+/// How long after the last keystroke a viewer lets go of the writer lease, so the terminal
+/// window a `multiplex-cli shell` runs in, or a paired device, can type into it again.
+const VIEWER_LEASE_IDLE: Duration = Duration::from_millis(1_500);
+
+/// The writer lease as an app viewer holds it: taken to type and let go once the typing stops,
+/// the way a `multiplex-cli shell` window holds it, so neither keeps the other out for good.
+struct ViewerLease {
+    held: bool,
+    /// Another client held the lease when this viewer last asked for it.
+    refused: bool,
+    last_used: Instant,
+}
+
+impl ViewerLease {
+    /// The handshake asks for the lease, so a viewer that does not hold it at first was refused.
+    fn new() -> Self {
+        Self {
+            held: false,
+            refused: true,
+            last_used: Instant::now(),
+        }
+    }
+
+    /// Whether typing here can reach the program: this viewer holds the lease, or nobody else
+    /// was found holding it.
+    fn writable(&self) -> bool {
+        self.held || !self.refused
+    }
+
+    /// Takes the lease to type, unless another client holds it.
+    async fn take(
+        &mut self,
+        client: &mut HostClient,
+        cancel: &CancellationToken,
+    ) -> Result<bool, ClientError> {
+        if !self.held {
+            self.held = client
+                .set_writer_lease(CommandId::new(), true, cancel)
+                .await?;
+            self.refused = !self.held;
+        }
+        if self.held {
+            self.last_used = Instant::now();
+        }
+        Ok(self.held)
+    }
+
+    /// Follows what the Host reports on each poll: lets go of a lease nobody has typed with for
+    /// a while, and looks again whether a writer that refused this viewer has let go.
+    async fn settle(
+        &mut self,
+        has_writer_lease: bool,
+        client: &mut HostClient,
+        cancel: &CancellationToken,
+    ) -> Result<(), ClientError> {
+        self.held = has_writer_lease;
+        if self.held {
+            self.refused = false;
+            if self.last_used.elapsed() >= VIEWER_LEASE_IDLE {
+                self.held = client
+                    .set_writer_lease(CommandId::new(), false, cancel)
+                    .await?;
+            }
+        } else if self.refused
+            && client
+                .set_writer_lease(CommandId::new(), true, cancel)
+                .await?
+        {
+            client
+                .set_writer_lease(CommandId::new(), false, cancel)
+                .await?;
+            self.refused = false;
+        }
+        Ok(())
+    }
+}
 
 struct StartupPermit;
 
@@ -524,13 +600,22 @@ async fn attach_loop(
         .map_err(|_| "Application event channel closed".to_string())?;
     let mut ticker = tokio::time::interval(LIVE_POLL_INTERVAL);
     let mut connected_sent = false;
+    let mut lease = ViewerLease::new();
 
     loop {
         tokio::select! {
             command = command_rx.recv() => match command {
                 Some(SessionCommand::Input(bytes)) => {
-                    client.input(CommandId::new(), bytes, &cancel).await
-                        .map_err(|error| format!("Durable Host input failed: {error}"))?;
+                    // The Host ends a connection that writes without the lease, so typing while
+                    // another client holds it is dropped and the next poll shows it read-only.
+                    let writable = lease.take(&mut client, &cancel).await
+                        .map_err(|error| format!("Durable Host writer lease failed: {error}"))?;
+                    if writable && !client.input(CommandId::new(), bytes, &cancel).await
+                        .map_err(|error| format!("Durable Host input failed: {error}"))?
+                    {
+                        lease.held = false;
+                        lease.refused = true;
+                    }
                 }
                 Some(SessionCommand::Resize(size)) => {
                     client.resize(CommandId::new(), u32::from(size.cols), u32::from(size.rows), &cancel).await
@@ -674,7 +759,9 @@ async fn attach_loop(
                     });
                     return Ok(());
                 }
-                model.mark_live(state.has_writer_lease, state.recording_paused);
+                lease.settle(state.has_writer_lease, &mut client, &cancel).await
+                    .map_err(|error| format!("Durable Host writer lease failed: {error}"))?;
+                model.mark_live(lease.writable(), state.recording_paused);
                 if !connected_sent {
                     event_tx.send(SshEvent::Connected {
                         session_id: spec.pane_id,
@@ -691,11 +778,11 @@ async fn attach_loop(
                     },
                     model.watermark(),
                     OutputSequence::new(state.durable_sequence),
-                    state.has_writer_lease,
+                    lease.writable(),
                     activity,
                     if state.recording_paused {
                         "Live; output recording paused at the disk limit"
-                    } else if state.has_writer_lease {
+                    } else if lease.writable() {
                         "Live and writable"
                     } else {
                         "Live read-only; another client owns input"
@@ -975,5 +1062,111 @@ mod tests {
                 .to_string_lossy()
                 .contains('-')
         );
+    }
+
+    /// The app viewer and the terminal window a `multiplex-cli shell` runs in take turns: the
+    /// viewer lets go once it stops being typed in, and never keeps a lease it only looked at.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_viewer_lets_the_terminal_window_type_once_it_stops_typing() {
+        let fixture = tempfile::Builder::new()
+            .prefix("multiplex-lease-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let root = fs::canonicalize(fixture.path()).unwrap();
+        let session_id = HostedSessionId::new();
+        let session_dir = root.join("session");
+        fs::create_dir_all(&session_dir).unwrap();
+        let runtime_root = root.join("runtime");
+        let host = multiplex_session_host::start(LaunchDescriptor {
+            format_version: LaunchDescriptor::FORMAT_VERSION,
+            session_id,
+            host_instance_id: HostInstanceId::new(),
+            expected_occupant_generation: None,
+            runtime_root: runtime_root.clone(),
+            session_dir,
+            executable: fs::canonicalize("/bin/sh").unwrap(),
+            runtime_detection: None,
+            arguments: vec!["-c".into(), "sleep 30".into()],
+            environment: BTreeMap::new(),
+            cwd: Some(root),
+            columns: 80,
+            rows: 24,
+            journal_limits: JournalLimits::default(),
+            stop_deadlines: StopDeadlines::default(),
+        })
+        .await
+        .unwrap();
+        let cancel = CancellationToken::new();
+        let endpoint = LocalEndpoint::new(&runtime_root, session_id);
+        let mut viewer = HostClient::connect(
+            endpoint.clone(),
+            ConnectOptions::local(session_id, [21; 32]),
+            &cancel,
+        )
+        .await
+        .unwrap();
+        let mut window = HostClient::connect(
+            endpoint,
+            ConnectOptions::local_read_only(session_id, [22; 32]),
+            &cancel,
+        )
+        .await
+        .unwrap();
+        let mut lease = ViewerLease::new();
+        let held = viewer.get_state(&cancel).await.unwrap().has_writer_lease;
+        lease.settle(held, &mut viewer, &cancel).await.unwrap();
+        assert!(lease.held && lease.writable());
+        assert!(
+            !window
+                .set_writer_lease(CommandId::new(), true, &cancel)
+                .await
+                .unwrap(),
+            "the viewer holds the lease while it is being typed in"
+        );
+
+        lease.last_used = Instant::now() - VIEWER_LEASE_IDLE;
+        lease.settle(true, &mut viewer, &cancel).await.unwrap();
+        assert!(!lease.held && lease.writable());
+        assert!(
+            window
+                .set_writer_lease(CommandId::new(), true, &cancel)
+                .await
+                .unwrap(),
+            "the terminal window can type once the viewer has stopped"
+        );
+
+        assert!(!lease.take(&mut viewer, &cancel).await.unwrap());
+        assert!(!lease.writable(), "typing in the viewer now waits");
+        lease.settle(false, &mut viewer, &cancel).await.unwrap();
+        assert!(!lease.writable());
+
+        window
+            .set_writer_lease(CommandId::new(), false, &cancel)
+            .await
+            .unwrap();
+        lease.settle(false, &mut viewer, &cancel).await.unwrap();
+        assert!(!lease.held && lease.writable());
+        assert!(
+            window
+                .set_writer_lease(CommandId::new(), true, &cancel)
+                .await
+                .unwrap(),
+            "looking again does not keep the lease from the window"
+        );
+
+        drop(window);
+        assert!(lease.take(&mut viewer, &cancel).await.unwrap());
+        assert!(
+            viewer
+                .input(CommandId::new(), b"x".to_vec(), &cancel)
+                .await
+                .unwrap()
+        );
+        viewer
+            .stop(CommandId::new(), wire::StopMode::Force, &cancel)
+            .await
+            .unwrap();
+        host.wait().await.unwrap();
     }
 }
