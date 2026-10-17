@@ -312,7 +312,6 @@ fn main() {
         }
         return;
     }
-    if std::env::args().nth(1).as_deref() == Some(ARTIFACT_PREVIEW_MODE) {
     if std::env::args().nth(1).as_deref() == Some(terminal_mcp::stdio::COMMAND) {
         attach_parent_console();
         if std::env::args().nth(2).as_deref() != Some(terminal_mcp::stdio::STDIO_FLAG)
@@ -330,6 +329,7 @@ fn main() {
         }
         return;
     }
+    if std::env::args().nth(1).as_deref() == Some(ARTIFACT_PREVIEW_MODE) {
         std::process::exit(crate::artifact_preview::run_worker_mode());
     }
     if std::env::args().nth(1).as_deref() == Some("--cli-shell") {
