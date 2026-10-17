@@ -579,6 +579,7 @@ impl MultiplexApp {
                             ),
                         ),
                 )
+                .child(self.render_terminal_mcp_agent_commands(&info, cx))
                 .child(
                     div()
                         .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
@@ -587,6 +588,225 @@ impl MultiplexApp {
                 )
             })
             .into_any_element()
+    }
+
+    /// The command that adds this server to the chosen coding agent, through the app's bridge
+    /// and straight to the URL.
+    fn render_terminal_mcp_agent_commands(
+        &self,
+        info: &crate::terminal_mcp::ServerInfo,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let message = |id| localization::static_message(id);
+        let client = self.terminal_mcp_agent;
+        let commands = agent_commands(client, &bridge_executable(), info);
+        let http_note = match client {
+            AgentClient::ClaudeCode => MessageId::TerminalMcpAgentClaudeHttpNote,
+            AgentClient::Codex => MessageId::TerminalMcpAgentCodexHttpNote,
+        };
+        let command_block = |id: &'static str,
+                             label: MessageId,
+                             note: MessageId,
+                             command: AgentCommand| {
+            let AgentCommand { text, shown } = command;
+            v_flex()
+                .gap(px(theme::SPACE_2))
+                .child(div().font_medium().child(message(label)))
+                .child(
+                    h_flex()
+                        .gap(px(theme::SPACE_3))
+                        .items_start()
+                        .child(
+                            div()
+                                .id(id)
+                                .debug_selector(move || id.to_string())
+                                .flex_1()
+                                .min_w_0()
+                                .p(px(theme::SPACE_2))
+                                .rounded(px(theme::CONTROL_RADIUS))
+                                .bg(theme::control_bg())
+                                .font_family(theme::current_design_tokens().font_mono_family().0)
+                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                .whitespace_normal()
+                                .child(shown),
+                        )
+                        .child(
+                            Self::design_button(
+                                match id {
+                                    "terminal-mcp-agent-bridge" => "terminal-mcp-copy-agent-bridge",
+                                    _ => "terminal-mcp-copy-agent-http",
+                                },
+                                theme::ActionTone::Neutral,
+                                cx,
+                            )
+                            .icon(IconName::Copy)
+                            .label(message(MessageId::TerminalMcpCopyCommand))
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
+                                    this.status_message = localization::static_message(
+                                        MessageId::TerminalMcpCommandCopied,
+                                    );
+                                    cx.notify();
+                                },
+                            )),
+                        ),
+                )
+                .child(
+                    div()
+                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                        .text_color(theme::text_muted())
+                        .child(message(note)),
+                )
+        };
+        let [bridge, http] = commands;
+        v_flex()
+            .id("terminal-mcp-agents")
+            .debug_selector(|| "terminal-mcp-agents".into())
+            .gap(px(theme::SPACE_3))
+            .pt(px(theme::SPACE_3))
+            .border_t_1()
+            .border_color(theme::soft_border())
+            .child(self.settings_choice_row(
+                message(MessageId::TerminalMcpAgentsTitle),
+                message(MessageId::TerminalMcpAgentsDescription),
+                self.segmented_control(
+                    "terminal-mcp-agent",
+                    [
+                        (
+                            AgentClient::ClaudeCode,
+                            message(MessageId::TerminalMcpAgentClaude),
+                        ),
+                        (
+                            AgentClient::Codex,
+                            message(MessageId::TerminalMcpAgentCodex),
+                        ),
+                    ],
+                    client,
+                    false,
+                    cx,
+                    |this, client, _, cx| {
+                        this.terminal_mcp_agent = client;
+                        cx.notify();
+                    },
+                ),
+            ))
+            .child(command_block(
+                "terminal-mcp-agent-bridge",
+                MessageId::TerminalMcpAgentBridgeLabel,
+                MessageId::TerminalMcpAgentBridgeNote,
+                bridge,
+            ))
+            .child(command_block(
+                "terminal-mcp-agent-http",
+                MessageId::TerminalMcpAgentHttpLabel,
+                http_note,
+                http,
+            ))
+            .into_any_element()
+    }
+}
+
+/// The name the server is added under in every client.
+const CLIENT_SERVER_NAME: &str = "multiplex-terminals";
+
+/// The variable Codex reads the bearer token from: it takes no token on its command line or in
+/// its configuration for a streamable HTTP server, only the name of a variable that holds one.
+const CODEX_TOKEN_VARIABLE: &str = "MULTIPLEX_TERMINAL_MCP_BEARER";
+
+/// The coding agent the Settings card shows the command for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum AgentClient {
+    #[default]
+    ClaudeCode,
+    Codex,
+}
+
+/// A command to copy, and the same command as shown, with the token cut short.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct AgentCommand {
+    pub(super) text: String,
+    pub(super) shown: String,
+}
+
+/// This executable, which also runs the stdio bridge.
+fn bridge_executable() -> String {
+    std::env::current_exe()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|_| "multiplex".to_owned())
+}
+
+/// The bridge command and the URL command that add this server to `client`.
+///
+/// Both are added for the user rather than one project (`--scope user` for Claude Code; Codex
+/// has only its user configuration), since the terminals belong to the whole computer.
+pub(super) fn agent_commands(
+    client: AgentClient,
+    executable: &str,
+    info: &crate::terminal_mcp::ServerInfo,
+) -> [AgentCommand; 2] {
+    use crate::terminal_mcp::stdio::{COMMAND, STDIO_FLAG};
+    let executable = shell_quote(executable);
+    let bridge = match client {
+        AgentClient::ClaudeCode => format!(
+            "claude mcp add --scope user {CLIENT_SERVER_NAME} -- {executable} {COMMAND} {STDIO_FLAG}"
+        ),
+        AgentClient::Codex => {
+            format!("codex mcp add {CLIENT_SERVER_NAME} -- {executable} {COMMAND} {STDIO_FLAG}")
+        }
+    };
+    let url = shell_quote(&info.url);
+    // `--header` takes several values, so it follows the name and URL rather than coming before
+    // them, where it would swallow both.
+    let http = |token: &str| match client {
+        AgentClient::ClaudeCode => format!(
+            "claude mcp add --scope user --transport http {CLIENT_SERVER_NAME} {url} --header {}",
+            shell_quote(&format!("Authorization: Bearer {token}"))
+        ),
+        AgentClient::Codex => format!(
+            "{}{} codex mcp add {CLIENT_SERVER_NAME} --url {url} --bearer-token-env-var {CODEX_TOKEN_VARIABLE}",
+            set_variable(CODEX_TOKEN_VARIABLE, token),
+            // Windows PowerShell has no `&&`.
+            if cfg!(windows) { ";" } else { " &&" },
+        ),
+    };
+    let masked = format!("{}…", &info.token[..6.min(info.token.len())]);
+    [
+        AgentCommand {
+            shown: bridge.clone(),
+            text: bridge,
+        },
+        AgentCommand {
+            text: http(&info.token),
+            shown: http(&masked),
+        },
+    ]
+}
+
+/// `value` as one word for the shell the user is likely to paste into: a POSIX shell, or
+/// PowerShell on Windows. Single quotes work in both; only the quote itself is escaped
+/// differently.
+fn shell_quote(value: &str) -> String {
+    let plain = !value.is_empty()
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_./:@%+=,".contains(c));
+    if plain {
+        return value.to_owned();
+    }
+    if cfg!(windows) {
+        format!("'{}'", value.replace('\'', "''"))
+    } else {
+        format!("'{}'", value.replace('\'', r"'\''"))
+    }
+}
+
+/// Sets an environment variable for the rest of the shell session.
+fn set_variable(name: &str, value: &str) -> String {
+    if cfg!(windows) {
+        format!("$env:{name} = {}", shell_quote(value))
+    } else {
+        format!("export {name}={}", shell_quote(value))
     }
 }
 
@@ -623,6 +843,68 @@ mod tests {
     use crate::models::{LocalShellConfig, SavedState};
     use crate::terminal_mcp::ParsedKey;
     use crate::test_support::{TEST_POLL_INTERVAL, TestIsolation};
+
+    fn server_info() -> crate::terminal_mcp::ServerInfo {
+        crate::terminal_mcp::ServerInfo {
+            url: "http://127.0.0.1:47913/mcp".to_owned(),
+            token: "abcdef0123456789".to_owned(),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn claude_code_is_given_the_bridge_and_the_url_with_its_token() {
+        let [bridge, http] = agent_commands(
+            AgentClient::ClaudeCode,
+            "/Applications/Multiplex.app/Contents/MacOS/multiplex",
+            &server_info(),
+        );
+        assert_eq!(
+            bridge.text,
+            "claude mcp add --scope user multiplex-terminals -- \
+             /Applications/Multiplex.app/Contents/MacOS/multiplex terminal-mcp --stdio"
+        );
+        assert_eq!(bridge.shown, bridge.text);
+        assert_eq!(
+            http.text,
+            "claude mcp add --scope user --transport http multiplex-terminals \
+             http://127.0.0.1:47913/mcp --header 'Authorization: Bearer abcdef0123456789'"
+        );
+        assert!(!http.shown.contains("abcdef0123456789"));
+        assert!(http.shown.ends_with("'Authorization: Bearer abcdef…'"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn codex_is_given_the_bridge_and_a_variable_holding_the_token() {
+        let [bridge, http] = agent_commands(
+            AgentClient::Codex,
+            "/Users/someone/My Apps/multiplex",
+            &server_info(),
+        );
+        assert_eq!(
+            bridge.text,
+            "codex mcp add multiplex-terminals -- '/Users/someone/My Apps/multiplex' \
+             terminal-mcp --stdio"
+        );
+        assert_eq!(
+            http.text,
+            "export MULTIPLEX_TERMINAL_MCP_BEARER=abcdef0123456789 && codex mcp add \
+             multiplex-terminals --url http://127.0.0.1:47913/mcp \
+             --bearer-token-env-var MULTIPLEX_TERMINAL_MCP_BEARER"
+        );
+        assert!(!http.shown.contains("abcdef0123456789"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_quote_in_a_path_survives_the_shell() {
+        assert_eq!(
+            shell_quote("/tmp/it's/multiplex"),
+            r"'/tmp/it'\''s/multiplex'"
+        );
+        assert_eq!(shell_quote(""), "''");
+    }
 
     fn open_test_app(cx: &mut TestAppContext) -> (gpui::Entity<MultiplexApp>, WindowHandle<Root>) {
         let mut app_entity = None;

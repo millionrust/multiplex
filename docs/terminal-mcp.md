@@ -34,6 +34,34 @@ Clients that only start commands use the second entry: `multiplex terminal-mcp -
 the running server's address and token from `terminal-mcp.json` in the app's data folder and
 forwards each line to it.
 
+### Claude Code and Codex CLI
+
+Under **Add to a coding agent**, the card shows the command that adds the server to Claude Code
+or Codex CLI, with a copy button. Each is offered two ways:
+
+- **Through the app (recommended)** starts the stdio bridge, so no token is written into the
+  agent's settings, and the entry keeps working after **New token** or a change of port:
+
+  ```sh
+  claude mcp add --scope user multiplex-terminals -- /Applications/Multiplex.app/Contents/MacOS/multiplex terminal-mcp --stdio
+  codex mcp add multiplex-terminals -- /Applications/Multiplex.app/Contents/MacOS/multiplex terminal-mcp --stdio
+  ```
+
+- **Straight to the URL.** Claude Code stores the header, token included, in its settings, so
+  run it again after **New token**. Codex takes no token for a streamable HTTP server, only the
+  name of a variable to read it from, and never stores it; that variable has to be set in every
+  shell Codex is started from:
+
+  ```sh
+  claude mcp add --scope user --transport http multiplex-terminals http://127.0.0.1:47913/mcp --header 'Authorization: Bearer <token>'
+  export MULTIPLEX_TERMINAL_MCP_BEARER='<token>' && codex mcp add multiplex-terminals --url http://127.0.0.1:47913/mcp --bearer-token-env-var MULTIPLEX_TERMINAL_MCP_BEARER
+  ```
+
+Claude Code's server is added for the user (`--scope user`) rather than one project, since the
+terminals belong to the whole computer; Codex keeps MCP servers only in `~/.codex/config.toml`.
+On Windows the commands are quoted for PowerShell and the variable is set with `$env:`. The card
+shows the token cut short; the copied command carries all of it.
+
 The server listens on loopback only. An agent hosted elsewhere (for example a cloud bot calling
 remote MCP servers) needs a tunnel you set up yourself, and then anyone with the URL and token
 controls your terminals.

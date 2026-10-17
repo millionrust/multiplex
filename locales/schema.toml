@@ -12493,3 +12493,58 @@ description = "Settings."
 id = "terminal-mcp-hint"
 context = "Terminal MCP server."
 description = "Settings."
+
+[[messages]]
+id = "terminal-mcp-agents-title"
+context = "Terminal MCP server."
+description = "Settings: adding the server to a coding agent."
+
+[[messages]]
+id = "terminal-mcp-agents-description"
+context = "Terminal MCP server."
+description = "Settings: adding the server to a coding agent."
+
+[[messages]]
+id = "terminal-mcp-agent-claude"
+context = "Terminal MCP server."
+description = "Settings: adding the server to a coding agent."
+
+[[messages]]
+id = "terminal-mcp-agent-codex"
+context = "Terminal MCP server."
+description = "Settings: adding the server to a coding agent."
+
+[[messages]]
+id = "terminal-mcp-agent-bridge-label"
+context = "Terminal MCP server."
+description = "Settings: adding the server to a coding agent."
+
+[[messages]]
+id = "terminal-mcp-agent-bridge-note"
+context = "Terminal MCP server."
+description = "Settings: adding the server to a coding agent."
+
+[[messages]]
+id = "terminal-mcp-agent-http-label"
+context = "Terminal MCP server."
+description = "Settings: adding the server to a coding agent."
+
+[[messages]]
+id = "terminal-mcp-agent-claude-http-note"
+context = "Terminal MCP server."
+description = "Settings: adding the server to a coding agent."
+
+[[messages]]
+id = "terminal-mcp-agent-codex-http-note"
+context = "Terminal MCP server."
+description = "Settings: adding the server to a coding agent."
+
+[[messages]]
+id = "terminal-mcp-copy-command"
+context = "Terminal MCP server."
+description = "Settings: adding the server to a coding agent."
+
+[[messages]]
+id = "terminal-mcp-command-copied"
+context = "Terminal MCP server."
+description = "Settings: adding the server to a coding agent."

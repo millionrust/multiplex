@@ -1334,6 +1334,7 @@ pub struct MultiplexApp {
     replication_lifecycle: ReplicationLifecycleState,
     settings_scroll: ScrollHandle,
     settings_section: multiplex_ui_contract::SettingsSectionId,
+    terminal_mcp_agent: terminal_mcp::AgentClient,
     host_editor_scroll: ScrollHandle,
     hosts_list_scroll: ScrollHandle,
     chrome_context_menu: Option<Point<Pixels>>,
@@ -1805,6 +1806,7 @@ impl MultiplexApp {
             replication_lifecycle: ReplicationLifecycleState::default(),
             settings_scroll: ScrollHandle::new(),
             settings_section: multiplex_ui_contract::SettingsSectionId::Appearance,
+            terminal_mcp_agent: terminal_mcp::AgentClient::default(),
             host_editor_scroll: ScrollHandle::new(),
             hosts_list_scroll: ScrollHandle::new(),
             chrome_context_menu: None,
@@ -28083,6 +28085,69 @@ sleep 1
         click(cx, "devices-tabs-1");
         app.read_with(cx, |app, _| {
             assert_eq!(app.devices_tab, super::remote_devices::DevicesTab::Phones);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_terminal_mcp_settings_show_the_command_for_each_coding_agent(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Settings, window, cx);
+                    app.select_settings_section(
+                        multiplex_ui_contract::SettingsSectionId::RemoteDevices,
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+        let click = |cx: &mut TestAppContext, selector: &'static str| {
+            scroll_selector_into_view(window, cx, "settings-scroll-viewport", selector);
+            let point = selector_click_center(window, cx, selector);
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.simulate_click(point, gpui::Modifiers::none());
+            visual.run_until_parked();
+        };
+        let shown = |cx: &mut TestAppContext, selector: &'static str| {
+            VisualTestContext::from_window(window.into(), cx)
+                .debug_bounds(selector)
+                .is_some()
+        };
+
+        // Nothing to add while the server is off.
+        assert!(!shown(cx, "terminal-mcp-agents"));
+
+        click(cx, "terminal-mcp-enabled-1");
+        assert!(shown(cx, "terminal-mcp-agents"));
+        assert!(shown(cx, "terminal-mcp-agent-bridge"));
+        assert!(shown(cx, "terminal-mcp-agent-http"));
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.terminal_mcp_agent,
+                super::terminal_mcp::AgentClient::ClaudeCode
+            );
+        });
+
+        click(cx, "terminal-mcp-agent-1");
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.terminal_mcp_agent,
+                super::terminal_mcp::AgentClient::Codex
+            );
+        });
+        assert!(shown(cx, "terminal-mcp-agent-bridge"));
+
+        // Turning the server off takes the section away with it. GPUI 0.2 keeps a selector's
+        // bounds once it has been drawn, so this is checked through the state the card reads.
+        click(cx, "terminal-mcp-enabled-0");
+        app.read_with(cx, |app, _| {
+            assert!(!app.saved.settings.terminal_mcp_enabled);
+            assert!(crate::terminal_mcp::hub().info().is_none());
         });
     }
 
