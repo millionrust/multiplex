@@ -3793,7 +3793,7 @@ impl MultiplexApp {
         &self,
         profile: &HostProfile,
     ) -> anyhow::Result<ConnectRequest> {
-        let auth = profile.saved_auth_config()?;
+        let auth = profile.saved_auth_config(&self.saved.login_identities)?;
         let jump_host = profile
             .jump_host_id
             .as_deref()

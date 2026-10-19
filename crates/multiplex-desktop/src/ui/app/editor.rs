@@ -270,6 +270,7 @@ impl MultiplexApp {
     ) -> Stateful<Div> {
         div()
             .id(id)
+            .debug_selector(move || id.to_string())
             .flex_1()
             .h(px(theme::SHELL_TOOLBAR_BUTTON_SIZE))
             .flex()
@@ -296,6 +297,9 @@ impl MultiplexApp {
 
     fn render_editor_panel_termius(&self, cx: &mut Context<Self>) -> Div {
         let auth_mode = self.draft_auth_mode;
+        // With an identity chosen, it decides who the host signs in as, so the host's own
+        // credential fields step aside.
+        let own_credentials = self.draft_login_identity_id.is_none();
         let agent_socket = self
             .inputs
             .identity_agent
@@ -346,40 +350,45 @@ impl MultiplexApp {
                     .text_color(theme::text_main())
                     .child(editor_message(MessageId::HostEditorCredentialsHeading)),
             )
-            .child(
-                h_flex()
-                    .p(px(theme::SPACE_MICRO))
-                    .rounded(px(theme::CARD_RADIUS))
-                    .bg(theme::hover())
-                    .child(self.editor_auth_mode_button(
-                        "editor-auth-password",
-                        editor_message(MessageId::HostAuthPassword),
-                        AuthMode::Password,
-                        auth_mode == AuthMode::Password,
-                        cx,
-                    ))
-                    .child(self.editor_auth_mode_button(
-                        "editor-auth-private-key",
-                        editor_message(MessageId::HostAuthPrivateKey),
-                        AuthMode::PrivateKey,
-                        auth_mode == AuthMode::PrivateKey,
-                        cx,
-                    ))
-                    .child(self.editor_auth_mode_button(
-                        "editor-auth-agent",
-                        editor_message(MessageId::HostAuthLocalAgent),
-                        AuthMode::LocalAgent,
-                        auth_mode == AuthMode::LocalAgent,
-                        cx,
-                    )),
-            )
-            .child(self.editor_labeled_input_row(
-                &editor_message(MessageId::HostUsernameField),
-                Some(&editor_message(MessageId::HostEditorUsernameHelp)),
-                Some(Icon::new(IconName::User)),
-                &self.inputs.username,
-            ))
-            .when(auth_mode == AuthMode::Password, |this| {
+            .child(self.render_editor_identity_picker(cx))
+            .when(own_credentials, |this| {
+                this.child(
+                    h_flex()
+                        .p(px(theme::SPACE_MICRO))
+                        .rounded(px(theme::CARD_RADIUS))
+                        .bg(theme::hover())
+                        .child(self.editor_auth_mode_button(
+                            "editor-auth-password",
+                            editor_message(MessageId::HostAuthPassword),
+                            AuthMode::Password,
+                            auth_mode == AuthMode::Password,
+                            cx,
+                        ))
+                        .child(self.editor_auth_mode_button(
+                            "editor-auth-private-key",
+                            editor_message(MessageId::HostAuthPrivateKey),
+                            AuthMode::PrivateKey,
+                            auth_mode == AuthMode::PrivateKey,
+                            cx,
+                        ))
+                        .child(self.editor_auth_mode_button(
+                            "editor-auth-agent",
+                            editor_message(MessageId::HostAuthLocalAgent),
+                            AuthMode::LocalAgent,
+                            auth_mode == AuthMode::LocalAgent,
+                            cx,
+                        )),
+                )
+            })
+            .when(own_credentials, |this| {
+                this.child(self.editor_labeled_input_row(
+                    &editor_message(MessageId::HostUsernameField),
+                    Some(&editor_message(MessageId::HostEditorUsernameHelp)),
+                    Some(Icon::new(IconName::User)),
+                    &self.inputs.username,
+                ))
+            })
+            .when(own_credentials && auth_mode == AuthMode::Password, |this| {
                 this.child(self.editor_labeled_input_row(
                     &editor_message(MessageId::HostPasswordField),
                     Some(&editor_message(MessageId::HostEditorPasswordHelp)),
@@ -387,136 +396,155 @@ impl MultiplexApp {
                     &self.inputs.password,
                 ))
             })
-            .when(auth_mode == AuthMode::PrivateKey, |this| {
-                this.child(
-                    v_flex()
-                        .w_full()
-                        .gap(px(theme::SPACE_FINE))
-                        .child(
-                            div()
-                                .text_size(px(theme::TYPE_MICRO_SIZE))
-                                .font_medium()
-                                .text_color(theme::text_muted())
-                                .child(editor_message(MessageId::HostKeyPathField)),
-                        )
-                        .child(
-                            h_flex()
-                                .gap(px(theme::SPACE_DENSE))
-                                .child(Input::new(&self.inputs.key_path).flex_1())
-                                .child(
-                                    Button::new("editor-pick-key-file")
-                                        .small()
-                                        .ghost()
-                                        .icon(IconName::FolderOpen)
-                                        .label(editor_message(MessageId::CommonBrowse))
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.set_auth_mode(AuthMode::PrivateKey, cx);
-                                            this.pick_key_file(window, cx);
-                                        })),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(theme::TYPE_NANO_SIZE))
-                                .text_color(theme::text_muted())
-                                .child(editor_message(MessageId::HostEditorKeyPickerHelp)),
-                        )
-                        .child(self.editor_labeled_input_row(
-                            &editor_message(MessageId::HostKeyPassphraseField),
-                            Some(&editor_message(MessageId::HostEditorKeyPassphraseHelp)),
-                            Some(app_icon(ICON_KEY)),
-                            &self.inputs.key_passphrase,
-                        ))
-                        .child(
-                            v_flex()
-                                .w_full()
-                                .gap(px(theme::SPACE_FINE))
-                                .child(
-                                    div()
-                                        .text_size(px(theme::TYPE_MICRO_SIZE))
-                                        .font_medium()
-                                        .text_color(theme::text_muted())
-                                        .child(editor_message(
-                                            MessageId::HostEditorCertificateField,
-                                        )),
-                                )
-                                .child(
-                                    h_flex()
-                                        .gap(px(theme::SPACE_DENSE))
-                                        .child(Input::new(&self.inputs.certificate_path).flex_1())
-                                        .child(
-                                            Button::new("editor-pick-certificate-file")
-                                                .small()
-                                                .ghost()
-                                                .icon(IconName::FolderOpen)
-                                                .label(editor_message(MessageId::CommonBrowse))
-                                                .on_click(cx.listener(|this, _, window, cx| {
-                                                    this.pick_certificate_file(window, cx);
-                                                })),
-                                        ),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(theme::TYPE_NANO_SIZE))
-                                        .text_color(theme::text_muted())
-                                        .child(editor_message(
-                                            MessageId::HostEditorCertificateHelp,
-                                        )),
-                                ),
-                        ),
-                )
-            })
-            .when(auth_mode == AuthMode::LocalAgent, |this| {
-                this.child(
-                    v_flex()
-                        .w_full()
-                        .gap(px(theme::SPACE_DENSE))
-                        .child(self.editor_labeled_input_row(
-                            &editor_message(MessageId::HostAgentSocketField),
-                            Some(&editor_message(MessageId::HostEditorAgentHelp)),
-                            Some(app_icon(ICON_KEY)),
-                            &self.inputs.identity_agent,
-                        ))
-                        .child(
-                            div()
-                                .text_size(px(theme::TYPE_NANO_SIZE))
-                                .text_color(if agent_available {
-                                    theme::success()
-                                } else {
-                                    theme::warning()
-                                })
-                                .child(if agent_available {
-                                    editor_message(MessageId::HostEditorAgentDetected)
-                                } else {
-                                    editor_message(MessageId::HostEditorAgentMissing)
-                                }),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(theme::TYPE_NANO_SIZE))
-                                .text_color(theme::text_muted())
-                                .child(editor_message(MessageId::HostEditorAgentForwardingHelp)),
-                        ),
-                )
-            })
+            .when(
+                own_credentials && auth_mode == AuthMode::PrivateKey,
+                |this| {
+                    this.child(
+                        v_flex()
+                            .w_full()
+                            .gap(px(theme::SPACE_FINE))
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
+                                    .font_medium()
+                                    .text_color(theme::text_muted())
+                                    .child(editor_message(MessageId::HostKeyPathField)),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap(px(theme::SPACE_DENSE))
+                                    .child(Input::new(&self.inputs.key_path).flex_1())
+                                    .child(
+                                        Button::new("editor-pick-key-file")
+                                            .small()
+                                            .ghost()
+                                            .icon(IconName::FolderOpen)
+                                            .label(editor_message(MessageId::CommonBrowse))
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.set_auth_mode(AuthMode::PrivateKey, cx);
+                                                this.pick_key_file(window, cx);
+                                            })),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_NANO_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(editor_message(MessageId::HostEditorKeyPickerHelp)),
+                            )
+                            .child(self.editor_labeled_input_row(
+                                &editor_message(MessageId::HostKeyPassphraseField),
+                                Some(&editor_message(MessageId::HostEditorKeyPassphraseHelp)),
+                                Some(app_icon(ICON_KEY)),
+                                &self.inputs.key_passphrase,
+                            ))
+                            .child(
+                                v_flex()
+                                    .w_full()
+                                    .gap(px(theme::SPACE_FINE))
+                                    .child(
+                                        div()
+                                            .text_size(px(theme::TYPE_MICRO_SIZE))
+                                            .font_medium()
+                                            .text_color(theme::text_muted())
+                                            .child(editor_message(
+                                                MessageId::HostEditorCertificateField,
+                                            )),
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .gap(px(theme::SPACE_DENSE))
+                                            .child(
+                                                Input::new(&self.inputs.certificate_path).flex_1(),
+                                            )
+                                            .child(
+                                                Button::new("editor-pick-certificate-file")
+                                                    .small()
+                                                    .ghost()
+                                                    .icon(IconName::FolderOpen)
+                                                    .label(editor_message(MessageId::CommonBrowse))
+                                                    .on_click(cx.listener(
+                                                        |this, _, window, cx| {
+                                                            this.pick_certificate_file(window, cx);
+                                                        },
+                                                    )),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(theme::TYPE_NANO_SIZE))
+                                            .text_color(theme::text_muted())
+                                            .child(editor_message(
+                                                MessageId::HostEditorCertificateHelp,
+                                            )),
+                                    ),
+                            ),
+                    )
+                },
+            )
+            .when(
+                own_credentials && auth_mode == AuthMode::LocalAgent,
+                |this| {
+                    this.child(
+                        v_flex()
+                            .w_full()
+                            .gap(px(theme::SPACE_DENSE))
+                            .child(self.editor_labeled_input_row(
+                                &editor_message(MessageId::HostAgentSocketField),
+                                Some(&editor_message(MessageId::HostEditorAgentHelp)),
+                                Some(app_icon(ICON_KEY)),
+                                &self.inputs.identity_agent,
+                            ))
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_NANO_SIZE))
+                                    .text_color(if agent_available {
+                                        theme::success()
+                                    } else {
+                                        theme::warning()
+                                    })
+                                    .child(if agent_available {
+                                        editor_message(MessageId::HostEditorAgentDetected)
+                                    } else {
+                                        editor_message(MessageId::HostEditorAgentMissing)
+                                    }),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_NANO_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(editor_message(
+                                        MessageId::HostEditorAgentForwardingHelp,
+                                    )),
+                            ),
+                    )
+                },
+            )
             .child(
-                div().id("editor-credentials-add").cursor_pointer().child(
-                    h_flex()
-                        .gap(px(theme::SPACE_DENSE))
-                        .items_center()
-                        .pt(px(theme::SPACE_1))
-                        .child(
-                            Icon::new(IconName::Plus)
-                                .size(px(theme::SPACE_4))
-                                .text_color(theme::text_muted()),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                .text_color(theme::text_muted())
-                                .child(editor_message(MessageId::HostEditorIdentityKinds)),
-                        ),
-                ),
+                div()
+                    .id("editor-credentials-add")
+                    .debug_selector(|| "editor-credentials-add".to_string())
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_new_login_identity_from_host_editor(window, cx);
+                    }))
+                    .child(
+                        h_flex()
+                            .gap(px(theme::SPACE_DENSE))
+                            .items_center()
+                            .pt(px(theme::SPACE_1))
+                            .child(
+                                Icon::new(IconName::Plus)
+                                    .size(px(theme::SPACE_4))
+                                    .text_color(theme::text_muted()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(editor_message(MessageId::HostEditorNewIdentityAction)),
+                            ),
+                    ),
             )
             .when(self.editor_advanced_expanded, |this| {
                 this.child(div().h(px(theme::BORDER_HAIRLINE)).bg(theme::soft_border()))

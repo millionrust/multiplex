@@ -28,7 +28,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::models::{
     AuthMode, DEFAULT_VAULT_ID, HostProfile, ImportedIdentity, ProfileSource, SavedIdentity,
-    SavedSnippet, SavedState, SavedVault, VaultKind,
+    SavedLoginIdentity, SavedSnippet, SavedState, SavedVault, VaultKind,
 };
 
 const APP_DIR_NAME: &str = "multiplex";
@@ -74,6 +74,8 @@ struct PortableDataBundle {
     #[serde(default)]
     identities: Vec<SavedIdentity>,
     #[serde(default)]
+    login_identities: Vec<SavedLoginIdentity>,
+    #[serde(default)]
     snippets: Vec<SavedSnippet>,
     #[serde(default)]
     known_hosts: HashMap<String, String>,
@@ -94,6 +96,7 @@ pub struct PortableDataReport {
     pub vaults: usize,
     pub profiles: usize,
     pub identities: usize,
+    pub login_identities: usize,
     pub snippets: usize,
     pub known_hosts: usize,
 }
@@ -315,6 +318,16 @@ fn build_portable_data_bundle(
             })
             .collect(),
         identities: exported.identities.clone(),
+        // Like host passwords, an identity's secrets stay in this computer's credential store.
+        login_identities: exported
+            .login_identities
+            .into_iter()
+            .map(|mut identity| {
+                identity.password_credential_id = None;
+                identity.passphrase_credential_id = None;
+                identity
+            })
+            .collect(),
         snippets: exported.snippets.clone(),
         known_hosts: known_hosts.entries()?.into_iter().collect(),
     })
@@ -325,6 +338,7 @@ fn report_for_portable_data_bundle(bundle: &PortableDataBundle) -> PortableDataR
         vaults: bundle.vaults.len(),
         profiles: bundle.profiles.len(),
         identities: bundle.identities.len(),
+        login_identities: bundle.login_identities.len(),
         snippets: bundle.snippets.len(),
         known_hosts: bundle.known_hosts.len(),
     }
@@ -531,6 +545,18 @@ fn apply_portable_data_bundle(
         identity.source = crate::models::IdentitySource::User;
         state.upsert_identity(identity);
         report.identities += 1;
+    }
+
+    for mut identity in bundle.login_identities {
+        // A bundle carries no secrets, so an identity this computer already has keeps the
+        // ones it saved.
+        let local = state.login_identity(&identity.id);
+        identity.password_credential_id =
+            local.and_then(|local| local.password_credential_id.clone());
+        identity.passphrase_credential_id =
+            local.and_then(|local| local.passphrase_credential_id.clone());
+        state.upsert_login_identity(identity);
+        report.login_identities += 1;
     }
 
     for snippet in bundle.snippets {
@@ -1017,6 +1043,7 @@ fn flush_ssh_config_block(
                     .filter(|value| !value.eq_ignore_ascii_case("SSH_AUTH_SOCK")),
                 key_path,
                 identity_id: None,
+                login_identity_id: None,
                 jump_host_id: block
                     .proxy_jump
                     .as_ref()
@@ -1077,7 +1104,7 @@ fn is_importable_host_alias(alias: &str) -> bool {
     !alias.is_empty() && !alias.contains('*') && !alias.contains('?') && !alias.starts_with('!')
 }
 
-fn expand_home_path(value: &str) -> String {
+pub(crate) fn expand_home_path(value: &str) -> String {
     if let Some(stripped) = value.strip_prefix("~/")
         && let Some(home_dir) = dirs::home_dir()
     {
@@ -1260,14 +1287,16 @@ mod tests {
     }
 
     use super::{
-        KnownHostStore, KnownHostsFile, detect_identity_kind, export_encrypted_mobile_vault,
-        export_encrypted_portable_data_bundle, export_portable_data_bundle, identity_priority,
-        import_encrypted_portable_data_bundle, import_portable_data_bundle, parse_ssh_config_hosts,
-        read_encrypted_mobile_vault_export, should_skip_ssh_entry,
+        KnownHostStore, KnownHostsFile, apply_portable_data_bundle, build_portable_data_bundle,
+        detect_identity_kind, export_encrypted_mobile_vault, export_encrypted_portable_data_bundle,
+        export_portable_data_bundle, identity_priority, import_encrypted_portable_data_bundle,
+        import_portable_data_bundle, parse_ssh_config_hosts, read_encrypted_mobile_vault_export,
+        report_for_portable_data_bundle, should_skip_ssh_entry,
     };
     use crate::models::{
         AppSettings, AuthMode, DEFAULT_VAULT_ID, HostProfile, ProfileSource, SavedIdentity,
-        SavedSnippet, SavedState, SavedVault, ThemePreset, VaultKind, VaultMemberRole,
+        SavedLoginIdentity, SavedSnippet, SavedState, SavedVault, ThemePreset, VaultKind,
+        VaultMemberRole,
     };
     use multiplex_protocol::{MOBILE_VAULT_SCHEMA_VERSION, MobileAuthKind, MobileDeviceRecord};
     use std::collections::HashMap;
@@ -1364,7 +1393,7 @@ Host cert-prod
                 .is_some_and(|path| ends_with_path(path, "/.ssh/id_ed25519-cert.pub"))
         );
         assert!(matches!(
-            hosts[0].saved_auth_config().unwrap(),
+            hosts[0].saved_auth_config(&[]).unwrap(),
             crate::models::AuthConfig::OpenSshCertificate { .. }
         ));
     }
@@ -1458,7 +1487,7 @@ Host key-wins
         assert_eq!(default_agent.auth_mode, AuthMode::LocalAgent);
         assert_eq!(default_agent.identity_agent, None);
         assert!(matches!(
-            default_agent.saved_auth_config().unwrap(),
+            default_agent.saved_auth_config(&[]).unwrap(),
             crate::models::AuthConfig::LocalAgent {
                 socket_path: None,
                 forward_agent: false
@@ -1614,6 +1643,7 @@ Host app-prod
             certificate_path: None,
             identity_agent: None,
             identity_id: None,
+            login_identity_id: None,
             jump_host_id: None,
             outbound_proxy: None,
             startup_directory: Some("/srv/prod".to_string()),
@@ -1708,6 +1738,51 @@ Host app-prod
         let _ = fs::remove_file(imported_known_hosts_path);
     }
 
+    /// An exported identity carries no secret; importing it keeps the secrets this computer
+    /// already has for it and leaves a new one to be given its password again.
+    #[test]
+    fn portable_bundles_carry_identities_without_their_secrets() {
+        let identity = |id: &str| SavedLoginIdentity {
+            id: id.to_string(),
+            label: id.to_string(),
+            username: "deploy".to_string(),
+            auth_mode: AuthMode::Password,
+            password_credential_id: Some(format!("identity-password:{id}")),
+            passphrase_credential_id: Some(format!("identity-passphrase:{id}")),
+            ..SavedLoginIdentity::default()
+        };
+        let mut state = SavedState::default();
+        state.upsert_login_identity(identity("kept"));
+        state.upsert_login_identity(identity("new"));
+        let known_hosts = KnownHostStore {
+            path: std::env::temp_dir().join(format!(
+                "multiplex-identity-known-hosts-{}.json",
+                std::process::id()
+            )),
+            entries: std::sync::Mutex::new(HashMap::new()),
+        };
+
+        let bundle = build_portable_data_bundle(&state, &known_hosts).unwrap();
+        let text = serde_json::to_string(&bundle).unwrap();
+        assert!(!text.contains("identity-password:"), "{text}");
+        assert!(!text.contains("identity-passphrase:"), "{text}");
+        assert_eq!(report_for_portable_data_bundle(&bundle).login_identities, 2);
+
+        let mut other = SavedState::default();
+        other.upsert_login_identity(identity("kept"));
+        let report = apply_portable_data_bundle(bundle, &mut other, &known_hosts).unwrap();
+        assert_eq!(report.login_identities, 2);
+        let kept = other.login_identity("kept").unwrap();
+        assert_eq!(
+            kept.password_credential_id.as_deref(),
+            Some("identity-password:kept")
+        );
+        let new = other.login_identity("new").unwrap();
+        assert_eq!(new.password_credential_id, None);
+        assert_eq!(new.passphrase_credential_id, None);
+        assert_eq!(new.username, "deploy");
+    }
+
     #[test]
     fn encrypted_portable_data_bundle_round_trips_user_data() {
         let mut state = SavedState::default();
@@ -1726,6 +1801,7 @@ Host app-prod
             certificate_path: None,
             identity_agent: None,
             identity_id: None,
+            login_identity_id: None,
             jump_host_id: None,
             outbound_proxy: None,
             startup_directory: None,
@@ -1852,6 +1928,7 @@ Host app-prod
             certificate_path: None,
             identity_agent: None,
             identity_id: Some("identity-prod".to_string()),
+            login_identity_id: None,
             jump_host_id: None,
             outbound_proxy: None,
             startup_directory: Some("/srv/app".to_string()),

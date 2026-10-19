@@ -58,6 +58,12 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
 - Per-host SFTP remote-files view (browse, upload, download, delete) available from any workspace.
 - Per-host port-forwarding rules (local, remote reverse, dynamic SOCKS) that start automatically on connect.
 - Per-host jump-host chains.
+- Identities (Keychain → Identities, `ui/app/login_identities.rs`) are reusable logins, as in
+  Termius: a username with a password, a private key (its passphrase checked when saved and kept
+  in the system keychain as `identity-passphrase:{id}`), or the SSH agent. A host that chooses
+  one in the editor's Credentials section signs in with it, jump hosts included, and follows its
+  edits; deleting it unlinks the hosts and leaves them its username. Secrets never reach
+  `state.json`, portable exports, or vault replication (`desktop-login-identities`).
 - SSH opens the remote shell directly; legacy automatic tmux preferences are ignored.
 - A per-workspace command palette offers recent commands and built-in tasks.
 - Per-host color tag, environment variables, description/notes, startup directory, and startup command.

@@ -12548,3 +12548,252 @@ description = "Settings: adding the server to a coding agent."
 id = "terminal-mcp-command-copied"
 context = "Terminal MCP server."
 description = "Settings: adding the server to a coding agent."
+
+[[messages]]
+id = "login-identity-new-action"
+context = "Button that starts a new saved login identity."
+description = "Button that starts a new saved login identity"
+
+[[messages]]
+id = "login-identities-description"
+context = "Description of the Identities tab in Keys."
+description = "Description of the Identities tab in Keys"
+
+[[messages]]
+id = "login-identities-empty-title"
+context = "Empty Identities tab title."
+description = "Empty Identities tab title"
+
+[[messages]]
+id = "login-identities-empty-description"
+context = "Empty Identities tab description."
+description = "Empty Identities tab description"
+
+[[messages]]
+id = "login-identity-form-new-title"
+context = "Heading of the form that creates an identity."
+description = "Heading of the form that creates an identity"
+
+[[messages]]
+id = "login-identity-form-edit-title"
+context = "Heading of the form that edits an identity."
+description = "Heading of the form that edits an identity"
+
+[[messages]]
+id = "login-identity-label-field"
+context = "Identity form field for its display name."
+description = "Identity form field for its display name"
+
+[[messages]]
+id = "login-identity-label-placeholder"
+context = "Placeholder for the identity name."
+description = "Placeholder for the identity name"
+
+[[messages]]
+id = "login-identity-username-field"
+context = "Identity form field for the login username."
+description = "Identity form field for the login username"
+
+[[messages]]
+id = "login-identity-username-placeholder"
+context = "Placeholder for the identity username."
+description = "Placeholder for the identity username"
+
+[[messages]]
+id = "login-identity-password-field"
+context = "Identity form field for the login password."
+description = "Identity form field for the login password"
+
+[[messages]]
+id = "login-identity-password-placeholder"
+context = "Placeholder for a new identity password."
+description = "Placeholder for a new identity password"
+
+[[messages]]
+id = "login-identity-key-field"
+context = "Identity form field for the private key file."
+description = "Identity form field for the private key file"
+
+[[messages]]
+id = "login-identity-key-placeholder"
+context = "Placeholder for the identity key path."
+description = "Placeholder for the identity key path"
+
+[[messages]]
+id = "login-identity-passphrase-field"
+context = "Identity form field for the private key passphrase."
+description = "Identity form field for the private key passphrase"
+
+[[messages]]
+id = "login-identity-passphrase-placeholder"
+context = "Placeholder for an identity key passphrase."
+description = "Placeholder for an identity key passphrase"
+
+[[messages]]
+id = "login-identity-secret-kept-placeholder"
+context = "Placeholder when a password or passphrase is already saved."
+description = "Placeholder when a password or passphrase is already saved"
+
+[[messages]]
+id = "login-identity-agent-field"
+context = "Identity form field for an SSH agent socket."
+description = "Identity form field for an SSH agent socket"
+
+[[messages]]
+id = "login-identity-agent-placeholder"
+context = "Placeholder for the identity agent socket."
+description = "Placeholder for the identity agent socket"
+
+[[messages]]
+id = "login-identity-browse-action"
+context = "Button that picks a private key file for an identity."
+description = "Button that picks a private key file for an identity"
+
+[[messages]]
+id = "login-identity-save-action"
+context = "Button that saves an identity."
+description = "Button that saves an identity"
+
+[[messages]]
+id = "login-identity-cancel-action"
+context = "Button that closes the identity form without saving."
+description = "Button that closes the identity form without saving"
+
+[[messages]]
+id = "login-identity-edit-action"
+context = "Button that opens an identity for editing."
+description = "Button that opens an identity for editing"
+
+[[messages]]
+id = "login-identity-delete-action"
+context = "Button that deletes an identity."
+description = "Button that deletes an identity"
+
+[[messages]]
+id = "login-identity-method-password"
+context = "Identity sign-in method: password."
+description = "Identity sign-in method: password"
+
+[[messages]]
+id = "login-identity-method-key"
+context = "Identity sign-in method: private key."
+description = "Identity sign-in method: private key"
+
+[[messages]]
+id = "login-identity-method-key-passphrase"
+context = "Identity sign-in method: private key with a stored passphrase."
+description = "Identity sign-in method: private key with a stored passphrase"
+
+[[messages]]
+id = "login-identity-method-agent"
+context = "Identity sign-in method: SSH agent."
+description = "Identity sign-in method: SSH agent"
+
+[[messages]]
+id = "login-identity-username-required-error"
+context = "Error when saving an identity without a username."
+description = "Error when saving an identity without a username"
+
+[[messages]]
+id = "login-identity-password-required-error"
+context = "Error when saving a password identity without a password."
+description = "Error when saving a password identity without a password"
+
+[[messages]]
+id = "login-identity-key-required-error"
+context = "Error when saving a key identity without a key."
+description = "Error when saving a key identity without a key"
+
+[[messages]]
+id = "login-identity-passphrase-needed-error"
+context = "Error when an encrypted key is saved without its passphrase."
+description = "Error when an encrypted key is saved without its passphrase"
+
+[[messages]]
+id = "login-identity-passphrase-wrong-error"
+context = "Error when the passphrase does not decrypt the key."
+description = "Error when the passphrase does not decrypt the key"
+
+[[messages]]
+id = "login-identity-key-unreadable-error"
+context = "Error when the identity key file cannot be read."
+description = "Error when the identity key file cannot be read"
+
+[[messages]]
+id = "host-editor-identity-field"
+context = "Host editor field for the saved login identity."
+description = "Host editor field for the saved login identity"
+
+[[messages]]
+id = "host-editor-identity-none"
+context = "Host editor choice for signing in without an identity."
+description = "Host editor choice for signing in without an identity"
+
+[[messages]]
+id = "host-editor-identity-help"
+context = "Host editor help for the identity field."
+description = "Host editor help for the identity field"
+
+[[messages]]
+id = "host-editor-new-identity-action"
+context = "Host editor link that starts a new identity."
+description = "Host editor link that starts a new identity"
+
+[[messages]]
+id = "login-identity-saved-status"
+context = "Status after saving a login identity."
+description = "Status after saving a login identity"
+[[messages.args]]
+name = "identity"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "login-identity-deleted-status"
+context = "Status after deleting a login identity."
+description = "Status after deleting a login identity"
+[[messages.args]]
+name = "identity"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "login-identity-host-count"
+context = "Hosts using an identity."
+description = "Hosts using an identity"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "login-identity-count"
+context = "Number of saved login identities."
+description = "Number of saved login identities"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "host-editor-identity-summary"
+context = "Host editor summary of the linked identity."
+description = "Host editor summary of the linked identity"
+[[messages.args]]
+name = "username"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "method"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"

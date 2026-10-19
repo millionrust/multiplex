@@ -2694,3 +2694,56 @@ terminal-mcp-agent-claude-http-note = Writes the token into Claude Code's settin
 terminal-mcp-agent-codex-http-note = Codex reads the token from MULTIPLEX_TERMINAL_MCP_BEARER and never stores it, so that variable must be set in every shell Codex starts from.
 terminal-mcp-copy-command = Copy command
 terminal-mcp-command-copied = Command copied. Run it in a terminal.
+login-identity-new-action = New identity
+login-identities-description = Logins that Hosts share: a username with a password, a private key, or the SSH agent.
+login-identities-empty-title = No identities yet
+login-identities-empty-description = Save a username with its password or key once, then choose it on any Host instead of typing it again.
+login-identity-form-new-title = New identity
+login-identity-form-edit-title = Edit identity
+login-identity-label-field = Name
+login-identity-label-placeholder = Production deploy
+login-identity-username-field = Username
+login-identity-username-placeholder = deploy
+login-identity-password-field = Password
+login-identity-password-placeholder = Password
+login-identity-key-field = Private key
+login-identity-key-placeholder = ~/.ssh/id_ed25519
+login-identity-passphrase-field = Key passphrase
+login-identity-passphrase-placeholder = Only if the key has one
+login-identity-secret-kept-placeholder = Saved. Leave blank to keep it
+login-identity-agent-field = Agent socket
+login-identity-agent-placeholder = Default agent
+login-identity-browse-action = Browse
+login-identity-save-action = Save identity
+login-identity-cancel-action = Cancel
+login-identity-edit-action = Edit
+login-identity-delete-action = Delete
+login-identity-method-password = Password
+login-identity-method-key = Private key
+login-identity-method-key-passphrase = Private key with saved passphrase
+login-identity-method-agent = SSH agent
+login-identity-username-required-error = An identity needs a username.
+login-identity-password-required-error = Enter a password for this identity.
+login-identity-key-required-error = Choose a private key file for this identity.
+login-identity-passphrase-needed-error = This key is protected by a passphrase. Enter it to save the identity.
+login-identity-passphrase-wrong-error = That passphrase does not open this key.
+login-identity-key-unreadable-error = That file could not be read as a private key.
+host-editor-identity-field = Identity
+host-editor-identity-none = None
+host-editor-identity-help = Choose a saved login, or None to enter the username and credentials here.
+host-editor-new-identity-action = New identity
+login-identity-saved-status = Identity '{ $identity }' saved.
+login-identity-deleted-status = Identity '{ $identity }' deleted.
+login-identity-host-count = { $count ->
+    [zero] Not used by any Host
+    [one] Used by 1 Host
+    [many] Used by { $count } Hosts
+   *[other] Used by { $count } Hosts
+    }
+login-identity-count = { $count ->
+    [zero] No identities
+    [one] 1 identity
+    [many] { $count } identities
+   *[other] { $count } identities
+    }
+host-editor-identity-summary = Signs in as { $username } with { $method }.

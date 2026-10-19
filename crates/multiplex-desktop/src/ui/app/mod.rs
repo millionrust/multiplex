@@ -19,6 +19,7 @@ mod key_lifecycle;
 mod launch_coordinator;
 mod library;
 mod library_state;
+mod login_identities;
 mod motion;
 mod new_session;
 mod notification_settings;
@@ -1227,6 +1228,10 @@ pub struct MultiplexApp {
     host_recovery_plan: Option<HostReconciliationPlan>,
     host_recovery_operation: Option<HostRecoveryOperation>,
     draft_identity_id: Option<String>,
+    /// The saved login the host being edited signs in with, if any.
+    draft_login_identity_id: Option<String>,
+    login_identity_inputs: login_identities::LoginIdentityInputs,
+    login_identity_form: Option<login_identities::LoginIdentityForm>,
     draft_vault_id: Option<String>,
     draft_profile_favorite: bool,
     draft_start_in_files: bool,
@@ -1703,6 +1708,9 @@ impl MultiplexApp {
             host_recovery_plan: None,
             host_recovery_operation: None,
             draft_identity_id: None,
+            draft_login_identity_id: None,
+            login_identity_inputs: login_identities::LoginIdentityInputs::new(window, cx),
+            login_identity_form: None,
             draft_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             draft_profile_favorite: false,
             draft_start_in_files: false,
@@ -2215,6 +2223,7 @@ impl MultiplexApp {
             certificate_path: self.inputs.certificate_path.read(cx).value().to_string(),
             identity_agent: self.inputs.identity_agent.read(cx).value().to_string(),
             identity_id,
+            login_identity_id: self.draft_login_identity_id.clone(),
             jump_host_id,
             startup_directory: self.inputs.startup_directory.read(cx).value().to_string(),
             startup_command: self.inputs.startup_command.read(cx).value().to_string(),
@@ -2246,6 +2255,7 @@ impl MultiplexApp {
                     .find(|item| &item.id == profile_id)
                     .and_then(|profile| profile.password_credential_id.clone())
             }),
+            passphrase_credential_id: None,
             auth_mode: self.draft_auth_mode,
             description: self.inputs.description.read(cx).value().to_string(),
             color_tag: self.draft_color_tag,
@@ -2258,11 +2268,21 @@ impl MultiplexApp {
     fn current_profile_draft(&self, cx: &App) -> anyhow::Result<DraftProfile> {
         let draft = self.current_profile_draft_raw(cx)?;
 
-        Ok(apply_group_defaults_to_draft(
+        let mut draft = apply_group_defaults_to_draft(
             draft,
             self.host_group_by_label(&self.inputs.group.read(cx).value()),
             &self.saved.identities,
-        ))
+        );
+        // A chosen identity decides who the host signs in as, whatever the form says.
+        match draft
+            .login_identity_id
+            .as_deref()
+            .and_then(|identity_id| self.saved.login_identity(identity_id))
+        {
+            Some(identity) => identity.apply_to_draft(&mut draft),
+            None => draft.login_identity_id = None,
+        }
+        Ok(draft)
     }
 
     fn set_auth_mode(&mut self, auth_mode: AuthMode, cx: &mut Context<Self>) {
@@ -2667,7 +2687,7 @@ impl MultiplexApp {
             .ok_or_else(|| anyhow::anyhow!("Jump host is no longer available"))?;
 
         let auth = profile
-            .saved_auth_config()
+            .saved_auth_config(&self.saved.login_identities)
             .map_err(|error| anyhow::anyhow!("Jump host '{}': {error}", profile.display_name()))?;
 
         let nested_jump_host = profile
@@ -2889,6 +2909,9 @@ impl MultiplexApp {
             self.identity_for_key_path(profile.key_path.as_str())
                 .map(|identity| identity.id.clone())
         });
+        self.draft_login_identity_id = draft
+            .login_identity_id
+            .filter(|identity_id| self.saved.login_identity(identity_id).is_some());
 
         self.selected_profile_id = Some(profile.id.clone());
         self.saved.selected_profile_id = Some(profile.id.clone());
@@ -2973,6 +2996,7 @@ impl MultiplexApp {
         }
         self.selected_profile_id = None;
         self.saved.selected_profile_id = None;
+        self.draft_login_identity_id = None;
         self.show_editor_panel = true;
         self.status_message = localization::static_message(MessageId::HostDraftClearedStatus);
         self.error_message.clear();
@@ -4060,7 +4084,17 @@ impl MultiplexApp {
                     .and_then(|profile| profile.password_credential_id.clone())
             });
 
-        if draft.auth_mode == AuthMode::Password {
+        if draft.login_identity_id.is_some() {
+            // The identity holds the secrets now, so a password this host saved for itself
+            // would only linger in the credential store.
+            if let Some(credential_id) = existing_password_credential_id.as_deref()
+                && let Err(error) = credentials::delete_password(credential_id)
+            {
+                self.error_message = error.to_string();
+                cx.notify();
+                return;
+            }
+        } else if draft.auth_mode == AuthMode::Password {
             let password = draft.password.trim().to_string();
             if !password.is_empty() {
                 let credential_id = credentials::profile_password_credential_id(&profile_id);
@@ -7586,6 +7620,8 @@ impl MultiplexApp {
                         Some(AuthConfig::Password { .. }) => "password",
                         Some(AuthConfig::PasswordRef { .. }) => "stored-password",
                         Some(AuthConfig::PrivateKey { .. }) => "private-key",
+                        Some(AuthConfig::PrivateKeyRef { .. }) =>
+                            "private-key-with-saved-passphrase",
                         Some(AuthConfig::OpenSshCertificate { .. }) => "openssh-certificate",
                         Some(AuthConfig::LocalAgent { .. }) => "local-agent",
                         None => "none",
@@ -11701,6 +11737,7 @@ impl MultiplexApp {
 
     fn render_editor_panel(&self, cx: &Context<Self>) -> Div {
         let auth_mode = self.draft_auth_mode;
+        let own_credentials = self.draft_login_identity_id.is_none();
         let group_name = self.inputs.group.read(cx).value().trim().to_string();
         let saved_group = self.host_group_by_label(&group_name).cloned();
         let selected_identity = self
@@ -12505,7 +12542,8 @@ impl MultiplexApp {
                             .text_color(theme::text_main())
                             .child(localization::static_message(MessageId::HostAuthTitle)),
                     )
-                    .child(
+                    .child(self.render_editor_identity_picker(cx))
+                    .when(own_credentials, |this| this.child(
                         h_flex()
                             .p(px(theme::SPACE_MICRO))
                             .rounded(px(theme::CARD_RADIUS))
@@ -12592,9 +12630,9 @@ impl MultiplexApp {
                                         MessageId::HostAuthSshAgentAction,
                                     )),
                             ),
-                    ),
+                    )),
             )
-            .when(auth_mode == AuthMode::Password, |this| {
+            .when(own_credentials && auth_mode == AuthMode::Password, |this| {
                 this.child(
                     v_flex()
                         .id("editor-password-auth")
@@ -12616,7 +12654,7 @@ impl MultiplexApp {
                         }),
                 )
             })
-            .when(auth_mode == AuthMode::PrivateKey, |this| {
+            .when(own_credentials && auth_mode == AuthMode::PrivateKey, |this| {
                 this.child(
                     v_flex()
                         .id("editor-key-auth")
@@ -12709,7 +12747,7 @@ impl MultiplexApp {
                         .child(self.render_identity_picker(cx)),
                 )
             })
-            .when(auth_mode == AuthMode::LocalAgent, |this| {
+            .when(own_credentials && auth_mode == AuthMode::LocalAgent, |this| {
                 this.child(
                     v_flex()
                         .id("editor-agent-auth")
@@ -15725,6 +15763,7 @@ mod tests {
             certificate_path: String::new(),
             identity_agent: String::new(),
             identity_id: None,
+            login_identity_id: None,
             jump_host_id: None,
             startup_directory: String::new(),
             startup_command: "htop".to_string(),
@@ -15740,6 +15779,7 @@ mod tests {
             forward_remote_port: String::new(),
             key_passphrase: String::new(),
             password_credential_id: None,
+            passphrase_credential_id: None,
             auth_mode: AuthMode::PrivateKey,
             description: String::new(),
             color_tag: None,
@@ -15818,6 +15858,7 @@ mod tests {
             certificate_path: String::new(),
             identity_agent: String::new(),
             identity_id: None,
+            login_identity_id: None,
             jump_host_id: None,
             startup_directory: String::new(),
             startup_command: String::new(),
@@ -15833,6 +15874,7 @@ mod tests {
             forward_remote_port: String::new(),
             key_passphrase: String::new(),
             password_credential_id: None,
+            passphrase_credential_id: None,
             auth_mode: AuthMode::Password,
             description: String::new(),
             color_tag: None,
@@ -20627,6 +20669,567 @@ sleep 1
                     .any(|identity| identity.key_path == key_path.display().to_string())
             );
             assert_eq!(app.active_workspace_id, Some(workspace_id));
+        });
+    }
+
+    /// A server that accepts the fixture key: the Docker fixture when Docker runs, otherwise
+    /// this machine's own sshd run as the current user, which only checks keys. Tests that need
+    /// one skip themselves when neither is there.
+    enum KeySignInServer {
+        Docker(DockerSshServer),
+        #[cfg(unix)]
+        Local(crate::test_support::LocalSshServer),
+    }
+
+    impl KeySignInServer {
+        fn start() -> Option<Self> {
+            if DockerSshServer::docker_available() {
+                return Some(Self::Docker(
+                    DockerSshServer::start().expect("unable to start docker ssh fixture"),
+                ));
+            }
+            #[cfg(unix)]
+            if crate::test_support::LocalSshServer::available() {
+                return Some(Self::Local(
+                    crate::test_support::LocalSshServer::start()
+                        .expect("unable to start the local sshd"),
+                ));
+            }
+            None
+        }
+
+        fn host(&self) -> String {
+            match self {
+                Self::Docker(server) => server.host().to_string(),
+                #[cfg(unix)]
+                Self::Local(server) => server.host().to_string(),
+            }
+        }
+
+        fn port(&self) -> u16 {
+            match self {
+                Self::Docker(server) => server.port,
+                #[cfg(unix)]
+                Self::Local(server) => server.port,
+            }
+        }
+
+        /// Where the server is reached from inside itself, for a hop through it.
+        fn port_seen_from_itself(&self) -> u16 {
+            match self {
+                Self::Docker(_) => 22,
+                #[cfg(unix)]
+                Self::Local(server) => server.port,
+            }
+        }
+
+        fn username(&self) -> String {
+            match self {
+                Self::Docker(server) => server.username().to_string(),
+                #[cfg(unix)]
+                Self::Local(server) => server.username().to_string(),
+            }
+        }
+    }
+
+    /// Fills the identity form the way a person would and saves it. Gives the new identity's
+    /// id, or the error the form showed.
+    #[allow(clippy::too_many_arguments)]
+    fn save_identity_through_form(
+        app: &Entity<MultiplexApp>,
+        window: WindowHandle<Root>,
+        cx: &mut TestAppContext,
+        label: &str,
+        username: &str,
+        auth_mode: AuthMode,
+        password: &str,
+        key_path: &str,
+        passphrase: &str,
+    ) -> Result<String, String> {
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    if app.login_identity_form.is_none() {
+                        app.open_new_login_identity(window, cx);
+                    }
+                    let inputs = &app.login_identity_inputs;
+                    MultiplexApp::set_input_value(&inputs.label, label.to_string(), window, cx);
+                    MultiplexApp::set_input_value(
+                        &inputs.username,
+                        username.to_string(),
+                        window,
+                        cx,
+                    );
+                    MultiplexApp::set_input_value(
+                        &inputs.password,
+                        password.to_string(),
+                        window,
+                        cx,
+                    );
+                    MultiplexApp::set_input_value(
+                        &inputs.key_path,
+                        key_path.to_string(),
+                        window,
+                        cx,
+                    );
+                    MultiplexApp::set_input_value(
+                        &inputs.passphrase,
+                        passphrase.to_string(),
+                        window,
+                        cx,
+                    );
+                    app.set_login_identity_auth_mode(auth_mode, cx);
+                    if app.save_login_identity(window, cx) {
+                        Ok(app
+                            .saved
+                            .login_identities
+                            .iter()
+                            .find(|identity| identity.label == label)
+                            .expect("the saved identity is listed")
+                            .id
+                            .clone())
+                    } else {
+                        Err(app.error_message.clone())
+                    }
+                })
+            })
+            .expect("window update should succeed")
+    }
+
+    /// Saves a host that signs in with `identity_id`, the way the host editor does.
+    fn save_host_with_identity(
+        app: &Entity<MultiplexApp>,
+        window: WindowHandle<Root>,
+        cx: &mut TestAppContext,
+        label: &str,
+        (host, port): (&str, u16),
+        identity_id: &str,
+        jump_host: Option<&str>,
+    ) -> String {
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.label, label.to_string(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.host, host.to_string(), window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    MultiplexApp::set_input_value(
+                        &app.inputs.jump_host,
+                        jump_host.unwrap_or_default().to_string(),
+                        window,
+                        cx,
+                    );
+                    app.set_draft_login_identity(Some(identity_id.to_string()), window, cx);
+                    app.save_profile(window, cx);
+                    assert!(app.error_message.is_empty(), "{}", app.error_message);
+                    let profile = app
+                        .saved
+                        .profiles
+                        .iter()
+                        .find(|profile| profile.label == label)
+                        .expect("the host is saved");
+                    assert_eq!(profile.login_identity_id.as_deref(), Some(identity_id));
+                    assert_eq!(profile.password_credential_id, None);
+                    profile.id.clone()
+                })
+            })
+            .expect("window update should succeed")
+    }
+
+    /// Opens a saved host and waits until a command typed into it answers, which only happens
+    /// once the server let the identity in.
+    fn connect_saved_host_and_run_a_command(
+        app: &Entity<MultiplexApp>,
+        window: WindowHandle<Root>,
+        cx: &mut TestAppContext,
+        profile_id: &str,
+    ) -> u64 {
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.load_profile_into_inputs(profile_id, window, cx);
+                    app.connect_current(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+        let pane_id = wait_for_app_state(cx, app, Duration::from_secs(30), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            pane.connected.then_some(pane.id)
+        });
+        app.update(cx, |app, cx| {
+            app.send_input_bytes(pane_id, b"echo identity-$((40 + 2))\r".to_vec(), cx);
+        });
+        wait_for_app_state(cx, app, Duration::from_secs(30), |app| {
+            app.pane(pane_id)?
+                .terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("identity-42"))
+                .then_some(())
+        });
+        pane_id
+    }
+
+    #[gpui::test]
+    fn e2e_identity_with_a_password_signs_a_saved_host_in(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping password identity e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+
+        assert_eq!(
+            save_identity_through_form(
+                &app,
+                window,
+                cx,
+                "Fixture password",
+                server.username(),
+                AuthMode::Password,
+                "",
+                "",
+                "",
+            ),
+            Err(localization::static_message(
+                MessageId::LoginIdentityPasswordRequiredError
+            ))
+        );
+        let identity_id = save_identity_through_form(
+            &app,
+            window,
+            cx,
+            "Fixture password",
+            server.username(),
+            AuthMode::Password,
+            server.password(),
+            "",
+            "",
+        )
+        .expect("a password identity saves");
+        let credential_id = credentials::identity_password_credential_id(&identity_id);
+        assert_eq!(
+            credentials::load_password(&credential_id).expect("the password is in the store"),
+            server.password()
+        );
+
+        let profile_id = save_host_with_identity(
+            &app,
+            window,
+            cx,
+            "Password identity host",
+            (server.host(), server.port),
+            &identity_id,
+            None,
+        );
+        let pane_id = connect_saved_host_and_run_a_command(&app, window, cx, &profile_id);
+        app.read_with(cx, |app, _| {
+            let pane = app.pane(pane_id).expect("the pane exists");
+            assert_eq!(pane.request.username, server.username());
+            assert!(matches!(
+                pane.request.auth.as_ref(),
+                Some(AuthConfig::PasswordRef { credential_id: used }) if used == &credential_id
+            ));
+        });
+        let _ = credentials::delete_password(&credential_id);
+    }
+
+    #[gpui::test]
+    fn e2e_identity_with_a_private_key_signs_a_saved_host_in(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let Some(server) = KeySignInServer::start() else {
+            eprintln!("skipping key identity e2e: neither Docker nor sshd is available");
+            return;
+        };
+        let (app, window) = open_test_app(cx);
+        let key_path = crate::test_support::fixture_private_key_path()
+            .display()
+            .to_string();
+
+        let identity_id = save_identity_through_form(
+            &app,
+            window,
+            cx,
+            "Fixture key",
+            &server.username(),
+            AuthMode::PrivateKey,
+            "",
+            &key_path,
+            "",
+        )
+        .expect("an unencrypted key identity saves without a passphrase");
+        app.read_with(cx, |app, _| {
+            let identity = app.saved.login_identity(&identity_id).unwrap();
+            assert_eq!(identity.passphrase_credential_id, None);
+            assert_eq!(identity.password_credential_id, None);
+        });
+
+        let profile_id = save_host_with_identity(
+            &app,
+            window,
+            cx,
+            "Key identity host",
+            (&server.host(), server.port()),
+            &identity_id,
+            None,
+        );
+        let pane_id = connect_saved_host_and_run_a_command(&app, window, cx, &profile_id);
+        app.read_with(cx, |app, _| {
+            let pane = app.pane(pane_id).expect("the pane exists");
+            assert_eq!(pane.request.username, server.username());
+            assert!(matches!(
+                pane.request.auth.as_ref(),
+                Some(AuthConfig::PrivateKey { key_path: used, passphrase: None }) if used == &key_path
+            ));
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_identity_with_a_passphrase_protected_key_signs_hosts_in_directly_and_through_a_jump(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let Some(server) = KeySignInServer::start() else {
+            eprintln!("skipping passphrase identity e2e: neither Docker nor sshd is available");
+            return;
+        };
+        let (app, window) = open_test_app(cx);
+        let keys = tempfile::tempdir().unwrap();
+        let passphrase = "correct horse battery";
+        let key_path =
+            crate::test_support::write_passphrase_protected_fixture_key(keys.path(), passphrase)
+                .display()
+                .to_string();
+        let username = server.username();
+        let save = |cx: &mut TestAppContext, typed: &str| {
+            save_identity_through_form(
+                &app,
+                window,
+                cx,
+                "Protected key",
+                &username,
+                AuthMode::PrivateKey,
+                "",
+                &key_path,
+                typed,
+            )
+        };
+
+        // The form opens the key before anything is kept: no passphrase, then a wrong one.
+        assert_eq!(
+            save(cx, ""),
+            Err(localization::static_message(
+                MessageId::LoginIdentityPassphraseNeededError
+            ))
+        );
+        assert_eq!(
+            save(cx, "wrong"),
+            Err(localization::static_message(
+                MessageId::LoginIdentityPassphraseWrongError
+            ))
+        );
+        let identity_id = save(cx, passphrase).expect("the right passphrase saves the identity");
+        let passphrase_id = credentials::identity_passphrase_credential_id(&identity_id);
+        assert_eq!(
+            credentials::load_password(&passphrase_id).expect("the passphrase is in the store"),
+            passphrase
+        );
+        let stored = serde_json::to_string(&load_saved_state().expect("the state is saved"))
+            .expect("the state serializes");
+        assert!(stored.contains(&identity_id));
+        assert!(
+            !stored.contains(passphrase),
+            "the passphrase never reaches state.json"
+        );
+
+        // Editing the identity without retyping the passphrase keeps the saved one.
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.edit_login_identity(&identity_id, window, cx);
+                    assert!(app.save_login_identity(window, cx), "{}", app.error_message);
+                    assert_eq!(
+                        app.saved
+                            .login_identity(&identity_id)
+                            .unwrap()
+                            .passphrase_credential_id
+                            .as_deref(),
+                        Some(passphrase_id.as_str())
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        let bastion_id = save_host_with_identity(
+            &app,
+            window,
+            cx,
+            "Protected bastion",
+            (&server.host(), server.port()),
+            &identity_id,
+            None,
+        );
+        let pane_id = connect_saved_host_and_run_a_command(&app, window, cx, &bastion_id);
+        app.read_with(cx, |app, _| {
+            assert!(matches!(
+                app.pane(pane_id).unwrap().request.auth.as_ref(),
+                Some(AuthConfig::PrivateKeyRef { passphrase_credential_id: used, .. })
+                    if used == &passphrase_id
+            ));
+        });
+
+        // A host reached through the bastion signs in to both with the identity.
+        let inner_id = save_host_with_identity(
+            &app,
+            window,
+            cx,
+            "Behind the bastion",
+            ("127.0.0.1", server.port_seen_from_itself()),
+            &identity_id,
+            Some("Protected bastion"),
+        );
+        let pane_id = connect_saved_host_and_run_a_command(&app, window, cx, &inner_id);
+        app.read_with(cx, |app, _| {
+            let request = &app.pane(pane_id).unwrap().request;
+            let jump = request
+                .jump_host
+                .as_ref()
+                .expect("the hop is through the bastion");
+            assert_eq!(jump.username, username);
+            assert!(matches!(jump.auth, AuthConfig::PrivateKeyRef { .. }));
+            assert!(matches!(
+                request.auth,
+                Some(AuthConfig::PrivateKeyRef { .. })
+            ));
+        });
+        let _ = credentials::delete_password(&passphrase_id);
+    }
+
+    /// The identity form and the editor's choice, by clicking what is drawn: create an
+    /// identity, choose it for a host, see the host's own credential fields step aside, and
+    /// delete the identity again.
+    #[gpui::test]
+    fn e2e_identities_are_created_chosen_and_deleted_through_the_rendered_ui(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Keychain, window, cx);
+                    app.keychain_tab = KeychainTab::Identities;
+                    cx.notify();
+                })
+            })
+            .unwrap();
+        let click = |cx: &mut TestAppContext, selector: &'static str| {
+            let point = selector_click_center(window, cx, selector);
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.simulate_click(point, gpui::Modifiers::none());
+            visual.run_until_parked();
+        };
+
+        click(cx, "login-identity-new");
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let inputs = &app.login_identity_inputs;
+                    MultiplexApp::set_input_value(&inputs.label, "Ops", window, cx);
+                    MultiplexApp::set_input_value(&inputs.username, "ops", window, cx);
+                    MultiplexApp::set_input_value(&inputs.agent_socket, "", window, cx);
+                })
+            })
+            .unwrap();
+        click(cx, "login-identity-method-2");
+        click(cx, "login-identity-save");
+        let identity_id = app.read_with(cx, |app, _| {
+            assert!(app.error_message.is_empty(), "{}", app.error_message);
+            assert!(app.login_identity_form.is_none());
+            let identity = &app.saved.login_identities[0];
+            assert_eq!(identity.auth_mode, AuthMode::LocalAgent);
+            assert_eq!(identity.username, "ops");
+            identity.id.clone()
+        });
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        assert!(visual.debug_bounds("login-identity-card-0").is_some());
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.label, "Agent host", window, cx);
+                    MultiplexApp::set_input_value(&app.inputs.host, "agent.test", window, cx);
+                })
+            })
+            .unwrap();
+        // The editor scrolls, and its Save and Connect footer covers the bottom of it, where
+        // the choice starts out.
+        scroll_selector(window, cx, "editor-side-scroll", -400.0);
+        click(cx, "editor-identity-option-1");
+        app.read_with(cx, |app, cx| {
+            assert_eq!(
+                app.draft_login_identity_id.as_deref(),
+                Some(identity_id.as_str())
+            );
+            assert_eq!(app.inputs.username.read(cx).value(), "ops");
+        });
+        // While the identity is chosen it decides who the host signs in as, whatever is
+        // left in the host's own fields.
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    MultiplexApp::set_input_value(&app.inputs.username, "typed", window, cx);
+                    let draft = app.current_profile_draft(cx).expect("the draft builds");
+                    assert_eq!(draft.username, "ops");
+                    assert_eq!(draft.auth_mode, AuthMode::LocalAgent);
+                })
+            })
+            .unwrap();
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| app.save_profile(window, cx))
+            })
+            .unwrap();
+        app.read_with(cx, |app, _| {
+            let host = &app.saved.profiles[0];
+            assert_eq!(
+                host.login_identity_id.as_deref(),
+                Some(identity_id.as_str())
+            );
+            assert_eq!(host.auth_mode, AuthMode::LocalAgent);
+            assert_eq!(app.saved.hosts_using_login_identity(&identity_id), 1);
+        });
+
+        // "None" gives the host its own fields back.
+        scroll_selector(window, cx, "editor-side-scroll", -400.0);
+        click(cx, "editor-identity-option-0");
+        app.read_with(cx, |app, cx| {
+            assert!(app.draft_login_identity_id.is_none());
+            let draft = app.current_profile_draft(cx).expect("the draft builds");
+            assert_eq!(draft.login_identity_id, None);
+            assert_eq!(draft.username, "typed");
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Keychain, window, cx);
+                    app.keychain_tab = KeychainTab::Identities;
+                    cx.notify();
+                })
+            })
+            .unwrap();
+        click(cx, "login-identity-delete-0");
+        app.read_with(cx, |app, _| {
+            assert!(app.saved.login_identities.is_empty());
+            assert_eq!(app.saved.profiles[0].login_identity_id, None);
+            assert_eq!(app.saved.profiles[0].username, "ops");
         });
     }
 
@@ -27299,6 +27902,15 @@ sleep 1
                             ..HostProfile::default()
                         })
                         .collect();
+                    app.saved.login_identities = (0..40)
+                        .map(|index| crate::models::SavedLoginIdentity {
+                            id: format!("scroll-login-{index}"),
+                            label: format!("Login {index}"),
+                            username: "ops".to_owned(),
+                            auth_mode: AuthMode::LocalAgent,
+                            ..crate::models::SavedLoginIdentity::default()
+                        })
+                        .collect();
                     app.saved.snippets = (0..40)
                         .map(|index| crate::models::SavedSnippet {
                             id: format!("scroll-snippet-{index}"),
@@ -27320,7 +27932,7 @@ sleep 1
             (
                 NavSection::Keychain,
                 Some(KeychainTab::Identities),
-                "identity-card",
+                "login-identity-card",
             ),
         ] {
             window
@@ -27420,15 +28032,22 @@ sleep 1
             assert!(app.error_message.is_empty());
         });
 
-        let new_host_click = selector_click_center(window, cx, "password-identities-open-hosts");
+        let new_identity_click = selector_click_center(window, cx, "login-identity-new");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(new_host_click, gpui::Modifiers::none());
+        visual.simulate_click(new_identity_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+        assert!(visual.debug_bounds("login-identity-form").is_some());
 
         app.read_with(cx, |app, cx| {
-            assert_eq!(app.nav_section, NavSection::Hosts);
-            assert!(app.show_editor_panel);
-            assert!(app.selected_profile_id.is_none());
-            assert!(app.inputs.label.read(cx).value().is_empty());
+            assert_eq!(app.nav_section, NavSection::Keychain);
+            assert_eq!(app.keychain_tab, KeychainTab::Identities);
+            assert_eq!(
+                app.login_identity_form
+                    .as_ref()
+                    .map(|form| (form.editing_id.clone(), form.auth_mode)),
+                Some((None, AuthMode::Password))
+            );
+            assert!(app.login_identity_inputs.label.read(cx).value().is_empty());
             assert!(app.error_message.is_empty());
         });
     }
@@ -27536,9 +28155,7 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_keychain_rendered_cards_click_use_identity_and_load_password_profile(
-        cx: &mut TestAppContext,
-    ) {
+    fn e2e_keychain_rendered_cards_click_use_key_and_edit_identity(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let mut saved = SavedState::default();
         saved.settings.onboarding_dismissed = true;
@@ -27561,6 +28178,16 @@ sleep 1
             source: ProfileSource::User,
             ..HostProfile::default()
         });
+        saved
+            .login_identities
+            .push(crate::models::SavedLoginIdentity {
+                id: "login-rendered".to_string(),
+                label: "Rendered Login".to_string(),
+                username: "deploy".to_string(),
+                auth_mode: AuthMode::PrivateKey,
+                key_path: docker_ssh_private_key_path(),
+                ..crate::models::SavedLoginIdentity::default()
+            });
         let (app, window) = open_test_app_with_state(cx, saved);
 
         window
@@ -27610,27 +28237,27 @@ sleep 1
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(identities_tab_click, gpui::Modifiers::none());
 
-        let identity_card_click = selector_click_center(window, cx, "identity-card-0");
+        let edit_click = selector_click_center(window, cx, "login-identity-edit-0");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(identity_card_click, gpui::Modifiers::none());
+        visual.simulate_click(edit_click, gpui::Modifiers::none());
 
         app.read_with(cx, |app, cx| {
-            assert_eq!(app.nav_section, NavSection::Hosts);
-            assert!(app.show_editor_panel);
+            assert_eq!(app.nav_section, NavSection::Keychain);
             assert_eq!(app.keychain_tab, KeychainTab::Identities);
+            let form = app
+                .login_identity_form
+                .as_ref()
+                .expect("Edit opens the identity form");
+            assert_eq!(form.editing_id.as_deref(), Some("login-rendered"));
+            assert_eq!(form.auth_mode, AuthMode::PrivateKey);
+            let inputs = &app.login_identity_inputs;
+            assert_eq!(inputs.label.read(cx).value(), "Rendered Login");
+            assert_eq!(inputs.username.read(cx).value(), "deploy");
             assert_eq!(
-                app.selected_profile_id.as_deref(),
-                Some("profile-rendered-password")
+                inputs.key_path.read(cx).value(),
+                docker_ssh_private_key_path()
             );
-            assert_eq!(app.draft_auth_mode, AuthMode::Password);
-            assert_eq!(app.inputs.label.read(cx).value(), "Rendered Password Host");
-            assert_eq!(app.inputs.host.read(cx).value(), "127.0.0.1");
-            assert_eq!(app.inputs.username.read(cx).value(), "deploy");
-            assert_eq!(app.inputs.password.read(cx).value(), "");
-            assert_eq!(
-                app.status_message,
-                "Loaded host 'Rendered Password Host'. Password is available from the system credential store."
-            );
+            assert_eq!(inputs.passphrase.read(cx).value(), "");
             assert!(app.error_message.is_empty());
         });
     }

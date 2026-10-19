@@ -18,8 +18,8 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use crate::models::{
-    DEFAULT_VAULT_ID, HostProfile, IdentitySource, ProfileSource, SavedIdentity, SavedSnippet,
-    SavedState, SavedVault,
+    DEFAULT_VAULT_ID, HostProfile, IdentitySource, ProfileSource, SavedIdentity,
+    SavedLoginIdentity, SavedSnippet, SavedState, SavedVault,
 };
 use crate::storage::KnownHostStore;
 
@@ -28,6 +28,7 @@ const RECORD_ID_DOMAIN: &[u8] = b"termirust.desktop-replication-record.v1\0";
 const VAULTS: &str = "desktop-vaults";
 const PROFILES: &str = "desktop-profiles";
 const IDENTITIES: &str = "desktop-identities";
+const LOGIN_IDENTITIES: &str = "desktop-login-identities";
 const SNIPPETS: &str = "desktop-snippets";
 const KNOWN_HOSTS: &str = "desktop-known-hosts";
 
@@ -479,6 +480,18 @@ fn desired_records(
     {
         insert_record(&mut records, IDENTITIES, &identity.id, identity)?;
     }
+    for identity in &state.login_identities {
+        // An identity's secrets stay in each computer's own credential store.
+        let mut identity = identity.clone();
+        identity.password_credential_id = None;
+        identity.passphrase_credential_id = None;
+        insert_record(
+            &mut records,
+            LOGIN_IDENTITIES,
+            &identity.id.clone(),
+            &identity,
+        )?;
+    }
     for snippet in &state.snippets {
         insert_record(&mut records, SNIPPETS, &snippet.id, snippet)?;
     }
@@ -569,6 +582,31 @@ fn apply_product_records<B: ReplicationSecretBackend>(
         .identities
         .retain(|identity| identity.source != IdentitySource::User);
     state.identities.extend(decoded.identities);
+    // What arrives carries no secrets, so an identity this computer already has keeps its own.
+    let local_secrets: HashMap<String, (Option<String>, Option<String>)> = state
+        .login_identities
+        .iter()
+        .map(|identity| {
+            (
+                identity.id.clone(),
+                (
+                    identity.password_credential_id.clone(),
+                    identity.passphrase_credential_id.clone(),
+                ),
+            )
+        })
+        .collect();
+    state.login_identities = decoded
+        .login_identities
+        .into_iter()
+        .map(|mut identity| {
+            if let Some((password, passphrase)) = local_secrets.get(&identity.id) {
+                identity.password_credential_id = password.clone();
+                identity.passphrase_credential_id = passphrase.clone();
+            }
+            identity
+        })
+        .collect();
     state.snippets = decoded.snippets;
     state.ensure_vaults();
     known_hosts.replace_entries(decoded.known_hosts)?;
@@ -580,6 +618,7 @@ struct DecodedRecords {
     vaults: Vec<SavedVault>,
     profiles: Vec<HostProfile>,
     identities: Vec<SavedIdentity>,
+    login_identities: Vec<SavedLoginIdentity>,
     snippets: Vec<SavedSnippet>,
     known_hosts: HashMap<String, String>,
 }
@@ -602,6 +641,12 @@ fn decode_product_records(records: Vec<ReplicationProductRecord>) -> Result<Deco
                 let mut identity: SavedIdentity = decode_record(record.key(), bytes)?;
                 identity.source = IdentitySource::User;
                 decoded.identities.push(identity);
+            }
+            LOGIN_IDENTITIES => {
+                let mut identity: SavedLoginIdentity = decode_record(record.key(), bytes)?;
+                identity.password_credential_id = None;
+                identity.passphrase_credential_id = None;
+                decoded.login_identities.push(identity);
             }
             SNIPPETS => decoded.snippets.push(decode_record(record.key(), bytes)?),
             KNOWN_HOSTS => {
@@ -654,7 +699,7 @@ fn record_summary(record: &DesktopRecord<Value>) -> String {
 fn is_managed_collection(key: &ReplicationRecordKey) -> bool {
     matches!(
         key.collection.as_str(),
-        VAULTS | PROFILES | IDENTITIES | SNIPPETS | KNOWN_HOSTS
+        VAULTS | PROFILES | IDENTITIES | LOGIN_IDENTITIES | SNIPPETS | KNOWN_HOSTS
     )
 }
 
@@ -663,6 +708,7 @@ fn collection_label(key: &ReplicationRecordKey) -> &'static str {
         VAULTS => "Vault",
         PROFILES => "Connection",
         IDENTITIES => "Key",
+        LOGIN_IDENTITIES => "Identity",
         SNIPPETS => "Snippet",
         KNOWN_HOSTS => "Known host",
         _ => "Item",
@@ -770,8 +816,15 @@ mod tests {
             command: "uptime".to_string(),
             ..SavedSnippet::default()
         });
+        first_state.upsert_login_identity(crate::models::SavedLoginIdentity {
+            id: "login-one".to_string(),
+            label: "Deploy".to_string(),
+            username: "deploy".to_string(),
+            password_credential_id: Some("identity-password:login-one".to_string()),
+            ..crate::models::SavedLoginIdentity::default()
+        });
         let review = first.review(&first_state, &first_known_hosts).unwrap();
-        assert_eq!(review.changes.puts, 3);
+        assert_eq!(review.changes.puts, 4);
         assert_eq!(
             review.disposition(),
             ReplicationSyncDisposition::PublishLocal
@@ -825,6 +878,13 @@ mod tests {
             .unwrap();
         assert_eq!(second_state.profiles[0].label, "Production");
         assert_eq!(second_state.snippets.len(), 1);
+        // The identity arrives; its password stays on the computer that saved it.
+        assert_eq!(second_state.login_identities.len(), 1);
+        assert_eq!(second_state.login_identities[0].username, "deploy");
+        assert_eq!(
+            second_state.login_identities[0].password_credential_id,
+            None
+        );
         assert_eq!(second_known_hosts.entries().unwrap().len(), 1);
 
         second_state.profiles[0].label = "Production from phone".to_string();
@@ -837,6 +897,13 @@ mod tests {
             .apply(review, &mut first_state, &first_known_hosts)
             .unwrap();
         assert_eq!(first_state.profiles[0].label, "Production from phone");
+        assert_eq!(
+            first_state.login_identities[0]
+                .password_credential_id
+                .as_deref(),
+            Some("identity-password:login-one"),
+            "taking in the other device's records keeps this one's own secrets"
+        );
 
         first_state.profiles.clear();
         let review = first.review(&first_state, &first_known_hosts).unwrap();

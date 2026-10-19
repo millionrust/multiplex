@@ -49,6 +49,14 @@ pub fn profile_password_credential_id(profile_id: &str) -> String {
     format!("profile:{profile_id}")
 }
 
+pub fn identity_password_credential_id(identity_id: &str) -> String {
+    format!("identity-password:{identity_id}")
+}
+
+pub fn identity_passphrase_credential_id(identity_id: &str) -> String {
+    format!("identity-passphrase:{identity_id}")
+}
+
 pub fn connection_password_credential_id(username: &str, host: &str, port: u16) -> String {
     format!(
         "connection:{}@{}:{}",

@@ -277,6 +277,10 @@ pub struct HostProfile {
     pub identity_agent: Option<String>,
     #[serde(default)]
     pub identity_id: Option<String>,
+    /// A saved login (username plus password, key or agent) this host connects with. While it
+    /// is set, the host's own username and authentication are a copy of the identity's.
+    #[serde(default)]
+    pub login_identity_id: Option<String>,
     #[serde(default)]
     pub jump_host_id: Option<String>,
     #[serde(default)]
@@ -426,7 +430,21 @@ impl HostProfile {
         }
     }
 
-    pub fn saved_auth_config(&self) -> Result<AuthConfig> {
+    /// How this host signs in when it is opened from saved state: through its linked
+    /// identity when it has one, otherwise with its own settings.
+    pub fn saved_auth_config(&self, login_identities: &[SavedLoginIdentity]) -> Result<AuthConfig> {
+        if let Some(identity_id) = self.login_identity_id.as_deref() {
+            return login_identities
+                .iter()
+                .find(|identity| identity.id == identity_id)
+                .with_context(|| {
+                    format!(
+                        "{} uses an identity that no longer exists",
+                        self.display_name()
+                    )
+                })?
+                .auth_config();
+        }
         let policy = self.ssh_access_policy();
         match self.auth_mode {
             AuthMode::Password => self
@@ -1216,6 +1234,111 @@ impl SavedIdentity {
     }
 }
 
+/// A login that hosts share: who to sign in as and how. Its password and key passphrase are
+/// kept in the system credential store, and only their ids are saved here.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct SavedLoginIdentity {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub vault_id: Option<String>,
+    pub username: String,
+    #[serde(default)]
+    pub auth_mode: AuthMode,
+    #[serde(default)]
+    pub key_path: String,
+    #[serde(default)]
+    pub identity_agent: Option<String>,
+    #[serde(default)]
+    pub password_credential_id: Option<String>,
+    #[serde(default)]
+    pub passphrase_credential_id: Option<String>,
+}
+
+impl SavedLoginIdentity {
+    pub fn new_id() -> String {
+        new_id("login")
+    }
+
+    pub fn display_name(&self) -> String {
+        if self.label.trim().is_empty() {
+            self.username.clone()
+        } else {
+            self.label.trim().to_string()
+        }
+    }
+
+    pub fn auth_config(&self) -> Result<AuthConfig> {
+        match self.auth_mode {
+            AuthMode::Password => self
+                .password_credential_id
+                .clone()
+                .map(|credential_id| AuthConfig::PasswordRef { credential_id })
+                .with_context(|| format!("Identity {} has no saved password", self.display_name())),
+            AuthMode::PrivateKey => {
+                if self.key_path.trim().is_empty() {
+                    bail!("Identity {} needs a private key file", self.display_name());
+                }
+                Ok(match self.passphrase_credential_id.clone() {
+                    Some(passphrase_credential_id) => AuthConfig::PrivateKeyRef {
+                        key_path: self.key_path.clone(),
+                        passphrase_credential_id,
+                    },
+                    None => AuthConfig::PrivateKey {
+                        key_path: self.key_path.clone(),
+                        passphrase: None,
+                    },
+                })
+            }
+            AuthMode::LocalAgent => Ok(AuthConfig::LocalAgent {
+                socket_path: self.identity_agent.clone(),
+                forward_agent: false,
+            }),
+        }
+    }
+
+    /// Links `profile` to this identity and copies who it signs in as onto it, so everything
+    /// that shows or checks a host's username and method sees the identity's. The host's own
+    /// secrets are dropped: the identity's are read when it connects.
+    pub fn apply_to_profile(&self, profile: &mut HostProfile) {
+        profile.login_identity_id = Some(self.id.clone());
+        profile.username = self.username.clone();
+        profile.auth_mode = self.auth_mode;
+        profile.key_path = if self.auth_mode == AuthMode::PrivateKey {
+            self.key_path.clone()
+        } else {
+            String::new()
+        };
+        profile.certificate_path = None;
+        profile.identity_agent = if self.auth_mode == AuthMode::LocalAgent {
+            self.identity_agent.clone()
+        } else {
+            None
+        };
+        profile.identity_id = None;
+        profile.password_credential_id = None;
+    }
+
+    /// Fills a host draft from this identity, so it connects the way the identity says.
+    pub fn apply_to_draft(&self, draft: &mut DraftProfile) {
+        draft.login_identity_id = Some(self.id.clone());
+        draft.username = self.username.clone();
+        draft.auth_mode = self.auth_mode;
+        draft.password.clear();
+        draft.key_passphrase.clear();
+        draft.certificate_path.clear();
+        draft.identity_id = None;
+        draft.key_path = if self.auth_mode == AuthMode::PrivateKey {
+            self.key_path.clone()
+        } else {
+            String::new()
+        };
+        draft.identity_agent = self.identity_agent.clone().unwrap_or_default();
+        draft.password_credential_id = self.password_credential_id.clone();
+        draft.passphrase_credential_id = self.passphrase_credential_id.clone();
+    }
+}
+
 /// Persisted window frame (global coordinates) plus the display it was on, so
 /// the app reopens where the user last left it — including the right monitor.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -1240,6 +1363,8 @@ pub struct SavedState {
     pub profiles: Vec<HostProfile>,
     #[serde(default)]
     pub identities: Vec<SavedIdentity>,
+    #[serde(default)]
+    pub login_identities: Vec<SavedLoginIdentity>,
     #[serde(default)]
     pub snippets: Vec<SavedSnippet>,
     #[serde(default)]
@@ -1476,6 +1601,15 @@ impl SavedState {
                 identity.vault_id = Some(DEFAULT_VAULT_ID.to_string());
             }
         }
+        for identity in &mut self.login_identities {
+            if !identity
+                .vault_id
+                .as_deref()
+                .is_some_and(|vault_id| valid_vaults.contains(&vault_id))
+            {
+                identity.vault_id = Some(DEFAULT_VAULT_ID.to_string());
+            }
+        }
         for snippet in &mut self.snippets {
             if !snippet
                 .vault_id
@@ -1554,6 +1688,11 @@ impl SavedState {
                 identity.vault_id = Some(DEFAULT_VAULT_ID.to_string());
             }
         }
+        for identity in &mut self.login_identities {
+            if identity.vault_id.as_deref() == Some(vault_id) {
+                identity.vault_id = Some(DEFAULT_VAULT_ID.to_string());
+            }
+        }
         for snippet in &mut self.snippets {
             if snippet.vault_id.as_deref() == Some(vault_id) {
                 snippet.vault_id = Some(DEFAULT_VAULT_ID.to_string());
@@ -1607,6 +1746,58 @@ impl SavedState {
 
         self.ensure_vaults();
         sort_profiles(&mut self.profiles);
+    }
+
+    pub fn login_identity(&self, identity_id: &str) -> Option<&SavedLoginIdentity> {
+        self.login_identities
+            .iter()
+            .find(|identity| identity.id == identity_id)
+    }
+
+    /// Saves an identity and brings every host linked to it up to date.
+    pub fn upsert_login_identity(&mut self, mut identity: SavedLoginIdentity) {
+        if identity.vault_id.is_none() {
+            identity.vault_id = Some(DEFAULT_VAULT_ID.to_string());
+        }
+        for profile in &mut self.profiles {
+            if profile.login_identity_id.as_deref() == Some(identity.id.as_str()) {
+                identity.apply_to_profile(profile);
+            }
+        }
+        if let Some(existing) = self
+            .login_identities
+            .iter_mut()
+            .find(|item| item.id == identity.id)
+        {
+            *existing = identity;
+        } else {
+            self.login_identities.push(identity);
+        }
+        self.ensure_vaults();
+        self.login_identities
+            .sort_by_key(|identity| identity.display_name().to_ascii_lowercase());
+    }
+
+    /// Removes an identity. Hosts that used it keep its username and method but no longer
+    /// share its secrets, so a password host needs its own password again.
+    pub fn remove_login_identity(&mut self, identity_id: &str) -> Option<SavedLoginIdentity> {
+        let index = self
+            .login_identities
+            .iter()
+            .position(|identity| identity.id == identity_id)?;
+        for profile in &mut self.profiles {
+            if profile.login_identity_id.as_deref() == Some(identity_id) {
+                profile.login_identity_id = None;
+            }
+        }
+        Some(self.login_identities.remove(index))
+    }
+
+    pub fn hosts_using_login_identity(&self, identity_id: &str) -> usize {
+        self.profiles
+            .iter()
+            .filter(|profile| profile.login_identity_id.as_deref() == Some(identity_id))
+            .count()
     }
 
     pub fn upsert_identity(&mut self, identity: SavedIdentity) {
@@ -1763,6 +1954,7 @@ pub struct DraftProfile {
     pub certificate_path: String,
     pub identity_agent: String,
     pub identity_id: Option<String>,
+    pub login_identity_id: Option<String>,
     pub jump_host_id: Option<String>,
     pub outbound_proxy_kind: OutboundProxyKind,
     pub outbound_proxy_host: String,
@@ -1781,6 +1973,8 @@ pub struct DraftProfile {
     pub forward_remote_port: String,
     pub key_passphrase: String,
     pub password_credential_id: Option<String>,
+    /// Where a saved key passphrase is kept, when the key's identity saved one.
+    pub passphrase_credential_id: Option<String>,
     pub auth_mode: AuthMode,
     pub description: String,
     pub color_tag: Option<HostColorTag>,
@@ -1803,6 +1997,7 @@ impl DraftProfile {
             certificate_path: profile.certificate_path.clone().unwrap_or_default(),
             identity_agent: profile.identity_agent.clone().unwrap_or_default(),
             identity_id: profile.identity_id.clone(),
+            login_identity_id: profile.login_identity_id.clone(),
             jump_host_id: profile.jump_host_id.clone(),
             outbound_proxy_kind: profile
                 .outbound_proxy
@@ -1843,6 +2038,7 @@ impl DraftProfile {
             forward_remote_port: String::new(),
             key_passphrase: String::new(),
             password_credential_id: profile.password_credential_id.clone(),
+            passphrase_credential_id: None,
             auth_mode: profile.auth_mode,
             description: profile.description.clone(),
             color_tag: profile.color_tag,
@@ -2039,6 +2235,7 @@ impl DraftProfile {
             } else {
                 None
             },
+            login_identity_id: self.login_identity_id.clone(),
             jump_host_id: self.jump_host_id.clone(),
             outbound_proxy: self.parse_outbound_proxy()?,
             startup_directory: non_empty(self.startup_directory.trim()),
@@ -2051,7 +2248,10 @@ impl DraftProfile {
             port_forward_rules: self.parse_port_forward_rules()?,
             local_forwards: Vec::new(),
             local_forward: None,
-            password_credential_id: if self.auth_mode == AuthMode::Password {
+            // A linked identity keeps its own secrets; the host never holds them.
+            password_credential_id: if self.auth_mode == AuthMode::Password
+                && self.login_identity_id.is_none()
+            {
                 self.password_credential_id.clone()
             } else {
                 None
@@ -2084,9 +2284,18 @@ impl DraftProfile {
                     certificate_path,
                     passphrase: non_empty(self.key_passphrase.trim()),
                 },
-                None => AuthConfig::PrivateKey {
-                    key_path: profile.key_path.clone(),
-                    passphrase: non_empty(self.key_passphrase.trim()),
+                None => match (
+                    non_empty(self.key_passphrase.trim()),
+                    self.passphrase_credential_id.clone(),
+                ) {
+                    (None, Some(passphrase_credential_id)) => AuthConfig::PrivateKeyRef {
+                        key_path: profile.key_path.clone(),
+                        passphrase_credential_id,
+                    },
+                    (passphrase, _) => AuthConfig::PrivateKey {
+                        key_path: profile.key_path.clone(),
+                        passphrase,
+                    },
                 },
             },
             AuthMode::LocalAgent => AuthConfig::LocalAgent {
@@ -2312,6 +2521,12 @@ pub enum AuthConfig {
         key_path: String,
         passphrase: Option<String>,
     },
+    /// A passphrase-protected key whose passphrase is in the system credential store, read
+    /// only when the key is loaded.
+    PrivateKeyRef {
+        key_path: String,
+        passphrase_credential_id: String,
+    },
     OpenSshCertificate {
         key_path: String,
         certificate_path: String,
@@ -2358,6 +2573,13 @@ impl AuthConfig {
             }),
             Self::PrivateKey { key_path, .. } => Some(RestorableAuth::PrivateKey {
                 key_path: key_path.clone(),
+            }),
+            Self::PrivateKeyRef {
+                key_path,
+                passphrase_credential_id,
+            } => Some(RestorableAuth::PrivateKeyKeychain {
+                key_path: key_path.clone(),
+                passphrase_credential_id: passphrase_credential_id.clone(),
             }),
             Self::OpenSshCertificate {
                 key_path,
@@ -2594,6 +2816,10 @@ pub enum RestorableAuth {
     PrivateKey {
         key_path: String,
     },
+    PrivateKeyKeychain {
+        key_path: String,
+        passphrase_credential_id: String,
+    },
     OpenSshCertificate {
         key_path: String,
         certificate_path: String,
@@ -2658,6 +2884,13 @@ impl RestorableConnection {
                     RestorableAuth::PrivateKey { key_path } => AuthConfig::PrivateKey {
                         key_path: key_path.clone(),
                         passphrase: None,
+                    },
+                    RestorableAuth::PrivateKeyKeychain {
+                        key_path,
+                        passphrase_credential_id,
+                    } => AuthConfig::PrivateKeyRef {
+                        key_path: key_path.clone(),
+                        passphrase_credential_id: passphrase_credential_id.clone(),
                     },
                     RestorableAuth::OpenSshCertificate {
                         key_path,
@@ -2757,6 +2990,13 @@ impl RestorableJumpHostConnection {
             RestorableAuth::PrivateKey { key_path } => AuthConfig::PrivateKey {
                 key_path: key_path.clone(),
                 passphrase: None,
+            },
+            RestorableAuth::PrivateKeyKeychain {
+                key_path,
+                passphrase_credential_id,
+            } => AuthConfig::PrivateKeyRef {
+                key_path: key_path.clone(),
+                passphrase_credential_id: passphrase_credential_id.clone(),
             },
             RestorableAuth::OpenSshCertificate {
                 key_path,
@@ -4416,6 +4656,7 @@ mod tests {
             }
             AuthConfig::Password { .. }
             | AuthConfig::PasswordRef { .. }
+            | AuthConfig::PrivateKeyRef { .. }
             | AuthConfig::OpenSshCertificate { .. }
             | AuthConfig::LocalAgent { .. } => {
                 panic!("expected private key auth")
@@ -5319,6 +5560,7 @@ mod tests {
             certificate_path: String::new(),
             identity_agent: String::new(),
             identity_id: Some("identity-123".to_string()),
+            login_identity_id: None,
             jump_host_id: None,
             startup_directory: "/var/www/app".to_string(),
             startup_command: "docker compose ps".to_string(),
@@ -5334,6 +5576,7 @@ mod tests {
             forward_remote_port: String::new(),
             key_passphrase: String::new(),
             password_credential_id: None,
+            passphrase_credential_id: None,
             auth_mode: AuthMode::PrivateKey,
             description: "  Primary blue-green node  ".to_string(),
             color_tag: None,
@@ -5382,6 +5625,7 @@ mod tests {
             certificate_path: String::new(),
             identity_agent: String::new(),
             identity_id: None,
+            login_identity_id: None,
             jump_host_id: None,
             startup_directory: String::new(),
             startup_command: String::new(),
@@ -5397,6 +5641,7 @@ mod tests {
             forward_remote_port: String::new(),
             key_passphrase: String::new(),
             password_credential_id: None,
+            passphrase_credential_id: None,
             auth_mode: AuthMode::Password,
             description: String::new(),
             color_tag: None,
@@ -5428,6 +5673,7 @@ mod tests {
                 certificate_path: String::new(),
                 identity_agent: String::new(),
                 identity_id: None,
+                login_identity_id: None,
                 jump_host_id: None,
                 startup_directory: String::new(),
                 startup_command: String::new(),
@@ -5443,6 +5689,7 @@ mod tests {
                 forward_remote_port: String::new(),
                 key_passphrase: String::new(),
                 password_credential_id: None,
+                passphrase_credential_id: None,
                 auth_mode: AuthMode::Password,
                 description: String::new(),
                 color_tag: None,
@@ -5469,6 +5716,7 @@ mod tests {
                 certificate_path: String::new(),
                 identity_agent: String::new(),
                 identity_id: None,
+                login_identity_id: None,
                 jump_host_id: None,
                 startup_directory: String::new(),
                 startup_command: String::new(),
@@ -5484,6 +5732,7 @@ mod tests {
                 forward_remote_port: String::new(),
                 key_passphrase: String::new(),
                 password_credential_id: None,
+                passphrase_credential_id: None,
                 auth_mode: AuthMode::Password,
                 description: String::new(),
                 color_tag: None,
@@ -5560,6 +5809,7 @@ mod tests {
             certificate_path: String::new(),
             identity_agent: String::new(),
             identity_id: Some("identity-123".to_string()),
+            login_identity_id: None,
             jump_host_id: None,
             startup_directory: String::new(),
             startup_command: String::new(),
@@ -5575,6 +5825,7 @@ mod tests {
             forward_remote_port: "5432".to_string(),
             key_passphrase: String::new(),
             password_credential_id: None,
+            passphrase_credential_id: None,
             auth_mode: AuthMode::PrivateKey,
             description: String::new(),
             color_tag: None,
@@ -5610,6 +5861,7 @@ mod tests {
             certificate_path: String::new(),
             identity_agent: String::new(),
             identity_id: Some("identity-123".to_string()),
+            login_identity_id: None,
             jump_host_id: None,
             startup_directory: String::new(),
             startup_command: String::new(),
@@ -5625,6 +5877,7 @@ mod tests {
             forward_remote_port: String::new(),
             key_passphrase: String::new(),
             password_credential_id: None,
+            passphrase_credential_id: None,
             auth_mode: AuthMode::PrivateKey,
             description: String::new(),
             color_tag: None,
@@ -5660,6 +5913,7 @@ mod tests {
             certificate_path: String::new(),
             identity_agent: String::new(),
             identity_id: Some("identity-123".to_string()),
+            login_identity_id: None,
             jump_host_id: None,
             startup_directory: String::new(),
             startup_command: String::new(),
@@ -5675,6 +5929,7 @@ mod tests {
             forward_remote_port: "8443".to_string(),
             key_passphrase: String::new(),
             password_credential_id: None,
+            passphrase_credential_id: None,
             auth_mode: AuthMode::PrivateKey,
             description: String::new(),
             color_tag: None,
@@ -5708,6 +5963,7 @@ mod tests {
             certificate_path: None,
             identity_agent: None,
             identity_id: None,
+            login_identity_id: None,
             jump_host_id: None,
             outbound_proxy: None,
             startup_directory: None,
@@ -6190,5 +6446,202 @@ mod tests {
         assert_eq!(state.session_logs.len(), 50);
         assert_eq!(state.session_logs.first().unwrap().id, "log-25");
         assert_eq!(state.session_logs.last().unwrap().id, "log-74");
+    }
+
+    fn login_identity(id: &str, auth_mode: AuthMode) -> super::SavedLoginIdentity {
+        super::SavedLoginIdentity {
+            id: id.to_string(),
+            label: format!("{id} label"),
+            username: "deploy".to_string(),
+            auth_mode,
+            key_path: "/keys/id_ed25519".to_string(),
+            password_credential_id: Some(format!("identity-password:{id}")),
+            passphrase_credential_id: Some(format!("identity-passphrase:{id}")),
+            ..super::SavedLoginIdentity::default()
+        }
+    }
+
+    #[test]
+    fn a_login_identity_signs_in_the_way_its_method_says() {
+        match login_identity("pw", AuthMode::Password)
+            .auth_config()
+            .unwrap()
+        {
+            AuthConfig::PasswordRef { credential_id } => {
+                assert_eq!(credential_id, "identity-password:pw")
+            }
+            other => panic!("expected a saved password, got {other:?}"),
+        }
+        match login_identity("key", AuthMode::PrivateKey)
+            .auth_config()
+            .unwrap()
+        {
+            AuthConfig::PrivateKeyRef {
+                key_path,
+                passphrase_credential_id,
+            } => {
+                assert_eq!(key_path, "/keys/id_ed25519");
+                assert_eq!(passphrase_credential_id, "identity-passphrase:key");
+            }
+            other => panic!("expected a key with a saved passphrase, got {other:?}"),
+        }
+        let mut plain_key = login_identity("plain", AuthMode::PrivateKey);
+        plain_key.passphrase_credential_id = None;
+        assert!(matches!(
+            plain_key.auth_config().unwrap(),
+            AuthConfig::PrivateKey {
+                passphrase: None,
+                ..
+            }
+        ));
+        let mut agent = login_identity("agent", AuthMode::LocalAgent);
+        agent.identity_agent = Some("/tmp/agent.sock".to_string());
+        assert!(matches!(
+            agent.auth_config().unwrap(),
+            AuthConfig::LocalAgent { socket_path: Some(path), forward_agent: false }
+                if path == "/tmp/agent.sock"
+        ));
+        let mut no_password = login_identity("none", AuthMode::Password);
+        no_password.password_credential_id = None;
+        assert!(no_password.auth_config().is_err());
+    }
+
+    #[test]
+    fn hosts_follow_their_identity_and_keep_its_username_when_it_goes() {
+        let mut state = SavedState::default();
+        state.profiles.push(HostProfile {
+            id: "web".to_string(),
+            host: "web.example".to_string(),
+            username: "old".to_string(),
+            auth_mode: AuthMode::Password,
+            password_credential_id: Some("profile:web".to_string()),
+            login_identity_id: Some("ops".to_string()),
+            ..HostProfile::default()
+        });
+        state.profiles.push(HostProfile {
+            id: "other".to_string(),
+            host: "other.example".to_string(),
+            username: "alice".to_string(),
+            ..HostProfile::default()
+        });
+        state.upsert_login_identity(login_identity("ops", AuthMode::PrivateKey));
+
+        let web = &state.profiles[0];
+        assert_eq!(web.username, "deploy");
+        assert_eq!(web.auth_mode, AuthMode::PrivateKey);
+        assert_eq!(web.key_path, "/keys/id_ed25519");
+        assert_eq!(
+            web.password_credential_id, None,
+            "the host holds no secret of its own"
+        );
+        assert_eq!(
+            state.profiles[1].username, "alice",
+            "unlinked hosts are untouched"
+        );
+        assert_eq!(state.hosts_using_login_identity("ops"), 1);
+        assert!(matches!(
+            web.saved_auth_config(&state.login_identities).unwrap(),
+            AuthConfig::PrivateKeyRef { .. }
+        ));
+
+        // Editing the identity reaches every host that uses it.
+        let mut renamed = login_identity("ops", AuthMode::Password);
+        renamed.username = "release".to_string();
+        state.upsert_login_identity(renamed);
+        assert_eq!(state.profiles[0].username, "release");
+        assert_eq!(state.profiles[0].auth_mode, AuthMode::Password);
+        assert!(state.profiles[0].key_path.is_empty());
+        assert!(matches!(
+            state.profiles[0].saved_auth_config(&state.login_identities).unwrap(),
+            AuthConfig::PasswordRef { credential_id } if credential_id == "identity-password:ops"
+        ));
+
+        let removed = state
+            .remove_login_identity("ops")
+            .expect("the identity existed");
+        assert_eq!(removed.id, "ops");
+        assert_eq!(state.profiles[0].login_identity_id, None);
+        assert_eq!(state.profiles[0].username, "release");
+        assert!(state.remove_login_identity("ops").is_none());
+    }
+
+    #[test]
+    fn a_host_whose_identity_is_gone_says_so() {
+        let profile = HostProfile {
+            id: "web".to_string(),
+            label: "Web".to_string(),
+            host: "web.example".to_string(),
+            username: "deploy".to_string(),
+            login_identity_id: Some("missing".to_string()),
+            ..HostProfile::default()
+        };
+        let error = profile.saved_auth_config(&[]).unwrap_err().to_string();
+        assert!(error.contains("identity that no longer exists"), "{error}");
+    }
+
+    #[test]
+    fn a_draft_with_an_identity_connects_with_it_but_saves_no_secret() {
+        let identity = login_identity("ops", AuthMode::PrivateKey);
+        let mut draft = DraftProfile {
+            host: "web.example".to_string(),
+            port: "22".to_string(),
+            username: "typed".to_string(),
+            password: "typed-secret".to_string(),
+            auth_mode: AuthMode::Password,
+            password_credential_id: Some("profile:web".to_string()),
+            ..DraftProfile::default()
+        };
+        identity.apply_to_draft(&mut draft);
+
+        let request = draft.to_connect_request(1).unwrap();
+        assert_eq!(request.username, "deploy");
+        assert!(matches!(
+            request.auth,
+            Some(AuthConfig::PrivateKeyRef { ref passphrase_credential_id, .. })
+                if passphrase_credential_id == "identity-passphrase:ops"
+        ));
+
+        let profile = draft.to_profile("web".to_string()).unwrap();
+        assert_eq!(profile.login_identity_id.as_deref(), Some("ops"));
+        assert_eq!(profile.username, "deploy");
+        assert_eq!(profile.password_credential_id, None);
+
+        // A passphrase typed for this connection wins over the saved one.
+        draft.key_passphrase = "typed".to_string();
+        assert!(matches!(
+            draft.to_connect_request(2).unwrap().auth,
+            Some(AuthConfig::PrivateKey { passphrase: Some(ref typed), .. }) if typed == "typed"
+        ));
+    }
+
+    #[test]
+    fn a_key_with_a_saved_passphrase_restores_without_the_passphrase_itself() {
+        let auth = AuthConfig::PrivateKeyRef {
+            key_path: "/keys/id".to_string(),
+            passphrase_credential_id: "identity-passphrase:ops".to_string(),
+        };
+        let restorable = auth.to_restorable().expect("a saved passphrase restores");
+        let json = serde_json::to_string(&restorable).unwrap();
+        assert!(json.contains("identity-passphrase:ops"));
+        let connection: RestorableConnection = serde_json::from_str(&format!(
+            r#"{{"title":"web","host":"web.example","username":"deploy","auth":{json}}}"#
+        ))
+        .unwrap();
+        assert_eq!(connection.kind, ConnectionKind::Ssh);
+        assert!(matches!(
+            connection.to_connect_request(1).auth,
+            Some(AuthConfig::PrivateKeyRef { ref key_path, ref passphrase_credential_id })
+                if key_path == "/keys/id" && passphrase_credential_id == "identity-passphrase:ops"
+        ));
+    }
+
+    #[test]
+    fn saved_state_from_before_identities_loads() {
+        let state: SavedState = serde_json::from_str(
+            r#"{"profiles":[{"id":"web","label":"","host":"web.example","username":"deploy"}]}"#,
+        )
+        .unwrap();
+        assert!(state.login_identities.is_empty());
+        assert_eq!(state.profiles[0].login_identity_id, None);
     }
 }

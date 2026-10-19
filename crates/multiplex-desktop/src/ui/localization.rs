@@ -2618,6 +2618,34 @@ pub fn identity_added_status(identity: impl Into<String>) -> String {
     text(&IdentityAddedStatusArgs::new(UserData::new(identity)))
 }
 
+pub fn login_identity_saved_status(identity: impl Into<String>) -> String {
+    text(&LoginIdentitySavedStatusArgs::new(UserData::new(identity)))
+}
+
+pub fn login_identity_deleted_status(identity: impl Into<String>) -> String {
+    text(&LoginIdentityDeletedStatusArgs::new(UserData::new(
+        identity,
+    )))
+}
+
+pub fn login_identity_host_count(count: usize) -> String {
+    text(&LoginIdentityHostCountArgs::new(Count(count as u64)))
+}
+
+pub fn login_identity_count(count: usize) -> String {
+    text(&LoginIdentityCountArgs::new(Count(count as u64)))
+}
+
+pub fn host_editor_identity_summary(
+    username: impl Into<String>,
+    method: impl Into<String>,
+) -> String {
+    text(&HostEditorIdentitySummaryArgs::new(
+        UserData::new(username),
+        UserData::new(method),
+    ))
+}
+
 pub fn ssh_config_host_read_only_status(path: impl Into<String>) -> String {
     text(&SshConfigHostReadOnlyStatusArgs::new(UserData::new(path)))
 }

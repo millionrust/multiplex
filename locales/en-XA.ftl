@@ -865,10 +865,15 @@ host-editor-general-section = ⟦Ĝéñéŕåļ~⟧
 host-editor-group-field = ⟦Ĝŕøûþ⟧
 host-editor-group-help = ⟦Øþţîøñåļ øŕĝåñîžåţîøñ šûçĥ åš Ļøçåļ, Þŕøðûçţîøñ, øŕ Šţåĝîñĝ.~~~~~~~~~~~~~~~~~~~~~~⟧
 host-editor-host-required = ⟦Éñţéŕ å Ĥøšţ ñåɱé øŕ åððŕéšš ţø çøññéçţ.~~~~~~~~~~~~~~⟧
+host-editor-identity-field = ⟦Îðéñţîţý~~⟧
+host-editor-identity-help = ⟦Çĥøøšé å šåṽéð ļøĝîñ, øŕ Ñøñé ţø éñţéŕ ţĥé ûšéŕñåɱé åñð çŕéðéñţîåļš ĥéŕé.~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 host-editor-identity-kinds = ⟦ŠŠĤ îðéñţîţý, ķéý, çéŕţîƒîçåţé, øŕ ƑÎÐØ2~~~~~~~~~~~~~~⟧
+host-editor-identity-none = ⟦Ñøñé⟧
+host-editor-identity-summary = ⟦Šîĝñš îñ åš ~~~⟧{ $username }⟦ ŵîţĥ ~⟧{ $method }⟦.⟧
 host-editor-jump-host-field = ⟦Ĵûɱþ Ĥøšţ~~⟧
 host-editor-key-passphrase-help = ⟦Ļéåṽé éɱþţý ŵĥéñ ţĥé þŕîṽåţé ķéý ĥåš ñø þåššþĥŕåšé.~~~~~~~~~~~~~~~~~~~⟧
 host-editor-key-picker-help = ⟦Šéļéçţ ţĥé þŕîṽåţé-ķéý ƒîļé ûšéð ƀý ţĥîš Ĥøšţ.~~~~~~~~~~~~~~~~~⟧
+host-editor-new-identity-action = ⟦Ñéŵ îðéñţîţý~~~⟧
 host-editor-new-title = ⟦Ñéŵ Ĥøšţ~~⟧
 host-editor-password-help = ⟦Ŕéʠûîŕéð øñļý ƒøŕ þåššŵøŕð åûţĥéñţîçåţîøñ.~~~~~~~~~~~~~~~⟧
 host-editor-protocol-prefix = ⟦ŠŠĤ øñ~⟧
@@ -1225,6 +1230,54 @@ local-terminal-opening-status = ⟦Øþéñîñĝ ļøçåļ ţéŕɱîñåļ...
 local-terminal-ready-status = ⟦Ļøçåļ ţéŕɱîñåļ ŕéåðý.~~~~~~~⟧
 local-terminal-reopening-status = ⟦Ŕéøþéñîñĝ ļøçåļ ţéŕɱîñåļ...~~~~~~~~~⟧
 local-terminal-split-launching-status = ⟦Ļåûñçĥîñĝ šþļîţ ļøçåļ ţéŕɱîñåļ...~~~~~~~~~~~~⟧
+login-identities-description = ⟦Ļøĝîñš ţĥåţ Ĥøšţš šĥåŕé: å ûšéŕñåɱé ŵîţĥ å þåššŵøŕð, å þŕîṽåţé ķéý, øŕ ţĥé ŠŠĤ åĝéñţ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+login-identities-empty-description = ⟦Šåṽé å ûšéŕñåɱé ŵîţĥ îţš þåššŵøŕð øŕ ķéý øñçé, ţĥéñ çĥøøšé îţ øñ åñý Ĥøšţ îñšţéåð øƒ ţýþîñĝ îţ åĝåîñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+login-identities-empty-title = ⟦Ñø îðéñţîţîéš ýéţ~~~~~⟧
+login-identity-agent-field = ⟦Åĝéñţ šøçķéţ~~~⟧
+login-identity-agent-placeholder = ⟦Ðéƒåûļţ åĝéñţ~~~~⟧
+login-identity-browse-action = ⟦Ɓŕøŵšé~⟧
+login-identity-cancel-action = ⟦Çåñçéļ~⟧
+login-identity-count = { $count ->
+    [many] { $count }⟦ îðéñţîţîéš~~~⟧
+    [one] ⟦1 îðéñţîţý~~⟧
+   *[other] { $count }⟦ îðéñţîţîéš~~~⟧
+    [zero] ⟦Ñø îðéñţîţîéš~~~~⟧
+    }
+login-identity-delete-action = ⟦Ðéļéţé~⟧
+login-identity-deleted-status = ⟦Îðéñţîţý '~~⟧{ $identity }⟦' ðéļéţéð.~~⟧
+login-identity-edit-action = ⟦Éðîţ⟧
+login-identity-form-edit-title = ⟦Éðîţ îðéñţîţý~~~~⟧
+login-identity-form-new-title = ⟦Ñéŵ îðéñţîţý~~~⟧
+login-identity-host-count = { $count ->
+    [many] ⟦Ûšéð ƀý ~~⟧{ $count }⟦ Ĥøšţš~⟧
+    [one] ⟦Ûšéð ƀý 1 Ĥøšţ~~~~⟧
+   *[other] ⟦Ûšéð ƀý ~~⟧{ $count }⟦ Ĥøšţš~⟧
+    [zero] ⟦Ñøţ ûšéð ƀý åñý Ĥøšţ~~~~~~⟧
+    }
+login-identity-key-field = ⟦Þŕîṽåţé ķéý~~~⟧
+login-identity-key-placeholder = ⟦~/.ššĥ/îð_éð25519~~~~~⟧
+login-identity-key-required-error = ⟦Çĥøøšé å þŕîṽåţé ķéý ƒîļé ƒøŕ ţĥîš îðéñţîţý.~~~~~~~~~~~~~~~~⟧
+login-identity-key-unreadable-error = ⟦Ţĥåţ ƒîļé çøûļð ñøţ ƀé ŕéåð åš å þŕîṽåţé ķéý.~~~~~~~~~~~~~~~~⟧
+login-identity-label-field = ⟦Ñåɱé⟧
+login-identity-label-placeholder = ⟦Þŕøðûçţîøñ ðéþļøý~~~~~⟧
+login-identity-method-agent = ⟦ŠŠĤ åĝéñţ~~⟧
+login-identity-method-key = ⟦Þŕîṽåţé ķéý~~~⟧
+login-identity-method-key-passphrase = ⟦Þŕîṽåţé ķéý ŵîţĥ šåṽéð þåššþĥŕåšé~~~~~~~~~~~~⟧
+login-identity-method-password = ⟦Þåššŵøŕð~~⟧
+login-identity-new-action = ⟦Ñéŵ îðéñţîţý~~~⟧
+login-identity-passphrase-field = ⟦Ķéý þåššþĥŕåšé~~~~⟧
+login-identity-passphrase-needed-error = ⟦Ţĥîš ķéý îš þŕøţéçţéð ƀý å þåššþĥŕåšé. Éñţéŕ îţ ţø šåṽé ţĥé îðéñţîţý.~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+login-identity-passphrase-placeholder = ⟦Øñļý îƒ ţĥé ķéý ĥåš øñé~~~~~~~~⟧
+login-identity-passphrase-wrong-error = ⟦Ţĥåţ þåššþĥŕåšé ðøéš ñøţ øþéñ ţĥîš ķéý.~~~~~~~~~~~~~~⟧
+login-identity-password-field = ⟦Þåššŵøŕð~~⟧
+login-identity-password-placeholder = ⟦Þåššŵøŕð~~⟧
+login-identity-password-required-error = ⟦Éñţéŕ å þåššŵøŕð ƒøŕ ţĥîš îðéñţîţý.~~~~~~~~~~~~⟧
+login-identity-save-action = ⟦Šåṽé îðéñţîţý~~~~⟧
+login-identity-saved-status = ⟦Îðéñţîţý '~~⟧{ $identity }⟦' šåṽéð.~~⟧
+login-identity-secret-kept-placeholder = ⟦Šåṽéð. Ļéåṽé ƀļåñķ ţø ķééþ îţ~~~~~~~~~~⟧
+login-identity-username-field = ⟦Ûšéŕñåɱé~~⟧
+login-identity-username-placeholder = ⟦ðéþļøý~⟧
+login-identity-username-required-error = ⟦Åñ îðéñţîţý ñééðš å ûšéŕñåɱé.~~~~~~~~~~⟧
 logs-column-duration = ⟦Ðûŕåţîøñ~~⟧
 logs-column-session = ⟦Šéššîøñ~⟧
 logs-column-started = ⟦Šţåŕţéð~⟧

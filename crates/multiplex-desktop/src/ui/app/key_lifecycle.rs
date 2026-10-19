@@ -678,7 +678,9 @@ impl MultiplexApp {
                             .map(|(index, profile)| {
                                 let identity_id = identity_id.clone();
                                 let profile_id = profile.id.clone();
-                                let available = profile.saved_auth_config().is_ok()
+                                let available = profile
+                                    .saved_auth_config(&self.saved.login_identities)
+                                    .is_ok()
                                     && !profile.host.trim().is_empty()
                                     && !profile.username.trim().is_empty();
                                 h_flex()

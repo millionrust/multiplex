@@ -52,6 +52,25 @@ pub async fn authenticate<H: client::Handler>(
                 .context("Public key authentication failed")?
                 .success()
         }
+        AuthConfig::PrivateKeyRef {
+            key_path,
+            passphrase_credential_id,
+        } => {
+            let passphrase = credentials::load_password(passphrase_credential_id)
+                .context("Unable to load the saved key passphrase")?;
+            let key = load_private_key(key_path, Some(&passphrase))?;
+            let rsa_hash = handle
+                .best_supported_rsa_hash()
+                .await
+                .context("Unable to negotiate an RSA signature algorithm")?
+                .flatten();
+            let key = PrivateKeyWithHashAlg::new(Arc::new(key), rsa_hash);
+            handle
+                .authenticate_publickey(username.to_string(), key)
+                .await
+                .context("Public key authentication failed")?
+                .success()
+        }
         AuthConfig::OpenSshCertificate {
             key_path,
             certificate_path,
@@ -190,6 +209,29 @@ pub fn resolve_local_agent_socket(_socket_path: Option<&str>) -> Result<PathBuf>
     bail!("Local SSH-agent authentication is unavailable on this platform")
 }
 
+/// Whether a private key file opens with the passphrase given, without connecting anywhere.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PrivateKeyCheck {
+    Opens,
+    NeedsPassphrase,
+    WrongPassphrase,
+    Unreadable,
+}
+
+pub fn check_private_key(key_path: &str, passphrase: Option<&str>) -> PrivateKeyCheck {
+    let encrypted =
+        |error: &russh::keys::Error| error.to_string().to_ascii_lowercase().contains("encrypt");
+    match russh::keys::load_secret_key(key_path, passphrase) {
+        Ok(_) => PrivateKeyCheck::Opens,
+        Err(error) if passphrase.is_none() && encrypted(&error) => PrivateKeyCheck::NeedsPassphrase,
+        Err(_) if passphrase.is_some() => match russh::keys::load_secret_key(key_path, None) {
+            Err(error) if encrypted(&error) => PrivateKeyCheck::WrongPassphrase,
+            _ => PrivateKeyCheck::Unreadable,
+        },
+        Err(_) => PrivateKeyCheck::Unreadable,
+    }
+}
+
 fn load_private_key(key_path: &str, passphrase: Option<&str>) -> Result<russh::keys::PrivateKey> {
     russh::keys::load_secret_key(key_path, passphrase).map_err(|error| {
         let message = error.to_string();
@@ -259,6 +301,39 @@ mod tests {
     use super::*;
     use russh::keys::ssh_key::certificate::{Builder, CertType};
     use tempfile::TempDir;
+
+    #[test]
+    fn a_key_check_tells_a_missing_passphrase_from_a_wrong_one() {
+        let directory = TempDir::new().unwrap();
+        let fixture = crate::test_support::fixture_private_key_path();
+        let fixture = fixture.to_str().unwrap();
+        let protected =
+            crate::test_support::write_passphrase_protected_fixture_key(directory.path(), "s3cret");
+        let protected = protected.to_str().unwrap();
+        let missing = directory.path().join("missing");
+
+        assert_eq!(check_private_key(fixture, None), PrivateKeyCheck::Opens);
+        assert_eq!(
+            check_private_key(fixture, Some("ignored")),
+            PrivateKeyCheck::Opens
+        );
+        assert_eq!(
+            check_private_key(protected, None),
+            PrivateKeyCheck::NeedsPassphrase
+        );
+        assert_eq!(
+            check_private_key(protected, Some("wrong")),
+            PrivateKeyCheck::WrongPassphrase
+        );
+        assert_eq!(
+            check_private_key(protected, Some("s3cret")),
+            PrivateKeyCheck::Opens
+        );
+        assert_eq!(
+            check_private_key(missing.to_str().unwrap(), None),
+            PrivateKeyCheck::Unreadable
+        );
+    }
 
     fn test_key() -> russh::keys::PrivateKey {
         russh::keys::load_secret_key(

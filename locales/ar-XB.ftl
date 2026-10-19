@@ -865,10 +865,15 @@ host-editor-general-section = ⁧lareneG⁩
 host-editor-group-field = ⁧puorG⁩
 host-editor-group-help = ⁧.gnigatS ro ,noitcudorP ,lacoL sa hcus noitazinagro lanoitpO⁩
 host-editor-host-required = ⁧.tcennoc ot sserdda ro eman tsoH a retnE⁩
+host-editor-identity-field = ⁧ytitnedI⁩
+host-editor-identity-help = ⁧.ereh slaitnederc dna emanresu eht retne ot enoN ro ,nigol devas a esoohC⁩
 host-editor-identity-kinds = ⁧2ODIF ro ,etacifitrec ,yek ,ytitnedi HSS⁩
+host-editor-identity-none = ⁧enoN⁩
+host-editor-identity-summary = ⁧ sa ni sngiS⁩{ $username }⁧ htiw ⁩{ $method }⁧.⁩
 host-editor-jump-host-field = ⁧tsoH pmuJ⁩
 host-editor-key-passphrase-help = ⁧.esarhpssap on sah yek etavirp eht nehw ytpme evaeL⁩
 host-editor-key-picker-help = ⁧.tsoH siht yb desu elif yek-etavirp eht tceleS⁩
+host-editor-new-identity-action = ⁧ytitnedi weN⁩
 host-editor-new-title = ⁧tsoH weN⁩
 host-editor-password-help = ⁧.noitacitnehtua drowssap rof ylno deriuqeR⁩
 host-editor-protocol-prefix = ⁧no HSS⁩
@@ -1225,6 +1230,54 @@ local-terminal-opening-status = ⁧...lanimret lacol gninepO⁩
 local-terminal-ready-status = ⁧.ydaer lanimret lacoL⁩
 local-terminal-reopening-status = ⁧...lanimret lacol gninepoeR⁩
 local-terminal-split-launching-status = ⁧...lanimret lacol tilps gnihcnuaL⁩
+login-identities-description = ⁧.tnega HSS eht ro ,yek etavirp a ,drowssap a htiw emanresu a :erahs stsoH taht snigoL⁩
+login-identities-empty-description = ⁧.niaga ti gnipyt fo daetsni tsoH yna no ti esoohc neht ,ecno yek ro drowssap sti htiw emanresu a evaS⁩
+login-identities-empty-title = ⁧tey seititnedi oN⁩
+login-identity-agent-field = ⁧tekcos tnegA⁩
+login-identity-agent-placeholder = ⁧tnega tluafeD⁩
+login-identity-browse-action = ⁧esworB⁩
+login-identity-cancel-action = ⁧lecnaC⁩
+login-identity-count = { $count ->
+    [many] { $count }⁧seititnedi ⁩
+    [one] ⁧ytitnedi 1⁩
+   *[other] { $count }⁧seititnedi ⁩
+    [zero] ⁧seititnedi oN⁩
+    }
+login-identity-delete-action = ⁧eteleD⁩
+login-identity-deleted-status = ⁧' ytitnedI⁩{ $identity }⁧.deteled '⁩
+login-identity-edit-action = ⁧tidE⁩
+login-identity-form-edit-title = ⁧ytitnedi tidE⁩
+login-identity-form-new-title = ⁧ytitnedi weN⁩
+login-identity-host-count = { $count ->
+    [many] ⁧ yb desU⁩{ $count }⁧stsoH ⁩
+    [one] ⁧tsoH 1 yb desU⁩
+   *[other] ⁧ yb desU⁩{ $count }⁧stsoH ⁩
+    [zero] ⁧tsoH yna yb desu toN⁩
+    }
+login-identity-key-field = ⁧yek etavirP⁩
+login-identity-key-placeholder = ⁧91552de_di/hss./~⁩
+login-identity-key-required-error = ⁧.ytitnedi siht rof elif yek etavirp a esoohC⁩
+login-identity-key-unreadable-error = ⁧.yek etavirp a sa daer eb ton dluoc elif tahT⁩
+login-identity-label-field = ⁧emaN⁩
+login-identity-label-placeholder = ⁧yolped noitcudorP⁩
+login-identity-method-agent = ⁧tnega HSS⁩
+login-identity-method-key = ⁧yek etavirP⁩
+login-identity-method-key-passphrase = ⁧esarhpssap devas htiw yek etavirP⁩
+login-identity-method-password = ⁧drowssaP⁩
+login-identity-new-action = ⁧ytitnedi weN⁩
+login-identity-passphrase-field = ⁧esarhpssap yeK⁩
+login-identity-passphrase-needed-error = ⁧.ytitnedi eht evas ot ti retnE .esarhpssap a yb detcetorp si yek sihT⁩
+login-identity-passphrase-placeholder = ⁧eno sah yek eht fi ylnO⁩
+login-identity-passphrase-wrong-error = ⁧.yek siht nepo ton seod esarhpssap tahT⁩
+login-identity-password-field = ⁧drowssaP⁩
+login-identity-password-placeholder = ⁧drowssaP⁩
+login-identity-password-required-error = ⁧.ytitnedi siht rof drowssap a retnE⁩
+login-identity-save-action = ⁧ytitnedi evaS⁩
+login-identity-saved-status = ⁧' ytitnedI⁩{ $identity }⁧.devas '⁩
+login-identity-secret-kept-placeholder = ⁧ti peek ot knalb evaeL .devaS⁩
+login-identity-username-field = ⁧emanresU⁩
+login-identity-username-placeholder = ⁧yolped⁩
+login-identity-username-required-error = ⁧.emanresu a sdeen ytitnedi nA⁩
 logs-column-duration = ⁧noitaruD⁩
 logs-column-session = ⁧noisseS⁩
 logs-column-started = ⁧detratS⁩

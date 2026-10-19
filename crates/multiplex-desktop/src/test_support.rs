@@ -663,6 +663,147 @@ impl DockerSshServer {
     }
 }
 
+/// The private key both SSH fixtures accept.
+pub fn fixture_private_key_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/ssh-server/id_ed25519")
+}
+
+/// Writes the fixture key again, protected by `passphrase`, so a test can sign in with a
+/// passphrase-protected key that the fixture servers already authorize.
+pub fn write_passphrase_protected_fixture_key(directory: &Path, passphrase: &str) -> PathBuf {
+    use russh::keys::ssh_key::LineEnding;
+
+    let plain = fs::read_to_string(fixture_private_key_path()).expect("fixture key reads");
+    let key = russh::keys::PrivateKey::from_openssh(&plain).expect("fixture key parses");
+    let encrypted = key
+        .encrypt(&mut ssh_rand::rng(), passphrase)
+        .expect("fixture key encrypts");
+    let path = directory.join("id_ed25519_passphrase");
+    fs::write(
+        &path,
+        encrypted
+            .to_openssh(LineEnding::LF)
+            .expect("encrypted key encodes")
+            .as_bytes(),
+    )
+    .expect("encrypted key writes");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).expect("key mode sets");
+    }
+    path
+}
+
+/// OpenSSH's server run as this user on loopback, accepting the fixture key, for machines
+/// without Docker. An unprivileged sshd cannot check passwords, so it covers key sign-in only.
+#[cfg(unix)]
+pub struct LocalSshServer {
+    child: Child,
+    _directory: tempfile::TempDir,
+    pub port: u16,
+    username: String,
+}
+
+#[cfg(unix)]
+impl LocalSshServer {
+    const PROGRAM: &str = "/usr/sbin/sshd";
+
+    pub fn available() -> bool {
+        Path::new(Self::PROGRAM).is_file()
+    }
+
+    pub fn start() -> Result<Self, String> {
+        use russh::keys::ssh_key::LineEnding;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
+        let root = directory.path();
+        let host_key =
+            russh::keys::PrivateKey::random(&mut ssh_rand::rng(), russh::keys::Algorithm::Ed25519)
+                .map_err(|error| error.to_string())?
+                .to_openssh(LineEnding::LF)
+                .map_err(|error| error.to_string())?;
+        let host_key_path = root.join("host_key");
+        fs::write(&host_key_path, host_key.as_bytes()).map_err(|error| error.to_string())?;
+        fs::set_permissions(&host_key_path, fs::Permissions::from_mode(0o600))
+            .map_err(|error| error.to_string())?;
+        let authorized_keys = root.join("authorized_keys");
+        fs::copy(
+            fixture_private_key_path().with_extension("pub"),
+            &authorized_keys,
+        )
+        .map_err(|error| error.to_string())?;
+        let port = allocate_local_port();
+        let config = root.join("sshd_config");
+        fs::write(
+            &config,
+            format!(
+                "Port {port}\nListenAddress 127.0.0.1\nHostKey {}\nAuthorizedKeysFile {}\n\
+                 PasswordAuthentication no\nKbdInteractiveAuthentication no\nUsePAM no\n\
+                 StrictModes no\nPidFile {}\n",
+                host_key_path.display(),
+                authorized_keys.display(),
+                root.join("sshd.pid").display(),
+            ),
+        )
+        .map_err(|error| error.to_string())?;
+        let child = Command::new(Self::PROGRAM)
+            .args(["-D", "-e", "-f"])
+            .arg(&config)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| format!("unable to start sshd: {error}"))?;
+        let username = std::env::var("USER")
+            .ok()
+            .filter(|name| !name.is_empty())
+            .or_else(|| run_command("id", &["-un"], None).ok())
+            .map(|name| name.trim().to_string())
+            .ok_or_else(|| "unable to name the current user".to_string())?;
+        let mut server = Self {
+            child,
+            _directory: directory,
+            port,
+            username,
+        };
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", port)) {
+                let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+                let mut buffer = [0_u8; 64];
+                if stream
+                    .read(&mut buffer)
+                    .is_ok_and(|read| buffer[..read].starts_with(b"SSH-2.0-"))
+                {
+                    return Ok(server);
+                }
+            }
+            if Instant::now() >= deadline || server.child.try_wait().ok().flatten().is_some() {
+                return Err("the local sshd did not start".to_string());
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    pub fn host(&self) -> &str {
+        "127.0.0.1"
+    }
+
+    pub fn username(&self) -> &str {
+        &self.username
+    }
+}
+
+#[cfg(unix)]
+impl Drop for LocalSshServer {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
 pub fn allocate_local_port() -> u16 {
     TcpListener::bind(("127.0.0.1", 0))
         .expect("unable to bind local test port")
