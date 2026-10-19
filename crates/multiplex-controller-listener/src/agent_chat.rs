@@ -595,6 +595,7 @@ fn other_claims(root: &Path, agent: &Agent) -> std::collections::HashSet<String>
     claimed
 }
 
+#[cfg(unix)]
 fn alive(process_id: u64) -> bool {
     let Ok(pid) = i32::try_from(process_id) else {
         return false;
@@ -602,6 +603,12 @@ fn alive(process_id: u64) -> bool {
     // SAFETY: signal 0 only asks whether the process exists.
     let answered = unsafe { libc::kill(pid, 0) };
     answered == 0 || io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+/// No agent is found on other platforms, so there is no other process to ask about.
+#[cfg(not(unix))]
+fn alive(_process_id: u64) -> bool {
+    false
 }
 
 fn claude_project_directory(root: &Path, folder: &Path) -> Option<PathBuf> {
