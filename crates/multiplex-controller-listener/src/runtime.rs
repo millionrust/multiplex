@@ -819,7 +819,8 @@ fn response_security(
         | ControllerResponse::GitOverview { .. }
         | ControllerResponse::GitLog { .. }
         | ControllerResponse::GitDiff { .. }
-        | ControllerResponse::GitSwitched { .. } => (
+        | ControllerResponse::GitSwitched { .. }
+        | ControllerResponse::AgentChat { .. } => (
             ControllerFrameKind::Control,
             command_capability,
             control_payload_limit(),

@@ -1,6 +1,46 @@
 # Mobile chat view for agent terminals
 
-Status: prototype / future work. Not part of the native mobile app or v0.0.14.
+Status: implemented on iPhone and Android (after v0.0.15), reading the provider's own session
+log. The sections below the decision are the prototype's original reasoning, kept for context.
+
+## Decision (2026-10-19): read the agent's own session log
+
+A Claude Code or Codex session a phone can see is an ordinary terminal; the structured events in
+`agents/protocol.rs` exist only for the desktop canvas's own jobs, which phones are not given.
+Rather than parse terminal text, the computer reads the agent's session log, which the owner chose
+over the "do not read provider files" rule below. What that means:
+
+- **Finding the agent.** `multiplex-controller-listener/src/agent_chat.rs` walks the processes
+  under the terminal's shell (Session Host pid, or tmux `pane_pid`) for one started as `claude` or
+  `codex` (the native Claude install names its binary after its version, so `argv[0]` counts; a
+  Node or Bun script is matched by path). Its folder is its live current directory.
+- **Finding its log.** Claude Code: `~/.claude/projects/<folder with non-alphanumerics as
+  dashes>/<session>.jsonl`, the session being the `CLAUDE_CODE_SESSION_ID` in the youngest command
+  the agent is running, unless a log begun after that command is newer; otherwise the newest log
+  for the folder written since the agent started that no other running Claude Code claims in its
+  `~/.claude/sessions/<pid>.json`. That record names only the session the process started in;
+  `/clear` and `/resume` do not update it, and long-lived children such as MCP servers keep that
+  first id, which is why the youngest command is the witness. Codex: the newest
+  `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` whose `session_meta` names the agent's folder,
+  written since it started. Codex keeps no process record, so two Codex sessions in one folder
+  are told apart only by which wrote last. `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are honoured as
+  the listener sees them.
+- **Reading it.** The newest 12 MiB of the log, parsed into user, assistant, tool and notice
+  items with the log's own ids; cached by size and modification time, so a phone asking every
+  1.5 s costs a `stat`. Thinking, sidechains, injected context and records not recognised are
+  skipped, not guessed at. Tool output is clipped to 2 KiB and messages to 8 KiB, and an answer
+  is trimmed oldest first to fit one control frame.
+- **The wire.** `agent_chat { session_id, occupant_generation, before?, since_revision?, limit }`
+  answers `agent_chat { chat }`, `null` when no agent runs there. It needs `AttachOutput`, as the
+  terminal does. The phones page back with `before` and poll with `since_revision`. Only the
+  private-network route carries it; desktop SSH panes answer `null`.
+- **Replying.** Send types the draft into the terminal through the existing writer lease: a
+  bracketed paste (lines joined when the program has not asked for bracketed paste), then Return.
+  Approvals and menus stay in Terminal view; nothing read from a log becomes a button.
+- **What can be wrong.** A provider can change its log format in any release; unknown records
+  are dropped, so a format change shows as a thinner conversation rather than a wrong one. The
+  state (Working or Ready) is inferred from the last records, and a permission prompt shows as a
+  running tool.
 
 ## Intended experience
 

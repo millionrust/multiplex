@@ -118,6 +118,10 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   branches with switch, worktrees, and commit and file diffs. The listener runs bounded Git
   (`multiplex-controller-listener/src/git.rs`); reads need AttachOutput, switching SendInput.
   Private-network route only; desktop SSH panes answer `git_not_local`.
+- While Claude Code or Codex runs in a terminal, both phones offer Chat beside Terminal: the
+  listener finds the agent under the shell and reads its own session log
+  (`multiplex-controller-listener/src/agent_chat.rs`, `agent_chat` on the wire, AttachOutput),
+  and Send types the message into the terminal. See `docs/decisions/mobile-agent-chat-prototype.md`.
 - A "Multiplex" terminal profile, added from Devices to Windows Terminal (a fragment file),
   iTerm2 (a dynamic profile), or VS Code (one marked block in `settings.json`), runs
   `multiplex-cli shell`: the user's own shell in a Session Host, started detached so it outlives

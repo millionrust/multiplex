@@ -4,6 +4,7 @@
 //! computer has, never mutates a firewall, and rejects wildcard, loopback, and public bind
 //! addresses before reaching the socket adapter.
 
+mod agent_chat;
 mod authorization;
 mod bind;
 mod client_channel;
@@ -78,11 +79,12 @@ pub use process_protocol::{
     ProcessPairingDecision,
 };
 pub use protocol::{
+    AgentChat, AgentChatItem, AgentChatItemKind, AgentChatState, AgentProvider, AgentToolState,
     ApprovalDecision, ControllerCommand, ControllerCommandEnvelope, ControllerResponse,
     ControllerSessionCapability, ControllerSessionOrigin, ControllerSessionSummary, GitBranch,
     GitChange, GitChangeStatus, GitCommit, GitCommitDetail, GitDiff, GitDiffFile, GitRepository,
-    GitWorktree, MAX_GIT_LOG_PAGE, MAX_SESSION_PAGE_BYTES, MAX_SNAPSHOT_CHUNK_BYTES,
-    decode_command, decode_response, encode_command, encode_response,
+    GitWorktree, MAX_AGENT_CHAT_PAGE, MAX_GIT_LOG_PAGE, MAX_SESSION_PAGE_BYTES,
+    MAX_SNAPSHOT_CHUNK_BYTES, decode_command, decode_response, encode_command, encode_response,
 };
 pub use queue::{BoundedFrameQueue, QueueClass};
 pub use rate_limit::{AuthRateLimiter, SourceBucket, SourceBucketKey};

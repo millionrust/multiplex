@@ -104,6 +104,13 @@ interface ControllerConnecting : AutoCloseable {
     suspend fun git(host: PairedHostRecord, target: GitTarget, request: GitRequest): GitAnswer =
         throw ControllerConnectionException.HostError("git_route_unavailable")
 
+    /**
+     * The conversation of the coding agent running in [target]'s terminal, or null when none
+     * runs there. A route that cannot carry it says so.
+     */
+    suspend fun agentChat(host: PairedHostRecord, target: GitTarget, request: AgentChatRequest): AgentChat? =
+        throw ControllerConnectionException.HostError("chat_route_unavailable")
+
     suspend fun cancel()
 }
 

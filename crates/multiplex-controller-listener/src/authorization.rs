@@ -23,6 +23,8 @@ pub enum BridgeCommandKind {
     GitRead,
     /// Switching that repository's branch.
     GitSwitch,
+    /// Reading the conversation of the coding agent running in a terminal.
+    AgentChat,
     /// A command this build does not know, which is refused before it is authorized.
     Unsupported,
 }
@@ -45,6 +47,8 @@ impl BridgeCommandKind {
             // its branch is what typing `git switch` into it would do.
             Self::GitRead => ControllerCapability::AttachOutput,
             Self::GitSwitch => ControllerCapability::SendInput,
+            // The conversation is what the agent drew in the terminal, kept in its own log.
+            Self::AgentChat => ControllerCapability::AttachOutput,
             // Never reached: the runtime refuses an unknown command before asking what it needs.
             // Naming the narrowest capability keeps a mistake here a refusal, not a grant.
             Self::Unsupported => ControllerCapability::ObserveSessions,

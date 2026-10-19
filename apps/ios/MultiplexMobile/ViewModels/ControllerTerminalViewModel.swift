@@ -134,6 +134,43 @@ final class ControllerTerminalViewModel: ObservableObject, Identifiable {
         )
     }
 
+    /// The conversation of a coding agent running in this terminal, on a connection of its own.
+    func makeAgentChatViewModel() -> ControllerAgentChatViewModel {
+        let connection = connection
+        return ControllerAgentChatViewModel(
+            host: host,
+            target: ControllerGitTarget(
+                sessionID: identity.sessionID,
+                occupantGeneration: identity.occupantGeneration
+            ),
+            makeConnection: { try await connection.independentConnection() }
+        )
+    }
+
+    /// Types a chat message into the agent: the text as a paste, so lines stay one message,
+    /// then Return. Sending is the confirmation a long or multi-line paste otherwise asks for.
+    @discardableResult
+    func sendChatMessage(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, canSendInput else { return false }
+        let bracketed = screen.bracketedPaste
+        // Without bracketed paste every line would be sent on its own.
+        let message = bracketed
+            ? trimmed
+            : trimmed.split(whereSeparator: \.isNewline).joined(separator: " ")
+        let bytes = TerminalInteraction.normalizePaste(message)
+        guard bytes.count <= TerminalInteraction.maximumPastePayload(bracketed: bracketed) else {
+            writerMessage = "Message is larger than the 256 KiB safety limit."
+            return false
+        }
+        let body = bytes.contains(0x0A)
+            ? TerminalInteraction.preparePaste(bytes, bracketed: bracketed)
+            : bytes
+        enqueueInput(body, kind: .paste, confirmed: true)
+        enqueueInput(Data([0x0D]), kind: .keyboard, confirmed: true)
+        return true
+    }
+
     /// Whether the phone keeps the host terminal's size instead of resizing it to fit the
     /// phone. Resizing a desktop terminal makes its shell redraw the prompt at the phone's
     /// width, which can leave stray prompt lines on the desktop when it grows back.

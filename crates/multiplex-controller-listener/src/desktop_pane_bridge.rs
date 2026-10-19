@@ -919,6 +919,12 @@ fn execute_desktop_command(
             code: "git_not_local".to_owned(),
             completion_unknown: false,
         }],
+        // An agent in such a pane writes its log on that other machine.
+        ControllerCommand::AgentChat { session_id, .. } => vec![ControllerResponse::AgentChat {
+            command_id,
+            session_id,
+            chat: None,
+        }],
         ControllerCommand::Attach {
             session_id,
             occupant_generation,

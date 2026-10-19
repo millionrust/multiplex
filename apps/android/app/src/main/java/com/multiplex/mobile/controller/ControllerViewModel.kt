@@ -64,6 +64,17 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
             application.getSharedPreferences("controller-routes-v1", 0),
         ),
     )
+    /** A fourth, for the agent chat beside the attached terminal, which asks every second or so. */
+    private val chatConnection = ControllerConnection(
+        secureBlobs,
+        phoneNetwork = AndroidPhoneNetworkSource(
+            application,
+            application.getSharedPreferences("controller-routes-v1", 0),
+        ),
+    )
+    private val _chat = MutableStateFlow<ControllerAgentChatModel?>(null)
+    /** The conversation of a coding agent in the attached terminal, looked for while it is open. */
+    val chat: StateFlow<ControllerAgentChatModel?> = _chat.asStateFlow()
     private val _git = MutableStateFlow<ControllerGitModel?>(null)
     /** The Git page over the attached terminal, while it is open. */
     val git: StateFlow<ControllerGitModel?> = _git.asStateFlow()
@@ -143,6 +154,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
                 terminalRender = null
                 terminalRuntime?.terminal?.close()
                 terminalRuntime = null
+                stopChat()
                 _state.value = _state.value.copy(activeTerminal = null)
             }
             refreshSelected(retry = true)
@@ -391,6 +403,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun onForeground() {
+        _chat.value?.start()
         val terminal = terminalRuntime
         operation?.cancel()
         operation = if (terminal != null) {
@@ -408,6 +421,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun onBackground() {
+        _chat.value?.pause()
         operation?.cancel()
         terminalRuntime?.let { runtime ->
             val decision = TerminalAcceptance.backgroundDecision(
@@ -459,11 +473,59 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         operation?.cancel()
         terminalRuntime?.terminal?.close()
         terminalRuntime = runtime
+        startChat(runtime)
         publishTerminal(runtime)
         operation = viewModelScope.launch {
             terminalConnectionFor(runtime.route).cancel()
             runTerminal(runtime)
         }
+    }
+
+    /** Looks for a coding agent in the terminal; only the private network carries the chat. */
+    private fun startChat(runtime: ActiveTerminalRuntime) {
+        stopChat()
+        val generation = runtime.session.occupantGeneration ?: return
+        val model = ControllerAgentChatModel(
+            scope = viewModelScope,
+            host = runtime.host,
+            target = GitTarget(runtime.session.id, generation),
+            connection = if (runtime.route == ControllerRemoteRouteKind.PRIVATE_NETWORK) chatConnection else null,
+        )
+        _chat.value = model
+        model.start()
+    }
+
+    private fun stopChat() {
+        val model = _chat.value ?: return
+        _chat.value = null
+        viewModelScope.launch { model.stop() }
+    }
+
+    /**
+     * Types a chat message into the agent: the text as a paste, so lines stay one message, then
+     * Return. Sending is the confirmation a long or multi-line paste otherwise asks for.
+     */
+    fun sendChatMessage(text: String): Boolean {
+        val runtime = terminalRuntime ?: return false
+        val trimmed = text.trim()
+        if (trimmed.isEmpty() || runtime.writer.lease != WriterLeaseState.Held) return false
+        val bracketed = runtime.terminal.snapshot().bracketedPaste
+        // Without bracketed paste every line would be sent on its own.
+        val message = if (bracketed) trimmed else trimmed.lines().joinToString(" ")
+        val bytes = TerminalInteraction.normalizePaste(message)
+        if (bytes.size > TerminalInteraction.maximumPastePayload(bracketed = bracketed)) {
+            runtime.writerMessage = "paste_too_large"
+            publishTerminal(runtime)
+            return false
+        }
+        val body = if (bytes.contains('\n'.code.toByte())) {
+            TerminalInteraction.preparePaste(bytes, bracketed = bracketed)
+        } else {
+            bytes
+        }
+        enqueueTerminalInput(body, PendingInputKind.PASTE, true)
+        enqueueTerminalInput(byteArrayOf(0x0D), PendingInputKind.KEYBOARD, true)
+        return true
     }
 
     /** Whether the selected computer has granted this phone the right to start a terminal. */
@@ -613,6 +675,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
 
     fun detachTerminal() {
         closeGit()
+        stopChat()
         val runtime = terminalRuntime
         val held = runtime?.writer?.lease == WriterLeaseState.Held
         operation?.cancel()
@@ -714,6 +777,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         terminalRuntime?.terminal?.close()
         routeConnections.close()
         gitConnection.close()
+        chatConnection.close()
         discovery.close()
         super.onCleared()
     }

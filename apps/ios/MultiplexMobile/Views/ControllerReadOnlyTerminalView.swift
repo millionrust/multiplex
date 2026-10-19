@@ -18,6 +18,9 @@ struct ControllerReadOnlyTerminalView: View {
     @State private var displayedTerminalFontSize = 14.0
     @State private var displayedTerminalColumns = 40
     @State private var git: ControllerGitViewModel?
+    /// The coding agent's conversation, when one runs in this terminal.
+    @State private var chat: ControllerAgentChatViewModel?
+    @State private var showsChat = false
 
     var body: some View {
         // Under a screen this is one pane among others: the tab strip above it already carries
@@ -84,6 +87,41 @@ struct ControllerReadOnlyTerminalView: View {
     private var surface: some View {
         VStack(spacing: 0) {
             if !usesFocusedLandscapeLayout { statusBar }
+            if let chat, !usesFocusedLandscapeLayout {
+                ControllerAgentChatSwitch(chat: chat, showsChat: $showsChat)
+            }
+            if showsChat, let chat {
+                if viewModel.privacyCovered {
+                    privacyCover
+                } else {
+                    ControllerAgentChatView(
+                        chat: chat,
+                        terminal: viewModel,
+                        onShowTerminal: { showsChat = false }
+                    )
+                }
+            } else {
+                terminalPane
+            }
+        }
+        .background(Color.black)
+        .onAppear {
+            // Under a screen the terminal is one tab among others; the chat is offered on the
+            // terminal's own page.
+            guard !chromeless else { return }
+            let model = chat ?? viewModel.makeAgentChatViewModel()
+            chat = model
+            model.start()
+        }
+        .onDisappear { chat?.stop() }
+        .onChange(of: showsChat) { _, shows in
+            if shows { keyboardPresented = false }
+            chat?.setFollowing(shows)
+        }
+    }
+
+    @ViewBuilder
+    private var terminalPane: some View {
             terminalSurface
             if viewModel.canSendInput, usesFocusedLandscapeLayout {
                 focusedLandscapeInputBar
@@ -111,8 +149,6 @@ struct ControllerReadOnlyTerminalView: View {
                     onHide: { keyboardPresented = false }
                 )
             }
-        }
-        .background(Color.black)
     }
 
     /// `.watchbar` in multiplex-mobile-flow.html. Watching is the default, so a stray tap cannot

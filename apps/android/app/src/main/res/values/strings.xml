@@ -461,4 +461,25 @@
     <string name="git_error_ended">This terminal has ended or restarted.</string>
     <string name="git_error_unreachable">The computer could not be reached.</string>
     <string name="git_error_failed">The computer could not read the repository.</string>
+    <string name="chat_tab">Chat</string>
+    <string name="chat_terminal_tab">Terminal</string>
+    <string name="chat_working">Working</string>
+    <string name="chat_ready">Ready</string>
+    <string name="chat_agent_working">%1$s is working…</string>
+    <string name="chat_latest">Latest</string>
+    <string name="chat_reconnecting">Reconnecting to the conversation…</string>
+    <string name="chat_earlier">Earlier messages</string>
+    <string name="chat_history_truncated">Older messages are too far back in the log to show here.</string>
+    <string name="chat_empty">Nothing said yet. Send %1$s a message, or use the terminal.</string>
+    <string name="chat_tool">Tool</string>
+    <string name="chat_tool_failed">Failed</string>
+    <string name="chat_tool_done">Done</string>
+    <string name="chat_no_output">No output yet.</string>
+    <string name="chat_shortened">Shortened. The terminal has all of it.</string>
+    <string name="chat_placeholder">Message %1$s…</string>
+    <string name="chat_send">Send</string>
+    <string name="chat_send_note">Sent to the terminal as if typed. Answer prompts and approvals in Terminal.</string>
+    <string name="chat_take_control_note">Take control of the terminal to reply.</string>
+    <string name="chat_view_only">This phone can watch but not type into this terminal.</string>
+    <string name="chat_take_control">Take control</string>
 </resources>

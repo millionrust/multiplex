@@ -76,6 +76,12 @@ reachable from then on.
   `git_log`, `git_diff` and `git_switch`. The phone sends them on a connection of its own, so
   the terminal stays attached. Only the private network route carries them. Desktop SSH panes
   answer `git_not_local`, because their folder is on another machine.
+- **Chat with a coding agent.** When Claude Code or Codex runs in a terminal, the phone's terminal
+  page offers **Chat** beside **Terminal**: the agent's own session log, read on the computer
+  and shown as prompts, answers with code blocks, and folded tool cards, with earlier messages a
+  tap away. Send types the message into the terminal through the writer lease. It needs **See
+  terminal output**, and only the private network route carries it. How the agent and its log are
+  found, and where that can be wrong, is in `docs/decisions/mobile-agent-chat-prototype.md`.
 
 Not yet: approval prompts answered from the phone (`Approval` returns an error on both
 backends), and any relay UI on the desktop (relay is CLI-only).

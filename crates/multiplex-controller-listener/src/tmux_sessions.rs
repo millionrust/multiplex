@@ -200,26 +200,30 @@ impl TmuxSessionSource {
 
     /// The folder the session's active pane is in, as tmux reports it.
     pub(crate) async fn current_path(&self, session: &TmuxSession) -> Option<std::path::PathBuf> {
+        let path = self.active_pane(session, "#{pane_current_path}").await?;
+        path.starts_with('/')
+            .then(|| std::path::PathBuf::from(path))
+    }
+
+    /// The process id of the shell in the session's active pane.
+    pub(crate) async fn pane_process(&self, session: &TmuxSession) -> Option<u64> {
+        self.active_pane(session, "#{pane_pid}").await?.parse().ok()
+    }
+
+    async fn active_pane(&self, session: &TmuxSession, format: &'static str) -> Option<String> {
         let tmux = self.tmux()?;
         let target = session.session_target().to_owned();
         self.runtime()
             .spawn_blocking(move || {
                 let output = tmux
                     .command()
-                    .args([
-                        "display-message",
-                        "-p",
-                        "-t",
-                        &target,
-                        "#{pane_current_path}",
-                    ])
+                    .args(["display-message", "-p", "-t", &target, format])
                     .stdin(std::process::Stdio::null())
                     .output()
                     .ok()?;
-                let path = String::from_utf8(output.stdout).ok()?;
-                let path = path.trim_end_matches(['\n', '\r']);
-                (output.status.success() && path.starts_with('/'))
-                    .then(|| std::path::PathBuf::from(path))
+                let value = String::from_utf8(output.stdout).ok()?;
+                let value = value.trim_end_matches(['\n', '\r']);
+                (output.status.success() && !value.is_empty()).then(|| value.to_owned())
             })
             .await
             .ok()

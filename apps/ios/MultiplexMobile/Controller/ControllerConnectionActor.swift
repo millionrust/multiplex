@@ -225,6 +225,12 @@ protocol ControllerConnecting: Sendable {
         target: ControllerGitTarget,
         request: ControllerGitRequest
     ) async throws -> ControllerGitAnswer
+    /// The conversation of the coding agent running in a terminal; `nil` when none runs there.
+    func agentChat(
+        host: PairedHostRecord,
+        target: ControllerGitTarget,
+        request: ControllerAgentChatRequest
+    ) async throws -> ControllerAgentChat?
     func forgetDeviceSecret(host: PairedHostRecord) async throws
     func cancel() async
     /// What the last attempt to reach `hostID` suggests telling the person, if anything.
@@ -1638,9 +1644,45 @@ actor ControllerConnectionActor: ControllerConnecting {
         target: ControllerGitTarget,
         request: ControllerGitRequest
     ) async throws -> ControllerGitAnswer {
-        // Not `cancel()` first: the Git page runs on a connection of its own and may read
-        // history and a diff at once, and neither should end the other.
-        let required = request.requiresInput ? Self.inputCapability : Self.attachCapability
+        let commandID = UUID()
+        let payload = try await sessionRequest(
+            host: host,
+            target: target,
+            command: request.command,
+            requiresInput: request.requiresInput,
+            commandID: commandID
+        )
+        return try ControllerGitAnswer.decode(payload, commandID: commandID)
+    }
+
+    func agentChat(
+        host: PairedHostRecord,
+        target: ControllerGitTarget,
+        request: ControllerAgentChatRequest
+    ) async throws -> ControllerAgentChat? {
+        let commandID = UUID()
+        let payload = try await sessionRequest(
+            host: host,
+            target: target,
+            command: request.command,
+            requiresInput: false,
+            commandID: commandID
+        )
+        return try ControllerAgentChat.decodeAnswer(payload, commandID: commandID)
+    }
+
+    /// One command about a session on a connection of its own, answered once.
+    ///
+    /// Not `cancel()` first: the Git page and the chat run on connections of their own and may
+    /// ask several things at once, and none should end another.
+    private func sessionRequest(
+        host: PairedHostRecord,
+        target: ControllerGitTarget,
+        command sessionCommand: [String: Any],
+        requiresInput: Bool,
+        commandID: UUID
+    ) async throws -> Data {
+        let required = requiresInput ? Self.inputCapability : Self.attachCapability
         guard host.schemaVersion == PairedHostRecord.currentSchemaVersion,
               host.capabilityBits & required == required else {
             throw ControllerConnectionError.capabilityDenied
@@ -1696,8 +1738,7 @@ actor ControllerConnectionActor: ControllerConnecting {
             throw ControllerConnectionError.capabilityDenied
         }
 
-        let commandID = UUID()
-        var command = request.command
+        var command = sessionCommand
         command["session_id"] = target.sessionID.uuidString.lowercased()
         command["occupant_generation"] = target.occupantGeneration
         let envelope: [String: Any] = [
@@ -1711,7 +1752,7 @@ actor ControllerConnectionActor: ControllerConnecting {
         let payload = try JSONSerialization.data(withJSONObject: envelope)
         let sealed = try authenticatedSession.sealFrame(
             kind: .control,
-            capability: request.requiresInput ? .sendInput : .attachOutput,
+            capability: requiresInput ? .sendInput : .attachOutput,
             revocationEpoch: host.revocationEpoch,
             payload: payload
         )
@@ -1723,7 +1764,7 @@ actor ControllerConnectionActor: ControllerConnecting {
         guard opened.kind == .control, opened.revocationEpoch == host.revocationEpoch else {
             throw ControllerConnectionError.malformedResponse
         }
-        return try ControllerGitAnswer.decode(opened.payload, commandID: commandID)
+        return opened.payload
     }
 
     /// A field the person left empty is not a suggestion; the computer's own default answers.

@@ -1410,6 +1410,7 @@ async fn wait_for(
             | ControllerResponse::GitLog { command_id: id, .. }
             | ControllerResponse::GitDiff { command_id: id, .. }
             | ControllerResponse::GitSwitched { command_id: id, .. }
+            | ControllerResponse::AgentChat { command_id: id, .. }
             | ControllerResponse::Error { command_id: id, .. } => *id == command_id,
             // A response from a newer computer answers nothing this CLI asked for; skipping it
             // keeps the stream readable instead of ending the session over it.

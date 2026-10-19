@@ -875,11 +875,33 @@ class ControllerConnection internal constructor(
         host: PairedHostRecord,
         target: GitTarget,
         request: GitRequest,
-    ): GitAnswer = mutex.withLock {
+    ): GitAnswer {
+        val commandId = UUID.randomUUID().toString()
+        val text = sessionRequest(host, request.command(target), request.requiresInput, commandId)
+        return GitAnswer.decode(text, commandId)
+    }
+
+    override suspend fun agentChat(
+        host: PairedHostRecord,
+        target: GitTarget,
+        request: AgentChatRequest,
+    ): AgentChat? {
+        val commandId = UUID.randomUUID().toString()
+        val text = sessionRequest(host, request.command(target), requiresInput = false, commandId)
+        return AgentChat.decodeAnswer(text, commandId)
+    }
+
+    /** One command about a session on its own connection, answered once, as text. */
+    private suspend fun sessionRequest(
+        host: PairedHostRecord,
+        command: kotlinx.serialization.json.JsonObject,
+        requiresInput: Boolean,
+        commandId: String,
+    ): String = mutex.withLock {
         withContext(Dispatchers.IO) {
             cancelUnlocked(deleteCreatedKey = true)
             host.validate()
-            val required = if (request.requiresInput) INPUT_CAPABILITY else ATTACH_CAPABILITY
+            val required = if (requiresInput) INPUT_CAPABILITY else ATTACH_CAPABILITY
             if (host.capabilityBits and required != required) {
                 throw ControllerConnectionException.CapabilityDenied
             }
@@ -917,19 +939,18 @@ class ControllerConnection internal constructor(
                     if (publicResult.grantedCapabilityBits.toInt() and required != required) {
                         throw ControllerConnectionException.CapabilityDenied
                     }
-                    val commandId = UUID.randomUUID().toString()
                     val payload = buildJsonObject {
                         put("version", 1)
                         put("command_id", commandId)
                         put("session_generation", host.sessionGeneration)
                         // Switching may run the repository's checkout hooks.
                         put("deadline_millis", clockMillis() + 90_000)
-                        put("command", request.command(target))
+                        put("command", command)
                     }.toString().encodeToByteArray()
                     require(payload.size <= MAX_SECURE_FRAME_BYTES)
                     val sealed = session.sealFrame(
                         ControllerFrameKind.CONTROL,
-                        if (request.requiresInput) ControllerCapability.SEND_INPUT
+                        if (requiresInput) ControllerCapability.SEND_INPUT
                         else ControllerCapability.ATTACH_OUTPUT,
                         host.revocationEpoch.toULong(),
                         payload,
@@ -940,7 +961,7 @@ class ControllerConnection internal constructor(
                     val opened = session.openFrame(readFrame(input, MAX_SECURE_FRAME_BYTES))
                     require(opened.kind == ControllerFrameKind.CONTROL)
                     require(opened.revocationEpoch.toLong() == host.revocationEpoch)
-                    GitAnswer.decode(opened.payload.decodeToString(), commandId)
+                    opened.payload.decodeToString()
                 } finally {
                     runCatching { session.finish() }
                     session.close()

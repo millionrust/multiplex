@@ -327,18 +327,26 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                     .navigationBarsPadding(),
             ) {
                 if (activeTerminal != null) {
-                    ControllerTerminalScreen(
+                    val agentChat by viewModel.chat.collectAsState()
+                    TerminalWithAgentChat(
+                        chat = agentChat,
                         terminal = activeTerminal,
-                        onRetry = viewModel::retryTerminal,
+                        onSendChat = viewModel::sendChatMessage,
                         onRequestControl = viewModel::requestTerminalControl,
-                        onReleaseControl = viewModel::releaseTerminalControl,
-                        onBytes = viewModel::sendTerminalBytes,
-                        onPaste = viewModel::requestTerminalPaste,
-                        onConfirmPaste = viewModel::confirmTerminalPaste,
-                        onCancelPaste = viewModel::cancelTerminalPaste,
-                        onViewportChanged = viewModel::updateTerminalViewport,
-                        onOpenGit = viewModel::openGit,
-                    )
+                    ) {
+                        ControllerTerminalScreen(
+                            terminal = activeTerminal,
+                            onRetry = viewModel::retryTerminal,
+                            onRequestControl = viewModel::requestTerminalControl,
+                            onReleaseControl = viewModel::releaseTerminalControl,
+                            onBytes = viewModel::sendTerminalBytes,
+                            onPaste = viewModel::requestTerminalPaste,
+                            onConfirmPaste = viewModel::confirmTerminalPaste,
+                            onCancelPaste = viewModel::cancelTerminalPaste,
+                            onViewportChanged = viewModel::updateTerminalViewport,
+                            onOpenGit = viewModel::openGit,
+                        )
+                    }
                 } else if (state.hosts.isEmpty()) {
                     EmptyFleet(onPair = { showPairing = true })
                 } else if (maxWidth >= 840.dp) {

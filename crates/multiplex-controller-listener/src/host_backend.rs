@@ -14,7 +14,6 @@ use tokio_util::sync::CancellationToken;
 
 use crate::DesktopPaneBridgeEndpoint;
 use crate::desktop_pane_bridge::DesktopPaneBridgeClient;
-use crate::git;
 use crate::tmux_sessions::{self, DiscoveredTmuxSession, TMUX_RUNTIME_ID, TmuxSessionSource};
 use crate::{
     ControllerBackendFactory, ControllerCommand, ControllerCommandEnvelope,
@@ -23,6 +22,7 @@ use crate::{
     HostCommandContext, ListenerError, ListenerErrorCode, MAX_SESSION_PAGE_BYTES,
     MAX_SNAPSHOT_CHUNK_BYTES, ScreenOutgoing, ScreenSessionFactory,
 };
+use crate::{agent_chat, git};
 
 #[derive(Clone)]
 pub struct HostBackendFactory {
@@ -360,6 +360,38 @@ impl ControllerConnectionBackend for HostConnectionBackend {
                     GitRequest::Switch { worktree, branch },
                 )
                 .await
+            }
+            ControllerCommand::AgentChat {
+                session_id,
+                before,
+                since_revision,
+                limit,
+                ..
+            } => {
+                let Some(shell) = self.session_shell_process(session_id).await else {
+                    return Ok(vec![ControllerResponse::AgentChat {
+                        command_id,
+                        session_id,
+                        chat: None,
+                    }]);
+                };
+                let chat = tokio::task::spawn_blocking(move || {
+                    agent_chat::read(
+                        shell,
+                        &agent_chat::ChatRequest {
+                            before,
+                            since_revision,
+                            limit: usize::from(limit),
+                        },
+                    )
+                })
+                .await
+                .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+                Ok(vec![ControllerResponse::AgentChat {
+                    command_id,
+                    session_id,
+                    chat,
+                }])
             }
             // A command from a newer device: refused by name, and the connection carries on.
             ControllerCommand::Unsupported => Ok(vec![ControllerResponse::Error {
@@ -747,6 +779,31 @@ impl HostConnectionBackend {
             .await
     }
 
+    /// The process id of a session's shell, while it runs: what an agent in it descends from.
+    async fn session_shell_process(&mut self, session_id: HostedSessionId) -> Option<u64> {
+        let durable = self.sessions.session_data_path(session_id);
+        if let Ok(metadata) = read_host_metadata(&durable)
+            && metadata.session_id == session_id
+        {
+            return live_shell_process(&metadata);
+        }
+        let console = self.console_root.join(session_id.to_string());
+        if let Some(record) = multiplex_store::read_console_session(&console)
+            && record.session_id == session_id
+        {
+            return read_host_metadata(&console)
+                .ok()
+                .filter(|metadata| metadata.session_id == session_id)
+                .and_then(|metadata| live_shell_process(&metadata));
+        }
+        let found = self.tmux.resolve(session_id).await?;
+        self.tmux
+            .source
+            .as_ref()?
+            .pane_process(&found.session)
+            .await
+    }
+
     async fn resolve_occupant_generation(
         &mut self,
         session_id: HostedSessionId,
@@ -1083,15 +1140,18 @@ fn git_answer(
 /// The current directory of a session's shell while its Host is serving. A Host that is not
 /// serving may have left a process id another process now has, so it is not asked.
 fn live_shell_folder(metadata: &multiplex_store::HostMetadata) -> Option<PathBuf> {
-    if !matches!(
+    git::process_folder(live_shell_process(metadata)?)
+}
+
+/// The shell's process id while its Host says it runs; a stopped Host's id may be reused.
+fn live_shell_process(metadata: &multiplex_store::HostMetadata) -> Option<u64> {
+    matches!(
         metadata.lifecycle,
         multiplex_domain::HostLifecycle::Starting
             | multiplex_domain::HostLifecycle::Ready
             | multiplex_domain::HostLifecycle::Stopping
-    ) {
-        return None;
-    }
-    git::process_folder(metadata.process_token?.platform_identity())
+    )
+    .then_some(metadata.process_token?.platform_identity())
 }
 
 fn error_with_code(command_id: multiplex_domain::CommandId, code: &str) -> ControllerResponse {

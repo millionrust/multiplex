@@ -28,6 +28,12 @@ pub const MAX_GIT_LOG_PAGE: u16 = 100;
 pub const MAX_GIT_RESPONSE_BYTES: usize = MAX_CONTROL_PAYLOAD_BYTES - 2 * 1024;
 /// The most patch text read before trimming it to fit [`MAX_GIT_RESPONSE_BYTES`].
 pub const MAX_GIT_DIFF_PATCH_BYTES: usize = 256 * 1024;
+/// The most conversation items one `agent_chat` answer carries.
+pub const MAX_AGENT_CHAT_PAGE: u16 = 100;
+/// An agent chat answer is trimmed, oldest items first, until it fits in this.
+pub const MAX_AGENT_CHAT_RESPONSE_BYTES: usize = MAX_CONTROL_PAYLOAD_BYTES - 2 * 1024;
+/// Item ids and revisions are the log's own identifiers, bounded so a phone can echo them.
+pub const MAX_AGENT_CHAT_ID_BYTES: usize = 256;
 
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -198,6 +204,19 @@ pub enum ControllerCommand {
         worktree: Option<String>,
         branch: String,
     },
+    /// The conversation of the Claude Code or Codex session running in the terminal, read from
+    /// that agent's own session log. Up to `limit` items, the newest unless `before` names the
+    /// item to read back from. A `since_revision` equal to the log's current revision answers
+    /// `unchanged` with no items, so a phone can ask often.
+    AgentChat {
+        session_id: HostedSessionId,
+        occupant_generation: OccupantGeneration,
+        #[serde(default)]
+        before: Option<String>,
+        #[serde(default)]
+        since_revision: Option<String>,
+        limit: u16,
+    },
     /// A command from a newer device than this build.
     ///
     /// Decoding it rather than failing is what lets the wire grow: an unknown command used to
@@ -226,6 +245,7 @@ impl ControllerCommand {
                 BridgeCommandKind::GitRead
             }
             Self::GitSwitch { .. } => BridgeCommandKind::GitSwitch,
+            Self::AgentChat { .. } => BridgeCommandKind::AgentChat,
             Self::Unsupported => BridgeCommandKind::Unsupported,
         }
     }
@@ -247,7 +267,8 @@ impl ControllerCommand {
             | Self::GitOverview { session_id, .. }
             | Self::GitLog { session_id, .. }
             | Self::GitDiff { session_id, .. }
-            | Self::GitSwitch { session_id, .. } => Some(*session_id),
+            | Self::GitSwitch { session_id, .. }
+            | Self::AgentChat { session_id, .. } => Some(*session_id),
         }
     }
 
@@ -299,6 +320,10 @@ impl ControllerCommand {
                 ..
             }
             | Self::GitSwitch {
+                occupant_generation,
+                ..
+            }
+            | Self::AgentChat {
                 occupant_generation,
                 ..
             } => Some(*occupant_generation),
@@ -356,6 +381,18 @@ impl ControllerCommand {
             {
                 Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
             }
+            Self::AgentChat {
+                before,
+                since_revision,
+                limit,
+                ..
+            } if *limit == 0
+                || *limit > MAX_AGENT_CHAT_PAGE
+                || !valid_agent_chat_id(before.as_deref())
+                || !valid_agent_chat_id(since_revision.as_deref()) =>
+            {
+                Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
+            }
             Self::GitOverview { worktree, .. } if !valid_git_worktree(worktree.as_deref()) => {
                 Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
             }
@@ -395,6 +432,14 @@ impl ControllerCommand {
 }
 
 /// An absolute path of a worktree the overview listed.
+fn valid_agent_chat_id(value: Option<&str>) -> bool {
+    value.is_none_or(|value| {
+        !value.is_empty()
+            && value.len() <= MAX_AGENT_CHAT_ID_BYTES
+            && !value.chars().any(char::is_control)
+    })
+}
+
 fn valid_git_worktree(worktree: Option<&str>) -> bool {
     worktree.is_none_or(|worktree| {
         !worktree.is_empty()
@@ -519,9 +564,82 @@ pub enum ControllerResponse {
         branch: String,
         message: String,
     },
+    /// The agent's conversation, or `None` when no Claude Code or Codex runs in the terminal.
+    AgentChat {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        chat: Option<AgentChat>,
+    },
     /// A response from a newer computer than this build, which the reader skips.
     #[serde(other)]
     Unknown,
+}
+
+/// Which coding agent a terminal is running.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentProvider {
+    ClaudeCode,
+    Codex,
+}
+
+/// Whether the agent is working on a turn, as far as its log says.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentChatState {
+    Working,
+    Ready,
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentChatItemKind {
+    User,
+    Assistant,
+    Tool,
+    /// Something that happened to the conversation rather than a message: an interrupted turn,
+    /// a compacted history.
+    Notice,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentToolState {
+    Running,
+    Succeeded,
+    Failed,
+}
+
+/// One message, tool call or notice, with the log's own id so a phone can merge pages.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct AgentChatItem {
+    pub id: String,
+    pub kind: AgentChatItemKind,
+    /// A tool's name and what it was asked to act on.
+    pub title: Option<String>,
+    /// A message's text, or a tool's output.
+    pub text: String,
+    pub tool_state: Option<AgentToolState>,
+    /// Whether `text` was cut short to fit.
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct AgentChat {
+    pub provider: AgentProvider,
+    /// The title the agent gave the conversation, when it gave one.
+    pub title: Option<String>,
+    pub state: AgentChatState,
+    /// Changes whenever the log does; echoed back as `since_revision`.
+    pub revision: String,
+    /// Nothing changed since `since_revision`; `items` is empty.
+    pub unchanged: bool,
+    pub items: Vec<AgentChatItem>,
+    /// More items come before the first one here.
+    pub earlier: bool,
+    /// The log is longer than the part read, so the oldest history is not available.
+    pub history_truncated: bool,
 }
 
 /// A worktree's state as a phone shows it. Paths are on the computer's filesystem.
@@ -802,6 +920,13 @@ fn validate_response(response: &ControllerResponse) -> Result<(), ListenerError>
         {
             Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
         }
+        ControllerResponse::AgentChat {
+            chat: Some(chat), ..
+        } if chat.items.len() > usize::from(MAX_AGENT_CHAT_PAGE)
+            || (chat.unchanged && !chat.items.is_empty()) =>
+        {
+            Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
+        }
         ControllerResponse::GitLog {
             commits,
             next_offset,
@@ -848,6 +973,7 @@ fn response_kind(response: &ControllerResponse) -> &'static str {
         ControllerResponse::GitLog { .. } => "git_log",
         ControllerResponse::GitDiff { .. } => "git_diff",
         ControllerResponse::GitSwitched { .. } => "git_switched",
+        ControllerResponse::AgentChat { .. } => "agent_chat",
         ControllerResponse::Unknown => "unknown",
         ControllerResponse::Error { .. } => "error",
     }
@@ -856,6 +982,41 @@ fn response_kind(response: &ControllerResponse) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn agent_chat_reads_with_attach_output_and_bounded_ids() {
+        let chat = |limit: u16, before: Option<&str>| ControllerCommand::AgentChat {
+            session_id: HostedSessionId::new(),
+            occupant_generation: OccupantGeneration::new(1),
+            before: before.map(str::to_owned),
+            since_revision: None,
+            limit,
+        };
+        assert!(chat(40, Some("a1b2-c3")).validate().is_ok());
+        assert!(chat(0, None).validate().is_err());
+        assert!(chat(MAX_AGENT_CHAT_PAGE + 1, None).validate().is_err());
+        assert!(chat(40, Some("bad\nid")).validate().is_err());
+        assert!(
+            chat(40, Some(&"x".repeat(MAX_AGENT_CHAT_ID_BYTES + 1)))
+                .validate()
+                .is_err()
+        );
+        assert_eq!(
+            chat(40, None).kind().capability(),
+            multiplex_domain::ControllerCapability::AttachOutput
+        );
+        assert!(!chat(40, None).kind().requires_writer_lease());
+        let encoded = encode_response(
+            &ControllerResponse::AgentChat {
+                command_id: CommandId::new(),
+                session_id: HostedSessionId::new(),
+                chat: None,
+            },
+            MAX_AGENT_CHAT_RESPONSE_BYTES,
+        )
+        .expect("encodes");
+        assert!(String::from_utf8_lossy(&encoded).contains("\"kind\":\"agent_chat\""));
+    }
 
     #[test]
     fn git_commands_carry_bounded_arguments_and_the_right_capability() {
