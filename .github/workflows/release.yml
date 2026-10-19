@@ -95,6 +95,22 @@ jobs:
             libpipewire-0.3-dev libspa-0.2-dev libclang-dev \
             pkg-config
 
+      # cargo-bundle builds from source in two to four minutes. Started here, it builds beside the
+      # application (whose last, single-unit crates leave most cores idle) instead of after it, and
+      # with codegen units and no LTO whatever the release profile above says: it is a build tool,
+      # not something that ships. It bypasses the compiler cache's shim through rustup's own cargo.
+      - name: Start installing cargo-bundle (macOS)
+        if: matrix.target.bundle == 'macos'
+        run: |
+          root="$RUNNER_TEMP/cargo-bundle"
+          echo "$root/bin" >> "$GITHUB_PATH"
+          (
+            CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_LTO=false \
+              "$CARGO_HOME/bin/cargo" install cargo-bundle --version 0.11.0 --locked --root "$root" \
+              > "$RUNNER_TEMP/cargo-bundle.log" 2>&1
+            echo $? > "$RUNNER_TEMP/cargo-bundle.status"
+          ) &
+
       - name: Build release application and sidecars
         run: >-
           cargo build --release --target ${{ matrix.target.triple }} --locked
@@ -104,9 +120,14 @@ jobs:
           -p multiplex-mcp
           -p multiplex-relay-server
 
-      - name: Install cargo-bundle (macOS)
+      - name: Finish installing cargo-bundle (macOS)
         if: matrix.target.bundle == 'macos'
-        run: cargo install cargo-bundle --version 0.11.0 --locked
+        timeout-minutes: 15
+        run: |
+          until [ -f "$RUNNER_TEMP/cargo-bundle.status" ]; do sleep 5; done
+          cat "$RUNNER_TEMP/cargo-bundle.log"
+          test "$(cat "$RUNNER_TEMP/cargo-bundle.status")" = 0
+          test -x "$RUNNER_TEMP/cargo-bundle/bin/cargo-bundle"
 
       - name: Bundle macOS .app
         if: matrix.target.bundle == 'macos'

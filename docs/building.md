@@ -184,6 +184,15 @@ units without LTO. `MBX_TARGET_VIEWS=0` keeps desktop outputs at the paths packa
 and leaves the shipping mobile scripts' isolated directories intact. No shared shipping
 `MULTIPLEX_MOBILE_CARGO_TARGET_DIR` is introduced.
 
+mr-boxington's per-job report counts only compilations it looked up: Cargo's reuse of a
+restored `target` directory is left out, so "0 hits" beside a short build step is a warm
+build, not a cold one. Judge a run by its step times.
+
+The macOS jobs install `cargo-bundle` from source, which takes two to four minutes. They start
+it in the background before the application build, through rustup's `cargo` and with 16 codegen
+units and no LTO in every mode, and wait for it only before bundling; it is a build tool and is
+never cached.
+
 Packaging checks, native tests, checksums and attestations still run. Release workflows
 create drafts only; publication remains a deliberate step after verification.
 
