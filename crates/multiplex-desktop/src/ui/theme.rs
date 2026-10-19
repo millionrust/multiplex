@@ -540,9 +540,6 @@ pub const SPACE_DENSE: f32 = DesignTokens::new(ThemeKind::System).space_dense().
 pub const SHELL_SPACE_DENSE: f32 = DesignTokens::new(ThemeKind::System).space_shell_dense().0;
 pub const SHELL_SPACE_TIGHT: f32 = DesignTokens::new(ThemeKind::System).space_shell_tight().0;
 pub const SHELL_SPACE_COMPACT: f32 = DesignTokens::new(ThemeKind::System).space_shell_compact().0;
-pub const SHELL_BANNER_HORIZONTAL: f32 = DesignTokens::new(ThemeKind::System)
-    .space_shell_banner_horizontal()
-    .0;
 pub const TYPE_CAPTION_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_caption().size;
 pub const TYPE_BODY_SMALL_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_body_small().size;
 pub const TYPE_BODY_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_body().size;

@@ -2,16 +2,8 @@
 
 use std::collections::HashSet;
 
-#[derive(Clone)]
-pub struct AutocompleteCandidate {
-    pub command: String,
-    pub source: AutocompleteSource,
-    pub scope_label: Option<String>,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AutocompleteSource {
-    Path,
     Context,
     Argument,
     History,
@@ -20,20 +12,8 @@ pub enum AutocompleteSource {
 }
 
 impl AutocompleteSource {
-    pub fn priority(self) -> u8 {
-        match self {
-            Self::Path => 0,
-            Self::Context => 1,
-            Self::Argument => 2,
-            Self::History => 3,
-            Self::Snippet => 4,
-            Self::Builtin => 5,
-        }
-    }
-
     pub fn label(self) -> &'static str {
         match self {
-            Self::Path => "path",
             Self::Context => "context",
             Self::Argument => "argument",
             Self::History => "history",
@@ -55,11 +35,6 @@ pub enum AutocompleteMatchKind {
     Prefix,
     TokenPrefix,
     Substring,
-}
-
-pub struct PathAutocompleteQuery {
-    pub prefix: String,
-    pub fragment: String,
 }
 
 pub fn context_detail(kind: &str, current_path: Option<&str>) -> String {
@@ -277,124 +252,6 @@ pub fn palette_match_kind(query: &str, fields: &[&str]) -> Option<AutocompleteMa
         .iter()
         .filter_map(|field| autocomplete_match_kind(query, &field.to_ascii_lowercase()))
         .min()
-}
-
-pub fn path_query_context(input: &str) -> Option<PathAutocompleteQuery> {
-    let input = input.trim_end_matches(['\r', '\n']);
-    if input.trim().is_empty() {
-        return None;
-    }
-
-    let tokens = input.split_whitespace().collect::<Vec<_>>();
-    if tokens.is_empty() {
-        return None;
-    }
-
-    if input.ends_with(' ') {
-        let last = tokens.last().copied().unwrap_or_default();
-        if is_path_command(last) {
-            return Some(PathAutocompleteQuery {
-                prefix: input.to_string(),
-                fragment: String::new(),
-            });
-        }
-        return None;
-    }
-
-    let last = tokens.last().copied().unwrap_or_default();
-    let previous = tokens
-        .get(tokens.len().saturating_sub(2))
-        .copied()
-        .unwrap_or_default();
-    if !is_path_like_token(last) && !is_path_command(previous) {
-        return None;
-    }
-
-    let start = input.rfind(last)?;
-    Some(PathAutocompleteQuery {
-        prefix: input[..start].to_string(),
-        fragment: last.to_string(),
-    })
-}
-
-pub fn is_path_command(command: &str) -> bool {
-    matches!(
-        command,
-        "cd" | "ls"
-            | "cat"
-            | "tail"
-            | "less"
-            | "more"
-            | "vim"
-            | "nvim"
-            | "nano"
-            | "rm"
-            | "cp"
-            | "mv"
-            | "mkdir"
-            | "touch"
-            | "chmod"
-            | "chown"
-            | "source"
-    )
-}
-
-pub fn is_path_like_token(token: &str) -> bool {
-    token.starts_with('/')
-        || token.starts_with("./")
-        || token.starts_with("../")
-        || token.starts_with("~/")
-        || token.contains('/')
-        || token == "."
-        || token == ".."
-}
-
-pub fn path_match_kind(fragment: &str, candidate: &str) -> Option<AutocompleteMatchKind> {
-    let fragment = fragment.trim().to_ascii_lowercase();
-    if fragment.is_empty() {
-        return Some(AutocompleteMatchKind::Prefix);
-    }
-
-    let candidate_lower = candidate.to_ascii_lowercase();
-    if candidate_lower.starts_with(&fragment) {
-        return Some(AutocompleteMatchKind::Prefix);
-    }
-
-    let basename = candidate
-        .trim_end_matches('/')
-        .rsplit('/')
-        .next()
-        .unwrap_or(candidate)
-        .to_ascii_lowercase();
-    let stripped_fragment = fragment
-        .trim_start_matches("./")
-        .trim_start_matches("../")
-        .trim_start_matches("~/");
-    if !stripped_fragment.is_empty() && basename.starts_with(stripped_fragment) {
-        return Some(AutocompleteMatchKind::TokenPrefix);
-    }
-
-    if fragment.len() >= 2 && candidate_lower.contains(&fragment) {
-        return Some(AutocompleteMatchKind::Substring);
-    }
-
-    None
-}
-
-pub fn extract_path_tokens(command: &str) -> Vec<String> {
-    command
-        .split_whitespace()
-        .filter_map(|token| {
-            let token = token.trim_matches(|ch: char| {
-                ch.is_ascii_punctuation() && ch != '/' && ch != '.' && ch != '_' && ch != '-'
-            });
-            if is_path_like_token(token) {
-                Some(token.to_string())
-            } else {
-                None
-            }
-        })
-        .collect()
 }
 
 pub fn builtin_command_templates() -> &'static [BuiltinCommandTemplate] {

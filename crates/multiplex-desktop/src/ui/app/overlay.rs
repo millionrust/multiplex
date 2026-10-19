@@ -1,4 +1,4 @@
-//! Workspace overlays: autocomplete and the command palette.
+//! Workspace overlays: the command palette.
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -18,79 +18,7 @@ use crate::ui::autocomplete::AutocompleteSource;
 use crate::ui::localization;
 use crate::ui::theme;
 
-/// How many suggestions the bar shows at once. Enough to choose from without taking the
-/// terminal over.
-const VISIBLE_AUTOCOMPLETE_SUGGESTIONS: usize = 5;
-
 impl MultiplexApp {
-    pub(super) fn render_autocomplete_suggestions(&self) -> Option<Stateful<Div>> {
-        let candidates = self.workspace_autocomplete_candidates();
-        if candidates.is_empty() {
-            return None;
-        }
-        let chosen = self
-            .active_pane()
-            .and_then(|pane| pane.selected_autocomplete_index);
-        Some(
-            h_flex()
-                .id("terminal-autocomplete")
-                .debug_selector(|| "terminal-autocomplete".to_string())
-                .w_full()
-                .px(px(theme::SHELL_BANNER_HORIZONTAL))
-                .py(px(theme::SPACE_2))
-                .gap_2()
-                .items_center()
-                .flex_wrap()
-                .bg(theme::with_alpha(theme::accent(), 0.10))
-                .border_b_1()
-                .border_color(theme::with_alpha(theme::accent(), 0.35))
-                .children(
-                    candidates
-                        .into_iter()
-                        .take(VISIBLE_AUTOCOMPLETE_SUGGESTIONS)
-                        .enumerate()
-                        .map(|(index, candidate)| {
-                            let marked = chosen == Some(index);
-                            h_flex()
-                                .gap_1p5()
-                                .items_center()
-                                .px_2()
-                                .py_0p5()
-                                .rounded(px(theme::CONTROL_RADIUS))
-                                .when(marked, |this| {
-                                    this.bg(theme::with_alpha(theme::accent(), 0.28))
-                                })
-                                .child(
-                                    div()
-                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                        .text_color(if marked {
-                                            theme::text_main()
-                                        } else {
-                                            theme::text_muted()
-                                        })
-                                        .child(candidate.command.clone()),
-                                )
-                                .when_some(candidate.scope_label.clone(), |this, scope| {
-                                    // Which host or session the suggestion came from, when it
-                                    // came from one in particular.
-                                    this.child(
-                                        div()
-                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                            .text_color(theme::text_muted())
-                                            .child(scope),
-                                    )
-                                })
-                                .child(self.status_badge(
-                                    candidate.source.label(),
-                                    theme::library_bg(),
-                                    source_tone(candidate.source),
-                                ))
-                                .into_any_element()
-                        }),
-                ),
-        )
-    }
-
     pub(super) fn render_command_palette(
         &self,
         _window: &mut Window,
@@ -381,7 +309,7 @@ impl MultiplexApp {
 
 fn source_tone(source: AutocompleteSource) -> gpui::Hsla {
     match source {
-        AutocompleteSource::Path | AutocompleteSource::Argument => theme::warning(),
+        AutocompleteSource::Argument => theme::warning(),
         AutocompleteSource::Context | AutocompleteSource::History => theme::accent(),
         AutocompleteSource::Snippet => theme::success(),
         AutocompleteSource::Builtin => theme::slate(),

@@ -75,8 +75,8 @@ use key_lifecycle::{KeyLifecycleDialog, KeyLifecycleInputs};
 use motion::{LayoutTransition, MotionRect, MotionSpeed};
 use new_session::NewSessionState;
 use palette::{
-    CommandPaletteCandidate, OutputSuggestionContext, PaletteAction, PathSuggestionContext,
-    collect_autocomplete_candidates, collect_command_palette_candidates, pane_recent_output_lines,
+    CommandPaletteCandidate, OutputSuggestionContext, PaletteAction,
+    collect_command_palette_candidates,
 };
 use presets::PresetLibraryState;
 use remote_devices::RemoteDevicesState;
@@ -163,7 +163,7 @@ use crate::storage::{
 };
 use crate::terminal::{TerminalSelectionSnapshot, TerminalSize, TerminalState};
 use crate::ui::accessibility::shell::ShellAccessibilityAdapter;
-use crate::ui::autocomplete::{AutocompleteCandidate, AutocompleteSource};
+use crate::ui::autocomplete::AutocompleteSource;
 use crate::ui::keys::{
     AppShortcut, MouseEventKind, TerminalShortcut, app_shortcut, dropped_paths_text,
     encode_mouse_report, encode_terminal_input, terminal_shortcut,
@@ -819,7 +819,6 @@ struct SessionPane {
     scroll_remainder: f32,
     log_id: String,
     current_input: String,
-    selected_autocomplete_index: Option<usize>,
     auto_reconnect_attempts: u8,
     auto_reconnect_at: Option<u64>,
     user_closed: bool,
@@ -3395,7 +3394,6 @@ impl MultiplexApp {
         {
             if let Some(pane) = self.pane_mut(session_id) {
                 pane.current_input.clear();
-                pane.selected_autocomplete_index = None;
             }
             return true;
         }
@@ -7358,7 +7356,6 @@ impl MultiplexApp {
             scroll_remainder: 0.0,
             log_id,
             current_input: String::new(),
-            selected_autocomplete_index: None,
             auto_reconnect_attempts: 0,
             auto_reconnect_at: None,
             user_closed: false,
@@ -10068,7 +10065,6 @@ impl MultiplexApp {
 
     fn record_command_input(&mut self, pane_id: u64, data: &[u8]) {
         let mut completed_commands = Vec::new();
-        let mut input_changed = false;
         let Some((scope_key, scope_label, alternate_screen)) = self.pane(pane_id).map(|pane| {
             (
                 pane.request.history_scope_key(),
@@ -10084,7 +10080,6 @@ impl MultiplexApp {
 
         if alternate_screen {
             pane.current_input.clear();
-            pane.selected_autocomplete_index = None;
             return;
         }
 
@@ -10116,32 +10111,23 @@ impl MultiplexApp {
                     } else {
                         pane.current_input.clear();
                     }
-                    input_changed = true;
                 }
                 0x08 | 0x7f => {
-                    input_changed |= pane.current_input.pop().is_some();
+                    pane.current_input.pop();
                 }
                 0x03 | 0x04 | 0x15 | 0x1b => {
-                    input_changed |= !pane.current_input.is_empty();
                     pane.current_input.clear();
                 }
                 // The shell's own completion rewrites the line, and this app never sees what it
-                // became, so it gives the line up rather than rub out the wrong number of
-                // characters when a suggestion is accepted later.
+                // became, so it gives the line up rather than record a command that never ran.
                 b'\t' => {
-                    input_changed |= !pane.current_input.is_empty();
                     pane.current_input.clear();
                 }
                 byte if byte.is_ascii_control() => {}
                 _ => {
                     pane.current_input.push(byte as char);
-                    input_changed = true;
                 }
             }
-        }
-
-        if input_changed {
-            pane.selected_autocomplete_index = None;
         }
 
         for command in completed_commands {
@@ -10149,56 +10135,6 @@ impl MultiplexApp {
                 .record_command_history_for_scope(&command, &scope_key, &scope_label);
         }
         let _ = save_saved_state(&self.saved);
-    }
-
-    fn workspace_autocomplete_candidates(&self) -> Vec<AutocompleteCandidate> {
-        let Some(pane) = self.active_pane() else {
-            return Vec::new();
-        };
-        if !pane.connected
-            || pane.closed
-            || pane.terminal.alternate_screen()
-            || pane.current_input.contains('\n')
-            || pane.current_input.trim().is_empty()
-        {
-            return Vec::new();
-        }
-
-        let path_context = self
-            .active_workspace()
-            .map(|workspace| PathSuggestionContext {
-                current_path: workspace
-                    .sftp
-                    .as_ref()
-                    .map(|browser| browser.current_path.clone())
-                    .or_else(|| pane.request.startup_directory.clone()),
-                startup_directory: pane.request.startup_directory.clone(),
-                entries: workspace
-                    .sftp
-                    .as_ref()
-                    .map(|browser| browser.entries.clone())
-                    .unwrap_or_default(),
-            });
-        let output_context = self
-            .active_workspace()
-            .map(|workspace| OutputSuggestionContext {
-                current_path: workspace
-                    .sftp
-                    .as_ref()
-                    .map(|browser| browser.current_path.clone())
-                    .or_else(|| pane.request.startup_directory.clone()),
-                recent_lines: pane_recent_output_lines(pane, 80),
-            });
-
-        collect_autocomplete_candidates(
-            &pane.current_input,
-            &self.saved.command_history,
-            &self.saved.scoped_command_history,
-            &pane.request.history_scope_key(),
-            &[],
-            path_context.as_ref(),
-            output_context.as_ref(),
-        )
     }
 
     fn command_palette_query(&self, cx: &App) -> String {
@@ -10472,91 +10408,6 @@ impl MultiplexApp {
             window,
             cx,
         )
-    }
-
-    fn selected_autocomplete_index(&self, candidate_count: usize) -> usize {
-        self.active_pane()
-            .and_then(|pane| pane.selected_autocomplete_index)
-            .filter(|index| *index < candidate_count)
-            .unwrap_or(0)
-    }
-
-    fn move_autocomplete_selection(&mut self, delta: isize, cx: &mut Context<Self>) -> bool {
-        let candidates = self.workspace_autocomplete_candidates();
-        if candidates.is_empty() {
-            return false;
-        }
-
-        let next = (self.selected_autocomplete_index(candidates.len()) as isize + delta)
-            .rem_euclid(candidates.len() as isize) as usize;
-        let Some(pane_id) = self.active_pane().map(|pane| pane.id) else {
-            return false;
-        };
-        let Some(pane) = self.pane_mut(pane_id) else {
-            return false;
-        };
-        pane.selected_autocomplete_index = Some(next);
-        cx.notify();
-        true
-    }
-
-    fn accept_selected_autocomplete(&mut self, cx: &mut Context<Self>) -> bool {
-        let candidates = self.workspace_autocomplete_candidates();
-        if candidates.is_empty() {
-            return false;
-        }
-        let candidate = candidates[self.selected_autocomplete_index(candidates.len())].clone();
-        self.apply_autocomplete_candidate(&candidate.command, candidate.source, cx)
-    }
-
-    /// Puts the suggestions away without changing the line. Answers Escape, and says whether
-    /// there was anything to put away, so Escape still reaches the program otherwise.
-    fn dismiss_autocomplete(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.workspace_autocomplete_candidates().is_empty() {
-            return false;
-        }
-        let Some(pane_id) = self.active_pane().map(|pane| pane.id) else {
-            return false;
-        };
-        if let Some(pane) = self.pane_mut(pane_id) {
-            pane.current_input.clear();
-            pane.selected_autocomplete_index = None;
-        }
-        cx.notify();
-        true
-    }
-
-    fn apply_autocomplete_candidate(
-        &mut self,
-        command: &str,
-        source: AutocompleteSource,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let Some(pane_id) = self.active_pane().map(|pane| pane.id) else {
-            return false;
-        };
-        let Some(current_input) = self.active_pane().map(|pane| pane.current_input.clone()) else {
-            return false;
-        };
-        if current_input.trim().is_empty() || current_input.trim() == command {
-            return false;
-        }
-
-        let mut bytes = vec![0x7f; current_input.chars().count()];
-        bytes.extend_from_slice(command.as_bytes());
-        if self.send_input_bytes(pane_id, bytes, cx) {
-            // The line now holds the command, so that is what further typing adds to and what
-            // accepting another suggestion would rub out.
-            if let Some(pane) = self.pane_mut(pane_id) {
-                pane.current_input = command.to_owned();
-                pane.selected_autocomplete_index = None;
-            }
-            self.status_message = localization::autocomplete_applied_status(source);
-            self.error_message.clear();
-            cx.notify();
-            return true;
-        }
-        false
     }
 
     fn toggle_workspace_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -10887,33 +10738,6 @@ impl MultiplexApp {
 
         if event.keystroke.modifiers.platform {
             return false;
-        }
-
-        // The suggestions belong to the line being typed, so they answer the keys Settings says
-        // they do before the keystroke reaches the program. Up and Down only take a key when
-        // there is something to suggest, and Enter only once a suggestion has been chosen, so a
-        // pane with nothing to offer types and runs commands as it always has.
-        if !event.keystroke.modifiers.control
-            && !event.keystroke.modifiers.alt
-            && !event.keystroke.modifiers.platform
-            && !event.keystroke.modifiers.shift
-            && self.active_pane().is_some_and(|pane| pane.id == pane_id)
-        {
-            let key = event.keystroke.key.as_str();
-            let chosen = self
-                .active_pane()
-                .is_some_and(|pane| pane.selected_autocomplete_index.is_some());
-            if (key == "up" || key == "down")
-                && self.move_autocomplete_selection(if key == "up" { -1 } else { 1 }, cx)
-            {
-                return true;
-            }
-            if key == "enter" && chosen && self.accept_selected_autocomplete(cx) {
-                return true;
-            }
-            if key == "escape" && self.dismiss_autocomplete(cx) {
-                return true;
-            }
         }
 
         let application_cursor = self
@@ -14169,11 +13993,11 @@ mod tests {
         AutocompleteSource, ConnectDialogMode, ConnectionDiagnosticRow, ConnectionDiagnosticStatus,
         DropZone, HostsSort, HostsViewMode, KeyLifecycleDialog, KeychainTab,
         MAX_COALESCED_TERMINAL_OUTPUT_BYTES, MAX_SPLIT_PANES, MultiplexApp, NavSection,
-        OutputSuggestionContext, PathSuggestionContext, SessionLibraryView, SplitNode,
-        WorkspaceViewMode, apply_group_defaults_to_draft, collect_autocomplete_candidates,
-        collect_command_palette_candidates, drain_coalesced_ssh_events, dropped_paths_text,
-        extract_snippet_prompt_names, shell_command_requires_continuation,
-        startup_bytes_for_request, substitute_snippet_placeholders, substitute_snippet_prompts,
+        OutputSuggestionContext, SessionLibraryView, SplitNode, WorkspaceViewMode,
+        apply_group_defaults_to_draft, collect_command_palette_candidates,
+        drain_coalesced_ssh_events, dropped_paths_text, extract_snippet_prompt_names,
+        shell_command_requires_continuation, startup_bytes_for_request,
+        substitute_snippet_placeholders, substitute_snippet_prompts,
     };
     use crate::connection_diagnostics::{DiagnosticFailureKind, DiagnosticStage};
     use crate::credentials;
@@ -14187,7 +14011,6 @@ mod tests {
         SavedState, SavedWorkspace, SavedWorktreePolicy, SplitAxis, ThemePreset, VaultMemberRole,
         WorkspaceLayoutMode,
     };
-    use crate::sftp::RemoteFileEntry;
     use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent};
     use crate::storage::load_saved_state;
     use crate::terminal::MouseProtocolMode;
@@ -16025,101 +15848,6 @@ mod tests {
     }
 
     #[test]
-    fn path_autocomplete_suggests_remote_entries_for_path_commands() {
-        let suggestions = collect_autocomplete_candidates(
-            "cd lo",
-            &[],
-            &[],
-            "ssh:prod@example:22",
-            &[],
-            Some(&PathSuggestionContext {
-                current_path: Some("/var/www".to_string()),
-                startup_directory: Some("/srv/app".to_string()),
-                entries: vec![
-                    RemoteFileEntry {
-                        name: "logs".to_string(),
-                        path: "/var/www/logs".to_string(),
-                        is_dir: true,
-                        is_symlink: false,
-                        size: None,
-                    },
-                    RemoteFileEntry {
-                        name: "local.env".to_string(),
-                        path: "/var/www/local.env".to_string(),
-                        is_dir: false,
-                        is_symlink: false,
-                        size: Some(12),
-                    },
-                ],
-            }),
-            None,
-        );
-
-        assert_eq!(
-            suggestions.first().map(|item| item.command.clone()),
-            Some("cd logs/".to_string())
-        );
-        assert!(
-            suggestions
-                .iter()
-                .all(|item| item.source == AutocompleteSource::Path)
-        );
-    }
-
-    #[test]
-    fn path_autocomplete_uses_startup_and_recent_paths_without_sftp_context() {
-        let suggestions = collect_autocomplete_candidates(
-            "cd /sr",
-            &["tail -f /srv/app/log/app.log".to_string()],
-            &[],
-            "ssh:prod@example:22",
-            &[],
-            Some(&PathSuggestionContext {
-                current_path: Some("/srv/app".to_string()),
-                startup_directory: Some("/srv/app/current".to_string()),
-                entries: Vec::new(),
-            }),
-            None,
-        );
-
-        assert!(
-            suggestions
-                .iter()
-                .any(|item| item.command == "cd /srv/app/current/")
-        );
-        assert!(
-            suggestions
-                .iter()
-                .any(|item| item.command == "cd /srv/app/")
-        );
-    }
-
-    #[test]
-    fn argument_autocomplete_suggests_command_templates_for_known_families() {
-        let suggestions = collect_autocomplete_candidates(
-            "git ch",
-            &[],
-            &[],
-            "ssh:prod@example:22",
-            &[],
-            None,
-            None,
-        );
-
-        assert!(
-            suggestions
-                .iter()
-                .any(|item| item.command == "git checkout main"
-                    && item.source == AutocompleteSource::Argument)
-        );
-        assert!(
-            suggestions
-                .iter()
-                .all(|item| item.source == AutocompleteSource::Argument)
-        );
-    }
-
-    #[test]
     fn command_palette_uses_builtin_metadata_for_argument_templates() {
         let suggestions = collect_command_palette_candidates(
             "docker comp",
@@ -16138,35 +15866,6 @@ mod tests {
         assert!(suggestions.iter().any(|item| {
             item.command == "docker compose up -d"
                 && item.detail == "Start compose services in the background"
-        }));
-    }
-
-    #[test]
-    fn context_autocomplete_uses_recent_git_output() {
-        let suggestions = collect_autocomplete_candidates(
-            "git checkout ma",
-            &[],
-            &[],
-            "ssh:prod@example:22",
-            &[],
-            None,
-            Some(&OutputSuggestionContext {
-                current_path: Some("/srv/app".to_string()),
-                recent_lines: vec![
-                    "On branch main".to_string(),
-                    "  release/2026".to_string(),
-                    "  feature/auth".to_string(),
-                ],
-            }),
-        );
-
-        assert!(suggestions.iter().any(|item| {
-            item.command == "git checkout main"
-                && item.source == AutocompleteSource::Context
-                && item
-                    .scope_label
-                    .as_deref()
-                    .is_some_and(|detail| detail.contains("Git branch"))
         }));
     }
 
@@ -16193,31 +15892,6 @@ mod tests {
                 && item.source == AutocompleteSource::Context
                 && item.detail.contains("Kubernetes pod")
         }));
-    }
-
-    #[test]
-    fn context_autocomplete_prefers_targets_matching_current_directory() {
-        let suggestions = collect_autocomplete_candidates(
-            "kubectl logs ",
-            &[],
-            &[],
-            "ssh:prod@example:22",
-            &[],
-            None,
-            Some(&OutputSuggestionContext {
-                current_path: Some("/srv/services/api".to_string()),
-                recent_lines: vec![
-                    "NAME READY STATUS RESTARTS AGE".to_string(),
-                    "worker-5cb88df4f7-cvt9k 1/1 Running 0 4m".to_string(),
-                    "api-7bcdf9d4d8-ptx2m 1/1 Running 0 4m".to_string(),
-                ],
-            }),
-        );
-
-        assert_eq!(
-            suggestions.first().map(|item| item.command.as_str()),
-            Some("kubectl logs api-7bcdf9d4d8-ptx2m")
-        );
     }
 
     #[test]
@@ -25699,11 +25373,6 @@ sleep 1
                         cx,
                     );
                     assert!(
-                        app.workspace_autocomplete_candidates()
-                            .iter()
-                            .all(|candidate| candidate.source != AutocompleteSource::Snippet)
-                    );
-                    assert!(
                         app.command_palette_candidates(cx)
                             .iter()
                             .all(|candidate| candidate.source != AutocompleteSource::Snippet)
@@ -26577,12 +26246,10 @@ sleep 1
             .expect("window update should succeed");
     }
 
-    /// Typing offers suggestions, Up and Down choose one, and Enter puts it on the line in place
-    /// of what was typed. Enter with nothing chosen runs the line, as it always has.
+    /// Nothing stands between the tab bar and the terminal while a line is typed: Up, Down,
+    /// Escape and Enter go to the program, and Enter runs what was typed.
     #[gpui::test]
-    fn e2e_typed_input_offers_suggestions_and_enter_accepts_the_chosen_one(
-        cx: &mut TestAppContext,
-    ) {
+    fn e2e_typed_input_reaches_the_program_without_a_suggestion_bar(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let request = ConnectRequest::local_shell_with_config(
@@ -26616,53 +26283,36 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    // Nothing is suggested for a line nobody has typed into, so Enter runs it.
-                    assert!(app.workspace_autocomplete_candidates().is_empty());
-
                     for keystroke in ["g->g", "i->i", "t->t"] {
                         assert!(app.handle_terminal_key(pane_id, &key(keystroke), window, cx));
                     }
-                    let pane = app.pane(pane_id).expect("the pane exists");
-                    assert_eq!(pane.current_input, "git");
-                    assert!(pane.selected_autocomplete_index.is_none());
-                    let candidates = app.workspace_autocomplete_candidates();
-                    assert!(!candidates.is_empty(), "the typed line suggested nothing");
-
-                    // Down chooses one, and Enter puts it on the line instead of running it.
-                    assert!(app.handle_terminal_key(pane_id, &key("down"), window, cx));
-                    let chosen = app
-                        .pane(pane_id)
-                        .expect("the pane exists")
-                        .selected_autocomplete_index
-                        .expect("Down chooses a suggestion");
-                    let expected = candidates[chosen].command.clone();
-                    assert!(app.handle_terminal_key(pane_id, &key("enter"), window, cx));
-                    let pane = app.pane(pane_id).expect("the pane exists");
-                    assert_eq!(pane.current_input, expected);
-                    assert!(pane.selected_autocomplete_index.is_none());
+                    assert_eq!(
+                        app.pane(pane_id).expect("the pane exists").current_input,
+                        "git"
+                    );
                 })
             })
             .expect("window update should succeed");
 
-        // What the pane was sent: the typed line rubbed out, then the whole command.
-        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
-            app.pane(pane_id).and_then(|pane| {
-                let typed = pane.current_input.clone();
-                pane.terminal
-                    .all_rows_text()
-                    .iter()
-                    .any(|row| row.contains(typed.as_str()))
-                    .then_some(())
-            })
-        });
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        assert!(
+            visual.debug_bounds("terminal-autocomplete").is_none(),
+            "a typed line draws no suggestion bar"
+        );
 
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    // With nothing chosen, Escape puts the suggestions away and Enter runs the
-                    // line rather than accepting anything.
-                    assert!(app.handle_terminal_key(pane_id, &key("escape"), window, cx));
-                    assert!(app.workspace_autocomplete_candidates().is_empty());
+                    // Each of these is sent to the program, which owns the line.
+                    for keystroke in ["down", "up", "escape"] {
+                        assert!(app.handle_terminal_key(pane_id, &key(keystroke), window, cx));
+                    }
+                    // Ctrl-U clears the shell's line, so what follows is a fresh command.
+                    assert!(app.handle_terminal_key(pane_id, &key("ctrl-u"), window, cx));
+                    for keystroke in ["p->p", "w->w", "d->d"] {
+                        assert!(app.handle_terminal_key(pane_id, &key(keystroke), window, cx));
+                    }
                     assert!(app.handle_terminal_key(pane_id, &key("enter"), window, cx));
                     assert_eq!(
                         app.pane(pane_id).expect("the pane exists").current_input,
@@ -26671,6 +26321,13 @@ sleep 1
                 })
             })
             .expect("window update should succeed");
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.saved
+                .command_history
+                .iter()
+                .any(|command| command == "pwd")
+                .then_some(())
+        });
     }
     #[gpui::test]
     fn e2e_keyboard_conformance_terminal_shortcuts_preserve_input_and_restore_focus(
@@ -31683,10 +31340,6 @@ sleep 1
         ] {
             press(key, cx);
         }
-        // Navigating the TUI must never open the shell autocomplete UI.
-        app.read_with(cx, |app, _| {
-            assert!(app.workspace_autocomplete_candidates().is_empty())
-        });
         window
             .update(cx, |_, _, cx| {
                 app.update(cx, |app, cx| {

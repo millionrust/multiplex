@@ -3128,14 +3128,6 @@ impl MultiplexApp {
                             "Shift+PageDown",
                             library_copy(MessageId::SettingsShortcutScrollForward),
                         ),
-                        (
-                            "Up / Down",
-                            library_copy(MessageId::SettingsShortcutAutocompleteMove),
-                        ),
-                        (
-                            "Enter",
-                            library_copy(MessageId::SettingsShortcutAutocompleteAccept),
-                        ),
                     ],
                 )),
         );

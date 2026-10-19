@@ -366,26 +366,6 @@ static_message!(
 static_message!(overlay_paste_action, OverlayPasteActionArgs);
 static_message!(palette_this_target, PaletteThisTargetArgs);
 static_message!(palette_recent_command, PaletteRecentCommandArgs);
-static_message!(
-    #[cfg_attr(not(test), allow(dead_code))]
-    palette_startup_path,
-    PaletteStartupPathArgs
-);
-static_message!(
-    #[cfg_attr(not(test), allow(dead_code))]
-    palette_current_directory,
-    PaletteCurrentDirectoryArgs
-);
-static_message!(
-    #[cfg_attr(not(test), allow(dead_code))]
-    palette_parent_directory,
-    PaletteParentDirectoryArgs
-);
-static_message!(
-    #[cfg_attr(not(test), allow(dead_code))]
-    palette_recent_path,
-    PaletteRecentPathArgs
-);
 static_message!(palette_git_branch, PaletteGitBranchArgs);
 static_message!(palette_docker_target, PaletteDockerTargetArgs);
 static_message!(palette_kubernetes_pod, PaletteKubernetesPodArgs);
@@ -445,10 +425,6 @@ pub fn palette_group_snippet_detail(
     ))
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn palette_files_scope(path: impl Into<String>) -> String {
-    text(&PaletteFilesScopeArgs::new(UserData::new(path)))
-}
 static_message!(cli_settings_description, CliSettingsDescriptionArgs);
 static_message!(cli_settings_state_available, CliSettingsStateAvailableArgs);
 static_message!(
@@ -2808,30 +2784,6 @@ pub fn workspace_duplicating_new_tab_status(endpoint: impl Into<String>) -> Stri
     text(&WorkspaceDuplicatingNewTabStatusArgs::new(UserData::new(
         endpoint,
     )))
-}
-
-#[allow(dead_code)]
-pub fn autocomplete_applied_status(source: crate::ui::autocomplete::AutocompleteSource) -> String {
-    static_message(match source {
-        crate::ui::autocomplete::AutocompleteSource::Path => {
-            MessageId::AutocompleteAppliedPathStatus
-        }
-        crate::ui::autocomplete::AutocompleteSource::Context => {
-            MessageId::AutocompleteAppliedContextStatus
-        }
-        crate::ui::autocomplete::AutocompleteSource::Argument => {
-            MessageId::AutocompleteAppliedArgumentStatus
-        }
-        crate::ui::autocomplete::AutocompleteSource::History => {
-            MessageId::AutocompleteAppliedHistoryStatus
-        }
-        crate::ui::autocomplete::AutocompleteSource::Snippet => {
-            MessageId::AutocompleteAppliedSnippetStatus
-        }
-        crate::ui::autocomplete::AutocompleteSource::Builtin => {
-            MessageId::AutocompleteAppliedBuiltinStatus
-        }
-    })
 }
 
 pub fn terminal_multiline_paste_confirm_status(count: usize) -> String {
