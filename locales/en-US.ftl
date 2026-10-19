@@ -2395,7 +2395,6 @@ attention-pill-count = { $count ->
    *[other] { $count } need you
     }
 attention-pill-jump = { $value1 } · jump →
-attention-pill-open-canvas = { $value1 } · open on canvas →
 palette-split-right = Split Right
 palette-split-down = Split Down
 palette-zoom-pane = Zoom or Restore Pane

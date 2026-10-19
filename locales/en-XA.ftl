@@ -467,7 +467,6 @@ attention-pill-count = { $count ->
     [zero] ⟦Ñøţĥîñĝ ñééðš ýøû~~~~~⟧
     }
 attention-pill-jump = { $value1 }⟦ · ĵûɱþ →~~⟧
-attention-pill-open-canvas = { $value1 }⟦ · øþéñ øñ çåñṽåš →~~~~~~⟧
 autocomplete-applied-argument-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ åŕĝûɱéñţ.~~~~~~~~~~~~⟧
 autocomplete-applied-builtin-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ ƀûîļţîñ.~~~~~~~~~~~~⟧
 autocomplete-applied-context-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ çøñţéẋţ.~~~~~~~~~~~~⟧

@@ -25157,7 +25157,9 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_attention_pill_names_a_failed_pane_and_jumps_to_it(cx: &mut TestAppContext) {
+    fn e2e_attention_pill_shows_only_on_the_canvas_and_jumps_to_the_failed_pane(
+        cx: &mut TestAppContext,
+    ) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let request = ConnectRequest::local_shell_with_config(
@@ -25201,14 +25203,28 @@ sleep 1
                     assert!(app.workspace_attention(workspace).is_empty());
                     app.pane_mut(first).unwrap().status = "Error".to_string();
                     let workspace = app.workspace(workspace_id).unwrap();
+                    assert_eq!(app.workspace_attention(workspace).len(), 1);
+                    // Split draws no pill: the pane says what went wrong itself.
+                    assert!(app.render_attention_pill(cx).is_none());
+
+                    app.activate_pane(second, window, cx);
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    assert!(app.render_attention_pill(cx).is_some());
+                    let workspace = app.workspace(workspace_id).unwrap();
                     let items = app.workspace_attention(workspace);
                     assert_eq!(items.len(), 1);
+                    let node_id = workspace
+                        .canvas
+                        .nodes
+                        .iter()
+                        .find(|node| node.kind.pane_id() == Some(first))
+                        .map(|node| node.id.clone())
+                        .expect("the failed pane has a node on the canvas");
                     app.jump_to_attention(items[0].clone(), window, cx);
-                    assert_eq!(app.workspace(workspace_id).unwrap().active_pane_id, first);
-                    assert_eq!(
-                        app.workspace(workspace_id).unwrap().layout_mode,
-                        WorkspaceLayoutMode::Split
-                    );
+                    let workspace = app.workspace(workspace_id).unwrap();
+                    assert_eq!(workspace.active_pane_id, first);
+                    assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Canvas);
+                    assert_eq!(workspace.canvas.selected_node_id, Some(node_id));
                 })
             })
             .expect("window update should succeed");

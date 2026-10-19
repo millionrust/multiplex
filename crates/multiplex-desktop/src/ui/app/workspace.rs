@@ -1721,8 +1721,6 @@ impl MultiplexApp {
         }
         if let Some(pill) = self.render_zoom_pill(workspace_id, cx) {
             container = container.child(pill);
-        } else if let Some(pill) = self.render_attention_pill(cx) {
-            container = container.child(pill);
         }
         if self.split_layout_bar_revealed {
             container = container.child(self.render_split_layout_bar(cx));

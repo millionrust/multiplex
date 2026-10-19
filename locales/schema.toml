@@ -10998,16 +10998,6 @@ sensitivity = "sensitive"
 bidi = "isolate"
 
 [[messages]]
-id = "attention-pill-open-canvas"
-context = "Attention pill text in Split naming the first waiting session when it is only on the canvas."
-description = "Open the waiting session on the canvas"
-[[messages.args]]
-name = "value1"
-type = "UserData"
-sensitivity = "sensitive"
-bidi = "isolate"
-
-[[messages]]
 id = "palette-split-right"
 context = "Command palette entry that splits the active pane with a new one to its right."
 description = "Split right"

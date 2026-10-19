@@ -467,7 +467,6 @@ attention-pill-count = { $count ->
     [zero] ⁧uoy sdeen gnihtoN⁩
     }
 attention-pill-jump = { $value1 }⁧→ pmuj · ⁩
-attention-pill-open-canvas = { $value1 }⁧→ savnac no nepo · ⁩
 autocomplete-applied-argument-status = ⁧.tnemugra morf deilppa etelpmocotuA⁩
 autocomplete-applied-builtin-status = ⁧.nitliub morf deilppa etelpmocotuA⁩
 autocomplete-applied-context-status = ⁧.txetnoc morf deilppa etelpmocotuA⁩

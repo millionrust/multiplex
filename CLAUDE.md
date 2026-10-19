@@ -96,7 +96,7 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   program; below 55% nodes become readable cards. Scrolling pans except over the focused node.
   Double-click empty canvas to create a node there; Tidy arranges by group; links can be
   dragged out of a node's port, carry labels that remove them, and flow while an agent works.
-  A pill in Split and Canvas names sessions waiting for the user and jumps to them.
+  A pill on the canvas names sessions waiting for the user and flies to them; Split shows none.
   Switching Split and Canvas, split changes, presets, zoom, Tidy, and camera moves animate
   (`ui/app/motion.rs`), and a terminal is resized once its pane has settled.
 - Remote access (Devices, or Settings → Remote Devices) is On/Off: the Controller listener

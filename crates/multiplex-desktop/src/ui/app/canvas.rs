@@ -9686,67 +9686,31 @@ impl MultiplexApp {
         items
     }
 
-    /// Go to what the attention pill names: its split pane when it has one, and
-    /// otherwise its node on the canvas, switching to the canvas if need be.
+    /// Go to the node the attention pill names and fly the camera to it.
     pub(super) fn jump_to_attention(
         &mut self,
         item: AttentionItem,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(workspace) = self.active_workspace() else {
-            return;
-        };
-        let workspace_id = workspace.id;
-        let in_split = workspace.layout_mode == WorkspaceLayoutMode::Split
-            && item.pane_id.is_some_and(|pane_id| {
-                workspace
-                    .layout
-                    .as_ref()
-                    .is_some_and(|layout| layout.contains(pane_id))
-            });
-        if in_split && let Some(pane_id) = item.pane_id {
-            if self.zoomed_pane().is_some_and(|zoomed| zoomed != pane_id) {
-                self.begin_layout_transition(MotionSpeed::Quick);
-                self.zoomed_panes.insert(workspace_id, pane_id);
-                self.sync_terminal_layout(window, cx);
-            }
-            self.activate_pane(pane_id, window, cx);
-            if let Some(pane) = self.pane(pane_id) {
-                pane.terminal_focus.focus(window);
-            }
-            cx.notify();
-            return;
-        }
         let Some(node_id) = item.node_id else {
             return;
         };
-        if workspace.layout_mode == WorkspaceLayoutMode::Split {
-            self.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
-        }
         self.focus_canvas_activity_node(node_id.clone(), window, cx);
         self.fly_to_canvas_node(&node_id, window, cx);
     }
 
-    /// "N need you", naming the first, in Split or on the canvas.
+    /// "N need you", naming the first, at the top left of the canvas. Split draws nothing:
+    /// each pane there already shows its own state in its header and the status bar.
     pub(super) fn render_attention_pill(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let workspace = self.active_workspace()?;
+        if workspace.layout_mode != WorkspaceLayoutMode::Canvas {
+            return None;
+        }
         let items = self.workspace_attention(workspace);
         let first = items.first()?.clone();
-        let on_canvas = workspace.layout_mode == WorkspaceLayoutMode::Canvas;
-        let only_on_canvas = !on_canvas
-            && !first.pane_id.is_some_and(|pane_id| {
-                workspace
-                    .layout
-                    .as_ref()
-                    .is_some_and(|layout| layout.contains(pane_id))
-            });
         let detail = localization::dynamic_user_data_message(
-            if only_on_canvas {
-                multiplex_ui_contract::MessageId::AttentionPillOpenCanvas
-            } else {
-                multiplex_ui_contract::MessageId::AttentionPillJump
-            },
+            multiplex_ui_contract::MessageId::AttentionPillJump,
             vec![first.title.clone()],
         );
         Some(
@@ -9755,14 +9719,8 @@ impl MultiplexApp {
                 .debug_selector(|| "attention-pill".to_string())
                 .absolute()
                 .left(px(theme::SPACE_4))
-                .map(|pill| {
-                    // On the canvas the toolbar and minimap own the corners below.
-                    if on_canvas {
-                        pill.top(px(theme::SPACE_4))
-                    } else {
-                        pill.bottom(px(theme::SPACE_4))
-                    }
-                })
+                // The toolbar and minimap own the corners below.
+                .top(px(theme::SPACE_4))
                 .h(px(ATTENTION_PILL_HEIGHT))
                 .pl(px(theme::SPACE_3))
                 .pr(px(theme::SPACE_4))
