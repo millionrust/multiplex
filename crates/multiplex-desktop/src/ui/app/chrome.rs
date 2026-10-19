@@ -1243,7 +1243,9 @@ impl MultiplexApp {
         v_flex()
             .id("library-sidebar")
             .debug_selector(|| "library-sidebar".to_string())
-            .w(px(theme::HOST_SIDEBAR_WIDTH))
+            .w(px(self.sidebar_width(
+                super::sidebar_resize::ResizableSidebar::Library,
+            )))
             .flex_none()
             .h_full()
             .min_h_0()

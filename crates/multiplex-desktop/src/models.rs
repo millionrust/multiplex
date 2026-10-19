@@ -708,6 +708,12 @@ pub struct SavedSnippet {
 pub struct AppSettings {
     #[serde(default)]
     pub workspace_tabs_on_left: bool,
+    /// The width the main navigation sidebar was dragged to, or the design width when unset.
+    #[serde(default)]
+    pub library_sidebar_width: Option<f32>,
+    /// The width the Settings section list was dragged to, or the design width when unset.
+    #[serde(default)]
+    pub settings_nav_width: Option<f32>,
     #[serde(default)]
     pub theme_preset: ThemePreset,
     #[serde(default = "default_terminal_font_size")]
@@ -823,6 +829,8 @@ impl Default for AppSettings {
             terminal_font_size: default_terminal_font_size(),
             onboarding_dismissed: false,
             workspace_tabs_on_left: false,
+            library_sidebar_width: None,
+            settings_nav_width: None,
             restore_workspaces_on_launch: default_restore_workspaces_on_launch(),
             session_log_limit: default_session_log_limit(),
             default_local_shell: default_local_shell_config(),

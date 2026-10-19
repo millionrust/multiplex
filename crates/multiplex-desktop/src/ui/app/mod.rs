@@ -39,6 +39,7 @@ mod session_resume;
 mod session_sidebar;
 mod settings_surface;
 mod sftp;
+mod sidebar_resize;
 mod split_tree;
 mod terminal_grid;
 mod terminal_mcp;
@@ -1261,6 +1262,7 @@ pub struct MultiplexApp {
     /// A pane header was pressed, so a drag now in progress is moving a pane.
     dragging_pane: bool,
     divider_drag: Option<DividerDrag>,
+    sidebar_resize: Option<sidebar_resize::SidebarResizeDrag>,
     /// Panes gliding from their previous places to a new layout.
     layout_transition: Option<LayoutTransition>,
     /// Where each pane of the active workspace was drawn on the last frame, in
@@ -1735,6 +1737,7 @@ impl MultiplexApp {
             split_drop_preview_from: None,
             dragging_pane: false,
             divider_drag: None,
+            sidebar_resize: None,
             layout_transition: None,
             drawn_layout: std::cell::RefCell::new(None),
             canvas_camera: None,
@@ -13177,7 +13180,9 @@ impl MultiplexApp {
             .min_h_0()
             .bg(theme::library_bg())
             .when(sidebar_visible, |this| {
-                this.child(self.render_library_sidebar(cx))
+                this.child(self.render_library_sidebar(cx)).child(
+                    self.render_sidebar_divider(sidebar_resize::ResizableSidebar::Library, cx),
+                )
             })
             .child(
                 v_flex()
@@ -13426,6 +13431,9 @@ impl Render for MultiplexApp {
                 if this.divider_drag.is_some() {
                     this.handle_divider_drag_move(event.position, !event.modifiers.alt, cx);
                 }
+                if this.sidebar_resizing() {
+                    this.handle_sidebar_resize_move(event.position, cx);
+                }
             }))
             .on_mouse_up(
                 MouseButton::Left,
@@ -13436,6 +13444,7 @@ impl Render for MultiplexApp {
                     if this.divider_drag.is_some() {
                         this.handle_divider_drag_end(window, cx);
                     }
+                    this.finish_sidebar_resize(cx);
                     this.split_drop_full = false;
                     this.split_drop_preview_from = None;
                     this.dragging_pane = false;
@@ -23306,6 +23315,94 @@ sleep 1
             };
             assert_eq!(saved_ratio, 0.5);
         });
+    }
+
+    /// The navigation sidebar and the Settings section list each have a divider: dragging it
+    /// widens what is beside it, the width is kept between launches, it stops at its bounds,
+    /// and a double-click puts the design width back.
+    #[gpui::test]
+    fn e2e_sidebar_dividers_resize_persist_clamp_and_reset(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Settings, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let width_of = |cx: &mut TestAppContext, selector: &'static str| {
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.run_until_parked();
+            f32::from(
+                visual
+                    .debug_bounds(selector)
+                    .unwrap_or_else(|| panic!("missing debug bounds for {selector}"))
+                    .size
+                    .width,
+            )
+        };
+        let drag = |cx: &mut TestAppContext, selector: &'static str, distance: f32| {
+            let start = selector_click_center(window, cx, selector);
+            // Kept inside the window, where the pointer's moves are delivered.
+            let end = point(px((f32::from(start.x) + distance).max(1.0)), start.y);
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.simulate_mouse_down(start, MouseButton::Left, gpui::Modifiers::none());
+            visual.simulate_mouse_move(end, Some(MouseButton::Left), gpui::Modifiers::none());
+            visual.simulate_mouse_up(end, MouseButton::Left, gpui::Modifiers::none());
+            visual.run_until_parked();
+        };
+        let library = crate::ui::theme::HOST_SIDEBAR_WIDTH;
+        let settings = crate::ui::theme::SETTINGS_NAV_WIDTH;
+        let step = crate::ui::theme::SPACE_9;
+        assert_eq!(width_of(cx, "library-sidebar"), library);
+        assert_eq!(width_of(cx, "settings-nav"), settings);
+
+        drag(cx, "library-sidebar-divider", step);
+        assert_eq!(width_of(cx, "library-sidebar"), library + step);
+        drag(cx, "settings-nav-divider", step);
+        assert_eq!(width_of(cx, "settings-nav"), settings + step);
+        // Each divider moves only its own column.
+        assert_eq!(width_of(cx, "library-sidebar"), library + step);
+
+        let stored = load_saved_state().expect("saved state should load");
+        assert_eq!(stored.settings.library_sidebar_width, Some(library + step));
+        assert_eq!(stored.settings.settings_nav_width, Some(settings + step));
+
+        // Neither can be dragged past its bounds.
+        drag(cx, "settings-nav-divider", -settings * 4.0);
+        assert_eq!(
+            width_of(cx, "settings-nav"),
+            crate::ui::theme::SETTINGS_NAV_MIN_WIDTH
+        );
+        drag(cx, "library-sidebar-divider", library);
+        assert_eq!(
+            width_of(cx, "library-sidebar"),
+            crate::ui::theme::LIBRARY_SIDEBAR_MAX_WIDTH
+        );
+
+        let divider = selector_click_center(window, cx, "library-sidebar-divider");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_event(gpui::MouseDownEvent {
+            button: MouseButton::Left,
+            position: divider,
+            modifiers: gpui::Modifiers::none(),
+            click_count: 2,
+            first_mouse: false,
+        });
+        visual.simulate_mouse_up(divider, MouseButton::Left, gpui::Modifiers::none());
+        visual.run_until_parked();
+        assert_eq!(width_of(cx, "library-sidebar"), library);
+        assert_eq!(
+            load_saved_state()
+                .expect("saved state should load")
+                .settings
+                .library_sidebar_width,
+            None
+        );
     }
 
     #[gpui::test]

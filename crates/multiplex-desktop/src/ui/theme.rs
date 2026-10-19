@@ -572,6 +572,13 @@ pub const SETTINGS_NAV_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
 pub const SETTINGS_CONTENT_MAX_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
     .layout_settings_content_max_width()
     .0;
+/// How far the navigation sidebar and the Settings section list can be dragged either way.
+pub const LIBRARY_SIDEBAR_MIN_WIDTH: f32 = HOST_SIDEBAR_WIDTH - SPACE_9;
+pub const LIBRARY_SIDEBAR_MAX_WIDTH: f32 = HOST_SIDEBAR_WIDTH + HOST_SIDEBAR_WIDTH;
+pub const SETTINGS_NAV_MIN_WIDTH: f32 = SETTINGS_NAV_WIDTH - SPACE_9;
+pub const SETTINGS_NAV_MAX_WIDTH: f32 = SETTINGS_NAV_WIDTH + SETTINGS_NAV_WIDTH;
+/// The grab area of a sidebar divider, wider than the hairline it draws.
+pub const SIDEBAR_DIVIDER_HIT_WIDTH: f32 = SPACE_2 + SPACE_2;
 pub const STATUS_BAR_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
     .layout_status_height()
     .0;

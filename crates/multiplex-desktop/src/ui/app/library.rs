@@ -3140,15 +3140,15 @@ impl MultiplexApp {
         let nav = v_flex()
             .id("settings-nav")
             .debug_selector(|| "settings-nav".to_string())
-            .w(px(theme::SETTINGS_NAV_WIDTH))
+            .w(px(self.sidebar_width(
+                super::sidebar_resize::ResizableSidebar::SettingsNav,
+            )))
             .flex_none()
             .h_full()
             .min_h_0()
             .gap(px(theme::SPACE_4))
             .px(px(theme::SPACE_3))
             .py(px(theme::SPACE_5))
-            .border_r_1()
-            .border_color(theme::soft_border())
             .overflow_y_scroll()
             .child(
                 v_flex()
@@ -3227,6 +3227,12 @@ impl MultiplexApp {
             .items_start()
             .bg(theme::library_bg())
             .child(nav)
+            .child(
+                self.render_sidebar_divider(
+                    super::sidebar_resize::ResizableSidebar::SettingsNav,
+                    cx,
+                ),
+            )
             .child(
                 v_flex()
                     .id("settings-scroll-viewport")

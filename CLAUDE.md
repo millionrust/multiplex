@@ -426,6 +426,9 @@ bounded rotation and retention. See [docs/diagnostics.md](docs/diagnostics.md).
 - Dropping a tab onto a terminal pane splits that pane.
 - Double-clicking the empty chrome area opens a new local terminal.
 - Active workspace search is local to the active pane; search and unread badges are per workspace tab.
+- The navigation sidebar and the Settings section list each end in a divider
+  (`ui/app/sidebar_resize.rs`): drag it to resize the column, between bounds set in `theme.rs`;
+  double-click puts the design width back. The widths are saved in desktop settings.
 - Nothing is drawn between the tab bar and a terminal while a line is typed: there is no
   suggestion bar, and Up, Down, Enter and Escape always go to the program. Typed commands are
   still recorded for the command palette's recent commands.
