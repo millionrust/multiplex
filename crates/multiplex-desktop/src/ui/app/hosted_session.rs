@@ -617,7 +617,7 @@ async fn attach_loop(
                     // another client holds it is dropped and the next poll shows it read-only.
                     let writable = lease.take(&mut client, &cancel).await
                         .map_err(|error| format!("Durable Host writer lease failed: {error}"))?;
-                    if writable && !client.input(CommandId::new(), bytes, &cancel).await
+                    if writable && !client.input_all(&bytes, &cancel).await
                         .map_err(|error| format!("Durable Host input failed: {error}"))?
                     {
                         lease.held = false;
@@ -1069,6 +1069,89 @@ mod tests {
                 .to_string_lossy()
                 .contains('-')
         );
+    }
+
+    /// A paste larger than one Host request reaches the program whole, in order, rather than
+    /// being refused and ending the session.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_paste_larger_than_one_request_reaches_the_program_whole() {
+        let fixture = tempfile::Builder::new()
+            .prefix("multiplex-paste-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let root = fs::canonicalize(fixture.path()).unwrap();
+        let session_id = HostedSessionId::new();
+        let session_dir = root.join("session");
+        fs::create_dir_all(&session_dir).unwrap();
+        let runtime_root = root.join("runtime");
+        let received = root.join("received");
+        let ready = root.join("ready");
+        let paste: Vec<u8> = (0..multiplex_host_protocol::MAX_OUTPUT_BYTES * 3 + 123)
+            .map(|index| b'a' + (index % 26) as u8)
+            .collect();
+        let host = multiplex_session_host::start(LaunchDescriptor {
+            format_version: LaunchDescriptor::FORMAT_VERSION,
+            session_id,
+            host_instance_id: HostInstanceId::new(),
+            expected_occupant_generation: None,
+            runtime_root: runtime_root.clone(),
+            session_dir,
+            executable: fs::canonicalize("/bin/sh").unwrap(),
+            runtime_detection: None,
+            arguments: vec![
+                "-c".into(),
+                format!(
+                    "stty raw -echo; : > '{}'; head -c {} > '{}'; sleep 30",
+                    ready.display(),
+                    paste.len(),
+                    received.display()
+                ),
+            ],
+            environment: BTreeMap::new(),
+            cwd: Some(root),
+            columns: 80,
+            rows: 24,
+            journal_limits: JournalLimits::default(),
+            stop_deadlines: StopDeadlines::default(),
+        })
+        .await
+        .unwrap();
+        let cancel = CancellationToken::new();
+        let mut client = HostClient::connect(
+            LocalEndpoint::new(&runtime_root, session_id),
+            ConnectOptions::local(session_id, [23; 32]),
+            &cancel,
+        )
+        .await
+        .unwrap();
+        assert!(
+            client
+                .set_writer_lease(CommandId::new(), true, &cancel)
+                .await
+                .unwrap()
+        );
+        // `stty raw` has to be in place before the first byte, or the line discipline would
+        // hold the paste to a line's length.
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !ready.exists() {
+            assert!(Instant::now() < deadline, "the program never started");
+            tokio::time::sleep(LIVE_POLL_INTERVAL).await;
+        }
+        assert!(client.input_all(&paste, &cancel).await.unwrap());
+        loop {
+            if fs::read(&received).is_ok_and(|bytes| bytes.len() == paste.len()) {
+                break;
+            }
+            assert!(Instant::now() < deadline, "the paste never arrived whole");
+            tokio::time::sleep(LIVE_POLL_INTERVAL).await;
+        }
+        assert_eq!(fs::read(&received).unwrap(), paste);
+        client
+            .stop(CommandId::new(), wire::StopMode::Force, &cancel)
+            .await
+            .unwrap();
+        host.wait().await.unwrap();
     }
 
     /// The app viewer and the terminal window a `multiplex-cli shell` runs in take turns: the

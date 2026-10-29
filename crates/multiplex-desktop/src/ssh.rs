@@ -747,7 +747,19 @@ async fn run_session(
 
     let (mut reader_half, write_half) = channel.split();
     let mut reader = reader_half.make_reader();
+    // Input is written by a task of its own. A paste larger than the channel's window waits for
+    // the remote shell to read it, and the shell only reads while its echo is being drained, so
+    // writing from this loop would stop the reads the write is waiting on.
+    let (input_tx, mut input_rx) = mpsc::unbounded_channel::<Vec<u8>>();
     let mut writer = write_half.make_writer();
+    let mut input_task = tokio::spawn(async move {
+        while let Some(data) = input_rx.recv().await {
+            writer.write_all(&data).await?;
+            writer.flush().await?;
+        }
+        Ok::<(), io::Error>(())
+    });
+    let _input_guard = AbortOnDrop(input_task.abort_handle());
     let mut buffer = vec![0_u8; 4096];
 
     eprintln!("[ssh][{session_id}] entering I/O loop");
@@ -756,11 +768,9 @@ async fn run_session(
             maybe_command = command_rx.recv() => {
                 match maybe_command {
                     Some(SessionCommand::Input(data)) => {
-                        writer
-                            .write_all(&data)
-                            .await
+                        input_tx
+                            .send(data)
                             .context("Unable to write to the SSH shell")?;
-                        let _ = writer.flush().await;
                     }
                     Some(SessionCommand::Resize(size)) => {
                         eprintln!("[ssh][{session_id}] resize to {}x{}", size.cols, size.rows);
@@ -785,10 +795,17 @@ async fn run_session(
                     }
                     Some(SessionCommand::StopDurable | SessionCommand::Disconnect) | None => {
                         eprintln!("[ssh][{session_id}] disconnect command received");
-                        let _ = writer.shutdown().await;
+                        input_task.abort();
+                        let _ = write_half.make_writer().shutdown().await;
                         break;
                     }
                 }
+            }
+            written = &mut input_task => {
+                written
+                    .context("The SSH input writer stopped")?
+                    .context("Unable to write to the SSH shell")?;
+                break;
             }
             read = reader.read(&mut buffer) => {
                 let bytes_read = read.context("Unable to read from the SSH shell")?;
@@ -812,6 +829,15 @@ async fn run_session(
     });
 
     Ok(())
+}
+
+/// Ends a task when the session that started it ends, however it ends.
+struct AbortOnDrop(tokio::task::AbortHandle);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
 }
 
 #[derive(Default)]
@@ -1689,6 +1715,103 @@ mod tests {
         assert!(!waits(&wake), "a drained wake does not fire again");
     }
     use tokio_util::sync::CancellationToken;
+
+    /// A paste much larger than the channel's window reaches the remote program whole while the
+    /// shell echoes every byte of it back. Writing it from the loop that reads the echo would
+    /// stop reading until the write finished, and the write waits on the echo being read.
+    #[cfg(unix)]
+    #[test]
+    fn a_large_paste_over_ssh_reaches_the_program_while_its_echo_streams_back() {
+        let _isolation = TestIsolation::acquire();
+        if !crate::test_support::LocalSshServer::available() {
+            eprintln!("skipping: no sshd on this machine");
+            return;
+        }
+        let server = crate::test_support::LocalSshServer::start().expect("sshd starts");
+        let directory = tempfile::tempdir().expect("temp dir");
+        let received = directory.path().join("received");
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let request = ConnectRequest {
+            session_id: 43,
+            title: "Local SSH".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: server.host().to_string(),
+            port: server.port,
+            username: server.username().to_string(),
+            auth: Some(AuthConfig::PrivateKey {
+                key_path: crate::test_support::fixture_private_key_path()
+                    .display()
+                    .to_string(),
+                passphrase: None,
+            }),
+            jump_host: None,
+            outbound_proxy: None,
+            startup_directory: None,
+            startup_command: None,
+            start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
+            terminal_scrollback_rows: 10_000,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+            environment: Vec::new(),
+        };
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx.into(), 0);
+        wait_for_connected(&request, &event_rx, "large paste");
+
+        let paste: Vec<u8> = (0..8 * 1024 * 1024)
+            .map(|index| b'a' + (index % 26) as u8)
+            .collect();
+        runtime
+            .command_tx
+            .send(SessionCommand::Input(
+                format!(
+                    "stty -icanon; echo ready-$((40 + 2)); head -c {} > '{}'; echo pasted-$((40 + 3))\n",
+                    paste.len(),
+                    received.display()
+                )
+                .into_bytes(),
+            ))
+            .expect("command sends");
+        let mut output = Vec::new();
+        let mut pasted = false;
+        let deadline = Instant::now() + Duration::from_secs(60);
+        while Instant::now() < deadline {
+            match event_rx.recv_timeout(Duration::from_millis(250)) {
+                Ok(SshEvent::Output { data, .. }) => {
+                    output.extend_from_slice(&data);
+                    let text = String::from_utf8_lossy(&output);
+                    if !pasted && text.contains("ready-42") {
+                        pasted = true;
+                        output.clear();
+                        runtime
+                            .command_tx
+                            .send(SessionCommand::Input(paste.clone()))
+                            .expect("paste sends");
+                    } else if pasted && text.contains("pasted-43") {
+                        break;
+                    }
+                    // Keep only the tail, where the marker will be.
+                    if output.len() > 4096 {
+                        output.drain(..output.len() - 64);
+                    }
+                }
+                Ok(SshEvent::Error { message, .. } | SshEvent::Disconnected { message, .. }) => {
+                    panic!("the session ended during the paste: {message}")
+                }
+                Ok(_) | Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => panic!("event channel closed"),
+            }
+        }
+        assert!(
+            String::from_utf8_lossy(&output).contains("pasted-43"),
+            "the paste never finished"
+        );
+        assert_eq!(std::fs::read(&received).expect("paste was written"), paste);
+        let _ = runtime.command_tx.send(SessionCommand::Disconnect);
+    }
 
     fn docker_ssh_request(server: &DockerSshServer) -> ConnectRequest {
         ConnectRequest {

@@ -435,6 +435,22 @@ impl HostClient {
         .await
     }
 
+    /// Writes `bytes` in as many requests as the negotiated limit needs, so a paste larger
+    /// than one request reaches the program whole instead of being refused. Stops at the first
+    /// request the Host does not apply, and returns whether every one was.
+    pub async fn input_all(
+        &mut self,
+        bytes: &[u8],
+        cancel: &CancellationToken,
+    ) -> Result<bool, ClientError> {
+        for chunk in bytes.chunks(self.limits.maximum_output_bytes.max(1)) {
+            if !self.input(CommandId::new(), chunk.to_vec(), cancel).await? {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     pub async fn resize(
         &mut self,
         command_id: CommandId,

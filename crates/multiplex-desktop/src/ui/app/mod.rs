@@ -76,10 +76,7 @@ use hosted_session::DurableSessionPaths;
 use key_lifecycle::{KeyLifecycleDialog, KeyLifecycleInputs};
 use motion::{LayoutTransition, MotionRect, MotionSpeed};
 use new_session::NewSessionState;
-use palette::{
-    CommandPaletteCandidate, OutputSuggestionContext, PaletteAction,
-    collect_command_palette_candidates,
-};
+use palette::{CommandPaletteCandidate, PaletteAction, collect_command_palette_candidates};
 use presets::PresetLibraryState;
 use remote_devices::RemoteDevicesState;
 use replication_settings::{ReplicationLifecycleState, ReplicationSettingsInputs};
@@ -165,7 +162,6 @@ use crate::storage::{
 };
 use crate::terminal::{TerminalSelectionSnapshot, TerminalSize, TerminalState};
 use crate::ui::accessibility::shell::ShellAccessibilityAdapter;
-use crate::ui::autocomplete::AutocompleteSource;
 use crate::ui::keys::{
     AppShortcut, MouseEventKind, TerminalShortcut, app_shortcut, dropped_paths_text,
     encode_mouse_report, encode_terminal_input, terminal_shortcut,
@@ -14036,15 +14032,15 @@ fn apply_group_defaults_to_draft(
 
 #[cfg(test)]
 mod tests {
+    use super::palette::OutputSuggestionContext;
     use super::{
-        AutocompleteSource, ConnectDialogMode, ConnectionDiagnosticRow, ConnectionDiagnosticStatus,
-        DropZone, HostsSort, HostsViewMode, KeyLifecycleDialog, KeychainTab,
+        ConnectDialogMode, ConnectionDiagnosticRow, ConnectionDiagnosticStatus, DropZone,
+        HostsSort, HostsViewMode, KeyLifecycleDialog, KeychainTab,
         MAX_COALESCED_TERMINAL_OUTPUT_BYTES, MAX_SPLIT_PANES, MultiplexApp, NavSection,
-        OutputSuggestionContext, SessionLibraryView, SplitNode, WorkspaceViewMode,
-        apply_group_defaults_to_draft, collect_command_palette_candidates,
-        drain_coalesced_ssh_events, dropped_paths_text, extract_snippet_prompt_names,
-        shell_command_requires_continuation, startup_bytes_for_request,
-        substitute_snippet_placeholders, substitute_snippet_prompts,
+        SessionLibraryView, SplitNode, WorkspaceViewMode, apply_group_defaults_to_draft,
+        collect_command_palette_candidates, drain_coalesced_ssh_events, dropped_paths_text,
+        extract_snippet_prompt_names, shell_command_requires_continuation,
+        startup_bytes_for_request, substitute_snippet_placeholders, substitute_snippet_prompts,
     };
     use crate::connection_diagnostics::{DiagnosticFailureKind, DiagnosticStage};
     use crate::credentials;
@@ -14066,6 +14062,7 @@ mod tests {
     use crate::test_support::{
         DockerSshServer, TEST_POLL_INTERVAL, TestIsolation, allocate_local_port, queue_dialog_path,
     };
+    use crate::ui::autocomplete::AutocompleteSource;
     use crate::ui::keys::TerminalCellPos;
     use crate::ui::localization;
     use crate::ui::render_terminal::SelectionRange;
