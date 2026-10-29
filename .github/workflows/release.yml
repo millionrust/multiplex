@@ -120,14 +120,25 @@ jobs:
           -p multiplex-mcp
           -p multiplex-relay-server
 
+      # The background install normally finished long ago. If it has not, or it failed, it is
+      # stopped and done here instead: in the v0.0.18 tag build it never wrote its status beside
+      # a single-unit LTO build, and waiting for it cost the whole Intel job.
       - name: Finish installing cargo-bundle (macOS)
         if: matrix.target.bundle == 'macos'
-        timeout-minutes: 15
+        timeout-minutes: 30
         run: |
-          until [ -f "$RUNNER_TEMP/cargo-bundle.status" ]; do sleep 5; done
-          cat "$RUNNER_TEMP/cargo-bundle.log"
-          test "$(cat "$RUNNER_TEMP/cargo-bundle.status")" = 0
-          test -x "$RUNNER_TEMP/cargo-bundle/bin/cargo-bundle"
+          root="$RUNNER_TEMP/cargo-bundle"
+          status="$RUNNER_TEMP/cargo-bundle.status"
+          for _ in $(seq 1 60); do [ -f "$status" ] && break; sleep 5; done
+          if [ -f "$RUNNER_TEMP/cargo-bundle.log" ]; then cat "$RUNNER_TEMP/cargo-bundle.log"; fi
+          if [ -f "$status" ] && [ "$(cat "$status")" = 0 ] && [ -x "$root/bin/cargo-bundle" ]; then
+            exit 0
+          fi
+          echo "::warning::the background cargo-bundle install did not finish; installing it now"
+          if pgrep -f "cargo install cargo-bundle" > /dev/null; then pkill -f "cargo install cargo-bundle"; fi
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_LTO=false \
+            "$CARGO_HOME/bin/cargo" install cargo-bundle --version 0.11.0 --locked --root "$root"
+          test -x "$root/bin/cargo-bundle"
 
       - name: Bundle macOS .app
         if: matrix.target.bundle == 'macos'
