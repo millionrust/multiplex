@@ -19,10 +19,11 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `ala
   each row. Group controls and group sections are absent. Clicking a terminal opens a live side
   drawer that pushes the page aside; its "Open as new tab" action promotes it into a workspace tab.
   Closing the drawer disconnects its temporary viewer and leaves the CLI session running.
-  Session actions and drawer controls use icons with tooltips. CLI terminals also offer transient
-  hover previews of recent output through read-only Host connections, a confirmed Close terminal
-  action for graceful shutdown, and an immediate Kill terminal action that force-stops the shell
-  and its owned processes without a graceful delay or confirmation. Kill is also available in the
+  Session actions and drawer controls use icons with tooltips. The row whose terminal the drawer
+  shows is highlighted. There are no All / Unread / Pinned filters. CLI terminals also offer
+  transient hover previews of recent output through read-only Host connections, a Close terminal
+  action for graceful shutdown, and a Kill terminal action that force-stops the shell and its owned
+  processes without a graceful delay; neither asks for confirmation. Kill is also available in the
   drawer and the clicked workspace tab's context menu.
 - Files browses the local disk beside a connected host's files over SFTP. It used to carry a
   second tab holding a library of every Session artifact; that index was removed because nothing

@@ -110,6 +110,7 @@ impl MultiplexApp {
         if self.other_terminals.terminals.is_empty() {
             return None;
         }
+        let open_in_drawer = self.drawer_terminal_session();
         Some(
             v_flex()
                 .id("other-terminals")
@@ -140,6 +141,8 @@ impl MultiplexApp {
                             .terminal_font_family
                             .clone()
                             .unwrap_or_else(|| "monospace".into());
+                        let open = open_in_drawer.is_some()
+                            && terminal_session(terminal) == open_in_drawer;
                         h_flex()
                             .id(("other-terminal", index))
                             .debug_selector(move || format!("other-terminal-{index}"))
@@ -148,8 +151,19 @@ impl MultiplexApp {
                             .p(px(theme::SPACE_3))
                             .rounded(px(theme::CONTROL_RADIUS))
                             .border_1()
-                            .border_color(theme::soft_border())
-                            .bg(theme::library_card())
+                            .border_color(if open {
+                                theme::accent()
+                            } else {
+                                theme::soft_border()
+                            })
+                            .bg(if open {
+                                theme::chrome_tab()
+                            } else {
+                                theme::library_card()
+                            })
+                            .when(open, |row| {
+                                row.debug_selector(|| "other-terminal-open-in-drawer".to_string())
+                            })
                             .cursor_pointer()
                             .hover(|style| style.bg(theme::chrome_tab()))
                             .when(
@@ -224,10 +238,16 @@ impl MultiplexApp {
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
                                         cx.stop_propagation();
+                                        if this.other_terminals.stopping {
+                                            return;
+                                        }
                                         this.other_terminals.close_pending =
                                             this.other_terminals.terminals.get(index).cloned();
                                         this.error_message.clear();
-                                        cx.notify();
+                                        this.confirm_other_terminal_close(
+                                            multiplex_host_protocol::wire::StopMode::Graceful,
+                                            cx,
+                                        );
                                     },
                                 )),
                             )
@@ -261,109 +281,6 @@ impl MultiplexApp {
                             )
                     },
                 ))
-                .into_any_element(),
-        )
-    }
-
-    pub(super) fn render_other_terminal_close_dialog(
-        &self,
-        cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
-        if self.other_terminals.force_stopping {
-            return None;
-        }
-        let pending = self.other_terminals.close_pending.as_ref()?;
-        Some(
-            div()
-                .id("other-terminal-close-overlay")
-                .absolute()
-                .inset_0()
-                .size_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .p(px(theme::SPACE_4))
-                .bg(theme::modal_scrim())
-                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .on_mouse_down(gpui::MouseButton::Right, |_, _, cx| cx.stop_propagation())
-                .child(
-                    v_flex()
-                        .id("other-terminal-close-dialog")
-                        .debug_selector(|| "other-terminal-close-dialog".into())
-                        .w(px(theme::DIALOG_MAX_WIDTH))
-                        .max_w_full()
-                        .max_h_full()
-                        // The scrollbar wrapper forces full height, stretching this confirmation.
-                        // Native overflow keeps the dialog sized to its contents.
-                        .overflow_y_scroll()
-                        .p(px(theme::SPACE_5))
-                        .gap(px(theme::SPACE_4))
-                        .rounded(px(theme::CONTROL_RADIUS))
-                        .bg(theme::library_card())
-                        .shadow(theme::popover_shadow())
-                        .child(div().font_medium().child(localization::static_message(
-                            MessageId::OtherTerminalsCloseHeading,
-                        )))
-                        .child(div().truncate().child(pending.title.clone()))
-                        .child(
-                            div()
-                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                                .text_color(theme::text_muted())
-                                .child(localization::static_message(
-                                    MessageId::OtherTerminalsCloseDescription,
-                                )),
-                        )
-                        .when(!self.error_message.is_empty(), |this| {
-                            this.child(
-                                div()
-                                    .text_color(theme::danger())
-                                    .child(self.error_message.clone()),
-                            )
-                        })
-                        .child(
-                            h_flex()
-                                .justify_end()
-                                .gap(px(theme::SPACE_3))
-                                .child(
-                                    Self::design_button(
-                                        "other-terminal-close-cancel",
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    )
-                                    .debug_selector(|| "other-terminal-close-cancel".into())
-                                    .icon(IconName::Close)
-                                    .tooltip(localization::common_cancel())
-                                    .disabled(self.other_terminals.stopping)
-                                    .on_click(cx.listener(
-                                        |this, _, _, cx| {
-                                            this.other_terminals.close_pending = None;
-                                            cx.notify();
-                                        },
-                                    )),
-                                )
-                                .child(
-                                    Self::design_button(
-                                        "other-terminal-close-confirm",
-                                        theme::ActionTone::Danger,
-                                        cx,
-                                    )
-                                    .debug_selector(|| "other-terminal-close-confirm".into())
-                                    .icon(IconName::CircleX)
-                                    .tooltip(localization::static_message(
-                                        MessageId::OtherTerminalsCloseAction,
-                                    ))
-                                    .loading(self.other_terminals.stopping)
-                                    .on_click(cx.listener(
-                                        |this, _, _, cx| {
-                                            this.confirm_other_terminal_close(
-                                                multiplex_host_protocol::wire::StopMode::Graceful,
-                                                cx,
-                                            )
-                                        },
-                                    )),
-                                ),
-                        ),
-                )
                 .into_any_element(),
         )
     }
@@ -542,9 +459,7 @@ impl MultiplexApp {
                         localization::static_message(MessageId::OtherTerminalsClosed);
                 } else {
                     app.other_terminals.terminals = refreshed;
-                    if mode == multiplex_host_protocol::wire::StopMode::Force {
-                        app.other_terminals.close_pending = None;
-                    }
+                    app.other_terminals.close_pending = None;
                     app.error_message =
                         localization::static_message(MessageId::OtherTerminalsCloseFailed);
                 }
@@ -552,6 +467,22 @@ impl MultiplexApp {
             });
         })
         .detach();
+    }
+
+    /// The terminal the side drawer is showing, so its row can say so.
+    pub(super) fn drawer_terminal_session(&self) -> Option<HostedSessionId> {
+        let pane = self.pane(self.other_terminals.drawer_pane?)?;
+        pane.request
+            .persistent_session_name
+            .as_deref()
+            .and_then(|name| name.strip_prefix("multiplex-cli:"))
+            .and_then(|id| id.parse().ok())
+            .or_else(|| crate::models::local_console_session_id(&pane.request))
+            .or_else(|| {
+                pane.app_attached
+                    .as_ref()
+                    .map(|session| session.hosted_session_id)
+            })
     }
 
     /// Attaches a CLI terminal in a pane through the durable Session Host protocol.
@@ -704,7 +635,12 @@ impl MultiplexApp {
         )
     }
 
-    fn open_other_terminal(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn open_other_terminal(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(terminal) = self.other_terminals.terminals.get(index).cloned() else {
             return;
         };
@@ -750,6 +686,13 @@ impl MultiplexApp {
         }
         self.error_message.clear();
         cx.notify();
+    }
+}
+
+fn terminal_session(terminal: &OtherTerminal) -> Option<HostedSessionId> {
+    match terminal.kind {
+        OtherTerminalKind::Console { session_id, .. } => Some(session_id),
+        OtherTerminalKind::Pane { .. } => None,
     }
 }
 

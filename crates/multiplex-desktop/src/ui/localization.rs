@@ -2166,16 +2166,6 @@ static_message!(
 );
 static_message!(session_library_active_view, SessionLibraryActiveViewArgs);
 static_message!(session_library_archive_view, SessionLibraryArchiveViewArgs);
-static_message!(session_library_filter_all, SessionLibraryFilterAllArgs);
-static_message!(
-    session_library_filter_unread,
-    SessionLibraryFilterUnreadArgs
-);
-static_message!(
-    session_library_filter_pinned,
-    SessionLibraryFilterPinnedArgs
-);
-static_message!(session_library_filter_empty, SessionLibraryFilterEmptyArgs);
 static_message!(
     session_library_archive_empty,
     SessionLibraryArchiveEmptyArgs

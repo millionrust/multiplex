@@ -24,14 +24,6 @@ pub(super) enum SessionLibraryView {
     Archive,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(super) enum SessionLibraryFilter {
-    #[default]
-    All,
-    Unread,
-    Pinned,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum SessionLibraryFailure {
     Corrupt,
@@ -59,7 +51,6 @@ pub(super) struct SessionLibraryState {
     pub snapshot: Option<SessionSnapshot>,
     pub load_state: SessionLibraryLoadState,
     pub view: SessionLibraryView,
-    pub filter: SessionLibraryFilter,
     pub pending_stop_archive_review: Option<HostedSessionId>,
     pub pending_archive_after_stop: Option<HostedSessionId>,
     pub pending_removal: Option<SessionRemovalPlan>,
@@ -86,7 +77,6 @@ impl SessionLibraryState {
             snapshot: None,
             load_state: SessionLibraryLoadState::Ready,
             view: SessionLibraryView::Active,
-            filter: SessionLibraryFilter::All,
             pending_stop_archive_review: None,
             pending_archive_after_stop: None,
             pending_removal: None,
@@ -110,7 +100,6 @@ impl SessionLibraryState {
             snapshot: None,
             load_state: SessionLibraryLoadState::Failed(failure),
             view: SessionLibraryView::Active,
-            filter: SessionLibraryFilter::All,
             pending_stop_archive_review: None,
             pending_archive_after_stop: None,
             pending_removal: None,
@@ -318,11 +307,6 @@ impl SessionLibraryState {
                                 SessionLibraryView::Active => session.archived_at.is_none(),
                                 SessionLibraryView::Archive => session.archived_at.is_some(),
                             }
-                            && match self.filter {
-                                SessionLibraryFilter::All => true,
-                                SessionLibraryFilter::Unread => session.unread(),
-                                SessionLibraryFilter::Pinned => session.pinned,
-                            }
                     })
                     .cloned()
                     .collect::<Vec<_>>()
@@ -340,15 +324,9 @@ impl SessionLibraryState {
                 snapshot
                     .sessions
                     .iter()
-                    .filter(|session| {
-                        (match self.view {
-                            SessionLibraryView::Active => session.archived_at.is_none(),
-                            SessionLibraryView::Archive => session.archived_at.is_some(),
-                        }) && match self.filter {
-                            SessionLibraryFilter::All => true,
-                            SessionLibraryFilter::Unread => session.unread(),
-                            SessionLibraryFilter::Pinned => session.pinned,
-                        }
+                    .filter(|session| match self.view {
+                        SessionLibraryView::Active => session.archived_at.is_none(),
+                        SessionLibraryView::Archive => session.archived_at.is_some(),
                     })
                     .cloned()
                     .collect::<Vec<_>>()
@@ -631,7 +609,6 @@ mod tests {
                 },
             )
             .unwrap();
-        library.filter = SessionLibraryFilter::Unread;
         assert_eq!(library.visible_sessions(None).len(), 1);
         library
             .mutate(&mut saved, id, SessionMutation::Archive { at: 9 })
@@ -712,7 +689,7 @@ mod tests {
     }
 
     #[test]
-    fn session_library_filters_preserve_pinned_order_and_archive_is_orthogonal() {
+    fn session_library_keeps_pinned_first_and_archive_is_orthogonal() {
         let fixture = tempfile::tempdir().unwrap();
         let mut saved = SavedState::default();
         let first = record(HostedSessionState::Exited);
@@ -746,10 +723,6 @@ mod tests {
         let visible = library.visible_sessions(None);
         assert_eq!(visible[0].id, second_id);
         assert_eq!(visible[1].id, first_id);
-        library.filter = SessionLibraryFilter::Unread;
-        assert_eq!(library.visible_sessions(None)[0].id, first_id);
-
-        library.filter = SessionLibraryFilter::All;
         library
             .mutate(&mut saved, first_id, SessionMutation::Archive { at: 9 })
             .unwrap();

@@ -338,10 +338,6 @@ session-library-title-field = Session title
 session-library-remove-confirm-placeholder = Type the exact session title
 session-library-active-view = Active
 session-library-archive-view = Archive
-session-library-filter-all = All
-session-library-filter-unread = Unread
-session-library-filter-pinned = Pinned
-session-library-filter-empty = No sessions match this filter.
 session-library-archive-empty = No archived sessions.
 session-library-unread-badge = Unread
 session-library-pinned-badge = Pinned
@@ -2641,8 +2637,6 @@ chrome-tabs-to-left = Move tabs to the left
 chrome-tabs-to-top = Move tabs to the top
 
 other-terminals-close-action = Close terminal
-other-terminals-close-heading = Close this terminal?
-other-terminals-close-description = This stops the shell and the processes running inside it, including in other apps or devices viewing this terminal.
 other-terminals-closed = Terminal closed.
 other-terminals-close-failed = Unable to close this terminal. Check whether it is still running and try again.
 

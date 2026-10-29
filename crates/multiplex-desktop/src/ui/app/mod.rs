@@ -85,7 +85,7 @@ use session_coordinator::{
     HostedStreamInput, HostedStreamProjection, HostedTerminalAction, SessionCoordinator,
     SessionStartRequest,
 };
-use session_library::{SessionLibraryFilter, SessionLibraryState, SessionLibraryView};
+use session_library::{SessionLibraryState, SessionLibraryView};
 use session_resume::SessionResumeState;
 use split_tree::{
     DividerRect, PaneRect, SplitNode, compute_split_layout, flat_split, saved_to_split_node,
@@ -7180,7 +7180,6 @@ impl MultiplexApp {
         if archived {
             self.activate_library_section(NavSection::Sessions, window, cx);
             self.session_library.view = SessionLibraryView::Archive;
-            self.session_library.filter = SessionLibraryFilter::All;
             self.session_sidebar.selected_session = Some(session_id);
             self.session_list_focus.focus(window);
             cx.notify();
@@ -10412,7 +10411,6 @@ impl MultiplexApp {
                 self.close_command_palette(window, cx);
                 self.activate_library_section(NavSection::Sessions, window, cx);
                 self.session_library.view = SessionLibraryView::Archive;
-                self.session_library.filter = SessionLibraryFilter::All;
                 self.session_sidebar.selected_session = None;
                 self.session_list_focus.focus(window);
                 cx.notify();
@@ -13547,10 +13545,6 @@ impl Render for MultiplexApp {
             .when_some(self.pane_context_menu, |this, (pane_id, position)| {
                 this.child(self.render_pane_context_menu_layer(pane_id, position, cx))
             })
-            .when_some(
-                self.render_other_terminal_close_dialog(cx),
-                |this, dialog| this.child(dialog),
-            )
             .when(self.new_session.is_some(), |this| {
                 this.child(self.render_new_session_sheet(cx))
             })
@@ -13632,13 +13626,6 @@ impl MultiplexApp {
         if event.keystroke.key.as_str() == "escape" {
             if self.chrome_context_menu.take().is_some() {
                 cx.notify();
-                return true;
-            }
-            if self.other_terminals.close_pending.is_some() {
-                if !self.other_terminals.stopping {
-                    self.other_terminals.close_pending = None;
-                    cx.notify();
-                }
                 return true;
             }
             if self.session_resume.is_some() {
@@ -31638,21 +31625,23 @@ sleep 1
         let (app, window) = open_test_app_with_state(cx, saved);
 
         // Only terminals started by the Multiplex CLI belong in this external-terminal list.
+        let session_id = multiplex_domain::HostedSessionId::new();
+        let terminal = super::other_terminals::OtherTerminal {
+            kind: super::other_terminals::OtherTerminalKind::Console {
+                session_id,
+                session_dir: std::env::temp_dir().join("console-session"),
+                runtime_root: std::env::temp_dir().join("console-runtime"),
+            },
+            title: "notes".to_owned(),
+            detail: "Multiplex CLI · /tmp".to_owned(),
+        };
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.activate_library_section(NavSection::Sessions, window, cx);
                     // Set after activating: entering Sessions reads the real sources, which on a
                     // test machine find nothing.
-                    app.other_terminals.terminals = vec![super::other_terminals::OtherTerminal {
-                        kind: super::other_terminals::OtherTerminalKind::Console {
-                            session_id: multiplex_domain::HostedSessionId::new(),
-                            session_dir: std::env::temp_dir().join("console-session"),
-                            runtime_root: std::env::temp_dir().join("console-runtime"),
-                        },
-                        title: "notes".to_owned(),
-                        detail: "Multiplex CLI · /tmp".to_owned(),
-                    }];
+                    app.other_terminals.terminals = vec![terminal.clone()];
                     cx.notify();
                 })
             })
@@ -31670,31 +31659,31 @@ sleep 1
             .unwrap()
             .center();
         visual.simulate_click(close, gpui::Modifiers::none());
-        visual.run_until_parked();
-        let dialog = visual.debug_bounds("other-terminal-close-dialog").unwrap();
-        let viewport_height = window
-            .update(cx, |_, window, _| window.viewport_size().height)
-            .unwrap();
-        assert!(
-            dialog.size.height < viewport_height / 2.,
-            "the terminal confirmation should fit its content, not fill the window: {dialog:?}"
-        );
         app.read_with(cx, |app, _| {
             assert!(
                 app.active_workspace_id.is_none(),
                 "Close must not open the row"
             );
+        });
+        // This terminal's Host does not exist, so the stop fails, says so, and asks nothing.
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            (!app.other_terminals.stopping).then_some(())
+        });
+        app.read_with(cx, |app, _| {
             assert!(
-                !app.other_terminals.stopping,
-                "Closing requires confirmation"
+                app.other_terminals.close_pending.is_none(),
+                "Close stops the terminal without asking first"
+            );
+            assert_eq!(
+                app.error_message,
+                localization::static_message(MessageId::OtherTerminalsCloseFailed)
             );
         });
-        let cancel = selector_click_center(window, cx, "other-terminal-close-cancel");
-        let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(cancel, gpui::Modifiers::none());
-        app.read_with(cx, |app, _| {
-            assert!(app.other_terminals.close_pending.is_none())
+        app.update(cx, |app, cx| {
+            app.other_terminals.terminals = vec![terminal.clone()];
+            cx.notify();
         });
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.run_until_parked();
         let open = selector_click_center(window, cx, "other-terminal-open-0");
         visual.simulate_click(open, gpui::Modifiers::none());
@@ -31716,6 +31705,11 @@ sleep 1
             );
             assert!(app.active_workspace_id.is_none());
             assert!(app.other_terminals.drawer_pane.is_some());
+            assert_eq!(
+                app.drawer_terminal_session(),
+                Some(session_id),
+                "the row whose terminal the drawer shows is the one highlighted"
+            );
         });
         let promote = selector_click_center(window, cx, "session-drawer-open-tab");
         visual.simulate_click(promote, gpui::Modifiers::none());

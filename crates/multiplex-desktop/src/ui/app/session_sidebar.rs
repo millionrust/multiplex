@@ -33,7 +33,7 @@ use super::runtimes::{
     runtime_label,
 };
 use super::session_coordinator::PendingArchiveAction;
-use super::session_library::{SessionLibraryFilter, SessionLibraryRecovery, SessionLibraryView};
+use super::session_library::{SessionLibraryRecovery, SessionLibraryView};
 use super::session_resume::{resume_error_message, session_resume_projection};
 use super::transcript_export::transcript_export_projection;
 use super::{MultiplexApp, theme};
@@ -287,13 +287,6 @@ impl MultiplexApp {
         self.session_library.pending_stop_archive_review = None;
         self.session_library.pending_removal = None;
         self.session_library.renaming = None;
-        self.reconcile_visible_session_selection(&previous);
-        cx.notify();
-    }
-
-    fn set_session_library_filter(&mut self, filter: SessionLibraryFilter, cx: &mut Context<Self>) {
-        let previous = self.visible_accessible_session_ids();
-        self.session_library.filter = filter;
         self.reconcile_visible_session_selection(&previous);
         cx.notify();
     }
@@ -1139,7 +1132,7 @@ impl MultiplexApp {
             &self.library.load_state,
             self.session_library.recovery_state(),
             rows.is_empty(),
-            self.session_library.filter != SessionLibraryFilter::All,
+            false,
         );
         Some(ProductSessionSemanticSnapshot {
             screen,
@@ -1177,21 +1170,6 @@ impl MultiplexApp {
                     ProductSessionAction::ShowArchivedSessions,
                     MessageId::SessionLibraryArchiveView,
                     self.session_library.view == SessionLibraryView::Archive,
-                ),
-                product_tab(
-                    ProductSessionAction::FilterAllSessions,
-                    MessageId::SessionLibraryFilterAll,
-                    self.session_library.filter == SessionLibraryFilter::All,
-                ),
-                product_tab(
-                    ProductSessionAction::FilterUnreadSessions,
-                    MessageId::SessionLibraryFilterUnread,
-                    self.session_library.filter == SessionLibraryFilter::Unread,
-                ),
-                product_tab(
-                    ProductSessionAction::FilterPinnedSessions,
-                    MessageId::SessionLibraryFilterPinned,
-                    self.session_library.filter == SessionLibraryFilter::Pinned,
                 ),
             ]);
         }
@@ -1520,15 +1498,6 @@ impl MultiplexApp {
                 ProductSessionAction::ShowArchivedSessions => {
                     self.set_session_library_view(SessionLibraryView::Archive, cx);
                 }
-                ProductSessionAction::FilterAllSessions => {
-                    self.set_session_library_filter(SessionLibraryFilter::All, cx);
-                }
-                ProductSessionAction::FilterUnreadSessions => {
-                    self.set_session_library_filter(SessionLibraryFilter::Unread, cx);
-                }
-                ProductSessionAction::FilterPinnedSessions => {
-                    self.set_session_library_filter(SessionLibraryFilter::Pinned, cx);
-                }
                 ProductSessionAction::RenameSession(row) => {
                     if let Some(id) = accessible_session_row_id(row)
                         && self.session_library.session(id).is_some()
@@ -1737,11 +1706,7 @@ impl MultiplexApp {
                                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                     .text_color(theme::text_muted())
                                     .child(
-                                        if self.session_library.filter != SessionLibraryFilter::All
-                                        {
-                                            localization::session_library_filter_empty()
-                                        } else if self.session_library.view
-                                            == SessionLibraryView::Archive
+                                        if self.session_library.view == SessionLibraryView::Archive
                                         {
                                             localization::session_library_archive_empty()
                                         } else {
@@ -1781,27 +1746,6 @@ impl MultiplexApp {
                 false,
                 cx,
                 |this, view, _, cx| this.set_session_library_view(view, cx),
-            ))
-            .child(self.segmented_control(
-                "session-filter",
-                [
-                    (
-                        SessionLibraryFilter::All,
-                        localization::session_library_filter_all(),
-                    ),
-                    (
-                        SessionLibraryFilter::Unread,
-                        localization::session_library_filter_unread(),
-                    ),
-                    (
-                        SessionLibraryFilter::Pinned,
-                        localization::session_library_filter_pinned(),
-                    ),
-                ],
-                self.session_library.filter,
-                false,
-                cx,
-                |this, filter, _, cx| this.set_session_library_filter(filter, cx),
             ))
             .into_any_element()
     }
@@ -2229,7 +2173,9 @@ impl MultiplexApp {
             return div().into_any_element();
         };
         let key = session_key(id);
-        let selected = self.session_sidebar.selected_session == Some(id);
+        // The session the side drawer shows reads as selected too, so the open one is plain.
+        let selected = self.session_sidebar.selected_session == Some(id)
+            || self.drawer_terminal_session() == Some(id);
         let renaming = self.session_library.renaming == Some(id);
         let recognition = session
             .durable_host

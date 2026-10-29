@@ -2231,26 +2231,6 @@ context = "Tab that shows archived durable sessions."
 description = "Archived session view"
 
 [[messages]]
-id = "session-library-filter-all"
-context = "Filter showing every session in the selected view."
-description = "All sessions filter"
-
-[[messages]]
-id = "session-library-filter-unread"
-context = "Filter showing sessions with unread output."
-description = "Unread sessions filter"
-
-[[messages]]
-id = "session-library-filter-pinned"
-context = "Filter showing pinned sessions."
-description = "Pinned sessions filter"
-
-[[messages]]
-id = "session-library-filter-empty"
-context = "Empty state when a session filter has no matches."
-description = "No matching sessions"
-
-[[messages]]
 id = "session-library-archive-empty"
 context = "Empty state when there are no archived sessions."
 description = "No archived sessions"
@@ -12298,16 +12278,6 @@ description = "Chrome tabs-to-top"
 id = "other-terminals-close-action"
 context = "Confirmation and result for stopping a CLI terminal from Sessions."
 description = "Other terminal close-action"
-
-[[messages]]
-id = "other-terminals-close-heading"
-context = "Confirmation and result for stopping a CLI terminal from Sessions."
-description = "Other terminal close-heading"
-
-[[messages]]
-id = "other-terminals-close-description"
-context = "Confirmation and result for stopping a CLI terminal from Sessions."
-description = "Other terminal close-description"
 
 [[messages]]
 id = "other-terminals-closed"
