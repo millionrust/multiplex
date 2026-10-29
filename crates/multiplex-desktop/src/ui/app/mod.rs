@@ -16152,6 +16152,243 @@ mod tests {
         });
     }
 
+    /// Text as it is copied from a page or an editor: thousands of lines, long ones, tabs,
+    /// non-ASCII, and Windows line endings, about 600 KB in all.
+    fn large_copied_text() -> String {
+        let mut copied = String::new();
+        for line in 0..5_000 {
+            copied.push_str(&format!(
+                "{line:05}\tconst value = \"κόσμε {}\";\r\n",
+                "x".repeat(line % 120)
+            ));
+        }
+        copied
+    }
+
+    /// A program that takes every byte it is given, as an editor or a coding agent does, and
+    /// writes what it received to `received` once `expected` bytes have arrived.
+    fn raw_reader_script(ready: &Path, received: &Path, expected: usize) -> String {
+        format!(
+            "stty raw -echo; : > '{}'; head -c {expected} > '{}'; sleep 60",
+            ready.display(),
+            received.display()
+        )
+    }
+
+    /// Copies `copied`, presses Cmd+V in `pane_id` the way a person does, and checks that the
+    /// program received exactly what was copied (with CRLF as LF, as a paste sends it).
+    fn paste_from_the_clipboard_and_check(
+        cx: &mut TestAppContext,
+        app: &Entity<MultiplexApp>,
+        window: WindowHandle<Root>,
+        pane_id: u64,
+        copied: String,
+        received: &Path,
+    ) {
+        let expected = copied.replace("\r\n", "\n");
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, _| {
+                    app.pane(pane_id)
+                        .expect("pane exists")
+                        .terminal_focus
+                        .focus(window);
+                })
+            })
+            .expect("window update should succeed");
+        cx.run_until_parked();
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(copied));
+        cx.simulate_keystrokes(window.into(), "cmd-v");
+        wait_for_app_state(cx, app, Duration::from_secs(60), |app| {
+            assert!(
+                app.pane(pane_id).is_some_and(|pane| !pane.closed),
+                "the pane closed during the paste: {}",
+                app.error_message
+            );
+            std::fs::metadata(received)
+                .is_ok_and(|metadata| metadata.len() as usize >= expected.len())
+                .then_some(())
+        });
+        let got = std::fs::read_to_string(received).expect("the paste was written");
+        assert_eq!(got.len(), expected.len(), "the paste arrived trimmed");
+        assert!(got == expected, "the paste arrived altered");
+    }
+
+    /// A local tab whose shell the app runs itself.
+    #[gpui::test]
+    fn e2e_a_large_paste_reaches_a_local_tab_whole(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let directory = tempfile::tempdir().expect("temp dir");
+        let (ready, received) = (
+            directory.path().join("ready"),
+            directory.path().join("received"),
+        );
+        let copied = large_copied_text();
+        let expected = copied.replace("\r\n", "\n").len();
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: crate::test_support::test_shell_program(),
+                args: vec!["-c".into(), raw_reader_script(&ready, &received, expected)],
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let (_, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                })
+            })
+            .expect("window update should succeed")
+            .expect("local workspace should open");
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            (app.pane(pane_id)?.connected && ready.exists()).then_some(())
+        });
+        paste_from_the_clipboard_and_check(cx, &app, window, pane_id, copied, &received);
+    }
+
+    /// A local tab as the app opens it in use: `multiplex-cli shell` keeping the shell in a
+    /// Session Host. Needs both binaries built beside the test's own directory.
+    #[gpui::test]
+    fn e2e_a_large_paste_reaches_a_multiplex_cli_shell_whole(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let Some(binaries) = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent()?.parent().map(Path::to_path_buf))
+        else {
+            return;
+        };
+        let cli = binaries.join(format!("multiplex-cli{}", std::env::consts::EXE_SUFFIX));
+        let host = binaries.join(format!(
+            "multiplex-session-host{}",
+            std::env::consts::EXE_SUFFIX
+        ));
+        if !cli.is_file() || !host.is_file() {
+            eprintln!("skipping: build multiplex-cli and multiplex-session-host first");
+            return;
+        }
+        let (app, window) = open_test_app(cx);
+        let directory = tempfile::tempdir().expect("temp dir");
+        let (ready, received) = (
+            directory.path().join("ready"),
+            directory.path().join("received"),
+        );
+        let copied = large_copied_text();
+        let expected = copied.replace("\r\n", "\n").len();
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: cli.display().to_string(),
+                args: vec![
+                    "shell".into(),
+                    "--raw".into(),
+                    "--".into(),
+                    crate::test_support::test_shell_program(),
+                    "-c".into(),
+                    raw_reader_script(&ready, &received, expected),
+                ],
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let (_, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                })
+            })
+            .expect("window update should succeed")
+            .expect("local workspace should open");
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            (app.pane(pane_id)?.connected && ready.exists()).then_some(())
+        });
+        paste_from_the_clipboard_and_check(cx, &app, window, pane_id, copied, &received);
+    }
+
+    /// A pane that views a running shell through its Session Host: the Sessions drawer, a
+    /// session opened as a tab, and a tab reattached after a restart. A paste larger than one
+    /// Host request used to be refused there and close the view.
+    #[gpui::test]
+    fn e2e_a_large_paste_reaches_a_session_host_view_whole(cx: &mut TestAppContext) {
+        use multiplex_domain::{HostInstanceId, HostedSessionId};
+        use multiplex_session_host::{LaunchDescriptor, StopDeadlines};
+        use multiplex_store::JournalLimits;
+
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let fixture = tempfile::Builder::new()
+            .prefix("mpx-paste-view-")
+            .tempdir_in("/tmp")
+            .expect("temp dir");
+        let root = std::fs::canonicalize(fixture.path()).expect("temp dir resolves");
+        let (ready, received) = (root.join("ready"), root.join("received"));
+        let session_id = HostedSessionId::new();
+        let session_dir = root.join("session");
+        std::fs::create_dir_all(&session_dir).expect("session dir");
+        let runtime_root = root.join("runtime");
+        let copied = large_copied_text();
+        let script = raw_reader_script(&ready, &received, copied.replace("\r\n", "\n").len());
+        let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
+        let (started_tx, started_rx) = std::sync::mpsc::channel::<()>();
+        let host_thread = {
+            let (root, session_dir, runtime_root) =
+                (root.clone(), session_dir.clone(), runtime_root.clone());
+            std::thread::spawn(move || {
+                let runtime = tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .build()
+                    .expect("host runtime");
+                runtime.block_on(async move {
+                    let _host = multiplex_session_host::start(LaunchDescriptor {
+                        format_version: LaunchDescriptor::FORMAT_VERSION,
+                        session_id,
+                        host_instance_id: HostInstanceId::new(),
+                        expected_occupant_generation: None,
+                        runtime_root,
+                        session_dir,
+                        executable: std::fs::canonicalize("/bin/sh").expect("sh"),
+                        runtime_detection: None,
+                        arguments: vec!["-c".into(), script],
+                        environment: std::collections::BTreeMap::new(),
+                        cwd: Some(root),
+                        columns: 80,
+                        rows: 24,
+                        journal_limits: JournalLimits::default(),
+                        stop_deadlines: StopDeadlines::default(),
+                    })
+                    .await
+                    .expect("host starts");
+                    started_tx.send(()).expect("test waits");
+                    let _ = tokio::task::spawn_blocking(move || stop_rx.recv()).await;
+                });
+            })
+        };
+        started_rx.recv().expect("host started");
+        app.update(cx, |app, _| {
+            app.other_terminals.terminals = vec![super::other_terminals::OtherTerminal {
+                kind: super::other_terminals::OtherTerminalKind::Console {
+                    session_id,
+                    session_dir,
+                    runtime_root,
+                },
+                title: "paste".into(),
+                detail: "Multiplex CLI".into(),
+            }];
+        });
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| app.open_other_terminal(0, window, cx))
+            })
+            .expect("window update should succeed");
+        let pane_id = wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let pane_id = app.other_terminals.drawer_pane?;
+            (app.pane(pane_id)?.connected && ready.exists()).then_some(pane_id)
+        });
+        paste_from_the_clipboard_and_check(cx, &app, window, pane_id, copied, &received);
+        let _ = stop_tx.send(());
+        let _ = host_thread.join();
+    }
+
     #[gpui::test]
     fn e2e_canvas_local_shell_direct_paste_and_search(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
