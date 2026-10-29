@@ -13,8 +13,8 @@ android {
         applicationId = "com.millionrust.multiplex"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "0.0.17"
+        versionCode = 18
+        versionName = "0.0.18"
         manifestPlaceholders["appLabel"] = "@string/app_name"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
