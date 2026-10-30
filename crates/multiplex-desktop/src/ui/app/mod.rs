@@ -7777,7 +7777,7 @@ impl MultiplexApp {
             .and_then(|pane| crate::models::local_console_session_id(&pane.request))
             .and_then(|id| crate::storage::app_dir().ok().map(|root| (root, id)))
             .is_some_and(|(root, id)| {
-                other_terminals::terminal_has_exited(
+                other_terminals::terminal_host_unavailable(
                     &root.join("console-sessions").join(id.to_string()),
                     id,
                 )
@@ -7870,6 +7870,9 @@ impl MultiplexApp {
             }
         }
 
+        if self.other_terminals.drawer_pane == Some(pane_id) {
+            self.other_terminals.drawer_pane = Some(new_pane_id);
+        }
         if let Some(old_pane) = self.pane(pane_id) {
             let _ = old_pane.runtime.command_tx.send(SessionCommand::Disconnect);
         }
@@ -16267,6 +16270,17 @@ mod tests {
 
     #[gpui::test]
     fn e2e_reconnect_reopens_an_exited_local_console_with_a_fresh_shell(cx: &mut TestAppContext) {
+        check_exited_console_reconnect(cx, false);
+    }
+
+    #[gpui::test]
+    fn e2e_reconnect_keeps_the_sessions_drawer_attached_to_the_replacement(
+        cx: &mut TestAppContext,
+    ) {
+        check_exited_console_reconnect(cx, true);
+    }
+
+    fn check_exited_console_reconnect(cx: &mut TestAppContext, drawer: bool) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let request = ConnectRequest::local_shell_with_config(
@@ -16288,6 +16302,15 @@ mod tests {
         wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
             app.pane(pane_id)?.connected.then_some(())
         });
+        if drawer {
+            app.update(cx, |app, cx| {
+                app.workspaces.clear();
+                app.active_workspace_id = None;
+                app.nav_section = super::NavSection::Sessions;
+                app.other_terminals.drawer_pane = Some(pane_id);
+                cx.notify();
+            });
+        }
         wait_for_quiet_pane(cx, &app, pane_id);
         let old_console = app.read_with(cx, |app, _| {
             app.pane(pane_id)
@@ -16300,7 +16323,7 @@ mod tests {
         wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
             let root = crate::storage::app_dir().unwrap();
             (app.pane(pane_id)?.closed
-                && super::other_terminals::terminal_has_exited(
+                && super::other_terminals::terminal_host_unavailable(
                     &root.join("console-sessions").join(old_console.to_string()),
                     old_console,
                 ))
@@ -16312,7 +16335,11 @@ mod tests {
             visual.simulate_click(click, gpui::Modifiers::none());
         }
         let reopened = wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
-            let id = app.workspace(workspace_id)?.active_pane_id;
+            let id = if drawer {
+                app.other_terminals.drawer_pane?
+            } else {
+                app.workspace(workspace_id)?.active_pane_id
+            };
             (id != pane_id && app.pane(id)?.connected).then_some(id)
         });
         let new_console = app.read_with(cx, |app, _| {
@@ -16321,6 +16348,10 @@ mod tests {
                 .unwrap()
         });
         assert_ne!(old_console, new_console);
+        if drawer {
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            assert!(visual.debug_bounds("session-terminal-drawer").is_some());
+        }
         app.update(cx, |app, cx| {
             app.send_input_bytes(
                 reopened,
@@ -16336,7 +16367,15 @@ mod tests {
                 .any(|line| line.contains("reopened-42"))
                 .then_some(())
         });
-        app.update(cx, |app, cx| app.close_pane(reopened, cx));
+        app.update(cx, |app, cx| {
+            if drawer {
+                app.close_session_drawer(cx);
+                assert!(app.other_terminals.drawer_pane.is_none());
+            } else {
+                app.close_pane(reopened, cx);
+            }
+            assert!(app.pane(reopened).is_none());
+        });
     }
 
     #[gpui::test]

@@ -137,9 +137,9 @@ pub fn live_console_sessions(root: &Path, runtime_parent: &Path) -> Vec<LiveCons
     };
     let mut sessions: Vec<LiveConsoleSession> = entries
         .filter_map(Result::ok)
-        .take(MAX_LISTED)
         .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
         .filter_map(|entry| live(root, runtime_parent, &entry.path()))
+        .take(MAX_LISTED)
         .collect();
     sessions.sort_by(|left, right| {
         right
@@ -282,6 +282,46 @@ mod tests {
             console_session_generation(temp.path(), &runtime_parent, id),
             None
         );
+    }
+
+    #[test]
+    fn dead_records_do_not_consume_the_live_listing_limit() {
+        use crate::{HostLease, HostMetadata};
+        use multiplex_domain::{ActivityAggregate, HostInstanceId};
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("consoles");
+        fs::create_dir(&root).unwrap();
+        for _ in 0..MAX_LISTED + 20 {
+            let id = HostedSessionId::new();
+            let dir = root.join(id.to_string());
+            fs::create_dir(&dir).unwrap();
+            write_console_session(&dir, &record(id)).unwrap();
+        }
+        // Choose a live record beyond the old scan cap in this filesystem's order.
+        let dir = fs::read_dir(&root).unwrap().last().unwrap().unwrap().path();
+        let id = read_console_session(&dir).unwrap().session_id;
+        let runtime = temp.path().join("runtime");
+        fs::create_dir_all(runtime.join(id.to_string())).unwrap();
+        fs::write(runtime.join(id.to_string()).join("host.sock"), []).unwrap();
+        let host_id = HostInstanceId::new();
+        let lease = HostLease::acquire(&dir, host_id).unwrap();
+        lease
+            .write_metadata(&HostMetadata {
+                format_version: HostMetadata::FORMAT_VERSION,
+                session_id: id,
+                host_instance_id: host_id,
+                process_token: None,
+                runtime_recognition: None,
+                activity: ActivityAggregate::default(),
+                lifecycle: HostLifecycle::Ready,
+                endpoint_name: "host.sock".into(),
+                heartbeat_monotonic_nanos: 1,
+                durability_watermark: None,
+            })
+            .unwrap();
+        let listed = live_console_sessions(&root, &runtime);
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].record.session_id, id);
     }
 
     #[test]

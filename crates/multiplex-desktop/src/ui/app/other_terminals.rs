@@ -891,10 +891,9 @@ fn preview_lines(terminal: &crate::terminal::TerminalState) -> Vec<String> {
     lines
 }
 
-/// A stop acknowledgement can race with the Host exiting and closing its endpoint.
-/// A matching terminal's recorded exit or released Host lease counts as success;
-/// an unreachable live Host or a replacement Host must remain an error.
-pub(super) fn terminal_has_exited(
+/// Whether a viewer can no longer attach to the recorded Host. This does not
+/// establish that its owned processes terminated.
+pub(super) fn terminal_host_unavailable(
     session_dir: &std::path::Path,
     session_id: HostedSessionId,
 ) -> bool {
@@ -905,6 +904,15 @@ pub(super) fn terminal_has_exited(
                 multiplex_domain::HostLifecycle::Exited | multiplex_domain::HostLifecycle::Failed
             ) || multiplex_store::probe_host_lease(session_dir)
                 .is_ok_and(|lease| lease == multiplex_store::HostLeaseState::Available))
+    })
+}
+
+// Losing the Host lease does not prove its shell or descendants exited. Never
+// signal a persisted PID here: it can have been reused by an unrelated process.
+fn terminal_has_exited(session_dir: &std::path::Path, session_id: HostedSessionId) -> bool {
+    multiplex_store::read_host_metadata(session_dir).is_ok_and(|metadata| {
+        metadata.session_id == session_id
+            && metadata.lifecycle == multiplex_domain::HostLifecycle::Exited
     })
 }
 
@@ -926,6 +934,9 @@ fn stop_other_terminal(
     };
     if terminal_has_exited(session_dir, *session_id) {
         return Ok(());
+    }
+    if terminal_host_unavailable(session_dir, *session_id) {
+        return Err(());
     }
     let expected = multiplex_store::read_host_metadata(session_dir)
         .map_err(|_| ())?
@@ -1084,7 +1095,7 @@ mod tests {
     }
 
     #[test]
-    fn stopping_a_killed_host_with_stale_metadata_succeeds_without_connecting() {
+    fn a_free_host_lease_never_counts_as_successful_process_termination() {
         use multiplex_domain::{ActivityAggregate, HostInstanceId, HostLifecycle, HostedSessionId};
         use multiplex_store::{HostLease, HostMetadata};
         let temp = tempfile::tempdir().unwrap();
@@ -1108,7 +1119,8 @@ mod tests {
             .unwrap();
         assert!(!super::terminal_has_exited(&session_dir, id));
         drop(lease);
-        assert!(super::terminal_has_exited(&session_dir, id));
+        assert!(!super::terminal_has_exited(&session_dir, id));
+        assert!(super::terminal_host_unavailable(&session_dir, id));
         assert!(!super::terminal_has_exited(
             &session_dir,
             HostedSessionId::new()
@@ -1122,7 +1134,7 @@ mod tests {
             multiplex_host_protocol::wire::StopMode::Graceful,
             multiplex_host_protocol::wire::StopMode::Force,
         ] {
-            assert_eq!(super::stop_other_terminal(&terminal, mode), Ok(()));
+            assert_eq!(super::stop_other_terminal(&terminal, mode), Err(()));
         }
     }
 

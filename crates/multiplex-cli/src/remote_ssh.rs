@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::fs::{self, OpenOptions};
 use std::io::{IsTerminal as _, Read as _, Write};
 use std::path::{Path, PathBuf};
@@ -706,7 +707,7 @@ async fn run_interactive_attach(
     let _raw_mode = RawModeGuard;
     let mut events = EventStream::new();
     let mut leader = false;
-    let mut input = Vec::new();
+    let mut input = VecDeque::new();
     let mut resize = None;
     let mut pending_mutation = None;
     let mut detach_requested = false;
@@ -716,7 +717,7 @@ async fn run_interactive_attach(
                 Some(ControllerCommand::Input {
                     session_id: *session_id,
                     occupant_generation: *occupant_generation,
-                    bytes: std::mem::take(&mut input),
+                    bytes: next_interactive_input(&mut input),
                 })
             } else {
                 resize
@@ -737,7 +738,7 @@ async fn run_interactive_attach(
                 );
             }
         }
-        if detach_requested && pending_mutation.is_none() {
+        if detach_requested && pending_mutation.is_none() && input.is_empty() {
             break;
         }
         tokio::select! {
@@ -766,7 +767,7 @@ async fn run_interactive_attach(
                     _ => return Err(protocol_failure()),
                 }
             }
-            event = events.next() => {
+            event = events.next(), if !detach_requested && input.len() < INPUT_MAX_BYTES as usize => {
                 let event = event
                     .ok_or_else(terminal_mode_unavailable)?
                     .map_err(|_| terminal_mode_unavailable())?;
@@ -785,32 +786,20 @@ async fn run_interactive_attach(
                                 continue;
                             }
                             if *request_control {
-                                input.push(0x1d);
+                                input.push_back(0x1d);
                             }
                         } else if is_leader_key(&key) {
                             leader = true;
                             continue;
                         }
                         if *request_control {
-                            append_key_bytes(&mut input, key)?;
-                            if input.len() > INPUT_MAX_BYTES as usize {
-                                return Err(CliError::new(
-                                    ErrorCode::ResourceLimit,
-                                    "interactive terminal input queue is full",
-                                    "Wait for the remote Host to catch up, then reattach.",
-                                ));
-                            }
+                            let mut bytes = Vec::new();
+                            append_key_bytes(&mut bytes, key)?;
+                            input.extend(bytes);
                         }
                     }
                     TerminalEvent::Paste(bytes) if *request_control => {
-                        if input.len().saturating_add(bytes.len()) > INPUT_MAX_BYTES as usize {
-                            return Err(CliError::new(
-                                ErrorCode::ResourceLimit,
-                                "interactive paste exceeds the 16 KiB input limit",
-                                "Paste a smaller payload or send it in separate chunks.",
-                            ));
-                        }
-                        input.extend_from_slice(bytes.as_bytes());
+                        queue_interactive_paste(&mut input, &bytes);
                     }
                     TerminalEvent::Resize(columns, rows) if *request_control => {
                         resize = Some((u32::from(columns.max(1)), u32::from(rows.max(1))));
@@ -1004,6 +993,18 @@ pub(crate) fn is_leader_key(key: &KeyEvent) -> bool {
 
 pub(crate) fn is_cancel_key(key: &KeyEvent) -> bool {
     matches!(key.code, KeyCode::Char('c' | 'C')) && key.modifiers == KeyModifiers::CONTROL
+}
+
+fn queue_interactive_paste(input: &mut VecDeque<u8>, text: &str) {
+    input.extend(b"\x1b[200~");
+    input.extend(text.as_bytes());
+    input.extend(b"\x1b[201~");
+}
+
+fn next_interactive_input(input: &mut VecDeque<u8>) -> Vec<u8> {
+    input
+        .drain(..input.len().min(INPUT_MAX_BYTES as usize))
+        .collect()
 }
 
 pub(crate) fn append_key_bytes(bytes: &mut Vec<u8>, key: KeyEvent) -> Result<(), CliError> {
@@ -1920,6 +1921,29 @@ mod tests {
                 0o600
             );
         }
+    }
+
+    #[test]
+    fn remote_pastes_preserve_framing_and_order_across_bounded_requests() {
+        let text =
+            include_str!("../../../tests/fixtures/terminal/browser-checklist.txt").repeat(700);
+        let mut queue = std::collections::VecDeque::from(b"before".to_vec());
+        super::queue_interactive_paste(&mut queue, &text);
+        super::queue_interactive_paste(&mut queue, "");
+        queue.extend(b"after");
+        let mut received = Vec::new();
+        let mut requests = 0;
+        while !queue.is_empty() {
+            let bytes = super::next_interactive_input(&mut queue);
+            assert!(!bytes.is_empty() && bytes.len() <= 16 * 1024);
+            received.extend(bytes);
+            requests += 1;
+        }
+        assert!(requests > 100);
+        assert_eq!(
+            received,
+            format!("before\x1b[200~{text}\x1b[201~\x1b[200~\x1b[201~after").into_bytes()
+        );
     }
 
     #[test]
