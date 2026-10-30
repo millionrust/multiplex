@@ -141,6 +141,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: build-timings-${{ matrix.target.name }}
           path: target/cargo-timings/*.html
           retention-days: 7
@@ -286,6 +287,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: ${{ matrix.target.bundle == 'macos' && 'macos-slice' || 'multiplex' }}-${{ matrix.target.name }}
           path: dist/*
           compression-level: 0
@@ -356,6 +358,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: multiplex-macos-universal
           path: dist/*
           compression-level: 0
@@ -445,6 +448,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: multiplex-android
           path: release-out/*
           compression-level: 0
@@ -533,6 +537,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: multiplex-ios
           path: release-out/*
           compression-level: 0
@@ -581,6 +586,7 @@ jobs:
       - name: Save complete candidate for exact-commit promotion
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: release-candidate
           path: flat/*
           compression-level: 0
