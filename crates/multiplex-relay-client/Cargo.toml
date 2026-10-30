@@ -4,7 +4,7 @@ version = "0.0.18"
 edition = "2024"
 rust-version.workspace = true
 description = "Bounded outbound WSS client for the optional TermiRust ciphertext relay"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 
 [features]
 test-support = ["dep:base64", "dep:serde", "dep:serde_json"]

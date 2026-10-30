@@ -4,7 +4,7 @@ version = "0.0.18"
 edition = "2024"
 rust-version.workspace = true
 description = "Capability-scoped local MCP server for TermiRust"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 
 [dependencies]
 multiplex-env = { version = "0.0.18", path = "../multiplex-env" }

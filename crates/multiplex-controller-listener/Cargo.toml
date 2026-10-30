@@ -4,7 +4,7 @@ version = "0.0.18"
 edition = "2024"
 rust-version.workspace = true
 description = "Bounded exact-interface LAN/VPN Controller listener for TermiRust"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 
 [dependencies]
 async-trait = "0.1"

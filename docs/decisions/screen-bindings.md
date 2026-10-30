@@ -19,7 +19,7 @@ it produces under the capability each frame must claim.
 
 Everything pinned for the Controller bindings applies unchanged: UniFFI exactly `0.32.0`, Rust
 exactly `1.98.1`, the same iOS and Android targets, API 26, 16 KiB ELF LOAD alignment, and JNA for
-Kotlin. UniFFI is MPL-2.0; this wrapper stays MIT OR Apache-2.0.
+Kotlin. UniFFI is MPL-2.0; this wrapper stays MIT.
 
 - Swift module: `MultiplexRemoteScreens`; C module: `MultiplexRemoteScreensFFI`
 - Kotlin package: `com.multiplex.screens`; library: `multiplex_screen_bindings`

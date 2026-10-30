@@ -4,7 +4,7 @@ version = "0.0.18"
 edition = "2024"
 rust-version.workspace = true
 description = "What carries a TermiRust Remote Screens session: the delivery each class of message needs, and the QUIC route that fits the seam"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 
 [dependencies]
 multiplex-screen-protocol = { version = "0.0.18", path = "../multiplex-screen-protocol" }

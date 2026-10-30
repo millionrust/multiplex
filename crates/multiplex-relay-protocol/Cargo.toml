@@ -4,7 +4,7 @@ version = "0.0.18"
 edition = "2024"
 rust-version.workspace = true
 description = "Canonical outer protocol and admission types for the TermiRust ciphertext relay"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 
 [dependencies]
 ed25519-dalek = { version = "=2.2.0", features = ["rand_core"] }

@@ -4,7 +4,7 @@ version = "0.0.18"
 edition = "2024"
 rust-version.workspace = true
 description = "Pointer and keyboard injection for TermiRust Remote Screens: a single-writer injector over a platform-neutral sink, and the macOS Core Graphics backend"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 
 [dependencies]
 multiplex-screen-codec = { version = "0.0.18", path = "../multiplex-screen-codec" }

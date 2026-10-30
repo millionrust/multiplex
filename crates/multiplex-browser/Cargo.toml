@@ -4,7 +4,7 @@ version = "0.0.18"
 edition = "2024"
 rust-version.workspace = true
 description = "Isolated, policy-bound browser runtime for TermiRust"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 
 [dependencies]
 chromiumoxide = { version = "0.9.1", default-features = false }

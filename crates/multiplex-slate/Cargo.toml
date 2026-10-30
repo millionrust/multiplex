@@ -4,7 +4,7 @@ version.workspace = true
 edition = "2024"
 rust-version.workspace = true
 description = "Slate: TermiRust's styled component library on gpui-base"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 publish = false
 
 [dependencies]

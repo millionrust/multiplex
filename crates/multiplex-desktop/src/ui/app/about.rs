@@ -12,7 +12,7 @@ use super::MultiplexApp;
 use crate::ui::{localization, theme};
 
 const SOURCE_URL: &str = "https://github.com/millionrust/multiplex";
-const LICENSE: &str = "MIT OR Apache-2.0";
+const LICENSE: &str = "MIT";
 
 /// The commit the build script found, when it was built from a Git checkout.
 fn build_commit() -> &'static str {

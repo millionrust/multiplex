@@ -4,7 +4,7 @@ version = "0.0.18"
 edition = "2024"
 rust-version.workspace = true
 description = "C ABI bridge for TermiRust mobile vault crypto"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 
 [lib]
 # The name the phone apps load, and the one uniffi writes into its bindings. It stays as it

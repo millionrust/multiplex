@@ -188,4 +188,4 @@ target the app; add `--workspace` to cover every crate.
 
 ## License
 
-MIT
+[MIT](LICENSE)

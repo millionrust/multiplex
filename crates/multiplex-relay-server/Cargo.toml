@@ -4,7 +4,7 @@ version = "0.0.18"
 edition = "2024"
 rust-version.workspace = true
 description = "Authenticated local-loopback ciphertext relay server core"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 
 [[bin]]
 name = "multiplex-relay"
