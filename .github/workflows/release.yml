@@ -18,6 +18,8 @@ on:
 env:
   CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
   CARGO_PROFILE_RELEASE_LTO: "false"
+  # Stable native archives keep dependent Rust cache keys stable across release builds.
+  MBX_AR_DETERMINISM: always
 
 # Superseded branch candidates must not hold runners needed by the next candidate.
 concurrency:
@@ -93,7 +95,8 @@ jobs:
         with:
           backend: github
           generation: release-shipping-${{ matrix.target.name }}-v2
-          mode: target
+          mode: objects
+          cache-links: "true"
           save-on-workflow-dispatch: "true"
 
       - name: Linux build dependencies
@@ -396,7 +399,8 @@ jobs:
         with:
           backend: github
           generation: release-shipping-android-v2
-          mode: target
+          mode: objects
+          cache-links: "true"
           save-on-workflow-dispatch: "true"
 
       - name: Install the pinned Android NDK
@@ -478,7 +482,8 @@ jobs:
         with:
           backend: github
           generation: release-shipping-ios-v2
-          mode: target
+          mode: objects
+          cache-links: "true"
           save-on-workflow-dispatch: "true"
 
       - name: Build and sync the generated bindings and frameworks

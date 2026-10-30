@@ -10,6 +10,9 @@ inputs:
   mode:
     description: Target payload for normal builds, objects for isolated mobile targets.
     default: target
+  cache-links:
+    description: Cache eligible native links in objects mode; auto enables them on Linux.
+    default: auto
   save-on-workflow-dispatch:
     description: Allow trusted manual builds to populate their own cache namespace.
     default: "false"
@@ -24,6 +27,7 @@ runs:
         backend: ${{ inputs.backend }}
         cache-generation: ${{ inputs.generation }}
         github-cache-mode: ${{ inputs.mode }}
+        cache-links: ${{ inputs.cache-links }}
         save-on-workflow-dispatch: ${{ inputs.save-on-workflow-dispatch }}
     - name: Enable the Cargo shim for build and verification scripts
       shell: bash

@@ -172,13 +172,18 @@ needed before claiming a speedup.
 
 Linux CI fetches the locked dependency graph and saves the portable
 `cargo-sources-v1-<Cargo.lock hash>` cache. Releases restore those downloads and the compiler
-cache in dedicated `release-shipping-*-v2` namespaces, separate from test builds. Pushes to
+cache in dedicated `release-shipping-*-v2` namespaces, separate from test builds. Releases
+use the objects payload with eligible native-link caching, and one portable source cache,
+rather than carrying another registry copy in each platform's target cache. The repository
+was already using about 10 GB of caches when this changed; smaller payloads reduce eviction
+pressure. Normal CI still uses the target payload. Native archives use deterministic
+archive timestamps (`MBX_AR_DETERMINISM=always`) to avoid unnecessary dependent misses. Pushes to
 `dev` warm these caches and build complete candidates; superseded branch runs are cancelled.
 Pull requests do not run the release workflow. Tags and manual runs restore shipping work too.
 
 Candidates and tags both use Cargo's standard release code generation: 16 codegen units,
 local ThinLTO (`lto=false`), and optimization level 3. The root manifest still offers the
-one-unit/cross-crate ThinLTO profile for local builds; CI overrides it for build speed. Android and iOS share one cached
+one-unit/cross-crate ThinLTO profile for local builds; CI overrides it for build speed. Android and iOS share one
 `target` directory across their mobile libraries, avoiding repeated dependency and UniFFI
 generator compilation. Cargo still fingerprints inputs, and ABI, page-alignment, manifest,
 and package checks still run. The independent two-clean-build reproducibility checks leave
