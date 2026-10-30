@@ -2,6 +2,8 @@ name: release
 
 on:
   push:
+    # Warm shipping caches and prepare promotable binaries before a tag is pushed.
+    branches: [dev]
     tags:
       - "v*"
   workflow_dispatch:
@@ -11,12 +13,18 @@ on:
         required: false
         default: ""
 
-# A dry run (dispatched without a tag) only proves that everything builds, so it compiles in
-# parallel without link-time optimisation. Anything that is published gets the release profile as
-# Cargo.toml declares it: one codegen unit and thin LTO, the slowest to build and fastest to run.
+# Candidates and tags use identical optimized builds. Cargo's standard release codegen settings
+# keep LLVM parallel and avoid repeating cross-crate LTO for the app and each sidecar.
 env:
-  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.tag != '') && '1' || '16' }}
-  CARGO_PROFILE_RELEASE_LTO: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.tag != '') && 'thin' || 'false' }}
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+  CARGO_PROFILE_RELEASE_LTO: "false"
+  # Stable native archives keep dependent Rust cache keys stable across release builds.
+  MBX_AR_DETERMINISM: always
+
+# Superseded branch candidates must not hold runners needed by the next candidate.
+concurrency:
+  group: release-${{ github.ref }}-${{ inputs.tag }}
+  cancel-in-progress: ${{ github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
   contents: write
@@ -25,23 +33,28 @@ permissions:
   id-token: write
 
 jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      candidate-run: ${{ steps.candidate.outputs.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find a completed candidate for this exact commit
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python3 scripts/build/release-candidate.py discover
+
   build:
     name: build (${{ matrix.target.name }})
+    needs: prepare
+    if: needs.prepare.outputs.candidate-run == ''
     runs-on: ${{ matrix.target.runner }}
     strategy:
       fail-fast: false
       matrix:
         target:
-          - name: macos-aarch64
-            runner: macos-26
-            triple: aarch64-apple-darwin
-            bundle: macos
-          # Cross-compiled on Apple silicon: ScreenCaptureKit's Metal bridge needs a newer SDK
-          # than the Intel runner image's Xcode carries.
-          - name: macos-x86_64
-            runner: macos-26
-            triple: x86_64-apple-darwin
-            bundle: macos
           # 24.04, as CI: 22.04's PipeWire 0.3.48 is older than the libspa bindings expect.
           - name: linux-x86_64
             runner: ubuntu-24.04
@@ -59,7 +72,7 @@ jobs:
             bundle: windows
             msi_arch: arm64
 
-    steps:
+    steps: &desktop-steps
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
@@ -70,7 +83,7 @@ jobs:
       - name: Restore locked dependency sources
         uses: actions/cache/restore@v4
         with:
-          # Downloads remain shared; shipping compiler artifacts stay inside this runner.
+          # Dependency downloads are shared across platforms.
           path: |
             ~/.cargo/registry
             ~/.cargo/git
@@ -80,9 +93,10 @@ jobs:
       - name: Set up Cargo compiler cache
         uses: ./.github/actions/cargo-cache
         with:
-          backend: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.tag != '') && 'local' || 'github' }}
-          generation: release-dry-${{ matrix.target.name }}-v1
-          mode: target
+          backend: github
+          generation: release-shipping-${{ matrix.target.name }}-v2
+          mode: objects
+          cache-links: "true"
           save-on-workflow-dispatch: "true"
 
       - name: Linux build dependencies
@@ -95,50 +109,43 @@ jobs:
             libpipewire-0.3-dev libspa-0.2-dev libclang-dev \
             pkg-config
 
-      # cargo-bundle builds from source in two to four minutes. Started here, it builds beside the
-      # application (whose last, single-unit crates leave most cores idle) instead of after it, and
-      # with codegen units and no LTO whatever the release profile above says: it is a build tool,
-      # not something that ships. It bypasses the compiler cache's shim through rustup's own cargo.
-      - name: Start installing cargo-bundle (macOS)
+      - name: Cache cargo-bundle
         if: matrix.target.bundle == 'macos'
+        id: bundle-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/cargo-bundle
+          key: cargo-bundle-0.11.0-${{ runner.os }}-${{ runner.arch }}-rust-1.98.1
+
+      - name: Install cargo-bundle (macOS)
+        if: matrix.target.bundle == 'macos'
+        shell: bash
         run: |
           root="$RUNNER_TEMP/cargo-bundle"
           echo "$root/bin" >> "$GITHUB_PATH"
-          (
-            CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_LTO=false \
-              "$CARGO_HOME/bin/cargo" install cargo-bundle --version 0.11.0 --locked --root "$root" \
-              > "$RUNNER_TEMP/cargo-bundle.log" 2>&1
-            echo $? > "$RUNNER_TEMP/cargo-bundle.status"
-          ) &
+          if [ ! -x "$root/bin/cargo-bundle" ]; then
+            RUSTUP_TOOLCHAIN=1.98.1 CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_LTO=false \
+              "$(rustup which cargo)" install cargo-bundle --version 0.11.0 --locked --root "$root"
+          fi
 
       - name: Build release application and sidecars
         run: >-
-          cargo build --release --target ${{ matrix.target.triple }} --locked
+          cargo build --timings --release --target ${{ matrix.target.triple }} --locked
           -p multiplex
           -p multiplex-cli
           -p multiplex-session-host
           -p multiplex-mcp
           -p multiplex-relay-server
 
-      # The background install normally finished long ago. If it has not, or it failed, it is
-      # stopped and done here instead: in the v0.0.18 tag build it never wrote its status beside
-      # a single-unit LTO build, and waiting for it cost the whole Intel job.
-      - name: Finish installing cargo-bundle (macOS)
-        if: matrix.target.bundle == 'macos'
-        timeout-minutes: 30
-        run: |
-          root="$RUNNER_TEMP/cargo-bundle"
-          status="$RUNNER_TEMP/cargo-bundle.status"
-          for _ in $(seq 1 60); do [ -f "$status" ] && break; sleep 5; done
-          if [ -f "$RUNNER_TEMP/cargo-bundle.log" ]; then cat "$RUNNER_TEMP/cargo-bundle.log"; fi
-          if [ -f "$status" ] && [ "$(cat "$status")" = 0 ] && [ -x "$root/bin/cargo-bundle" ]; then
-            exit 0
-          fi
-          echo "::warning::the background cargo-bundle install did not finish; installing it now"
-          if pgrep -f "cargo install cargo-bundle" > /dev/null; then pkill -f "cargo install cargo-bundle"; fi
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_LTO=false \
-            "$CARGO_HOME/bin/cargo" install cargo-bundle --version 0.11.0 --locked --root "$root"
-          test -x "$root/bin/cargo-bundle"
+      - name: Save compiler timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: build-timings-${{ matrix.target.name }}
+          path: target/cargo-timings/*.html
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Bundle macOS .app
         if: matrix.target.bundle == 'macos'
@@ -280,14 +287,40 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: ${{ matrix.target.bundle == 'macos' && 'macos-slice' || 'multiplex' }}-${{ matrix.target.name }}
           path: dist/*
+          compression-level: 0
           if-no-files-found: error
+
+  build-macos:
+    name: build (${{ matrix.target.name }})
+    needs: prepare
+    if: needs.prepare.outputs.candidate-run == ''
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: macos-aarch64
+            runner: macos-26
+            triple: aarch64-apple-darwin
+            bundle: macos
+            msi_arch: ""
+          # Cross-compiled on Apple silicon: ScreenCaptureKit's Metal bridge needs a newer SDK
+          # than the Intel runner image's Xcode carries.
+          - name: macos-x86_64
+            runner: macos-26
+            triple: x86_64-apple-darwin
+            bundle: macos
+            msi_arch: ""
+    steps: *desktop-steps
 
   # One Multiplex.app for every Mac: each executable from the two builds above merged with lipo.
   macos-universal:
     name: build (macos-universal)
-    needs: build
+    needs: [prepare, build-macos]
+    if: needs.prepare.outputs.candidate-run == ''
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
@@ -325,11 +358,17 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: multiplex-macos-universal
           path: dist/*
+          compression-level: 0
           if-no-files-found: error
 
   android:
+    needs: prepare
+    if: needs.prepare.outputs.candidate-run == ''
+    env:
+      MULTIPLEX_MOBILE_CARGO_TARGET_DIR: ${{ github.workspace }}/target
     name: build (android)
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -342,6 +381,9 @@ jobs:
           java-version: "17"
 
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          # This workflow runs only for trusted pushes and manual builds, including branches.
+          cache-read-only: false
 
       - uses: dtolnay/rust-toolchain@1.98.1
         with:
@@ -349,7 +391,7 @@ jobs:
 
       - uses: actions/cache/restore@v4
         with:
-          # Downloads remain shared; shipping compiler artifacts stay inside this runner.
+          # Dependency downloads are shared across platforms.
           path: |
             ~/.cargo/registry
             ~/.cargo/git
@@ -361,9 +403,10 @@ jobs:
       - name: Set up Cargo compiler cache
         uses: ./.github/actions/cargo-cache
         with:
-          backend: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.tag != '') && 'local' || 'github' }}
-          generation: release-dry-android-v1
+          backend: github
+          generation: release-shipping-android-v2
           mode: objects
+          cache-links: "true"
           save-on-workflow-dispatch: "true"
 
       - name: Install the pinned Android NDK
@@ -392,7 +435,7 @@ jobs:
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
         run: |
-          apps/android/gradlew -p apps/android assembleRelease --console=plain
+          apps/android/gradlew -p apps/android assembleRelease --build-cache --console=plain
           VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)
           mkdir -p release-out
           cp apps/android/app/build/outputs/apk/release/app-release.apk "release-out/Multiplex-${VERSION}-android.apk"
@@ -408,11 +451,17 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: multiplex-android
           path: release-out/*
+          compression-level: 0
           if-no-files-found: error
 
   ios:
+    needs: prepare
+    if: needs.prepare.outputs.candidate-run == ''
+    env:
+      MULTIPLEX_MOBILE_CARGO_TARGET_DIR: ${{ github.workspace }}/target
     name: build (ios)
     runs-on: macos-26
     timeout-minutes: 120
@@ -428,7 +477,7 @@ jobs:
 
       - uses: actions/cache/restore@v4
         with:
-          # Downloads remain shared; shipping compiler artifacts stay inside this runner.
+          # Dependency downloads are shared across platforms.
           path: |
             ~/.cargo/registry
             ~/.cargo/git
@@ -438,9 +487,10 @@ jobs:
       - name: Set up Cargo compiler cache
         uses: ./.github/actions/cargo-cache
         with:
-          backend: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.tag != '') && 'local' || 'github' }}
-          generation: release-dry-ios-v1
+          backend: github
+          generation: release-shipping-ios-v2
           mode: objects
+          cache-links: "true"
           save-on-workflow-dispatch: "true"
 
       - name: Build and sync the generated bindings and frameworks
@@ -490,30 +540,61 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: multiplex-ios
           path: release-out/*
+          compression-level: 0
           if-no-files-found: error
 
   # Runs on a dry run too, so gathering every platform's files into one release is checked before
   # a tag depends on it; only the step that creates the GitHub release needs a tag.
   release:
     name: publish
-    needs: [build, macos-universal, android, ios]
-    runs-on: ubuntu-22.04
+    needs: [prepare, build, build-macos, macos-universal, android, ios]
+    if: >-
+      always() && !cancelled() && needs.prepare.result == 'success' &&
+      (needs.prepare.outputs.candidate-run != '' ||
+       (needs.build.result == 'success' && needs.build-macos.result == 'success' &&
+        needs.macos-universal.result == 'success' && needs.android.result == 'success' &&
+        needs.ios.result == 'success'))
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
+      - name: Download verified candidate
+        if: needs.prepare.outputs.candidate-run != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: release-candidate
+          path: flat
+          run-id: ${{ needs.prepare.outputs.candidate-run }}
+          github-token: ${{ github.token }}
+
       - name: Download all artifacts
+        if: needs.prepare.outputs.candidate-run == ''
         uses: actions/download-artifact@v4
         with:
           pattern: multiplex-*
           path: dist
 
-      - name: Flatten artifact directories
+      - name: Assemble and verify release candidate
+        env:
+          CANDIDATE_RUN: ${{ needs.prepare.outputs.candidate-run }}
         run: |
-          mkdir -p flat
-          find dist -mindepth 2 -type f -exec cp -t flat {} +
-          ls -la flat
+          if [ -z "$CANDIDATE_RUN" ]; then
+            python3 scripts/build/release-candidate.py create dist flat
+          fi
+          python3 scripts/build/release-candidate.py verify flat
+
+      - name: Save complete candidate for exact-commit promotion
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: release-candidate
+          path: flat/*
+          compression-level: 0
+          retention-days: 30
+          if-no-files-found: error
 
       - name: Create / update GitHub Release
         if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')

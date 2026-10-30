@@ -95,10 +95,9 @@ GENERATED="$BUILD_ROOT/generated"
 STAGED="$BUILD_ROOT/output"
 mkdir -p "$GENERATED" "$STAGED"
 
-# Each build normally gets its own empty target directory, so what is built cannot depend on
-# anything left behind. CI, which only verifies these artifacts and never ships them, sets
-# MULTIPLEX_MOBILE_CARGO_TARGET_DIR to one shared, cached directory instead: every mobile library
-# then compiles the dependencies once per target rather than once per library per target.
+# Reproducibility checks default to isolated directories. Trusted CI and release jobs can
+# share one cached directory: Cargo fingerprints the inputs, and dependencies compile once per
+# target rather than once per library per target. Output manifests and ABI checks still run.
 SHARED_TARGET="${MULTIPLEX_MOBILE_CARGO_TARGET_DIR:-}"
 
 # uniffi-bindgen reads the host build of the library, and the Kotlin unit tests load that same

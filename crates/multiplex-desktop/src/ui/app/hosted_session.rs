@@ -44,7 +44,8 @@ const LIVE_POLL_INTERVAL: Duration = Duration::from_millis(
 const MAX_STARTUP_HANDSHAKES: usize = 8;
 /// How long after the last keystroke a viewer lets go of the writer lease, so the terminal
 /// window a `multiplex-cli shell` runs in, or a paired device, can type into it again.
-const VIEWER_LEASE_IDLE: Duration = Duration::from_millis(1_500);
+const VIEWER_LEASE_IDLE_MILLIS: u64 = 1_500;
+const VIEWER_LEASE_IDLE: Duration = Duration::from_millis(VIEWER_LEASE_IDLE_MILLIS);
 
 /// The writer lease as an app viewer holds it: taken to type and let go once the typing stops,
 /// the way a `multiplex-cli shell` window holds it, so neither keeps the other out for good.

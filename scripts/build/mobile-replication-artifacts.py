@@ -29,8 +29,8 @@ def host_build():
 def slice_target(work):
     """The cargo target directory for one slice: new and empty unless CI shares one.
 
-    CI only verifies these artifacts, so it sets MULTIPLEX_MOBILE_CARGO_TARGET_DIR to one cached
-    directory that every mobile library builds into; anything that ships starts from nothing.
+    Trusted CI and release jobs set MULTIPLEX_MOBILE_CARGO_TARGET_DIR to one cached
+    directory that every mobile library builds into. Clean reproducibility checks leave it unset.
     """
     shared = os.environ.get("MULTIPLEX_MOBILE_CARGO_TARGET_DIR")
     if shared:

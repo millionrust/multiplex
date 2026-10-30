@@ -19357,7 +19357,8 @@ sleep 1
             app.workspace(workspace_id).unwrap().active_pane_id
         });
         cx.executor().advance_clock(Duration::from_secs(3));
-        std::thread::sleep(Duration::from_millis(2_500));
+        const RECONNECT_OBSERVATION_MILLIS: u64 = 2_500;
+        std::thread::sleep(Duration::from_millis(RECONNECT_OBSERVATION_MILLIS));
         cx.run_until_parked();
         app.read_with(cx, |app, _| {
             let pane_id = app.workspace(workspace_id).unwrap().active_pane_id;
