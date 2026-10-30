@@ -703,7 +703,7 @@ enum BridgeReply {
         responses: Vec<ControllerResponse>,
     },
     Next {
-        response: Option<ControllerResponse>,
+        response: Option<Box<ControllerResponse>>,
     },
     Reset,
     Error,
@@ -881,7 +881,7 @@ fn handle_request(
         },
         BridgeRequest::Next => BridgeReply::Next {
             response: match next_desktop_output(registry, connection) {
-                Ok(response) => response,
+                Ok(response) => response.map(Box::new),
                 Err(()) => return BridgeReply::Error,
             },
         },
@@ -1262,7 +1262,7 @@ impl DesktopPaneBridgeClient {
 
     pub(crate) async fn next(&mut self) -> Result<Option<ControllerResponse>, ListenerError> {
         match self.request(BridgeRequest::Next).await? {
-            BridgeReply::Next { response } => Ok(response),
+            BridgeReply::Next { response } => Ok(response.map(|response| *response)),
             _ => Err(ListenerError::new(ListenerErrorCode::HostUnavailable)),
         }
     }

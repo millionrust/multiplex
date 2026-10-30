@@ -17,7 +17,7 @@ use crate::{
 /// What arrived from the host on a Controller connection.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ControllerIncoming {
-    Response(ControllerResponse),
+    Response(Box<ControllerResponse>),
     /// A chunk of the screen protocol's byte stream.
     Screen(Vec<u8>),
 }
@@ -150,7 +150,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ControllerClientChannel<S> {
     /// [`Self::read_incoming`] instead.
     pub async fn read_response(&mut self) -> Result<ControllerResponse, ListenerError> {
         match self.read_incoming().await? {
-            ControllerIncoming::Response(response) => Ok(response),
+            ControllerIncoming::Response(response) => Ok(*response),
             ControllerIncoming::Screen(_) => {
                 Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
             }
@@ -181,7 +181,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ControllerClientChannel<S> {
         if complete && let Some(command_id) = response_command_id(&response) {
             self.pending.remove(&command_id);
         }
-        Ok(ControllerIncoming::Response(response))
+        Ok(ControllerIncoming::Response(Box::new(response)))
     }
 
     fn expected_response(
