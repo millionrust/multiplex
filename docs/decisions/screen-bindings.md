@@ -45,6 +45,12 @@ do for the Controller boundary. The verifier rejects generated sources that ment
 
 ## Reproducibility and promotion
 
+Trusted CI and release jobs may set `MULTIPLEX_MOBILE_CARGO_TARGET_DIR` to share a cached
+Cargo target directory across mobile libraries. Cargo input fingerprints and the output ABI,
+alignment, and checksum checks still apply. The two-clean-build comparison leaves this variable
+unset and continues to use isolated directories. Shipping candidates are built once and promoted
+by exact commit; see `docs/building.md` for the release cache and promotion contract.
+
 `scripts/build/mobile-screen-bindings.sh` mirrors its Controller counterpart: fresh isolated
 target directories per target, both languages generated with `--no-format`, Android page alignment
 checked, public ABI symbols and SHA-256 recorded for every release output, and a staged tree

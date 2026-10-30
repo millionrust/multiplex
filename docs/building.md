@@ -161,7 +161,7 @@ package managers (Homebrew, scoop, AUR) pick them up.
 
 ## Build caches
 
-CI uses pinned [mr-boxington](https://mr-boxington.jdx.dev/github-action) 1.22.0 after
+CI uses pinned [mr-boxington](https://mr-boxington.jdx.dev/github-action) 1.29.0 after
 installing Rust 1.98.1. The shared local action installs its Cargo shim, so existing Cargo
 commands inside shell, Python, and mobile build scripts are covered. Linux/macOS baselines,
 Windows tests, Android, and iOS have separate cache generations; Windows test shards share
@@ -170,28 +170,41 @@ Windows probe only restore it. The action saves compiler work only when a job su
 The first run of each new generation is cold; warm-run timings and cache-hit reports are
 needed before claiming a speedup.
 
-Linux CI still fetches the locked dependency graph and immediately saves the portable
-`cargo-sources-v1-<Cargo.lock hash>` cache. Releases restore those downloads. Dry runs also
-restore and save mr-boxington compiler caches in their own namespaces. Isolated mobile
-build directories use the objects payload; ordinary CI builds use the target payload.
+Linux CI fetches the locked dependency graph and saves the portable
+`cargo-sources-v1-<Cargo.lock hash>` cache. Releases restore those downloads and the compiler
+cache in dedicated `release-shipping-*-v2` namespaces, separate from test builds. Pushes to
+`dev` warm these caches and build complete candidates; superseded branch runs are cancelled.
+Pull requests do not run the release workflow. Tags and manual runs restore shipping work too.
 
-Tagged releases use mr-boxington's local backend: compiler work can be reused between
-build commands and isolated target directories on the same runner, with no shared compiler
-cache restored or saved. This follows its
-[production release guidance](https://mr-boxington.jdx.dev/github-action#production-releases).
-The one-codegen-unit/thin-LTO shipping profile remains unchanged; dry runs use 16 codegen
-units without LTO. `MBX_TARGET_VIEWS=0` keeps desktop outputs at the paths packaging expects
-and leaves the shipping mobile scripts' isolated directories intact. No shared shipping
-`MULTIPLEX_MOBILE_CARGO_TARGET_DIR` is introduced.
+Candidates and tags both use one codegen unit and thin LTO. Android and iOS share one cached
+`target` directory across their mobile libraries, avoiding repeated dependency and UniFFI
+generator compilation. Cargo still fingerprints inputs, and ABI, page-alignment, manifest,
+and package checks still run. The independent two-clean-build reproducibility checks leave
+`MULTIPLEX_MOBILE_CARGO_TARGET_DIR` unset. `MBX_TARGET_VIEWS=0` preserves packaging paths.
+
+A completed run uploads a flat `release-candidate` artifact for 30 days. Tagging the exact same
+commit (or dispatching again) discovers that successful run, verifies the complete package set,
+SBOM presence, commit and every checksum, and promotes those bytes without compiling again.
+Candidate discovery accepts only successful push/manual runs of the same workflow in this
+repository. A manual publication tag must resolve to the checked-out commit and match the
+workspace version. Missing or expired candidates fall back to normal cached builds; a corrupt
+candidate fails verification. Releases remain drafts for a person to publish.
+
+The under-five-minute target applies to promotion of an existing complete candidate, excluding
+runner queue delays. Cold builds and changed-source compilation have no measured five-minute
+guarantee. Desktop jobs upload Cargo HTML timings as `build-timings-*` artifacts so subsequent
+optimization can use measured crate durations. Mac universal packaging waits only for the Mac
+builds, rather than the entire desktop matrix. Already-compressed packages are uploaded without
+an extra compression pass. Android enables Gradle's task build cache.
 
 mr-boxington's per-job report counts only compilations it looked up: Cargo's reuse of a
 restored `target` directory is left out, so "0 hits" beside a short build step is a warm
 build, not a cold one. Judge a run by its step times.
 
-The macOS jobs install `cargo-bundle` from source, which takes two to four minutes. They start
-it in the background before the application build, through rustup's `cargo` and with 16 codegen
-units and no LTO in every mode, and wait for it only before bundling; it is a build tool and is
-never cached.
+The macOS jobs cache the pinned `cargo-bundle` executable by runner OS, architecture, and
+Rust version. A cache miss installs it with parallel code generation and no LTO; warm builds
+restore it directly. The former background installer and its five-minute polling loop are gone.
+
 
 Packaging checks, native tests, checksums and attestations still run. Release workflows
 create drafts only; publication remains a deliberate step after verification.

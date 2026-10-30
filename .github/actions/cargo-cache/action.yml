@@ -2,7 +2,7 @@ name: Cargo compiler cache
 description: Set up pinned mr-boxington and route existing Cargo scripts through its shim.
 inputs:
   backend:
-    description: GitHub transport for verification; local compiler reuse for shipping builds.
+    description: GitHub transport for trusted CI and shipping builds; local reuse for offline builds.
     default: github
   generation:
     description: Separate compiler cache namespace for this build configuration.
@@ -11,15 +11,15 @@ inputs:
     description: Target payload for normal builds, objects for isolated mobile targets.
     default: target
   save-on-workflow-dispatch:
-    description: Allow trusted dry runs to populate their own cache namespace.
+    description: Allow trusted manual builds to populate their own cache namespace.
     default: "false"
 runs:
   using: composite
   steps:
     - name: Restore Cargo compiler work
-      uses: jdx/mr-boxington-action@d0825fbaf3cc36ca2609aa38e71046265a1f1e37 # v1
+      uses: jdx/mr-boxington-action@969741d4490229c48bdff982a720e45e0bd1de6c # v1
       with:
-        version: 1.22.0
+        version: 1.29.0
         toolchain: 1.98.1
         backend: ${{ inputs.backend }}
         cache-generation: ${{ inputs.generation }}

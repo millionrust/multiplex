@@ -27,6 +27,14 @@ grep -F 'triple: x86_64-apple-darwin' "$workflow" >/dev/null
 grep -F 'output-file: dist/Multiplex-${{ matrix.target.name }}.spdx.json' "$workflow" >/dev/null
 grep -F 'uses: actions/attest@v4' "$workflow" >/dev/null
 grep -F 'draft: true' "$workflow" >/dev/null
+# Tags promote exact-commit candidates; a miss restores shipping compiler work and builds.
+grep -F 'release-candidate.py discover' "$workflow" >/dev/null
+grep -F 'release-candidate.py verify flat' "$workflow" >/dev/null
+grep -F 'steps: *desktop-steps' "$workflow" >/dev/null
+grep -F 'needs: [prepare, build-macos]' "$workflow" >/dev/null
+grep -F 'generation: release-shipping-android-v2' "$workflow" >/dev/null
+grep -F 'generation: release-shipping-ios-v2' "$workflow" >/dev/null
+python3 scripts/test/release-candidate.py
 # The desktop updater finds its package by these names (docs/decisions/desktop-updates.md).
 grep -F 'shasum -a 256 Multiplex-macos-universal.zip > Multiplex-macos-universal.zip.sha256' "$workflow" >/dev/null
 grep -F -e '- name: windows-x86_64' "$workflow" >/dev/null
