@@ -89,15 +89,8 @@ async fn send_shell_input(
     if bytes.is_empty() {
         return Ok(());
     }
-    if bytes.len() > MAX_INTERACTIVE_INPUT_BYTES {
-        return Err(CliError::new(
-            ErrorCode::ResourceLimit,
-            "interactive terminal input exceeds the 16 KiB limit",
-            "Send a smaller input payload.",
-        ));
-    }
     if lease.take(client, cancel).await {
-        match client.input(CommandId::new(), bytes, cancel).await {
+        match client.input_all(&bytes, cancel).await {
             Ok(true) => return Ok(()),
             Ok(false) => lease.held = false,
             Err(error) => return Err(map_input_after_dispatch(error)),
@@ -108,6 +101,7 @@ async fn send_shell_input(
         .and_then(|()| stdout.flush())
         .map_err(|_| output_unavailable())
 }
+// Bound each raw stdin read; complete pastes stream through negotiated Host requests.
 const MAX_INTERACTIVE_INPUT_BYTES: usize = 16 * 1024;
 
 pub struct LocalSessionAttachExecutor {
@@ -340,17 +334,13 @@ pub(crate) async fn run_attach(
                         }
                     }
                     TerminalEvent::Paste(value) if shell || validated.request.request_control => {
-                        if value.len() > MAX_INTERACTIVE_INPUT_BYTES {
-                            return Err(CliError::new(
-                                ErrorCode::ResourceLimit,
-                                "interactive paste exceeds the 16 KiB input limit",
-                                "Paste a smaller payload or send it in separate chunks.",
-                            ));
-                        }
+                        // Crossterm removes the framing when it emits Paste. Restore it
+                        // so shells and TUIs receive one paste rather than typed newlines.
+                        let bytes = [b"\x1b[200~".as_slice(), value.as_bytes(), b"\x1b[201~"].concat();
                         if shell {
-                            send_shell_input(&mut client, &mut lease, value.into_bytes(), &mut stdout, &async_cancel).await?;
+                            send_shell_input(&mut client, &mut lease, bytes, &mut stdout, &async_cancel).await?;
                         } else {
-                            send_input(&mut client, value.into_bytes(), &async_cancel).await?;
+                            send_input(&mut client, bytes, &async_cancel).await?;
                         }
                     }
                     // A shell window that is resized while a device writes keeps the device's
@@ -488,15 +478,8 @@ async fn send_input(
     bytes: Vec<u8>,
     cancel: &CancellationToken,
 ) -> Result<(), CliError> {
-    if bytes.len() > MAX_INTERACTIVE_INPUT_BYTES {
-        return Err(CliError::new(
-            ErrorCode::ResourceLimit,
-            "interactive terminal input exceeds the 16 KiB limit",
-            "Send a smaller input payload.",
-        ));
-    }
     let applied = client
-        .input(CommandId::new(), bytes, cancel)
+        .input_all(&bytes, cancel)
         .await
         .map_err(map_input_after_dispatch)?;
     if applied {

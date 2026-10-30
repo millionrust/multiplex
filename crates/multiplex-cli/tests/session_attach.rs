@@ -333,6 +333,114 @@ async fn packaged_human_attach_is_read_only_by_default_and_ctrl_c_restores_termi
     host.shutdown().await.unwrap();
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shell_preserves_multiline_unicode_paste_and_bracket_markers() {
+    check_shell_paste(false, false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shell_streams_pastes_larger_than_one_input_request() {
+    check_shell_paste(false, true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn raw_terminal_bridge_preserves_large_multiline_unicode_paste() {
+    check_shell_paste(true, true).await;
+}
+
+async fn check_shell_paste(raw: bool, large: bool) {
+    let _fixture_guard = REAL_HOST_TEST_LOCK.lock().await;
+    let seed = seed_store();
+    // Characters from a browser-copied numbered list: NBSP, Unicode line separators,
+    // typographic punctuation and a non-ASCII currency sign must all survive unchanged.
+    let text = "1. Add robots.txt — reference the XML sitemap.\u{a0}\n\
+2. Add canonical tags — ignore ?utm_source=gb and ?utm_source=wl.\u{a0}\n\
+3. Redirect www.chitti.app to chitti.app. \u{2028}\tReason: establish one preferred host.\n\
+4. Build an indexable electronics-kit page — keep the ₹299 workshop.\u{2028}Reason: organic search.\n";
+    let text = text.repeat(if large { 200 } else { 1 });
+    let expected = [b"\x1b[200~".as_slice(), text.as_bytes(), b"\x1b[201~"].concat();
+    let received = seed.temp.path().join("pasted-bytes");
+    let mut launch = descriptor(&seed);
+    launch.session_dir = seed
+        .config_root
+        .join("console-sessions")
+        .join(SESSION_ID.to_string());
+    launch.arguments = vec![
+        "-c".into(),
+        format!(
+            "stty raw -echo; printf '\\033[?2004hPASTE-READY'; head -c {} > '{}'; printf 'PASTE-DONE'; sleep 30",
+            expected.len(),
+            received.display()
+        ),
+    ];
+    let session_dir = launch.session_dir.clone();
+    let host = start(launch).await.unwrap();
+    multiplex_store::write_console_session(
+        &session_dir,
+        &multiplex_store::ConsoleSessionRecord {
+            schema_version: multiplex_store::ConsoleSessionRecord::SCHEMA_VERSION,
+            session_id: SESSION_ID,
+            program: "sh".into(),
+            title_override: None,
+            working_directory: seed.folder.clone(),
+            started_at: 1,
+        },
+    )
+    .unwrap();
+    let pty = native_pty_system()
+        .openpty(PtySize {
+            rows: 24,
+            cols: 100,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .unwrap();
+    let reader = pty.master.try_clone_reader().unwrap();
+    let mut writer = pty.master.take_writer().unwrap();
+    let output = Arc::new(Mutex::new(Vec::new()));
+    let reader_thread = spawn_pty_reader(reader, Arc::clone(&output));
+    let mut command = CommandBuilder::new(env!("CARGO_BIN_EXE_multiplex-cli"));
+    command.arg("shell");
+    if raw {
+        command.arg("--raw");
+    }
+    command.args(["--session-id", &SESSION_ID.to_string()]);
+    command.env_remove("MULTIPLEX_SHELL_SESSION");
+    command.env("TERM", "xterm-256color");
+    command.env("MULTIPLEX_CONFIG_DIR", &seed.config_root);
+    let mut child = pty.slave.spawn_command(command).unwrap();
+    drop(pty.slave);
+    wait_for_output(&output, b"PASTE-READY", Duration::from_secs(5));
+    // Let the CLI enter its input loop after replay announces readiness.
+    thread::sleep(Duration::from_millis(50));
+    let sent = writer.write_all(&expected).and_then(|()| writer.flush());
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < deadline {
+        if std::fs::metadata(&received).is_ok_and(|m| m.len() == expected.len() as u64)
+            || child.try_wait().unwrap().is_some()
+        {
+            break;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    let actual = std::fs::read(&received).unwrap_or_default();
+    let _ = child.kill();
+    let _ = child.wait();
+    drop(writer);
+    reader_thread.join().unwrap();
+    host.shutdown().await.unwrap();
+    sent.unwrap();
+    assert_eq!(
+        actual.len(),
+        expected.len(),
+        "paste was cropped; raw={raw}, large={large}"
+    );
+    assert_eq!(
+        actual, expected,
+        "paste bytes changed; raw={raw}, large={large}"
+    );
+}
+
 fn attach_command(request_control: bool) -> CliCommand {
     CliCommand::SessionAttach {
         session_id: SESSION_ID,
