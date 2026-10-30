@@ -183,8 +183,8 @@ Pull requests do not run the release workflow. Tags and manual runs restore ship
 
 Candidates and tags both use Cargo's standard release code generation: 16 codegen units,
 local ThinLTO (`lto=false`), and optimization level 3. The root manifest still offers the
-one-unit/cross-crate ThinLTO profile for local builds; CI overrides it for build speed. Android and iOS share one
-`target` directory across their mobile libraries, avoiding repeated dependency and UniFFI
+one-unit/cross-crate ThinLTO profile for local builds; CI overrides it for build speed.
+Android and iOS share one `target` directory across their mobile libraries, avoiding repeated dependency and UniFFI
 generator compilation. Cargo still fingerprints inputs, and ABI, page-alignment, manifest,
 and package checks still run. The independent two-clean-build reproducibility checks leave
 `MULTIPLEX_MOBILE_CARGO_TARGET_DIR` unset. `MBX_TARGET_VIEWS=0` preserves packaging paths.
@@ -205,6 +205,22 @@ builds, rather than the entire desktop matrix. Already-compressed packages are u
 an extra compression pass. Android enables Gradle's task build cache and allows trusted
 manual builds to save their branch's Gradle cache too.
 
+Measured on 2026-10-30 with the shipping compiler settings above:
+
+| Validation run | End-to-end time |
+| --- | --- |
+| [Cold compiler caches](https://github.com/millionrust/multiplex/actions/runs/41023955446) | 25m 20s |
+| [Warm caches, new commit](https://github.com/millionrust/multiplex/actions/runs/41026843877) | 9m 7s |
+| [Exact-commit candidate reuse](https://github.com/millionrust/multiplex/actions/runs/41027982871) | 32s |
+
+These were no-publish runs, including runner startup, packaging and verification; uploading
+GitHub Release assets was not measured. Every platform passed. Warm desktop compilation took
+2m 4s–4m 21s; Linux reported 247 compiler-cache hits and one miss, reducing its compilation
+from 9m 9s to 3m 22s. The cached Mac binary embedded the new commit, rather than the prior
+candidate's commit. The seven compiler payloads and packaging tool occupied about 5.5 GiB,
+compared with 7.6 GiB in the target-payload comparison. These results establish the sub-five-minute
+candidate-reuse path, not a sub-five-minute full rebuild.
+
 mr-boxington's per-job report counts only compilations it looked up: Cargo's reuse of a
 restored `target` directory is left out, so "0 hits" beside a short build step is a warm
 build, not a cold one. Judge a run by its step times.
@@ -212,7 +228,6 @@ build, not a cold one. Judge a run by its step times.
 The macOS jobs cache the pinned `cargo-bundle` executable by runner OS, architecture, and
 Rust version. A cache miss installs it with parallel code generation and no LTO; warm builds
 restore it directly. The former background installer and its five-minute polling loop are gone.
-
 
 Packaging checks, native tests, checksums and attestations still run. Release workflows
 create drafts only; publication remains a deliberate step after verification.

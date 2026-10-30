@@ -25,6 +25,7 @@ class ReleaseCandidateTests(unittest.TestCase):
             "GITHUB_REPOSITORY": "millionrust/multiplex", "RELEASE_TAG": "",
             "GITHUB_REF": "refs/heads/dev",
             "GITHUB_OUTPUT": str(self.root / "output"),
+            "GITHUB_STEP_SUMMARY": str(self.root / "summary"),
         })
         self.env.start()
         self.addCleanup(self.env.stop)
