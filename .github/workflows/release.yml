@@ -120,7 +120,7 @@ jobs:
           root="$RUNNER_TEMP/cargo-bundle"
           echo "$root/bin" >> "$GITHUB_PATH"
           if [ ! -x "$root/bin/cargo-bundle" ]; then
-            CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_LTO=false \
+            RUSTUP_TOOLCHAIN=1.98.1 CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_LTO=false \
               "$(rustup which cargo)" install cargo-bundle --version 0.11.0 --locked --root "$root"
           fi
 
