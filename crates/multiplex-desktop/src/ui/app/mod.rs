@@ -16341,24 +16341,64 @@ mod tests {
 
     #[gpui::test]
     fn e2e_browser_checklist_paste_preserves_brackets_in_a_local_tab(cx: &mut TestAppContext) {
-        browser_checklist_paste_with_brackets(cx, false);
+        browser_checklist_paste_with_brackets(cx, false, false, false);
     }
 
     #[gpui::test]
     fn e2e_browser_checklist_paste_preserves_brackets_through_the_cli_bridge(
         cx: &mut TestAppContext,
     ) {
-        browser_checklist_paste_with_brackets(cx, true);
+        browser_checklist_paste_with_brackets(cx, true, false, false);
     }
 
-    fn browser_checklist_paste_with_brackets(cx: &mut TestAppContext, bridge: bool) {
+    #[gpui::test]
+    fn e2e_right_click_browser_checklist_in_a_local_tab(cx: &mut TestAppContext) {
+        browser_checklist_paste_with_brackets(cx, false, true, false);
+    }
+
+    #[gpui::test]
+    fn e2e_right_click_browser_checklist_through_the_cli_bridge(cx: &mut TestAppContext) {
+        browser_checklist_paste_with_brackets(cx, true, true, false);
+    }
+
+    #[gpui::test]
+    fn e2e_right_click_large_bracketed_paste_in_a_local_tab(cx: &mut TestAppContext) {
+        browser_checklist_paste_with_brackets(cx, false, true, true);
+    }
+
+    #[gpui::test]
+    fn e2e_right_click_large_bracketed_paste_through_the_cli_bridge(cx: &mut TestAppContext) {
+        browser_checklist_paste_with_brackets(cx, true, true, true);
+    }
+
+    #[gpui::test]
+    fn e2e_keyboard_large_bracketed_paste_in_a_local_tab(cx: &mut TestAppContext) {
+        browser_checklist_paste_with_brackets(cx, false, false, true);
+    }
+
+    #[gpui::test]
+    fn e2e_keyboard_large_bracketed_paste_through_the_cli_bridge(cx: &mut TestAppContext) {
+        browser_checklist_paste_with_brackets(cx, true, false, true);
+    }
+
+    fn browser_checklist_paste_with_brackets(
+        cx: &mut TestAppContext,
+        bridge: bool,
+        context_menu: bool,
+        large: bool,
+    ) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let directory = tempfile::tempdir().expect("temp dir");
         let ready = directory.path().join("ready");
         let received = directory.path().join("received");
-        let copied = include_str!("../../../../../tests/fixtures/terminal/browser-checklist.txt")
-            .replace('\n', "\r\n");
+        let copied = if large {
+            large_copied_text()
+        } else {
+            include_str!("../../../../../tests/fixtures/terminal/browser-checklist.txt").to_owned()
+        }
+        .replace("\r\n", "\n")
+        .replace('\n', "\r\n");
         let expected = format!("\x1b[200~{}\x1b[201~", copied.replace("\r\n", "\n"));
         let script = format!(
             "stty raw -echo; printf '\\033[?2004h'; : > '{}'; head -c {} > '{}'; sleep 60",
@@ -16425,7 +16465,34 @@ mod tests {
             .unwrap();
         cx.run_until_parked();
         cx.write_to_clipboard(gpui::ClipboardItem::new_string(copied));
-        cx.simulate_keystrokes(window.into(), "cmd-v");
+        if context_menu {
+            let layout = window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        app.pane_layout_for(pane_id, window, cx).unwrap()
+                    })
+                })
+                .unwrap();
+            let click = point(
+                px(layout.cell_x + layout.char_width),
+                px(layout.cell_y + layout.line_height),
+            );
+            {
+                let mut visual = VisualTestContext::from_window(window.into(), cx);
+                visual.simulate_mouse_down(click, MouseButton::Right, gpui::Modifiers::none());
+                visual.simulate_mouse_up(click, MouseButton::Right, gpui::Modifiers::none());
+                visual.run_until_parked();
+            }
+            app.read_with(cx, |app, _| {
+                assert_eq!(app.pane_context_menu.map(|(id, _)| id), Some(pane_id))
+            });
+            let paste =
+                dynamic_selector_click_center(window, cx, format!("pane-menu-paste-{pane_id}"));
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.simulate_click(paste, gpui::Modifiers::none());
+        } else {
+            cx.simulate_keystrokes(window.into(), "cmd-v");
+        }
         wait_for_app_state(cx, &app, Duration::from_secs(20), |_| {
             std::fs::metadata(&received)
                 .is_ok_and(|m| m.len() == expected.len() as u64)
