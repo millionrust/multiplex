@@ -1,4 +1,10 @@
-use std::io::{IsTerminal as _, Read as _, Write};
+#[cfg(unix)]
+#[path = "raw_stdin.rs"]
+mod raw_stdin;
+
+#[cfg(not(unix))]
+use std::io::Read as _;
+use std::io::{IsTerminal as _, Write};
 use std::time::Duration;
 
 use crossterm::event::{Event as TerminalEvent, EventStream, KeyCode, KeyEventKind};
@@ -102,6 +108,7 @@ async fn send_shell_input(
         .map_err(|_| output_unavailable())
 }
 // Bound each raw stdin read; complete pastes stream through negotiated Host requests.
+#[cfg(not(unix))]
 const MAX_INTERACTIVE_INPUT_BYTES: usize = 16 * 1024;
 
 pub struct LocalSessionAttachExecutor {
@@ -417,21 +424,28 @@ async fn run_raw_shell(
     cancel: &CancellationToken,
 ) -> Result<(), CliError> {
     let (mut columns, mut rows) = viewport;
-    let (input_tx, mut input_rx) = tokio::sync::mpsc::channel(8);
-    std::thread::spawn(move || {
-        let mut stdin = std::io::stdin().lock();
-        let mut bytes = [0u8; MAX_INTERACTIVE_INPUT_BYTES];
-        loop {
-            match stdin.read(&mut bytes) {
-                Ok(0) | Err(_) => break,
-                Ok(count) => {
-                    if input_tx.blocking_send(bytes[..count].to_vec()).is_err() {
-                        break;
+    #[cfg(unix)]
+    let mut input_rx = raw_stdin::RawStdin::stdin()
+        .map_err(|_| terminal_unavailable("raw terminal input is unavailable"))?;
+    #[cfg(not(unix))]
+    let mut input_rx = {
+        let (input_tx, input_rx) = tokio::sync::mpsc::channel(8);
+        std::thread::spawn(move || {
+            let mut stdin = std::io::stdin().lock();
+            let mut bytes = [0u8; MAX_INTERACTIVE_INPUT_BYTES];
+            loop {
+                match stdin.read(&mut bytes) {
+                    Ok(0) | Err(_) => break,
+                    Ok(count) => {
+                        if input_tx.blocking_send(bytes[..count].to_vec()).is_err() {
+                            break;
+                        }
                     }
                 }
             }
-        }
-    });
+        });
+        input_rx
+    };
     let mut lease = ShellLease::new();
     let mut ticker = tokio::time::interval(SHELL_POLL_INTERVAL);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);

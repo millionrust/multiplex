@@ -7769,6 +7769,22 @@ impl MultiplexApp {
     }
 
     fn reconnect_pane(&mut self, pane_id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        // An explicit reconnect reopens a terminated local shell with a fresh identity.
+        // Keep attaching to the existing identity if its Host still owns the lease.
+        let ended_console = self
+            .pane(pane_id)
+            .filter(|pane| !pane.connected)
+            .and_then(|pane| crate::models::local_console_session_id(&pane.request))
+            .and_then(|id| crate::storage::app_dir().ok().map(|root| (root, id)))
+            .is_some_and(|(root, id)| {
+                other_terminals::terminal_has_exited(
+                    &root.join("console-sessions").join(id.to_string()),
+                    id,
+                )
+            });
+        if ended_console && let Some(pane) = self.pane_mut(pane_id) {
+            pane.request.persistent_session_name = None;
+        }
         // A reconnect the user asks for starts a fresh run of automatic attempts.
         if let Some(pane) = self.pane_mut(pane_id) {
             pane.auto_reconnect_attempts = 0;
@@ -16155,7 +16171,8 @@ mod tests {
     /// Text as it is copied from a page or an editor: thousands of lines, long ones, tabs,
     /// non-ASCII, and Windows line endings, about 600 KB in all.
     fn large_copied_text() -> String {
-        let mut copied = String::new();
+        let mut copied =
+            include_str!("../../../../../tests/fixtures/terminal/browser-checklist.txt").to_owned();
         for line in 0..5_000 {
             copied.push_str(&format!(
                 "{line:05}\tconst value = \"κόσμε {}\";\r\n",
@@ -16246,6 +16263,176 @@ mod tests {
             (app.pane(pane_id)?.connected && ready.exists()).then_some(())
         });
         paste_from_the_clipboard_and_check(cx, &app, window, pane_id, copied, &received);
+    }
+
+    #[gpui::test]
+    fn e2e_reconnect_reopens_an_exited_local_console_with_a_fresh_shell(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: crate::test_support::test_shell_program(),
+                args: vec!["-i".into()],
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                })
+            })
+            .unwrap()
+            .unwrap();
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            app.pane(pane_id)?.connected.then_some(())
+        });
+        wait_for_quiet_pane(cx, &app, pane_id);
+        let old_console = app.read_with(cx, |app, _| {
+            app.pane(pane_id)
+                .and_then(|pane| crate::models::local_console_session_id(&pane.request))
+                .unwrap()
+        });
+        app.update(cx, |app, cx| {
+            app.send_input_bytes(pane_id, b"exit\r".to_vec(), cx);
+        });
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let root = crate::storage::app_dir().unwrap();
+            (app.pane(pane_id)?.closed
+                && super::other_terminals::terminal_has_exited(
+                    &root.join("console-sessions").join(old_console.to_string()),
+                    old_console,
+                ))
+            .then_some(())
+        });
+        let click = dynamic_selector_click_center(window, cx, format!("pane-reconnect-{pane_id}"));
+        {
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.simulate_click(click, gpui::Modifiers::none());
+        }
+        let reopened = wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let id = app.workspace(workspace_id)?.active_pane_id;
+            (id != pane_id && app.pane(id)?.connected).then_some(id)
+        });
+        let new_console = app.read_with(cx, |app, _| {
+            app.pane(reopened)
+                .and_then(|pane| crate::models::local_console_session_id(&pane.request))
+                .unwrap()
+        });
+        assert_ne!(old_console, new_console);
+        app.update(cx, |app, cx| {
+            app.send_input_bytes(
+                reopened,
+                b"printf 'reopened-%s\\n' $((40+2))\r".to_vec(),
+                cx,
+            );
+        });
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(reopened)?
+                .terminal
+                .all_rows_text()
+                .iter()
+                .any(|line| line.contains("reopened-42"))
+                .then_some(())
+        });
+        app.update(cx, |app, cx| app.close_pane(reopened, cx));
+    }
+
+    #[gpui::test]
+    fn e2e_browser_checklist_paste_preserves_brackets_in_a_local_tab(cx: &mut TestAppContext) {
+        browser_checklist_paste_with_brackets(cx, false);
+    }
+
+    #[gpui::test]
+    fn e2e_browser_checklist_paste_preserves_brackets_through_the_cli_bridge(
+        cx: &mut TestAppContext,
+    ) {
+        browser_checklist_paste_with_brackets(cx, true);
+    }
+
+    fn browser_checklist_paste_with_brackets(cx: &mut TestAppContext, bridge: bool) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let directory = tempfile::tempdir().expect("temp dir");
+        let ready = directory.path().join("ready");
+        let received = directory.path().join("received");
+        let copied = include_str!("../../../../../tests/fixtures/terminal/browser-checklist.txt")
+            .replace('\n', "\r\n");
+        let expected = format!("\x1b[200~{}\x1b[201~", copied.replace("\r\n", "\n"));
+        let script = format!(
+            "stty raw -echo; printf '\\033[?2004h'; : > '{}'; head -c {} > '{}'; sleep 60",
+            ready.display(),
+            expected.len(),
+            received.display()
+        );
+        let (program, args) = if bridge {
+            let binaries = std::env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .to_path_buf();
+            let cli = binaries.join(format!("multiplex-cli{}", std::env::consts::EXE_SUFFIX));
+            assert!(
+                cli.is_file(),
+                "build multiplex-cli before running bridge e2es"
+            );
+            (
+                cli.display().to_string(),
+                vec![
+                    "shell".into(),
+                    "--raw".into(),
+                    "--".into(),
+                    crate::test_support::test_shell_program(),
+                    "-c".into(),
+                    script,
+                ],
+            )
+        } else {
+            (
+                crate::test_support::test_shell_program(),
+                vec!["-c".into(), script],
+            )
+        };
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program,
+                args,
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let (_, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                })
+            })
+            .unwrap()
+            .expect("local workspace should open");
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let pane = app.pane(pane_id)?;
+            (pane.connected && ready.exists() && pane.terminal.bracketed_paste()).then_some(())
+        });
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, _| {
+                    app.pane(pane_id).unwrap().terminal_focus.focus(window)
+                });
+            })
+            .unwrap();
+        cx.run_until_parked();
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(copied));
+        cx.simulate_keystrokes(window.into(), "cmd-v");
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |_| {
+            std::fs::metadata(&received)
+                .is_ok_and(|m| m.len() == expected.len() as u64)
+                .then_some(())
+        });
+        assert_eq!(std::fs::read_to_string(&received).unwrap(), expected);
+        app.update(cx, |app, cx| app.close_pane(pane_id, cx));
     }
 
     /// A local tab as the app opens it in use: `multiplex-cli shell` keeping the shell in a
@@ -16339,7 +16526,7 @@ mod tests {
                     .build()
                     .expect("host runtime");
                 runtime.block_on(async move {
-                    let _host = multiplex_session_host::start(LaunchDescriptor {
+                    let host = multiplex_session_host::start(LaunchDescriptor {
                         format_version: LaunchDescriptor::FORMAT_VERSION,
                         session_id,
                         host_instance_id: HostInstanceId::new(),
@@ -16360,6 +16547,9 @@ mod tests {
                     .expect("host starts");
                     started_tx.send(()).expect("test waits");
                     let _ = tokio::task::spawn_blocking(move || stop_rx.recv()).await;
+                    host.shutdown()
+                        .await
+                        .expect("test Host shuts down and reaps its shell");
                 });
             })
         };

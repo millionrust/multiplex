@@ -334,47 +334,254 @@ async fn packaged_human_attach_is_read_only_by_default_and_ctrl_c_restores_termi
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn opening_a_stopped_console_reports_that_it_ended_without_a_generic_host_error() {
+    let _fixture_guard = REAL_HOST_TEST_LOCK.lock().await;
+    for stale_ready in [false, true] {
+        let seed = seed_store();
+        let session_dir = seed
+            .config_root
+            .join("console-sessions")
+            .join(SESSION_ID.to_string());
+        let mut launch = descriptor(&seed);
+        launch.session_dir = session_dir.clone();
+        let host = start(launch).await.unwrap();
+        multiplex_store::write_console_session(
+            &session_dir,
+            &multiplex_store::ConsoleSessionRecord {
+                schema_version: multiplex_store::ConsoleSessionRecord::SCHEMA_VERSION,
+                session_id: SESSION_ID,
+                program: "sh".into(),
+                title_override: None,
+                working_directory: seed.folder.clone(),
+                started_at: 1,
+            },
+        )
+        .unwrap();
+        host.shutdown().await.unwrap();
+        if stale_ready {
+            let mut metadata = multiplex_store::read_host_metadata(&session_dir).unwrap();
+            metadata.lifecycle = multiplex_domain::HostLifecycle::Ready;
+            let lease =
+                multiplex_store::HostLease::acquire(&session_dir, metadata.host_instance_id)
+                    .unwrap();
+            lease.write_metadata(&metadata).unwrap();
+        }
+        let before =
+            std::fs::read(session_dir.join(multiplex_store::CONSOLE_SESSION_RECORD)).unwrap();
+        let pty = native_pty_system()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 100,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let reading = spawn_pty_reader(pty.master.try_clone_reader().unwrap(), output.clone());
+        let mut command = CommandBuilder::new(env!("CARGO_BIN_EXE_multiplex-cli"));
+        command.args(["shell", "--raw", "--session-id", &SESSION_ID.to_string()]);
+        command.env_remove("MULTIPLEX_SHELL_SESSION");
+        command.env("TERM", "xterm-256color");
+        command.env("MULTIPLEX_CONFIG_DIR", &seed.config_root);
+        let mut child = ReapedChild(pty.slave.spawn_command(command).unwrap());
+        drop(pty.slave);
+        let status = wait_for_child(child.0.as_mut());
+        reading.join().unwrap();
+        assert!(!status.success());
+        let output = output.lock().unwrap();
+        let output = String::from_utf8_lossy(&output);
+        assert!(
+            output.contains("saved terminal session has already ended"),
+            "{output}"
+        );
+        assert!(!output.contains("operation_failed"), "{output}");
+        assert_eq!(
+            std::fs::read(session_dir.join(multiplex_store::CONSOLE_SESSION_RECORD)).unwrap(),
+            before
+        );
+    }
+}
+
+const BROWSER_CHECKLIST: &str =
+    include_str!("../../../tests/fixtures/terminal/browser-checklist.txt");
+
+#[derive(Default)]
+struct PasteScenario {
+    payloads: Vec<String>,
+    fragmented: bool,
+    echo: bool,
+    idle_between: bool,
+    interrupt: bool,
+}
+
+impl PasteScenario {
+    fn text(text: String) -> Self {
+        Self {
+            payloads: vec![text],
+            ..Self::default()
+        }
+    }
+
+    fn boundaries() -> Self {
+        // Exercise the old CLI cap, raw stdin buffer, and negotiated wire limit on
+        // both sides, including when a UTF-8 code point straddles a raw read.
+        let limit = multiplex_host_protocol::MAX_OUTPUT_BYTES;
+        let mut lengths = vec![0, 1, 16_383, 16_384, 16_385, limit - 1, limit, limit + 1];
+        lengths.sort_unstable();
+        lengths.dedup();
+        Self {
+            payloads: lengths
+                .into_iter()
+                .map(|len| {
+                    if len < 4 {
+                        "x".repeat(len)
+                    } else {
+                        format!("{}₹\n", "x".repeat(len - 4))
+                    }
+                })
+                .chain([String::new(), "after-empty-paste\n".into()])
+                .collect(),
+            ..Self::default()
+        }
+    }
+
+    fn repeated() -> Self {
+        Self {
+            payloads: (0..40)
+                .map(|n| format!("paste-{n:03}\n{BROWSER_CHECKLIST}\nEND-{n:03}"))
+                .collect(),
+            idle_between: true,
+            ..Self::default()
+        }
+    }
+
+    fn megabytes() -> Self {
+        Self {
+            payloads: vec![BROWSER_CHECKLIST.repeat(2 * 1024 * 1024 / BROWSER_CHECKLIST.len() + 1)],
+            echo: true,
+            ..Self::default()
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shell_preserves_multiline_unicode_paste_and_bracket_markers() {
-    check_shell_paste(false, false).await;
+    check_shell_paste(false, PasteScenario::text(BROWSER_CHECKLIST.into())).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shell_streams_pastes_larger_than_one_input_request() {
-    check_shell_paste(false, true).await;
+    check_shell_paste(false, PasteScenario::text(BROWSER_CHECKLIST.repeat(20))).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn raw_terminal_bridge_preserves_large_multiline_unicode_paste() {
-    check_shell_paste(true, true).await;
+    check_shell_paste(true, PasteScenario::text(BROWSER_CHECKLIST.repeat(20))).await;
 }
 
-async fn check_shell_paste(raw: bool, large: bool) {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shell_preserves_empty_and_request_boundary_pastes() {
+    check_shell_paste(false, PasteScenario::boundaries()).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn raw_terminal_bridge_preserves_empty_and_request_boundary_pastes() {
+    check_shell_paste(true, PasteScenario::boundaries()).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shell_preserves_fragmented_markers_and_unicode() {
+    check_shell_paste(
+        false,
+        PasteScenario {
+            fragmented: true,
+            ..PasteScenario::text(BROWSER_CHECKLIST.into())
+        },
+    )
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn raw_terminal_bridge_preserves_fragmented_markers_and_unicode() {
+    check_shell_paste(
+        true,
+        PasteScenario {
+            fragmented: true,
+            ..PasteScenario::text(BROWSER_CHECKLIST.into())
+        },
+    )
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shell_preserves_repeated_pastes_across_idle_writer_release() {
+    check_shell_paste(false, PasteScenario::repeated()).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn raw_terminal_bridge_preserves_repeated_pastes_across_idle_writer_release() {
+    check_shell_paste(true, PasteScenario::repeated()).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shell_preserves_megabyte_paste_while_output_streams_back() {
+    check_shell_paste(false, PasteScenario::megabytes()).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn raw_terminal_bridge_preserves_megabyte_paste_while_output_streams_back() {
+    check_shell_paste(true, PasteScenario::megabytes()).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn interrupted_raw_paste_releases_connections_and_owned_processes() {
+    check_shell_paste(
+        true,
+        PasteScenario {
+            interrupt: true,
+            ..PasteScenario::megabytes()
+        },
+    )
+    .await;
+}
+
+async fn check_shell_paste(raw: bool, scenario: PasteScenario) {
     let _fixture_guard = REAL_HOST_TEST_LOCK.lock().await;
     let seed = seed_store();
-    // Characters from a browser-copied numbered list: NBSP, Unicode line separators,
-    // typographic punctuation and a non-ASCII currency sign must all survive unchanged.
-    let text = "1. Add robots.txt — reference the XML sitemap.\u{a0}\n\
-2. Add canonical tags — ignore ?utm_source=gb and ?utm_source=wl.\u{a0}\n\
-3. Redirect www.chitti.app to chitti.app. \u{2028}\tReason: establish one preferred host.\n\
-4. Build an indexable electronics-kit page — keep the ₹299 workshop.\u{2028}Reason: organic search.\n";
-    let text = text.repeat(if large { 200 } else { 1 });
-    let expected = [b"\x1b[200~".as_slice(), text.as_bytes(), b"\x1b[201~"].concat();
+    let frames: Vec<Vec<u8>> = scenario
+        .payloads
+        .iter()
+        .map(|text| [b"\x1b[200~".as_slice(), text.as_bytes(), b"\x1b[201~"].concat())
+        .collect();
+    let expected = frames.concat();
     let received = seed.temp.path().join("pasted-bytes");
     let mut launch = descriptor(&seed);
     launch.session_dir = seed
         .config_root
         .join("console-sessions")
         .join(SESSION_ID.to_string());
+    let capture = if scenario.echo {
+        // tee gives the bridge concurrent output pressure while head bounds the capture.
+        format!("head -c {} | tee '{}'", expected.len(), received.display())
+    } else {
+        format!("head -c {} > '{}'", expected.len(), received.display())
+    };
     launch.arguments = vec![
         "-c".into(),
         format!(
-            "stty raw -echo; printf '\\033[?2004hPASTE-READY'; head -c {} > '{}'; printf 'PASTE-DONE'; sleep 30",
-            expected.len(),
-            received.display()
+            "stty raw -echo; printf '\\033[?2004hPASTE-READY'; {capture}; printf 'PASTE-DONE'; sleep 30"
         ),
     ];
     let session_dir = launch.session_dir.clone();
+    let endpoint = LocalEndpoint::new(&launch.runtime_root, SESSION_ID)
+        .socket_path()
+        .to_path_buf();
     let host = start(launch).await.unwrap();
+    let shell_pid = multiplex_store::read_host_metadata(&session_dir)
+        .unwrap()
+        .process_token
+        .unwrap()
+        .platform_identity();
     multiplex_store::write_console_session(
         &session_dir,
         &multiplex_store::ConsoleSessionRecord {
@@ -408,37 +615,144 @@ async fn check_shell_paste(raw: bool, large: bool) {
     command.env_remove("MULTIPLEX_SHELL_SESSION");
     command.env("TERM", "xterm-256color");
     command.env("MULTIPLEX_CONFIG_DIR", &seed.config_root);
-    let mut child = pty.slave.spawn_command(command).unwrap();
+    #[cfg(target_os = "macos")]
+    if std::env::var_os("MULTIPLEX_PASTE_LEAKS").is_some() {
+        command.env("MallocStackLogging", "1");
+    }
+    let mut child_guard = ReapedChild(pty.slave.spawn_command(command).unwrap());
+    let child = &mut child_guard.0;
     drop(pty.slave);
     wait_for_output(&output, b"PASTE-READY", Duration::from_secs(5));
-    // Let the CLI enter its input loop after replay announces readiness.
     thread::sleep(Duration::from_millis(50));
-    let sent = writer.write_all(&expected).and_then(|()| writer.flush());
-    let deadline = Instant::now() + Duration::from_secs(3);
-    while Instant::now() < deadline {
-        if std::fs::metadata(&received).is_ok_and(|m| m.len() == expected.len() as u64)
-            || child.try_wait().unwrap().is_some()
-        {
-            break;
+    let cli_pid = child.process_id().unwrap();
+    let rss_before = process_rss_kib(cli_pid);
+    let started = Instant::now();
+    let mut send = || -> std::io::Result<()> {
+        if scenario.interrupt {
+            writer.write_all(&expected[..1024])?;
+        } else {
+            for (index, frame) in frames.iter().enumerate() {
+                if scenario.fragmented {
+                    // One-byte writes with delays force markers and multi-byte UTF-8
+                    // through separate reads, rather than relying on kernel chunking.
+                    for byte in frame {
+                        writer.write_all(&[*byte])?;
+                        thread::sleep(Duration::from_micros(100));
+                    }
+                } else {
+                    writer.write_all(frame)?;
+                }
+                writer.flush()?;
+                if scenario.idle_between && index == 0 {
+                    thread::sleep(Duration::from_millis(1_800));
+                }
+            }
         }
-        thread::sleep(Duration::from_millis(20));
+        writer.flush()
+    };
+    let sent = send();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    if !scenario.interrupt {
+        while Instant::now() < deadline {
+            if std::fs::metadata(&received).is_ok_and(|m| m.len() == expected.len() as u64)
+                || child.try_wait().unwrap().is_some()
+            {
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
     }
+    let rss_after = process_rss_kib(cli_pid);
+    #[cfg(target_os = "macos")]
+    let leak_scan = std::env::var_os("MULTIPLEX_PASTE_LEAKS").map(|_| {
+        Command::new("/usr/bin/leaks")
+            .args(["--quiet", "--noContent", "--nostacks", &cli_pid.to_string()])
+            .output()
+            .expect("run macOS native leak scanner")
+    });
     let actual = std::fs::read(&received).unwrap_or_default();
     let _ = child.kill();
     let _ = child.wait();
     drop(writer);
     reader_thread.join().unwrap();
+    let cleanup_deadline = Instant::now() + Duration::from_secs(2);
+    while host.stats().await.active_connections != 0 && Instant::now() < cleanup_deadline {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let connections = host.stats().await.active_connections;
     host.shutdown().await.unwrap();
     sent.unwrap();
+    #[cfg(target_os = "macos")]
+    if let Some(scan) = leak_scan {
+        let report = format!(
+            "{}{}",
+            String::from_utf8_lossy(&scan.stdout),
+            String::from_utf8_lossy(&scan.stderr)
+        );
+        assert!(scan.status.success(), "native leak scan failed: {report}");
+        eprintln!("native leak scan: {report}");
+    }
     assert_eq!(
-        actual.len(),
+        connections, 0,
+        "CLI connection leaked after its frontend exited"
+    );
+    assert!(!endpoint.exists(), "Host endpoint leaked after shutdown");
+    assert_eq!(
+        multiplex_store::probe_host_lease(&session_dir).unwrap(),
+        multiplex_store::HostLeaseState::Available
+    );
+    // SAFETY: signal 0 only probes the known, reaped child's process id.
+    assert_eq!(
+        unsafe { libc::kill(shell_pid.try_into().unwrap(), 0) },
+        -1,
+        "owned shell leaked"
+    );
+    assert_eq!(
+        std::io::Error::last_os_error().raw_os_error(),
+        Some(libc::ESRCH)
+    );
+    if !scenario.interrupt {
+        assert_eq!(actual.len(), expected.len(), "paste cropped; raw={raw}");
+        assert!(
+            actual == expected,
+            "paste changed at byte {:?}; raw={raw}",
+            actual.iter().zip(&expected).position(|(a, b)| a != b)
+        );
+    }
+    assert!(
+        rss_after.saturating_sub(rss_before) < 64 * 1024,
+        "CLI RSS grew excessively: {rss_before} -> {rss_after} KiB"
+    );
+    eprintln!(
+        "paste stress: raw={raw} bytes={} pastes={} elapsed={:?} rss={} -> {} KiB; connections={connections}; shell reaped",
         expected.len(),
-        "paste was cropped; raw={raw}, large={large}"
+        frames.len(),
+        started.elapsed(),
+        rss_before,
+        rss_after
     );
-    assert_eq!(
-        actual, expected,
-        "paste bytes changed; raw={raw}, large={large}"
-    );
+}
+
+struct ReapedChild(Box<dyn portable_pty::Child + Send + Sync>);
+
+impl Drop for ReapedChild {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+fn process_rss_kib(pid: u32) -> u64 {
+    let result = Command::new("ps")
+        .args(["-o", "rss=", "-p", &pid.to_string()])
+        .output()
+        .unwrap();
+    assert!(result.status.success(), "CLI exited during stress test");
+    String::from_utf8(result.stdout)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap()
 }
 
 fn attach_command(request_control: bool) -> CliCommand {
@@ -514,7 +828,12 @@ fn spawn_pty_reader(
         loop {
             match reader.read(&mut chunk) {
                 Ok(0) | Err(_) => break,
-                Ok(count) => output.lock().unwrap().extend_from_slice(&chunk[..count]),
+                Ok(count) => {
+                    let mut output = output.lock().unwrap();
+                    output.extend_from_slice(&chunk[..count]);
+                    let discard = output.len().saturating_sub(64 * 1024);
+                    output.drain(..discard);
+                }
             }
         }
     })

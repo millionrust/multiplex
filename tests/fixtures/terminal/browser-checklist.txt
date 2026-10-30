@@ -1,0 +1,17 @@
+1. Add robots.txt — Configure it correctly to guide search-engine crawlers and reference the XML sitemap. 
+2. Generate an XML sitemap — Include the relevant, indexable pages on chitti.app. 
+3. Return proper HTTP 404 status codes — Unknown URLs such as /blog should return a real 404 instead of serving the Nuxt app shell with status 200 (soft 404). - Already done
+4. Add canonical tags — Add self-referencing canonical URLs to the Future School and workshop pages.  Ensure query parameters such as ?utm_source=gb and ?utm_source=wl do not create duplicate canonical URLs. 
+5. Redirect www.chitti.app to chitti.app — Configure a permanent HTTP 301 redirect.  	Reason: The proposal found that the www host serves a duplicate copy. A permanent 301 redirect establishes one preferred host and consolidates signals instead of splitting them between versions. 
+6. Standardize trailing slashes — Ensure each page has one canonical URL format, with or without a trailing slash. 
+7. Pre-render the workshop landing page — Make /workshop/electronics-kit-1on1-english content available in server-rendered HTML without requiring JavaScript.  	Reason: The server currently returns only six words of meaningful content before JavaScript runs. Pre-rendering makes the workshop title, description, content and other important information available to crawlers and link-preview systems that do not execute JavaScript reliably. 
+8. Add Open Graph metadata — Configure OG title, description and image for the Future School and workshop pages so shared links display correctly on WhatsApp, Facebook and other platforms. 
+9. Configure page indexing intentionally — Decide whether the paid workshop landing page should be indexed or set to noindex once its organic counterpart is live and ranking. 
+10. Replace JavaScript-only navigation with real anchor links — Use <a href> links for module cards, grade pages and policy pages so search engines can crawl them. 
+11. Fix page titles and meta descriptions — Use keyword-led titles and descriptions of approximately 140–155 characters. 
+12. Optimize image accessibility — Add meaningful alt text to images that are missing it. 
+13. Lazy-load below-the-fold images — Reduce unnecessary initial page loading and image-transfer costs. 
+14. Fix the region-selection experience — Replace the blocking region pop-up with automatic region pre-selection based on location and an inline region switcher. 
+15. Improve workshop page performance — Reduce Largest Contentful Paint (LCP) and mobile layout shift. The proposal targets LCP at or below 2.5 seconds and layout shift (CLS) at or below 0.1. 
+16. Build an indexable electronics-kit page — Create /workshops/electronics-kit-for-kids/ as the organic-search counterpart to the paid workshop page.  Reason: The paid workshop page and the organic SEO page serve two different purposes. Chitti wants to sell the ₹299 electronics workshop through ads while also attracting people who search Google for electronics kits for kids. 
+17. Configure Google Search Console monitoring — Use search performance data to identify queries, monitor indexing and guide new page creation.

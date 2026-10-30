@@ -894,7 +894,10 @@ fn preview_lines(terminal: &crate::terminal::TerminalState) -> Vec<String> {
 /// A stop acknowledgement can race with the Host exiting and closing its endpoint.
 /// A matching terminal's recorded exit or released Host lease counts as success;
 /// an unreachable live Host or a replacement Host must remain an error.
-fn terminal_has_exited(session_dir: &std::path::Path, session_id: HostedSessionId) -> bool {
+pub(super) fn terminal_has_exited(
+    session_dir: &std::path::Path,
+    session_id: HostedSessionId,
+) -> bool {
     multiplex_store::read_host_metadata(session_dir).is_ok_and(|metadata| {
         metadata.session_id == session_id
             && (matches!(

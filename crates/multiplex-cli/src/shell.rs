@@ -153,6 +153,15 @@ impl ShellLauncher {
             if record.session_id != session_id || metadata.session_id != session_id {
                 return Err(unavailable_storage());
             }
+            if multiplex_store::probe_host_lease(&session_dir)
+                .is_ok_and(|lease| lease == multiplex_store::HostLeaseState::Available)
+            {
+                return Err(CliError::new(
+                    ErrorCode::Unavailable,
+                    "the saved terminal session has already ended",
+                    "Open a new terminal, or use Reconnect in Multiplex to start a fresh shell.",
+                ));
+            }
             return attach_console(
                 session_id,
                 metadata.host_instance_id,
