@@ -453,7 +453,12 @@ impl MultiplexApp {
                     app.active_workspace_id = None;
                     app.nav_section = super::NavSection::Sessions;
                     app.other_terminals.close_pending = None;
-                    app.other_terminals.terminals = refreshed;
+                    // The stop reply can arrive before the Host's final metadata write and
+                    // endpoint cleanup. Do not reinsert the terminal we just stopped.
+                    app.other_terminals.terminals = refreshed
+                        .into_iter()
+                        .filter(|terminal| terminal_session(terminal) != Some(session_id))
+                        .collect();
                     app.error_message.clear();
                     app.status_message =
                         localization::static_message(MessageId::OtherTerminalsClosed);
@@ -933,17 +938,26 @@ fn stop_other_terminal(
         return Err(());
     };
     if terminal_has_exited(session_dir, *session_id) {
+        eprintln!("terminal_stop session={session_id} mode={mode:?} result=already_exited");
         return Ok(());
     }
+    eprintln!("terminal_stop session={session_id} mode={mode:?} stage=metadata");
     if terminal_host_unavailable(session_dir, *session_id) {
+        eprintln!("terminal_stop session={session_id} mode={mode:?} error=host_unavailable");
         return Err(());
     }
     let expected = multiplex_store::read_host_metadata(session_dir)
+        .inspect_err(|error| {
+            eprintln!("terminal_stop session={session_id} stage=metadata error={error:?}")
+        })
         .map_err(|_| ())?
         .host_instance_id;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
+        .inspect_err(|error| {
+            eprintln!("terminal_stop session={session_id} stage=runtime error={error:?}")
+        })
         .map_err(|_| ())?;
     let result = runtime.block_on(async {
         tokio::time::timeout(std::time::Duration::from_secs(8), async {
@@ -956,25 +970,31 @@ fn stop_other_terminal(
                 &cancel,
             )
             .await
+            .inspect_err(|error| eprintln!("terminal_stop session={session_id} stage=connect error={error:?}"))
             .map_err(|_| ())?;
             if client.host_instance_id() != Some(expected) {
+                eprintln!("terminal_stop session={session_id} stage=connect error=host_instance_changed");
                 return Err(());
             }
             client
                 .stop(CommandId::new(), mode, &cancel)
                 .await
+                .inspect_err(|error| eprintln!("terminal_stop session={session_id} mode={mode:?} stage=stop error={error:?}"))
                 .map_err(|_| ())?;
             client.disconnect();
             Ok(())
         })
         .await
+        .inspect_err(|_| eprintln!("terminal_stop session={session_id} mode={mode:?} error=timeout"))
         .map_err(|_| ())?
     });
-    if result.is_err() && terminal_has_exited(session_dir, *session_id) {
+    let result = if result.is_err() && terminal_has_exited(session_dir, *session_id) {
         Ok(())
     } else {
         result
-    }
+    };
+    eprintln!("terminal_stop session={session_id} mode={mode:?} result={result:?}");
+    result
 }
 
 #[cfg(test)]

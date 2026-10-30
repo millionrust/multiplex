@@ -18,7 +18,7 @@ use crate::{HostError, HostErrorCode};
 /// One connection from a client of this Host.
 pub(super) type HostStream = UnixStream;
 
-/// The process tree a Host owns: its child, which leads its own process group.
+/// The process tree a Host owns: its child, which leads its own PTY session.
 pub(super) struct OwnedProcess {
     process_group: i32,
 }
@@ -30,7 +30,10 @@ impl OwnedProcess {
         let process_group = master
             .process_group_leader()
             .ok_or_else(|| HostError::new(HostErrorCode::ProcessIdentityUnavailable))?;
-        if process_group <= 0 || u32::try_from(process_group).ok() != Some(process_id) {
+        if process_group <= 0
+            || u32::try_from(process_group).ok() != Some(process_id)
+            || unsafe { libc::getsid(process_group) } != process_group
+        {
             return Err(HostError::new(HostErrorCode::ProcessIdentityUnavailable));
         }
         Ok(Self { process_group })
@@ -47,24 +50,70 @@ impl OwnedProcess {
             StopSignal::Terminate => libc::SIGTERM,
             StopSignal::Kill => libc::SIGKILL,
         };
-        let result = unsafe { libc::kill(-self.process_group, number) };
-        if result == 0 {
-            Ok(())
-        } else {
-            let error = io::Error::last_os_error();
-            // No process left to signal means the process this stops is already gone. The
-            // watcher may not have marked it exited yet, and failing on that timing reports a
-            // stop that worked as an error to whoever asked for it.
-            if error.raw_os_error() == Some(libc::ESRCH) {
-                Ok(())
-            } else {
-                Err(HostError::io(error))
+        if signal == StopSignal::Kill {
+            self.kill_job_groups()?;
+        }
+        signal_group(self.process_group, number)
+    }
+
+    /// Interactive shells put jobs in their own groups. Killing just the shell's group
+    /// leaves those jobs alive, even when the Host acknowledges that the shell exited.
+    /// Enumerate live processes, then check their kernel session and group membership
+    /// immediately before signaling. The session identity comes only from our own spawn;
+    /// this path never uses a PID read from persisted metadata.
+    fn kill_job_groups(&self) -> Result<(), HostError> {
+        let output = std::process::Command::new("/bin/ps")
+            .args(["-e", "-o", "pid="])
+            .stderr(std::process::Stdio::null())
+            .output()
+            .map_err(HostError::io)?;
+        if !output.status.success() {
+            return Err(HostError::new(HostErrorCode::ProcessIdentityUnavailable));
+        }
+        let mut groups = std::collections::BTreeMap::new();
+        for pid in String::from_utf8_lossy(&output.stdout)
+            .split_whitespace()
+            .filter_map(|value| value.parse::<i32>().ok())
+            .filter(|pid| *pid > 0)
+        {
+            if unsafe { libc::getsid(pid) } != self.process_group {
+                continue;
+            }
+            let group = unsafe { libc::getpgid(pid) };
+            if group > 0 && group != self.process_group {
+                groups.insert(group, pid);
             }
         }
+        // Jobs go first, while the shell is still available to reap them.
+        for (group, member) in groups {
+            if unsafe { libc::getsid(member) } == self.process_group
+                && unsafe { libc::getpgid(member) } == group
+            {
+                signal_group(group, libc::SIGKILL)?;
+            }
+        }
+        Ok(())
     }
 
     pub(super) fn leader_alive(&self) -> bool {
         (unsafe { libc::kill(self.process_group, 0) }) == 0
+    }
+}
+
+fn signal_group(process_group: i32, number: i32) -> Result<(), HostError> {
+    let result = unsafe { libc::kill(-process_group, number) };
+    if result == 0 {
+        Ok(())
+    } else {
+        let error = io::Error::last_os_error();
+        // No process left to signal means the process this stops is already gone. The
+        // watcher may not have marked it exited yet, and failing on that timing reports a
+        // stop that worked as an error to whoever asked for it.
+        if error.raw_os_error() == Some(libc::ESRCH) {
+            Ok(())
+        } else {
+            Err(HostError::io(error))
+        }
     }
 }
 

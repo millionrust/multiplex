@@ -4,6 +4,25 @@ Multiplex keeps a bounded local record of allowlisted operational metadata. The
 diagnostics path is intentionally separate from terminal scrollback, session
 history, and application state.
 
+## Desktop process logs
+
+The desktop also saves its stdout, stderr, application log messages (Info, Warning,
+and Error), and panic reports to a per-launch `.log` file under the app data
+directory's `logs/` folder. On macOS this is
+`~/Library/Application Support/multiplex/logs/multiplex-<timestamp>-<pid>.log`.
+`MULTIPLEX_CONFIG_DIR` moves this folder along with the rest of the app data.
+Unix log directories are mode `0700` and files are mode `0600`.
+
+Terminal termination records identify the session and stop mode and report the
+stage of any failure: metadata, connection, identity verification, request, or
+timeout. A successful stop is logged too. Terminal contents stay on their PTY;
+worker protocols retain their stdout and stderr pipes.
+
+These local process logs are separate from the bounded, allowlisted diagnostics
+below. They are not included in diagnostics previews, exports, or Clear. Process
+logs may contain paths and raw errors or panic text and remain local until removed
+or shared by the user.
+
 ## Privacy boundary
 
 Each record must match the closed schema in `termirust-diagnostics`. A record can

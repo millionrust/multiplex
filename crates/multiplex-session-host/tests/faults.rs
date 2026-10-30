@@ -243,6 +243,70 @@ async fn shutdown_joins_tasks_and_kills_owned_grandchild() {
     }
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn force_kill_also_stops_jobs_in_a_separate_process_group() {
+    use std::os::unix::process::CommandExt as _;
+    struct Sentinel(std::process::Child);
+    impl Drop for Sentinel {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let mut sentinel = Sentinel(
+        std::process::Command::new("/bin/sleep")
+            .arg("30")
+            .process_group(0)
+            .spawn()
+            .unwrap(),
+    );
+    let fixture = tempfile::tempdir().unwrap();
+    let pid_file = fixture.path().join("job.pid");
+    let mut descriptor = descriptor(fixture.path(), HostedSessionId::new(), "/usr/bin/python3");
+    descriptor.arguments = vec![
+        "-c".into(),
+        format!(
+            "import os, signal, time\nfor sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM): signal.signal(sig, signal.SIG_IGN)\npid = os.fork()\nif pid == 0:\n os.setpgid(0, 0)\n with open('{}', 'w') as f: f.write(str(os.getpid()))\n time.sleep(30)\nelse:\n os.waitpid(pid, 0)\n",
+            pid_file.display()
+        ),
+    ];
+    let host = start(descriptor).await.unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let job = loop {
+        if let Ok(text) = std::fs::read_to_string(&pid_file)
+            && let Ok(pid) = text.trim().parse::<i32>()
+        {
+            break pid;
+        }
+        assert!(Instant::now() < deadline, "job PID was not published");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    };
+    while unsafe { libc::getpgid(job) } == unsafe { libc::getsid(job) } {
+        assert!(
+            Instant::now() < deadline,
+            "the fixture did not enable shell job control"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let result = host.shutdown().await;
+    assert!(
+        sentinel.0.try_wait().unwrap().is_none(),
+        "an unrelated job must survive"
+    );
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while unsafe { libc::kill(job, 0) } == 0 {
+        if Instant::now() >= deadline {
+            // Clean up the exact fixture child even when the regression is present.
+            unsafe {
+                libc::kill(job, libc::SIGKILL);
+            }
+            panic!("force kill left the shell's separate job group alive; host={result:?}");
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    result.unwrap();
+}
+
 async fn wait_for_connections(host: &SessionHostHandle, expected: usize, within: Duration) {
     let deadline = Instant::now() + within;
     while Instant::now() < deadline {

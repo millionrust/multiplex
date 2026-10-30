@@ -32623,6 +32623,89 @@ sleep 1
         );
     }
 
+    #[cfg(unix)]
+    #[gpui::test]
+    fn e2e_sessions_force_kill_button_stops_a_live_console(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let (_, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(
+                        ConnectRequest::local_shell_with_config(
+                            0,
+                            LocalShellConfig {
+                                program: crate::test_support::test_shell_program(),
+                                args: vec![
+                                    "-c".into(),
+                                    "trap '' INT TERM; printf 'kill-button-ready\\n'; sleep 60"
+                                        .into(),
+                                ],
+                                cwd: Some(std::env::temp_dir().display().to_string()),
+                            },
+                        ),
+                        window,
+                        cx,
+                    )
+                    .unwrap()
+                })
+            })
+            .unwrap();
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)?
+                .terminal
+                .all_rows_text()
+                .join("\n")
+                .contains("kill-button-ready")
+                .then_some(())
+        });
+        let session_id = app.read_with(cx, |app, _| {
+            crate::models::local_console_session_id(&app.pane(pane_id).unwrap().request).unwrap()
+        });
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(super::NavSection::Sessions, window, cx);
+                    app.refresh_other_terminals();
+                })
+            })
+            .unwrap();
+        let index = app.read_with(cx, |app, _| app.other_terminals.terminals.iter()
+            .position(|terminal| matches!(terminal.kind,
+                super::other_terminals::OtherTerminalKind::Console { session_id: id, .. } if id == session_id))
+            .expect("the live console must appear in Sessions"));
+        let click =
+            dynamic_selector_click_center(window, cx, format!("other-terminal-kill-{index}"));
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(click, gpui::Modifiers::none());
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            cx.run_until_parked();
+            if app.read_with(cx, |app, _| !app.other_terminals.stopping) {
+                break;
+            }
+            assert!(Instant::now() < deadline, "the Kill button never completed");
+            std::thread::sleep(crate::test_support::TEST_POLL_INTERVAL);
+        }
+        app.read_with(cx, |app, _| {
+            assert!(app.error_message.is_empty(), "{}", app.error_message);
+            assert!(app.other_terminals.drawer_pane.is_none(), "Kill must not open the row");
+            assert!(!app.other_terminals.terminals.iter().any(|terminal| matches!(terminal.kind,
+                super::other_terminals::OtherTerminalKind::Console { session_id: id, .. } if id == session_id)));
+        });
+        let session_dir = crate::storage::app_dir()
+            .unwrap()
+            .join("console-sessions")
+            .join(session_id.to_string());
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |_| {
+            multiplex_store::read_host_metadata(&session_dir)
+                .is_ok_and(|metadata| metadata.lifecycle == multiplex_domain::HostLifecycle::Exited)
+                .then_some(())
+        });
+    }
+
     #[gpui::test]
     fn tab_kill_immediately_targets_the_clicked_tab(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();

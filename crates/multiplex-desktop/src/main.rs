@@ -12,6 +12,7 @@ mod controller;
 mod credentials;
 mod diagnostics;
 mod local;
+mod logging;
 mod models;
 mod platform_mac;
 mod platform_notifications;
@@ -403,6 +404,10 @@ fn main() {
         }
         return;
     }
+    let _desktop_log = crate::storage::app_dir()
+        .and_then(|root| logging::initialize(&root).map_err(Into::into))
+        .map_err(|error| eprintln!("desktop_log_initialization_failed: {error}"))
+        .ok();
     let (mut saved_state, settings_read_failed) = match load_saved_state() {
         Ok(saved_state) => (saved_state, false),
         Err(_) => (Default::default(), true),
@@ -413,7 +418,8 @@ fn main() {
     let _diagnostic_runtime = crate::storage::app_dir().ok().and_then(|root| {
         crate::diagnostics::initialize(root.join("diagnostics"), &saved_state.settings)
     });
-    std::panic::set_hook(Box::new(|_| {
+    let previous_panic_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
         crate::diagnostics::record(
             multiplex_diagnostics::DiagnosticCode::PanicCaptured,
             multiplex_diagnostics::Severity::Error,
@@ -421,6 +427,7 @@ fn main() {
             multiplex_diagnostics::Component::Application,
             multiplex_diagnostics::Operation::Stop,
         );
+        previous_panic_hook(info);
     }));
     crate::diagnostics::record(
         multiplex_diagnostics::DiagnosticCode::AppStarted,
