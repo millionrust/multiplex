@@ -202,7 +202,8 @@ runner queue delays. Cold builds and changed-source compilation have no measured
 guarantee. Desktop jobs upload Cargo HTML timings as `build-timings-*` artifacts so subsequent
 optimization can use measured crate durations. Mac universal packaging waits only for the Mac
 builds, rather than the entire desktop matrix. Already-compressed packages are uploaded without
-an extra compression pass. Android enables Gradle's task build cache.
+an extra compression pass. Android enables Gradle's task build cache and allows trusted
+manual builds to save their branch's Gradle cache too.
 
 mr-boxington's per-job report counts only compilations it looked up: Cargo's reuse of a
 restored `target` directory is left out, so "0 hits" beside a short build step is a warm
