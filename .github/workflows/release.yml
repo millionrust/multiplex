@@ -121,7 +121,7 @@ jobs:
           echo "$root/bin" >> "$GITHUB_PATH"
           if [ ! -x "$root/bin/cargo-bundle" ]; then
             CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_LTO=false \
-              "$CARGO_HOME/bin/cargo" install cargo-bundle --version 0.11.0 --locked --root "$root"
+              "$(rustup which cargo)" install cargo-bundle --version 0.11.0 --locked --root "$root"
           fi
 
       - name: Build release application and sidecars
