@@ -32,6 +32,12 @@ Private key vectors are conspicuous tests only. Production static key bytes are 
 
 ## Reproducibility and promotion
 
+Trusted CI and release jobs may set `MULTIPLEX_MOBILE_CARGO_TARGET_DIR` to share a cached
+Cargo target directory across mobile libraries. Cargo input fingerprints and the output ABI,
+alignment, and checksum checks still apply. The two-clean-build comparison leaves this variable
+unset and continues to use isolated directories. Shipping candidates are built once and promoted
+by exact commit; see `docs/building.md` for the release cache and promotion contract.
+
 `scripts/build/mobile-controller-bindings.sh` builds every target in a fresh isolated target directory, generates both languages with `--no-format`, verifies Android page alignment, records public ABI symbols and SHA-256 for every mobile release output, and promotes only a complete staged tree. A failed build leaves the prior destination unchanged. `scripts/verify/mobile-controller-bindings.sh --rebuild-twice` performs two clean builds and requires byte-identical generated sources, mobile libraries, frameworks, symbols, provenance, and manifests. `scripts/sync/mobile-controller-bindings.sh --check` rejects stale native copies.
 
 The macOS dylib under `kotlin-test/` is local test support, not a mobile release artifact. Its Mach-O UUID is linker-generated, so it is rebuilt and executed by native conformance tests but excluded from release hashes and the byte-for-byte mobile artifact comparison.
