@@ -176,7 +176,9 @@ cache in dedicated `release-shipping-*-v2` namespaces, separate from test builds
 `dev` warm these caches and build complete candidates; superseded branch runs are cancelled.
 Pull requests do not run the release workflow. Tags and manual runs restore shipping work too.
 
-Candidates and tags both use one codegen unit and thin LTO. Android and iOS share one cached
+Candidates and tags both use Cargo's standard release code generation: 16 codegen units,
+local ThinLTO (`lto=false`), and optimization level 3. The root manifest still offers the
+one-unit/cross-crate ThinLTO profile for local builds; CI overrides it for build speed. Android and iOS share one cached
 `target` directory across their mobile libraries, avoiding repeated dependency and UniFFI
 generator compilation. Cargo still fingerprints inputs, and ABI, page-alignment, manifest,
 and package checks still run. The independent two-clean-build reproducibility checks leave
