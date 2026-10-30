@@ -568,7 +568,11 @@ async fn attach_loop(
         .await
         {
             Ok(client) => break client,
-            Err(_error) if Instant::now() < connect_deadline => {
+            Err(_error)
+                if Instant::now() < connect_deadline
+                    && !multiplex_store::probe_host_lease(&spec.paths.session_dir)
+                        .is_ok_and(|lease| lease == multiplex_store::HostLeaseState::Available) =>
+            {
                 if matches!(command_rx.try_recv(), Ok(SessionCommand::Disconnect)) {
                     return Ok(());
                 }
@@ -1016,6 +1020,58 @@ mod tests {
         assert_ne!(paths.runtime_root, paths.session_dir);
         #[cfg(unix)]
         assert!(paths.runtime_root.as_os_str().len() < 90);
+    }
+
+    #[test]
+    fn attaching_to_a_dead_host_replays_output_without_the_startup_retry_delay() {
+        use multiplex_domain::{ActivityAggregate, HostLifecycle};
+        use multiplex_store::HostMetadata;
+        let fixture = tempfile::tempdir().unwrap();
+        let session_id = HostedSessionId::new();
+        let paths = DurableSessionPaths {
+            session_dir: fixture.path().join("session"),
+            runtime_root: fixture.path().join("runtime"),
+        };
+        let host_id = HostInstanceId::new();
+        let lease = HostLease::acquire(&paths.session_dir, host_id).unwrap();
+        lease
+            .write_metadata(&HostMetadata {
+                format_version: HostMetadata::FORMAT_VERSION,
+                session_id,
+                host_instance_id: host_id,
+                process_token: None,
+                runtime_recognition: None,
+                activity: ActivityAggregate::default(),
+                lifecycle: HostLifecycle::Ready,
+                endpoint_name: "host.sock".into(),
+                heartbeat_monotonic_nanos: 1,
+                durability_watermark: None,
+            })
+            .unwrap();
+        drop(JournalStore::open(&lease, JournalLimits::default()).unwrap());
+        drop(lease);
+        let spec = DurableSessionSpec {
+            pane_id: 42,
+            session_id,
+            paths,
+            launch: None,
+            from_sequence: OutputSequence::ZERO,
+            expected_occupant_generation: None,
+            continuity: None,
+        };
+        let (events, received, _) = SshEventSender::channel();
+        let (_commands, command_rx) = mpsc::unbounded_channel();
+        let started = Instant::now();
+        run_durable_session(spec, command_rx, events).unwrap();
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(received.try_iter().any(|event| matches!(
+            event,
+            SshEvent::HostedStatus {
+                session_id: 42,
+                state: multiplex_domain::HostedSessionState::Orphaned,
+                ..
+            }
+        )));
     }
 
     #[test]

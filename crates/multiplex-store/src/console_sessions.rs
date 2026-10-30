@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use multiplex_domain::{HostLifecycle, HostedSessionId, OccupantGeneration};
 use serde::{Deserialize, Serialize};
 
-use crate::lease::read_host_metadata;
+use crate::lease::{HostLeaseState, probe_host_lease, read_host_metadata};
 
 /// The folder, beside the durable-session data folder, that holds one folder per session.
 pub const CONSOLE_SESSIONS_DIR: &str = "console-sessions";
@@ -156,8 +156,8 @@ pub fn live_console_sessions(root: &Path, runtime_parent: &Path) -> Vec<LiveCons
     sessions
 }
 
-/// A session is live while its Host says it is serving and its endpoint is still there: a Host
-/// that exited removes its endpoint and records the exit.
+/// A session is live while its Host holds its lease and has a serving endpoint.
+/// An abruptly killed Host can leave both Ready metadata and an endpoint behind.
 fn live(root: &Path, runtime_parent: &Path, session_dir: &Path) -> Option<LiveConsoleSession> {
     if session_dir.parent() != Some(root) {
         return None;
@@ -176,6 +176,9 @@ fn live(root: &Path, runtime_parent: &Path, session_dir: &Path) -> Option<LiveCo
         .join(record.session_id.to_string())
         .join(&metadata.endpoint_name);
     fs::symlink_metadata(endpoint).ok()?;
+    if probe_host_lease(session_dir).ok()? != HostLeaseState::Held {
+        return None;
+    }
     Some(LiveConsoleSession {
         record,
         generation: metadata.activity.generation,
@@ -241,6 +244,44 @@ mod tests {
         fs::create_dir_all(&elsewhere).unwrap();
         write_console_session(&elsewhere, &record(session_id)).unwrap();
         assert_eq!(read_console_session(&elsewhere), None);
+    }
+
+    #[test]
+    fn a_killed_host_with_ready_metadata_and_a_stale_endpoint_is_not_listed() {
+        use crate::{HostLease, HostMetadata};
+        use multiplex_domain::{ActivityAggregate, HostInstanceId};
+
+        let temp = tempfile::tempdir().unwrap();
+        let id = HostedSessionId::new();
+        let dir = temp.path().join(id.to_string());
+        let runtime_parent = temp.path().join("runtime");
+        let runtime = runtime_parent.join(id.to_string());
+        fs::create_dir_all(&runtime).unwrap();
+        let host_id = HostInstanceId::new();
+        let lease = HostLease::acquire(&dir, host_id).unwrap();
+        write_console_session(&dir, &record(id)).unwrap();
+        lease
+            .write_metadata(&HostMetadata {
+                format_version: HostMetadata::FORMAT_VERSION,
+                session_id: id,
+                host_instance_id: host_id,
+                process_token: None,
+                runtime_recognition: None,
+                activity: ActivityAggregate::default(),
+                lifecycle: HostLifecycle::Ready,
+                endpoint_name: "host.sock".into(),
+                heartbeat_monotonic_nanos: 1,
+                durability_watermark: None,
+            })
+            .unwrap();
+        fs::write(runtime.join("host.sock"), []).unwrap();
+        assert_eq!(live_console_sessions(temp.path(), &runtime_parent).len(), 1);
+        drop(lease); // The OS also releases this lock when a Host is killed.
+        assert!(live_console_sessions(temp.path(), &runtime_parent).is_empty());
+        assert_eq!(
+            console_session_generation(temp.path(), &runtime_parent, id),
+            None
+        );
     }
 
     #[test]

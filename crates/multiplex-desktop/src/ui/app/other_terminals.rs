@@ -892,15 +892,16 @@ fn preview_lines(terminal: &crate::terminal::TerminalState) -> Vec<String> {
 }
 
 /// A stop acknowledgement can race with the Host exiting and closing its endpoint.
-/// Only a matching terminal's recorded exit counts as success; an unreachable live
-/// Host or a replacement Host must remain an error.
+/// A matching terminal's recorded exit or released Host lease counts as success;
+/// an unreachable live Host or a replacement Host must remain an error.
 fn terminal_has_exited(session_dir: &std::path::Path, session_id: HostedSessionId) -> bool {
     multiplex_store::read_host_metadata(session_dir).is_ok_and(|metadata| {
         metadata.session_id == session_id
-            && matches!(
+            && (matches!(
                 metadata.lifecycle,
                 multiplex_domain::HostLifecycle::Exited | multiplex_domain::HostLifecycle::Failed
-            )
+            ) || multiplex_store::probe_host_lease(session_dir)
+                .is_ok_and(|lease| lease == multiplex_store::HostLeaseState::Available))
     })
 }
 
@@ -1076,6 +1077,49 @@ mod tests {
                 started.elapsed() < std::time::Duration::from_secs(2),
                 "force kill must not wait through the five-second graceful deadline"
             );
+        }
+    }
+
+    #[test]
+    fn stopping_a_killed_host_with_stale_metadata_succeeds_without_connecting() {
+        use multiplex_domain::{ActivityAggregate, HostInstanceId, HostLifecycle, HostedSessionId};
+        use multiplex_store::{HostLease, HostMetadata};
+        let temp = tempfile::tempdir().unwrap();
+        let session_dir = temp.path().join("session");
+        let id = HostedSessionId::new();
+        let host_id = HostInstanceId::new();
+        let lease = HostLease::acquire(&session_dir, host_id).unwrap();
+        lease
+            .write_metadata(&HostMetadata {
+                format_version: HostMetadata::FORMAT_VERSION,
+                session_id: id,
+                host_instance_id: host_id,
+                process_token: None,
+                runtime_recognition: None,
+                activity: ActivityAggregate::default(),
+                lifecycle: HostLifecycle::Ready,
+                endpoint_name: "host.sock".into(),
+                heartbeat_monotonic_nanos: 1,
+                durability_watermark: None,
+            })
+            .unwrap();
+        assert!(!super::terminal_has_exited(&session_dir, id));
+        drop(lease);
+        assert!(super::terminal_has_exited(&session_dir, id));
+        assert!(!super::terminal_has_exited(
+            &session_dir,
+            HostedSessionId::new()
+        ));
+        let terminal = super::OtherTerminalKind::Console {
+            session_id: id,
+            session_dir,
+            runtime_root: temp.path().join("missing-runtime"),
+        };
+        for mode in [
+            multiplex_host_protocol::wire::StopMode::Graceful,
+            multiplex_host_protocol::wire::StopMode::Force,
+        ] {
+            assert_eq!(super::stop_other_terminal(&terminal, mode), Ok(()));
         }
     }
 
