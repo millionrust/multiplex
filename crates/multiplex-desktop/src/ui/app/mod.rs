@@ -11173,6 +11173,21 @@ impl MultiplexApp {
             return;
         }
 
+        // Mouse moves may be coalesced or stop arriving when the pointer leaves the
+        // surface. The release still carries the final position of a local drag.
+        if event.button == MouseButton::Left
+            && event.click_count == 1
+            && self
+                .pane(pane_id)
+                .is_some_and(|pane| pane.dragging_selection)
+            && let Some(pos) = self.mouse_cell_position(pane_id, event.position, window, cx)
+            && let Some(selection) = self
+                .pane_mut(pane_id)
+                .and_then(|pane| pane.selection.as_mut())
+        {
+            selection.head = pos;
+        }
+
         let clicked_url = if event.button == MouseButton::Left
             && event.click_count == 1
             && !event.modifiers.shift
@@ -11350,7 +11365,9 @@ impl MultiplexApp {
                     col: end.saturating_sub(1) as u16,
                 },
             });
-            pane.dragging_selection = false;
+            // Keep the whole mouse gesture local even if Shift is released before
+            // the button in a terminal that reports mouse events to its program.
+            pane.dragging_selection = true;
         }
         self.sync_terminal_grid(pane_id, cx);
         cx.notify();
@@ -14403,6 +14420,104 @@ mod tests {
             })
             .unwrap();
         assert_eq!(sent(&mut command_rx), b"\x1b[200~'/tmp/a b.txt' \x1b[201~");
+    }
+
+    #[gpui::test]
+    fn terminal_selection_finishes_on_release_and_keeps_shift_gesture_local(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let pane_id = window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| {
+                    let pane_id = app.next_session_id();
+                    let request = ConnectRequest::local_shell_with_config(
+                        pane_id,
+                        LocalShellConfig::default(),
+                    );
+                    let (command_tx, _command_rx) = tokio::sync::mpsc::unbounded_channel();
+                    app.register_pane(
+                        request.clone(),
+                        SessionRuntimeHandle { command_tx },
+                        cx.focus_handle().tab_stop(true),
+                        cx.focus_handle().tab_stop(true),
+                        cx,
+                    );
+                    app.open_spawned_pane_workspace(&request, pane_id);
+                    app.pane_mut(pane_id).unwrap().connected = true;
+                    app.saved.settings.copy_on_select = true;
+                    cx.notify();
+                    pane_id
+                })
+            })
+            .unwrap();
+        VisualTestContext::from_window(window.into(), cx).run_until_parked();
+
+        for (reporting, click_count) in [(false, 1), (true, 1), (true, 2)] {
+            cx.write_to_clipboard(gpui::ClipboardItem::new_string(String::new()));
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        let pane = app.pane_mut(pane_id).unwrap();
+                        pane.selection = None;
+                        pane.selection_snapshot = None;
+                        pane.dragging_selection = false;
+                        pane.terminal
+                            .process_bytes(b"\x1b[5;1Hselect this terminal output");
+                        pane.terminal.process_bytes(if reporting {
+                            b"\x1b[?1000h"
+                        } else {
+                            b"\x1b[?1000l"
+                        });
+                        let layout = app.pane_layout_for(pane_id, window, cx).unwrap();
+                        let start = point(
+                            px(layout.cell_x + layout.char_width * 0.5),
+                            px(layout.cell_y + layout.line_height * 4.5),
+                        );
+                        let end = if click_count == 2 {
+                            start
+                        } else {
+                            start + point(px(layout.char_width * 5.0), px(0.))
+                        };
+                        app.handle_pane_mouse_down(
+                            pane_id,
+                            &MouseDownEvent {
+                                position: start,
+                                button: MouseButton::Left,
+                                click_count,
+                                first_mouse: false,
+                                modifiers: gpui::Modifiers {
+                                    shift: reporting,
+                                    ..gpui::Modifiers::none()
+                                },
+                            },
+                            window,
+                            cx,
+                        );
+                        // A fast drag may deliver the final position only with the release.
+                        // Releasing Shift first must still finish the local selection gesture.
+                        app.handle_pane_mouse_up(
+                            pane_id,
+                            &MouseUpEvent {
+                                position: end,
+                                button: MouseButton::Left,
+                                click_count,
+                                modifiers: gpui::Modifiers::none(),
+                            },
+                            window,
+                            cx,
+                        );
+                        assert!(!app.pane(pane_id).unwrap().dragging_selection);
+                    })
+                })
+                .unwrap();
+            assert_eq!(
+                cx.read_from_clipboard().unwrap().text().as_deref(),
+                Some("select"),
+                "reporting={reporting}, click_count={click_count}"
+            );
+        }
     }
 
     #[gpui::test]
