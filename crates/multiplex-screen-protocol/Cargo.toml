@@ -1,13 +1,13 @@
 [package]
 name = "multiplex-screen-protocol"
-version = "0.0.20"
+version = "0.0.21"
 edition = "2024"
 rust-version.workspace = true
 description = "Transport-neutral control messages and stream framing for TermiRust Remote Screens"
 license = "MIT"
 
 [dependencies]
-multiplex-screen-codec = { version = "0.0.20", path = "../multiplex-screen-codec" }
+multiplex-screen-codec = { version = "0.0.21", path = "../multiplex-screen-codec" }
 
 [dev-dependencies]
 proptest = "1.11"
