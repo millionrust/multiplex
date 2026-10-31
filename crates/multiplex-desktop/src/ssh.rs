@@ -81,6 +81,22 @@ pub enum SshEvent {
     },
 }
 
+impl SshEvent {
+    pub fn session_id(&self) -> u64 {
+        match self {
+            Self::Connected { session_id, .. }
+            | Self::Output { session_id, .. }
+            | Self::HostedBound { session_id, .. }
+            | Self::HostedOutput { session_id, .. }
+            | Self::HostedSnapshot { session_id, .. }
+            | Self::HostedStatus { session_id, .. }
+            | Self::Error { session_id, .. }
+            | Self::TmuxSessionKilled { session_id, .. }
+            | Self::Disconnected { session_id, .. } => *session_id,
+        }
+    }
+}
+
 /// Wakes the app's event loop when a session event is queued, so output is drawn as soon
 /// as it arrives instead of on the next timer tick. Wakes coalesce: many events queued
 /// before the loop runs cost one wake.

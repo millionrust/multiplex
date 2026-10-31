@@ -220,7 +220,11 @@ fn run_local_session(
                 return Ok(());
             }
             WorkerEvent::ReaderClosed(message) => {
-                let _ = child.try_wait();
+                let status = child.try_wait();
+                eprintln!(
+                    "[local-session] viewer reader ended pane_id={session_id} console={:?} child_status={status:?} reason={message}",
+                    crate::models::local_console_session_id(&request),
+                );
                 let _ = event_tx.send(SshEvent::Disconnected {
                     session_id,
                     message,

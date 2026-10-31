@@ -740,6 +740,8 @@ pub struct AppSettings {
     pub onboarding_dismissed: bool,
     #[serde(default = "default_restore_workspaces_on_launch")]
     pub restore_workspaces_on_launch: bool,
+    #[serde(default)]
+    pub session_group_by_folder: bool,
     #[serde(default = "default_session_log_limit")]
     pub session_log_limit: u16,
     #[serde(default = "default_local_shell_config")]
@@ -850,6 +852,7 @@ impl Default for AppSettings {
             library_sidebar_width: None,
             settings_nav_width: None,
             restore_workspaces_on_launch: default_restore_workspaces_on_launch(),
+            session_group_by_folder: false,
             session_log_limit: default_session_log_limit(),
             default_local_shell: default_local_shell_config(),
             default_ssh_startup_directory: None,

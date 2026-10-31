@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crate::ui::action_button::ActionButton as Button;
@@ -1650,7 +1652,77 @@ impl MultiplexApp {
             .into_any_element()
     }
 
-    /// The Sessions page presents one flat list, including records previously in groups.
+    /// Folder grouping is a presentation of the same session records, not a Project model.
+    fn render_folder_grouped_sessions(
+        &self,
+        sessions: &[SavedAppAttachedSession],
+        cx: &Context<Self>,
+    ) -> Vec<AnyElement> {
+        let mut groups: BTreeMap<Option<PathBuf>, (Vec<usize>, Vec<usize>)> = BTreeMap::new();
+        for (index, terminal) in self.other_terminals.terminals.iter().enumerate() {
+            let folder = terminal
+                .folder
+                .as_ref()
+                .map(|path| path.components().collect());
+            groups.entry(folder).or_default().0.push(index);
+        }
+        for (index, session) in sessions.iter().enumerate() {
+            let folder = (!session.folder.trim().is_empty())
+                .then(|| PathBuf::from(&session.folder).components().collect());
+            groups.entry(folder).or_default().1.push(index);
+        }
+        groups
+            .into_iter()
+            .enumerate()
+            .map(|(index, (folder, (terminals, records)))| {
+                let title = folder
+                    .as_ref()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|| {
+                        localization::static_message(MessageId::SessionFolderMissing)
+                    });
+                v_flex()
+                    .id(("session-folder-group", index))
+                    .debug_selector(move || format!("session-folder-group-{index}"))
+                    .gap(px(theme::SPACE_3))
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .min_w_0()
+                            .gap(px(theme::SPACE_2))
+                            .items_center()
+                            .child(Icon::new(IconName::Folder).text_color(theme::text_muted()))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                    .font_medium()
+                                    .text_color(theme::text_main())
+                                    .child(title),
+                            ),
+                    )
+                    .children(terminals.into_iter().map(|original_index| {
+                        self.render_other_terminal_row(
+                            original_index,
+                            &self.other_terminals.terminals[original_index],
+                            cx,
+                        )
+                    }))
+                    .children(records.into_iter().map(|original_index| {
+                        self.render_session_row(
+                            &sessions[original_index],
+                            original_index,
+                            sessions.len(),
+                            cx,
+                        )
+                    }))
+                    .into_any_element()
+            })
+            .collect()
+    }
+
     pub(super) fn render_session_sidebar(&self, cx: &Context<Self>) -> AnyElement {
         let sessions = self.flat_visible_sessions();
         let session_count = sessions.len();
@@ -1692,10 +1764,16 @@ impl MultiplexApp {
                     .overflow_y_scrollbar()
                     .p(px(theme::SPACE_4))
                     .gap(px(theme::SPACE_3))
-                    .children(self.render_other_terminals(cx))
-                    .children(sessions.iter().enumerate().map(|(index, session)| {
-                        self.render_session_row(session, index, session_count, cx)
-                    }))
+                    .when(self.saved.settings.session_group_by_folder, |this| {
+                        this.children(self.render_folder_grouped_sessions(&sessions, cx))
+                    })
+                    .when(!self.saved.settings.session_group_by_folder, |this| {
+                        this.children(self.render_other_terminals(cx)).children(
+                            sessions.iter().enumerate().map(|(index, session)| {
+                                self.render_session_row(session, index, session_count, cx)
+                            }),
+                        )
+                    })
                     .when(
                         session_count == 0 && self.other_terminals.terminals.is_empty(),
                         |this| {
@@ -1746,6 +1824,27 @@ impl MultiplexApp {
                 false,
                 cx,
                 |this, view, _, cx| this.set_session_library_view(view, cx),
+            ))
+            .child(self.segmented_control(
+                "session-grouping",
+                [
+                    (
+                        false,
+                        localization::static_message(MessageId::SessionLayoutDefault),
+                    ),
+                    (
+                        true,
+                        localization::static_message(MessageId::SessionLayoutGroup),
+                    ),
+                ],
+                self.saved.settings.session_group_by_folder,
+                false,
+                cx,
+                |this, grouped, _, cx| {
+                    this.saved.settings.session_group_by_folder = grouped;
+                    let _ = save_saved_state(&this.saved);
+                    cx.notify();
+                },
             ))
             .into_any_element()
     }

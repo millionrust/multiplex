@@ -1762,6 +1762,7 @@ session-count = { $count ->
     [zero] ⟦Ñø åçţîṽé šéššîøñš~~~~~~⟧
     }
 session-drawer-open-tab = ⟦Øþéñ åš ñéŵ ţåƀ~~~~⟧
+session-folder-missing = ⟦Ñø ƒøļðéŕ~~⟧
 session-history-active-status = ⟦Åçţîṽé~⟧
 session-history-count = { $count ->
     [many] { $count }⟦ šéššîøñš~~⟧
@@ -1772,6 +1773,8 @@ session-history-count = { $count ->
 session-history-section-ready = ⟦Ļøĝš ŕéåðý.~~~⟧
 session-history-started-duration = ⟦Šţåŕţéð ~~⟧{ $started }⟦  Ðûŕåţîøñ ~~~⟧{ $duration }
 session-history-title = ⟦Šéššîøñ Ĥîšţøŕý~~~~⟧
+session-layout-default = ⟦Ðéƒåûļţ~⟧
+session-layout-group = ⟦Ĝŕøûþ⟧
 session-library-active-view = ⟦Åçţîṽé~⟧
 session-library-activity-busy = ⟦Ɓûšý⟧
 session-library-activity-done = ⟦Ðøñé⟧
@@ -2521,6 +2524,7 @@ terminal-state-offline = ⟦Ĥøšţ øƒƒļîñé~~~⟧
 terminal-state-permission-denied = ⟦Þéŕɱîššîøñ ðéñîéð~~~~~⟧
 terminal-state-recovery = ⟦Ŕéçøṽéŕîñĝ~~⟧
 terminal-state-replaying = ⟦Ŕéþļåýîñĝ šåṽéð øûţþûţ~~~~~~~⟧
+terminal-viewer-reconnecting = ⟦Ŕéçøññéçţîñĝ ţø ŕûññîñĝ ţéŕɱîñåļ…~~~~~~~~~~~~⟧
 terminal-writer-held = ⟦Ŵŕîţéŕ~⟧
 tmux-session-deleted-status = ⟦Ðéļéţéð ţɱûẋ šéššîøñ ~~~~~~~⟧{ $session }⟦.⟧
 transcript-export-action = ⟦Éẋþøŕţ ţŕåñšçŕîþţ~~~~~⟧

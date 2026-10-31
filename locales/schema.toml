@@ -12757,3 +12757,23 @@ name = "method"
 type = "UserData"
 sensitivity = "sensitive"
 bidi = "isolate"
+
+[[messages]]
+id = "session-layout-default"
+context = "Sessions presentation tab for the existing ungrouped list."
+description = "Default session layout"
+
+[[messages]]
+id = "session-layout-group"
+context = "Sessions presentation tab that groups sessions by their folder."
+description = "Group sessions by folder"
+
+[[messages]]
+id = "session-folder-missing"
+context = "Folder heading when a session has no recorded working directory."
+description = "No folder recorded"
+
+[[messages]]
+id = "terminal-viewer-reconnecting"
+context = "Status while a terminal viewer reconnects to its still-running shell without starting another shell."
+description = "Reconnecting terminal viewer"

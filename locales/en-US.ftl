@@ -2740,3 +2740,8 @@ login-identity-count = { $count ->
    *[other] { $count } identities
     }
 host-editor-identity-summary = Signs in as { $username } with { $method }.
+
+session-layout-default = Default
+session-layout-group = Group
+session-folder-missing = No folder
+terminal-viewer-reconnecting = Reconnecting to running terminal…

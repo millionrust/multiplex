@@ -115,8 +115,6 @@ fn center_zone_guide() -> MotionRect {
 }
 
 const PANE_HEADER_HEIGHT: f32 = theme::SPLIT_PANE_HEADER_HEIGHT;
-/// How far the content of panes without focus fades back in a split.
-const INACTIVE_PANE_OPACITY: f32 = 0.66;
 const PANE_HEADER_BUTTON: f32 = theme::SPLIT_PANE_HEADER_BUTTON;
 const PANE_STATUS_DOT: f32 = theme::SPLIT_PANE_STATUS_DOT;
 const PANE_RENAME_WIDTH: f32 = theme::SPLIT_PANE_RENAME_WIDTH;
@@ -1255,21 +1253,12 @@ impl MultiplexApp {
             .active_workspace()
             .map(|workspace| workspace.active_pane_id)
             == Some(pane.id);
-        // Only a split with more than one pane on screen needs to show which has focus:
-        // the focused pane gets the accent and the others' content dims.
+        // Highlight the focused pane while keeping every terminal's content fully visible.
         let marks_active_pane = is_active_pane
             && self
                 .active_workspace()
                 .is_some_and(|workspace| workspace.pane_ids.len() > 1)
             && self.zoomed_pane().is_none();
-        let dims_content = !is_active_pane
-            && self.active_workspace().is_some_and(|workspace| {
-                workspace.layout_mode == WorkspaceLayoutMode::Split
-                    && workspace
-                        .layout
-                        .as_ref()
-                        .is_some_and(|layout| layout.leaf_count() > 1)
-            });
         let broadcast_target = !pane.closed
             && self.active_workspace().is_some_and(|workspace| {
                 workspace.broadcast_input
@@ -1474,9 +1463,6 @@ impl MultiplexApp {
                     .track_focus(&pane.terminal_focus)
                     .focusable()
                     .bg(theme::terminal_bg())
-                    .when(dims_content, |surface| {
-                        surface.opacity(INACTIVE_PANE_OPACITY)
-                    })
                     .on_mouse_down(
                         MouseButton::Right,
                         cx.listener(move |this, event: &MouseDownEvent, window, cx| {

@@ -26,6 +26,18 @@ pub(super) enum SplitNode {
 }
 
 impl SplitNode {
+    /// Rebind a reconnected pane without changing its position, axis, or ratios.
+    pub(super) fn replace_pane(&mut self, previous: u64, replacement: u64) {
+        match self {
+            Self::Leaf(id) if *id == previous => *id = replacement,
+            Self::Leaf(_) => {}
+            Self::Split { a, b, .. } => {
+                a.replace_pane(previous, replacement);
+                b.replace_pane(previous, replacement);
+            }
+        }
+    }
+
     pub(super) fn collect_leaves(&self, out: &mut Vec<u64>) {
         match self {
             SplitNode::Leaf(id) => out.push(*id),

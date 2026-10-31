@@ -807,6 +807,7 @@ struct SessionPane {
     /// Whether this session, or one it reconnected for, has ever been live. Until then the pane
     /// shows the connecting card instead of an empty terminal.
     ever_connected: bool,
+    connected_since: Option<Instant>,
     /// What happened while connecting, shown under Show logs.
     connect_log: Vec<String>,
     show_connect_log: bool,
@@ -7077,8 +7078,20 @@ impl MultiplexApp {
         request: ConnectRequest,
         cx: &mut Context<Self>,
     ) -> u64 {
+        self.spawn_replacement_pane(request, None, cx)
+    }
+
+    fn spawn_replacement_pane(
+        &mut self,
+        request: ConnectRequest,
+        replacing: Option<u64>,
+        cx: &mut Context<Self>,
+    ) -> u64 {
         let mut request = request;
-        self.give_a_duplicated_local_pane_its_own_session(&mut request);
+        // Reconnecting is another viewer of the same shell, not a duplicated terminal.
+        if replacing.is_none() {
+            self.give_a_duplicated_local_pane_its_own_session(&mut request);
+        }
         crate::models::prepare_terminal_request(&mut request);
         if request.is_local_shell()
             && let Ok(root) = crate::storage::app_dir()
@@ -7380,6 +7393,7 @@ impl MultiplexApp {
             status: "Connecting".to_string(),
             last_error: None,
             ever_connected: false,
+            connected_since: None,
             connect_log: Vec::new(),
             show_connect_log: false,
             selection: None,
@@ -7689,6 +7703,28 @@ impl MultiplexApp {
         let Some(pane) = self.pane(pane_id) else {
             return false;
         };
+        if pane.request.is_local_shell() {
+            const LOCAL_VIEWER_RECONNECT_DELAY_MILLIS: u64 = 250;
+            const LOCAL_VIEWER_MAX_RECONNECT_ATTEMPTS: u8 = 3;
+            let can_reattach = !pane.user_closed
+                && pane.ever_connected
+                && pane.auto_reconnect_attempts < LOCAL_VIEWER_MAX_RECONNECT_ATTEMPTS
+                && !self.other_terminals.stopping
+                && self.local_console_host_is_live(pane_id);
+            if !can_reattach {
+                return false;
+            }
+            let pane = self.pane_mut(pane_id).unwrap();
+            pane.auto_reconnect_attempts += 1;
+            pane.auto_reconnect_at =
+                Some(current_unix_millis() + LOCAL_VIEWER_RECONNECT_DELAY_MILLIS);
+            pane.status = localization::static_message(MessageId::TerminalViewerReconnecting);
+            eprintln!(
+                "[local-session] viewer reconnect scheduled pane_id={pane_id} attempt={}",
+                pane.auto_reconnect_attempts
+            );
+            return true;
+        }
         let decision = self
             .connection_coordinator
             .schedule_reconnect(ReconnectScheduleInput {
@@ -7715,6 +7751,18 @@ impl MultiplexApp {
         }
         pane.status = status;
         true
+    }
+
+    fn local_console_host_is_live(&self, pane_id: u64) -> bool {
+        self.pane(pane_id)
+            .and_then(|pane| crate::models::local_console_session_id(&pane.request))
+            .and_then(|id| crate::storage::app_dir().ok().map(|root| (root, id)))
+            .is_some_and(|(root, id)| {
+                other_terminals::terminal_host_is_live(
+                    &root.join("console-sessions").join(id.to_string()),
+                    id,
+                )
+            })
     }
 
     fn process_pending_auto_reconnects(
@@ -7753,6 +7801,19 @@ impl MultiplexApp {
             return status_changed;
         }
         for pane_id in due_pane_ids {
+            // The shell can exit between the disconnect event and this tick. Never turn
+            // automatic viewer recovery into an implicit launch of a replacement shell.
+            if self
+                .pane(pane_id)
+                .is_some_and(|pane| pane.request.is_local_shell())
+                && !self.local_console_host_is_live(pane_id)
+            {
+                if let Some(pane) = self.pane_mut(pane_id) {
+                    pane.auto_reconnect_at = None;
+                    pane.status = "Closed".into();
+                }
+                continue;
+            }
             if let Some(pane) = self.pane_mut(pane_id) {
                 pane.auto_reconnect_at = None;
                 pane.status = "Reconnecting...".to_string();
@@ -7834,7 +7895,7 @@ impl MultiplexApp {
             )
         });
         request.session_id = self.next_session_id();
-        let new_pane_id = self.spawn_pane(request.clone(), window, cx);
+        let new_pane_id = self.spawn_replacement_pane(request.clone(), Some(pane_id), cx);
         if let Some((
             last_error,
             ever_connected,
@@ -7862,6 +7923,22 @@ impl MultiplexApp {
                     workspace.active_pane_id = new_pane_id;
                 }
             }
+            if let Some(layout) = workspace.layout.as_mut() {
+                layout.replace_pane(pane_id, new_pane_id);
+            }
+            for node in &mut workspace.canvas.nodes {
+                match &mut node.kind {
+                    canvas::CanvasNodeKind::Terminal { pane_id: id } if *id == pane_id => {
+                        *id = new_pane_id;
+                    }
+                    canvas::CanvasNodeKind::Agent {
+                        pane_id: Some(id), ..
+                    } if *id == pane_id => {
+                        *id = new_pane_id;
+                    }
+                    _ => {}
+                }
+            }
             if let Some(browser) = workspace.sftp.as_mut()
                 && browser.pane_id == pane_id
             {
@@ -7872,6 +7949,11 @@ impl MultiplexApp {
 
         if self.other_terminals.drawer_pane == Some(pane_id) {
             self.other_terminals.drawer_pane = Some(new_pane_id);
+        }
+        if let Some(workspace_id) = workspace_id
+            && self.zoomed_panes.get(&workspace_id) == Some(&pane_id)
+        {
+            self.zoomed_panes.insert(workspace_id, new_pane_id);
         }
         if let Some(old_pane) = self.pane(pane_id) {
             let _ = old_pane.runtime.command_tx.send(SessionCommand::Disconnect);
@@ -8397,6 +8479,24 @@ impl MultiplexApp {
         let mut sftp_directories_to_refresh = HashSet::new();
 
         for event in drain_coalesced_ssh_events(&self.event_rx) {
+            // A replaced viewer can finish after its replacement is already live.
+            // Its final events must not mark the current workspace disconnected.
+            if self.pane(event.session_id()).is_none() {
+                if let SshEvent::Error {
+                    session_id,
+                    message,
+                }
+                | SshEvent::Disconnected {
+                    session_id,
+                    message,
+                } = &event
+                {
+                    eprintln!(
+                        "[app] retired viewer event ignored pane_id={session_id} message={message}"
+                    );
+                }
+                continue;
+            }
             let plain_terminal_output = matches!(&event, SshEvent::Output { .. });
             if !plain_terminal_output {
                 changed = true;
@@ -8421,7 +8521,10 @@ impl MultiplexApp {
                         pane.status = "Live".to_string();
                         pane.last_error = None;
                         pane.ever_connected = true;
-                        pane.auto_reconnect_attempts = 0;
+                        pane.connected_since = Some(Instant::now());
+                        if !pane.request.is_local_shell() {
+                            pane.auto_reconnect_attempts = 0;
+                        }
                         pane.connect_log
                             .push(localization::terminal_pane_log_connected());
                         pane.set_accessible_lifecycle(TerminalLifecycle::Live);
@@ -8764,6 +8867,17 @@ impl MultiplexApp {
                         })
                     });
                     if let Some(pane) = self.pane_mut(session_id) {
+                        // A readiness marker followed immediately by another bridge failure
+                        // is not a stable recovery. Keep the retry budget across that flap.
+                        const LOCAL_VIEWER_STABLE_CONNECTION: Duration = Duration::from_secs(5);
+                        if pane.request.is_local_shell()
+                            && pane.connected_since.is_some_and(|since| {
+                                since.elapsed() >= LOCAL_VIEWER_STABLE_CONNECTION
+                            })
+                        {
+                            pane.auto_reconnect_attempts = 0;
+                        }
+                        pane.connected_since = None;
                         pane.connected = false;
                         pane.closed = true;
                         pane.clear_accessible_content(TerminalLifecycle::Detached);
@@ -16662,6 +16776,7 @@ mod tests {
         started_rx.recv().expect("host started");
         app.update(cx, |app, _| {
             app.other_terminals.terminals = vec![super::other_terminals::OtherTerminal {
+                folder: None,
                 kind: super::other_terminals::OtherTerminalKind::Console {
                     session_id,
                     session_dir,
@@ -32161,6 +32276,7 @@ sleep 1
         // Only terminals started by the Multiplex CLI belong in this external-terminal list.
         let session_id = multiplex_domain::HostedSessionId::new();
         let terminal = super::other_terminals::OtherTerminal {
+            folder: None,
             kind: super::other_terminals::OtherTerminalKind::Console {
                 session_id,
                 session_dir: std::env::temp_dir().join("console-session"),
@@ -32704,6 +32820,286 @@ sleep 1
                 .is_ok_and(|metadata| metadata.lifecycle == multiplex_domain::HostLifecycle::Exited)
                 .then_some(())
         });
+    }
+
+    #[cfg(unix)]
+    #[gpui::test]
+    fn viewer_reconnect_keeps_the_live_shell_and_its_split_slot(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let (workspace_id, previous) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(
+                        ConnectRequest::local_shell_with_config(
+                            0,
+                            LocalShellConfig {
+                                program: crate::test_support::test_shell_program(),
+                                args: vec![
+                                    "-c".into(),
+                                    "printf 'session-ready\\n'; sleep 60".into(),
+                                ],
+                                cwd: Some(std::env::temp_dir().display().to_string()),
+                            },
+                        ),
+                        window,
+                        cx,
+                    )
+                    .unwrap()
+                })
+            })
+            .unwrap();
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let pane = app.pane(previous)?;
+            (pane.connected
+                && pane
+                    .terminal
+                    .all_rows_text()
+                    .join("\n")
+                    .contains("session-ready"))
+            .then_some(())
+        });
+        let root = crate::storage::app_dir().unwrap();
+        let console = app.read_with(cx, |app, _| {
+            crate::models::local_console_session_id(&app.pane(previous).unwrap().request).unwrap()
+        });
+        let before_host = multiplex_store::read_host_metadata(
+            &root.join("console-sessions").join(console.to_string()),
+        )
+        .unwrap();
+        let (before_rect, sibling) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.split_active_workspace(SplitAxis::Horizontal, window, cx);
+                    app.split_active_workspace(SplitAxis::Vertical, window, cx);
+                    let (rects, _) = app.workspace_split_rects(window);
+                    let r = rects.iter().find(|rect| rect.pane_id == previous).unwrap();
+                    let rect = (r.x, r.y, r.width, r.height);
+                    let sibling = app.workspace(workspace_id).unwrap().active_pane_id;
+                    let workspace = app.workspace_mut(workspace_id).unwrap();
+                    workspace.canvas.nodes.push(super::canvas::CanvasNode {
+                        id: crate::models::CanvasNodeId::new("reconnecting-terminal"),
+                        kind: super::canvas::CanvasNodeKind::Terminal { pane_id: previous },
+                        rect: super::canvas::CanvasRect::default(),
+                        z_index: 0,
+                        title: None,
+                        collapsed: false,
+                    });
+                    app.zoomed_panes.insert(workspace_id, previous);
+                    app.pane(previous)
+                        .unwrap()
+                        .runtime
+                        .command_tx
+                        .send(SessionCommand::Disconnect)
+                        .unwrap();
+                    (rect, sibling)
+                })
+            })
+            .unwrap();
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(previous)?.auto_reconnect_at.map(|_| ())
+        });
+        let replacement = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.pane_mut(previous).unwrap().auto_reconnect_at = Some(0);
+                    app.process_pending_auto_reconnects(window, cx);
+                    let workspace = app.workspace(workspace_id).unwrap();
+                    let replacement = workspace.layout.as_ref().unwrap().leaf_ids()[0];
+                    assert_ne!(replacement, previous);
+                    assert_eq!(
+                        workspace.active_pane_id, sibling,
+                        "background recovery must not steal the active pane"
+                    );
+                    assert!(!workspace.layout.as_ref().unwrap().contains(previous));
+                    assert!(
+                        workspace
+                            .canvas
+                            .nodes
+                            .iter()
+                            .any(|node| node.id.as_str() == "reconnecting-terminal"
+                                && node.kind.pane_id() == Some(replacement))
+                    );
+                    assert_eq!(app.zoomed_panes.get(&workspace_id), Some(&replacement));
+                    app.zoomed_panes.remove(&workspace_id);
+                    let (rects, _) = app.workspace_split_rects(window);
+                    let r = rects
+                        .iter()
+                        .find(|rect| rect.pane_id == replacement)
+                        .unwrap();
+                    assert_eq!((r.x, r.y, r.width, r.height), before_rect);
+                    replacement
+                })
+            })
+            .unwrap();
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            app.pane(replacement)?.connected.then_some(())
+        });
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                crate::models::local_console_session_id(&app.pane(replacement).unwrap().request),
+                Some(console)
+            );
+            assert_eq!(
+                app.pane(replacement).unwrap().auto_reconnect_attempts,
+                1,
+                "a readiness marker alone must not reset the retry budget"
+            );
+        });
+        app.update(cx, |app, cx| {
+            app.process_events(cx);
+            let status = app.status_message.clone();
+            app.event_tx
+                .send(SshEvent::Disconnected {
+                    session_id: previous,
+                    message: "retired viewer ended".into(),
+                })
+                .unwrap();
+            app.event_tx
+                .send(SshEvent::Error {
+                    session_id: previous,
+                    message: "retired viewer error".into(),
+                })
+                .unwrap();
+            app.process_events(cx);
+            assert_eq!(app.status_message, status);
+            assert!(app.error_message.is_empty());
+            assert!(app.pane(replacement).unwrap().connected);
+        });
+        let after_host = multiplex_store::read_host_metadata(
+            &root.join("console-sessions").join(console.to_string()),
+        )
+        .unwrap();
+        assert_eq!(before_host.host_instance_id, after_host.host_instance_id);
+        assert_eq!(
+            before_host.process_token, after_host.process_token,
+            "viewer recovery must retain the running shell"
+        );
+        let consoles = app.read_with(cx, |app, _| {
+            app.panes
+                .iter()
+                .filter_map(|pane| crate::models::local_console_session_id(&pane.request))
+                .collect::<Vec<_>>()
+        });
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| {
+                    app.close_pane(replacement, cx);
+                    assert!(
+                        !app.workspace(workspace_id)
+                            .unwrap()
+                            .layout
+                            .as_ref()
+                            .unwrap()
+                            .contains(replacement)
+                    );
+                })
+            })
+            .unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            for id in consoles {
+                let cancel = tokio_util::sync::CancellationToken::new();
+                let mut client = multiplex_client::HostClient::connect(
+                    multiplex_client::LocalEndpoint::for_config_root(&root, id),
+                    multiplex_client::ConnectOptions::local_read_only(id, [91; 32]),
+                    &cancel,
+                )
+                .await
+                .unwrap();
+                client
+                    .stop(
+                        multiplex_domain::CommandId::new(),
+                        multiplex_host_protocol::wire::StopMode::Force,
+                        &cancel,
+                    )
+                    .await
+                    .unwrap();
+            }
+        });
+    }
+
+    #[gpui::test]
+    fn sessions_folder_grouping_is_optional_persisted_and_keeps_row_identity(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let ids = (0..3)
+            .map(|_| multiplex_domain::HostedSessionId::new())
+            .collect::<Vec<_>>();
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(super::NavSection::Sessions, window, cx);
+                    for (index, folder) in ["/z/project", "/a/project", "/z/project"]
+                        .iter()
+                        .enumerate()
+                    {
+                        app.other_terminals
+                            .terminals
+                            .push(super::other_terminals::OtherTerminal {
+                                kind: super::other_terminals::OtherTerminalKind::Console {
+                                    session_id: ids[index],
+                                    session_dir: std::env::temp_dir().join(ids[index].to_string()),
+                                    runtime_root: std::env::temp_dir().join("missing-runtime"),
+                                },
+                                title: format!("terminal-{index}"),
+                                detail: folder.to_string(),
+                                folder: Some((*folder).into()),
+                            });
+                    }
+                    assert!(!app.saved.settings.session_group_by_folder);
+                    cx.notify();
+                })
+            })
+            .unwrap();
+        let group = selector_click_center(window, cx, "session-grouping-1");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(group, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            assert!(app.saved.settings.session_group_by_folder)
+        });
+        assert!(
+            crate::storage::load_saved_state()
+                .unwrap()
+                .settings
+                .session_group_by_folder
+        );
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        assert!(visual.debug_bounds("session-folder-group-0").is_some());
+        assert!(visual.debug_bounds("session-folder-group-1").is_some());
+        assert!(
+            visual.debug_bounds("session-folder-group-2").is_none(),
+            "the two /z/project terminals share a folder section"
+        );
+        let open = selector_click_center(window, cx, "other-terminal-open-1");
+        visual.simulate_click(open, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.drawer_terminal_session(),
+                Some(ids[1]),
+                "sorted groups must open the rendered terminal, not the displayed index"
+            )
+        });
+        app.update(cx, |app, cx| app.close_session_drawer(cx));
+        let default = selector_click_center(window, cx, "session-grouping-0");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(default, gpui::Modifiers::none());
+        assert!(
+            !crate::storage::load_saved_state()
+                .unwrap()
+                .settings
+                .session_group_by_folder
+        );
     }
 
     #[gpui::test]

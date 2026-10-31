@@ -1762,6 +1762,7 @@ session-count = { $count ->
     [zero] ⁧snoisses evitca oN⁩
     }
 session-drawer-open-tab = ⁧bat wen sa nepO⁩
+session-folder-missing = ⁧redlof oN⁩
 session-history-active-status = ⁧evitcA⁩
 session-history-count = { $count ->
     [many] { $count }⁧snoisses ⁩
@@ -1772,6 +1773,8 @@ session-history-count = { $count ->
 session-history-section-ready = ⁧.ydaer sgoL⁩
 session-history-started-duration = ⁧ detratS⁩{ $started }⁧ noitaruD  ⁩{ $duration }
 session-history-title = ⁧yrotsiH noisseS⁩
+session-layout-default = ⁧tluafeD⁩
+session-layout-group = ⁧puorG⁩
 session-library-active-view = ⁧evitcA⁩
 session-library-activity-busy = ⁧ysuB⁩
 session-library-activity-done = ⁧enoD⁩
@@ -2521,6 +2524,7 @@ terminal-state-offline = ⁧enilffo tsoH⁩
 terminal-state-permission-denied = ⁧deined noissimreP⁩
 terminal-state-recovery = ⁧gnirevoceR⁩
 terminal-state-replaying = ⁧tuptuo devas gniyalpeR⁩
+terminal-viewer-reconnecting = ⁧…lanimret gninnur ot gnitcennoceR⁩
 terminal-writer-held = ⁧retirW⁩
 tmux-session-deleted-status = ⁧ noisses xumt deteleD⁩{ $session }⁧.⁩
 transcript-export-action = ⁧tpircsnart tropxE⁩

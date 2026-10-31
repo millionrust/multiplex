@@ -47,6 +47,7 @@ pub(super) struct OtherTerminal {
     pub kind: OtherTerminalKind,
     pub title: String,
     pub detail: String,
+    pub folder: Option<PathBuf>,
 }
 
 #[derive(Debug, Default)]
@@ -110,7 +111,6 @@ impl MultiplexApp {
         if self.other_terminals.terminals.is_empty() {
             return None;
         }
-        let open_in_drawer = self.drawer_terminal_session();
         Some(
             v_flex()
                 .id("other-terminals")
@@ -132,157 +132,165 @@ impl MultiplexApp {
                         .text_color(theme::text_muted())
                         .child(localization::other_terminals_description()),
                 )
-                .children(self.other_terminals.terminals.iter().enumerate().map(
-                    |(index, terminal)| {
-                        let preview_terminal = terminal.clone();
-                        let preview_font = self
-                            .saved
-                            .settings
-                            .terminal_font_family
-                            .clone()
-                            .unwrap_or_else(|| "monospace".into());
-                        let open = open_in_drawer.is_some()
-                            && terminal_session(terminal) == open_in_drawer;
-                        h_flex()
-                            .id(("other-terminal", index))
-                            .debug_selector(move || format!("other-terminal-{index}"))
-                            .items_center()
-                            .gap(px(theme::SPACE_3))
-                            .p(px(theme::SPACE_3))
-                            .rounded(px(theme::CONTROL_RADIUS))
-                            .border_1()
-                            .border_color(if open {
-                                theme::accent()
-                            } else {
-                                theme::soft_border()
-                            })
-                            .bg(if open {
-                                theme::chrome_tab()
-                            } else {
-                                theme::library_card()
-                            })
-                            .when(open, |row| {
-                                row.debug_selector(|| "other-terminal-open-in-drawer".to_string())
-                            })
-                            .cursor_pointer()
-                            .hover(|style| style.bg(theme::chrome_tab()))
-                            .when(
-                                self.other_terminals.close_pending.is_none()
-                                    && self.other_terminals.drawer_pane.is_none(),
-                                |this| {
-                                    this.tooltip(move |_, cx| {
-                                        cx.new(|cx| {
-                                            TerminalHoverPreview::new(
-                                                preview_terminal.clone(),
-                                                preview_font.clone(),
-                                                cx,
-                                            )
-                                        })
-                                        .into()
-                                    })
-                                },
-                            )
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.open_other_terminal(index, window, cx);
-                            }))
-                            .child(
-                                Icon::new(IconName::SquareTerminal)
-                                    .size(px(theme::ICON_SIZE_DEFAULT))
-                                    .text_color(theme::text_muted()),
-                            )
-                            .child(
-                                v_flex()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .child(
-                                        div()
-                                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                                            .text_color(theme::text_main())
-                                            .child(terminal.title.clone()),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                            .text_color(theme::text_muted())
-                                            .child(terminal.detail.clone()),
-                                    ),
-                            )
-                            .child(
-                                Self::design_button(
-                                    ("other-terminal-open", index),
-                                    theme::ActionTone::Neutral,
-                                    cx,
-                                )
-                                .debug_selector(move || format!("other-terminal-open-{index}"))
-                                .icon(IconName::PanelRightOpen)
-                                .tooltip(localization::other_terminals_open_action())
-                                .on_click(cx.listener(
-                                    move |this, _, window, cx| {
-                                        cx.stop_propagation();
-                                        this.open_other_terminal(index, window, cx);
-                                    },
-                                )),
-                            )
-                            .child(
-                                Self::design_button(
-                                    ("other-terminal-close", index),
-                                    theme::ActionTone::Danger,
-                                    cx,
-                                )
-                                .debug_selector(move || format!("other-terminal-close-{index}"))
-                                .icon(IconName::CircleX)
-                                .tooltip(localization::static_message(
-                                    MessageId::OtherTerminalsCloseAction,
-                                ))
-                                .disabled(self.other_terminals.stopping)
-                                .on_click(cx.listener(
-                                    move |this, _, _, cx| {
-                                        cx.stop_propagation();
-                                        if this.other_terminals.stopping {
-                                            return;
-                                        }
-                                        this.other_terminals.close_pending =
-                                            this.other_terminals.terminals.get(index).cloned();
-                                        this.error_message.clear();
-                                        this.confirm_other_terminal_close(
-                                            multiplex_host_protocol::wire::StopMode::Graceful,
-                                            cx,
-                                        );
-                                    },
-                                )),
-                            )
-                            .child(
-                                Self::design_button(
-                                    ("other-terminal-kill", index),
-                                    theme::ActionTone::Danger,
-                                    cx,
-                                )
-                                .debug_selector(move || format!("other-terminal-kill-{index}"))
-                                .icon(IconName::Delete)
-                                .tooltip(localization::static_message(
-                                    MessageId::ChromeKillTerminal,
-                                ))
-                                .disabled(self.other_terminals.stopping)
-                                .on_click(cx.listener(
-                                    move |this, _, _, cx| {
-                                        cx.stop_propagation();
-                                        if this.other_terminals.stopping {
-                                            return;
-                                        }
-                                        this.other_terminals.close_pending =
-                                            this.other_terminals.terminals.get(index).cloned();
-                                        this.error_message.clear();
-                                        this.confirm_other_terminal_close(
-                                            multiplex_host_protocol::wire::StopMode::Force,
-                                            cx,
-                                        );
-                                    },
-                                )),
-                            )
-                    },
-                ))
+                .children(
+                    self.other_terminals
+                        .terminals
+                        .iter()
+                        .enumerate()
+                        .map(|(index, terminal)| {
+                            self.render_other_terminal_row(index, terminal, cx)
+                        }),
+                )
                 .into_any_element(),
         )
+    }
+
+    pub(super) fn render_other_terminal_row(
+        &self,
+        index: usize,
+        terminal: &OtherTerminal,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let open_in_drawer = self.drawer_terminal_session();
+        let row_terminal = terminal.clone();
+        let open_terminal = terminal.clone();
+        let close_terminal = terminal.clone();
+        let kill_terminal = terminal.clone();
+        let preview_terminal = terminal.clone();
+        let preview_font = self
+            .saved
+            .settings
+            .terminal_font_family
+            .clone()
+            .unwrap_or_else(|| "monospace".into());
+        let open = open_in_drawer.is_some() && terminal_session(terminal) == open_in_drawer;
+        h_flex()
+            .id(("other-terminal", index))
+            .debug_selector(move || format!("other-terminal-{index}"))
+            .items_center()
+            .gap(px(theme::SPACE_3))
+            .p(px(theme::SPACE_3))
+            .rounded(px(theme::CONTROL_RADIUS))
+            .border_1()
+            .border_color(if open {
+                theme::accent()
+            } else {
+                theme::soft_border()
+            })
+            .bg(if open {
+                theme::chrome_tab()
+            } else {
+                theme::library_card()
+            })
+            .when(open, |row| {
+                row.debug_selector(|| "other-terminal-open-in-drawer".to_string())
+            })
+            .cursor_pointer()
+            .hover(|style| style.bg(theme::chrome_tab()))
+            .when(
+                self.other_terminals.close_pending.is_none()
+                    && self.other_terminals.drawer_pane.is_none(),
+                |this| {
+                    this.tooltip(move |_, cx| {
+                        cx.new(|cx| {
+                            TerminalHoverPreview::new(
+                                preview_terminal.clone(),
+                                preview_font.clone(),
+                                cx,
+                            )
+                        })
+                        .into()
+                    })
+                },
+            )
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.open_other_terminal_record(row_terminal.clone(), window, cx);
+            }))
+            .child(
+                Icon::new(IconName::SquareTerminal)
+                    .size(px(theme::ICON_SIZE_DEFAULT))
+                    .text_color(theme::text_muted()),
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                            .text_color(theme::text_main())
+                            .child(terminal.title.clone()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(terminal.detail.clone()),
+                    ),
+            )
+            .child(
+                Self::design_button(
+                    ("other-terminal-open", index),
+                    theme::ActionTone::Neutral,
+                    cx,
+                )
+                .debug_selector(move || format!("other-terminal-open-{index}"))
+                .icon(IconName::PanelRightOpen)
+                .tooltip(localization::other_terminals_open_action())
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    this.open_other_terminal_record(open_terminal.clone(), window, cx);
+                })),
+            )
+            .child(
+                Self::design_button(
+                    ("other-terminal-close", index),
+                    theme::ActionTone::Danger,
+                    cx,
+                )
+                .debug_selector(move || format!("other-terminal-close-{index}"))
+                .icon(IconName::CircleX)
+                .tooltip(localization::static_message(
+                    MessageId::OtherTerminalsCloseAction,
+                ))
+                .disabled(self.other_terminals.stopping)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    if this.other_terminals.stopping {
+                        return;
+                    }
+                    this.other_terminals.close_pending = Some(close_terminal.clone());
+                    this.error_message.clear();
+                    this.confirm_other_terminal_close(
+                        multiplex_host_protocol::wire::StopMode::Graceful,
+                        cx,
+                    );
+                })),
+            )
+            .child(
+                Self::design_button(
+                    ("other-terminal-kill", index),
+                    theme::ActionTone::Danger,
+                    cx,
+                )
+                .debug_selector(move || format!("other-terminal-kill-{index}"))
+                .icon(IconName::Delete)
+                .tooltip(localization::static_message(MessageId::ChromeKillTerminal))
+                .disabled(self.other_terminals.stopping)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    if this.other_terminals.stopping {
+                        return;
+                    }
+                    this.other_terminals.close_pending = Some(kill_terminal.clone());
+                    this.error_message.clear();
+                    this.confirm_other_terminal_close(
+                        multiplex_host_protocol::wire::StopMode::Force,
+                        cx,
+                    );
+                })),
+            )
+            .into_any_element()
     }
 
     /// A just-started CLI can announce its terminal before writing its session record.
@@ -361,6 +369,12 @@ impl MultiplexApp {
             .terminal_kind_for_pane(pane.id)
             .unwrap_or(OtherTerminalKind::Pane { pane_id: pane.id });
         self.other_terminals.close_pending = Some(OtherTerminal {
+            folder: pane
+                .request
+                .local_shell
+                .as_ref()
+                .and_then(|shell| shell.cwd.as_ref())
+                .map(PathBuf::from),
             kind,
             title: pane.title.clone(),
             detail: pane.endpoint.clone(),
@@ -640,6 +654,7 @@ impl MultiplexApp {
         )
     }
 
+    #[cfg(test)]
     pub(super) fn open_other_terminal(
         &mut self,
         index: usize,
@@ -649,6 +664,15 @@ impl MultiplexApp {
         let Some(terminal) = self.other_terminals.terminals.get(index).cloned() else {
             return;
         };
+        self.open_other_terminal_record(terminal, window, cx);
+    }
+
+    fn open_other_terminal_record(
+        &mut self,
+        terminal: OtherTerminal,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match terminal.kind {
             OtherTerminalKind::Pane { .. } => return,
             OtherTerminalKind::Console {
@@ -711,6 +735,7 @@ fn read_other_terminals(app_root: Option<PathBuf>) -> Vec<OtherTerminal> {
         for live in multiplex_store::live_console_sessions(&console_root, &runtime_parent) {
             let session_id = live.record.session_id;
             terminals.push(OtherTerminal {
+                folder: Some(live.record.working_directory.clone()),
                 title: live.record.title(),
                 detail: localization::other_terminals_profile_origin(
                     live.record.working_directory.display().to_string(),
@@ -909,6 +934,18 @@ pub(super) fn terminal_host_unavailable(
                 multiplex_domain::HostLifecycle::Exited | multiplex_domain::HostLifecycle::Failed
             ) || multiplex_store::probe_host_lease(session_dir)
                 .is_ok_and(|lease| lease == multiplex_store::HostLeaseState::Available))
+    })
+}
+
+pub(super) fn terminal_host_is_live(
+    session_dir: &std::path::Path,
+    session_id: HostedSessionId,
+) -> bool {
+    multiplex_store::read_host_metadata(session_dir).is_ok_and(|metadata| {
+        metadata.session_id == session_id
+            && metadata.lifecycle == multiplex_domain::HostLifecycle::Ready
+            && multiplex_store::probe_host_lease(session_dir)
+                .is_ok_and(|lease| lease == multiplex_store::HostLeaseState::Held)
     })
 }
 

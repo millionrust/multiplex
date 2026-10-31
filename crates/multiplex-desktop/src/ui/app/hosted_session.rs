@@ -42,6 +42,8 @@ const LIVE_POLL_INTERVAL: Duration = Duration::from_millis(
         .0 as u64,
 );
 const MAX_STARTUP_HANDSHAKES: usize = 8;
+const LIVE_ATTACH_TIMEOUT: Duration = Duration::from_secs(10);
+const MAX_VIEWER_RECOVERIES: usize = 3;
 /// How long after the last keystroke a viewer lets go of the writer lease, so the terminal
 /// window a `multiplex-cli shell` runs in, or a paired device, can type into it again.
 const VIEWER_LEASE_IDLE_MILLIS: u64 = 1_500;
@@ -549,6 +551,49 @@ fn terminate_unready_host(process: &mut Child) {
     let _ = process.wait();
 }
 
+async fn recover_viewer_client(
+    spec: &DurableSessionSpec,
+    expected_host: HostInstanceId,
+    watermark: OutputSequence,
+    event_tx: &SshEventSender,
+    cancel: &CancellationToken,
+) -> Result<HostClient, ClientError> {
+    let metadata = read_host_metadata(&spec.paths.session_dir)
+        .map_err(|_| ClientError::new(ClientErrorCode::Io))?;
+    if metadata.session_id != spec.session_id || metadata.host_instance_id != expected_host {
+        return Err(ClientError::new(ClientErrorCode::WrongSession));
+    }
+    if metadata.lifecycle != multiplex_domain::HostLifecycle::Ready
+        || !multiplex_store::probe_host_lease(&spec.paths.session_dir)
+            .is_ok_and(|lease| lease == HostLeaseState::Held)
+    {
+        return Err(ClientError::new(ClientErrorCode::EndOfStream));
+    }
+    let _ = event_tx.send(status_event(
+        spec.pane_id,
+        multiplex_domain::HostedSessionState::Attaching,
+        watermark,
+        false,
+        &localization::static_message(multiplex_ui_contract::MessageId::TerminalViewerReconnecting),
+    ));
+    let mut nonce = [0; 32];
+    rand::rngs::OsRng.fill_bytes(&mut nonce);
+    let client = HostClient::connect(
+        LocalEndpoint::new(&spec.paths.runtime_root, spec.session_id),
+        ConnectOptions::local_read_only(spec.session_id, nonce),
+        cancel,
+    )
+    .await?;
+    if client.host_instance_id() != Some(expected_host) {
+        return Err(ClientError::new(ClientErrorCode::WrongSession));
+    }
+    eprintln!(
+        "[durable-session] viewer recovered pane_id={} session={} watermark={watermark}",
+        spec.pane_id, spec.session_id
+    );
+    Ok(client)
+}
+
 async fn attach_loop(
     spec: DurableSessionSpec,
     mut command_rx: UnboundedReceiver<SessionCommand>,
@@ -611,27 +656,34 @@ async fn attach_loop(
         ))
         .map_err(|_| "Application event channel closed".to_string())?;
     let mut ticker = tokio::time::interval(LIVE_POLL_INTERVAL);
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut connected_sent = false;
     let mut lease = ViewerLease::new();
+    let mut consecutive_recoveries = 0;
 
     loop {
+        let mut connection_error = None;
         tokio::select! {
             command = command_rx.recv() => match command {
                 Some(SessionCommand::Input(bytes)) => {
                     // The Host ends a connection that writes without the lease, so typing while
                     // another client holds it is dropped and the next poll shows it read-only.
-                    let writable = lease.take(&mut client, &cancel).await
-                        .map_err(|error| format!("Durable Host writer lease failed: {error}"))?;
-                    if writable && !client.input_all(&bytes, &cancel).await
-                        .map_err(|error| format!("Durable Host input failed: {error}"))?
-                    {
-                        lease.held = false;
-                        lease.refused = true;
+                    let writable = match lease.take(&mut client, &cancel).await {
+                        Ok(writable) => writable,
+                        Err(error) => { connection_error = Some(error); false }
+                    };
+                    if writable {
+                        match client.input_all(&bytes, &cancel).await {
+                            Ok(true) => {}
+                            Ok(false) => { lease.held = false; lease.refused = true; }
+                            Err(error) => connection_error = Some(error),
+                        }
                     }
                 }
                 Some(SessionCommand::Resize(size)) => {
-                    client.resize(CommandId::new(), u32::from(size.cols), u32::from(size.rows), &cancel).await
-                        .map_err(|error| format!("Durable Host resize failed: {error}"))?;
+                    if let Err(error) = client.resize(CommandId::new(), u32::from(size.cols), u32::from(size.rows), &cancel).await {
+                        connection_error = Some(error);
+                    }
                 }
                 Some(SessionCommand::StopDurable) => {
                     let stop_result = client
@@ -676,7 +728,7 @@ async fn attach_loop(
                 }
                 Some(SessionCommand::KillTmuxSession { .. }) => {}
             },
-            _ = ticker.tick() => {
+            _ = ticker.tick() => 'poll: {
                 model.begin_replay();
                 if !connected_sent {
                     event_tx.send(status_event(
@@ -687,27 +739,13 @@ async fn attach_loop(
                         "Replaying retained output",
                     )).map_err(|_| "Application event channel closed".to_string())?;
                 }
-                let outputs = match tokio::time::timeout(
-                    Duration::from_secs(2),
+                let result = tokio::time::timeout(
+                    LIVE_ATTACH_TIMEOUT,
                     client.attach(model.watermark(), 160, 48, &cancel),
-                )
-                .await
-                {
-                    Ok(Ok(outputs)) => outputs,
-                    Ok(Err(error)) => {
-                        report_client_failure(&spec, &event_tx, error, model.watermark())?;
-                        return Ok(());
-                    }
-                    Err(_) => {
-                        report_recovery_state(
-                            &spec,
-                            &event_tx,
-                            multiplex_domain::HostedSessionState::Offline,
-                            model.watermark(),
-                            "Replay timed out; retry to reconnect to the durable Host",
-                        )?;
-                        return Ok(());
-                    }
+                ).await.unwrap_or_else(|_| Err(ClientError::new(ClientErrorCode::Cancelled)));
+                let outputs = match result {
+                    Ok(outputs) => { consecutive_recoveries = 0; outputs }
+                    Err(error) => { connection_error = Some(error); break 'poll; }
                 };
                 if let Some(snapshot) = client.take_last_snapshot() {
                     let boundary = OutputSequence::new(snapshot.boundary_sequence);
@@ -771,8 +809,10 @@ async fn attach_loop(
                     });
                     return Ok(());
                 }
-                lease.settle(state.has_writer_lease, &mut client, &cancel).await
-                    .map_err(|error| format!("Durable Host writer lease failed: {error}"))?;
+                if let Err(error) = lease.settle(state.has_writer_lease, &mut client, &cancel).await {
+                    connection_error = Some(error);
+                    break 'poll;
+                }
                 model.mark_live(lease.writable(), state.recording_paused);
                 if !connected_sent {
                     event_tx.send(SshEvent::Connected {
@@ -801,6 +841,44 @@ async fn attach_loop(
                     },
                 )).map_err(|_| "Application event channel closed".to_string())?;
             }
+        }
+        if let Some(error) = connection_error {
+            eprintln!(
+                "[durable-session] viewer transport failed pane_id={} session={} error={error:?}",
+                spec.pane_id, spec.session_id
+            );
+            if matches!(
+                error.code,
+                ClientErrorCode::Io | ClientErrorCode::EndOfStream | ClientErrorCode::Cancelled
+            ) && consecutive_recoveries < MAX_VIEWER_RECOVERIES
+            {
+                consecutive_recoveries += 1;
+                // Never resend input whose delivery was uncertain. Restore output from the
+                // last watermark over a fresh connection, then accept only subsequent input.
+                client.disconnect();
+                match recover_viewer_client(
+                    &spec,
+                    host_instance_id,
+                    model.watermark(),
+                    &event_tx,
+                    &cancel,
+                )
+                .await
+                {
+                    Ok(replacement) => {
+                        client = replacement;
+                        lease = ViewerLease::new();
+                        connected_sent = false;
+                        continue;
+                    }
+                    Err(recovery_error) => {
+                        report_client_failure(&spec, &event_tx, recovery_error, model.watermark())?;
+                        return Ok(());
+                    }
+                }
+            }
+            report_client_failure(&spec, &event_tx, error, model.watermark())?;
+            return Ok(());
         }
     }
 }
@@ -1010,6 +1088,185 @@ fn status_event_with_durability(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn viewer_recovers_a_dropped_connection_without_disconnecting_the_running_shell() {
+        use std::os::unix::fs::PermissionsExt as _;
+        use std::sync::Arc;
+        use tokio::net::{UnixListener, UnixStream};
+        let fixture = tempfile::Builder::new()
+            .prefix("viewer-recovery-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let root = fs::canonicalize(fixture.path()).unwrap();
+        let session_id = HostedSessionId::new();
+        let host_id = HostInstanceId::new();
+        let session_dir = root.join("session");
+        let real_runtime = root.join("host");
+        let host = multiplex_session_host::start(LaunchDescriptor {
+            format_version: LaunchDescriptor::FORMAT_VERSION,
+            session_id, host_instance_id: host_id, expected_occupant_generation: None,
+            runtime_root: real_runtime.clone(), session_dir: session_dir.clone(),
+            executable: fs::canonicalize("/bin/sh").unwrap(), runtime_detection: None,
+            arguments: vec!["-c".into(), "printf 'viewer-ready\\n'; while IFS= read -r line; do printf 'answer:%s\\n' \"$line\"; done".into()],
+            environment: BTreeMap::new(), cwd: Some(root.clone()), columns: 80, rows: 24,
+            journal_limits: JournalLimits::default(), stop_deadlines: StopDeadlines::default(),
+        }).await.unwrap();
+        let proxy_root = root.join("proxy");
+        fs::create_dir(&proxy_root).unwrap();
+        fs::set_permissions(&proxy_root, fs::Permissions::from_mode(0o700)).unwrap();
+        let endpoint = LocalEndpoint::new(&proxy_root, session_id);
+        let listener = UnixListener::bind(endpoint.socket_path()).unwrap();
+        fs::set_permissions(endpoint.socket_path(), fs::Permissions::from_mode(0o600)).unwrap();
+        let drop_connection = Arc::new(tokio::sync::Notify::new());
+        let drop_first = drop_connection.clone();
+        let relay = tokio::spawn(async move {
+            let mut first = true;
+            loop {
+                let (mut frontend, _) = listener.accept().await.unwrap();
+                let mut backend = UnixStream::connect(
+                    LocalEndpoint::new(&real_runtime, session_id).socket_path(),
+                )
+                .await
+                .unwrap();
+                let should_drop = first;
+                first = false;
+                let drop_first = drop_first.clone();
+                tokio::spawn(async move {
+                    if should_drop {
+                        tokio::select! {
+                            _ = tokio::io::copy_bidirectional(&mut frontend, &mut backend) => {},
+                            _ = drop_first.notified() => {},
+                        }
+                    } else {
+                        let _ = tokio::io::copy_bidirectional(&mut frontend, &mut backend).await;
+                    }
+                });
+            }
+        });
+        let spec = DurableSessionSpec {
+            pane_id: 42,
+            session_id,
+            paths: DurableSessionPaths {
+                runtime_root: proxy_root,
+                session_dir: session_dir.clone(),
+            },
+            launch: None,
+            from_sequence: OutputSequence::ZERO,
+            expected_occupant_generation: None,
+            continuity: None,
+        };
+        let (events, received, _) = SshEventSender::channel();
+        let rejected = recover_viewer_client(
+            &spec,
+            HostInstanceId::new(),
+            OutputSequence::ZERO,
+            &events,
+            &CancellationToken::new(),
+        )
+        .await;
+        assert!(
+            matches!(
+                rejected,
+                Err(ClientError {
+                    code: ClientErrorCode::WrongSession,
+                    ..
+                })
+            ),
+            "recovery must reject a replacement Host identity"
+        );
+        let (commands, command_rx) = mpsc::unbounded_channel();
+        let viewer = tokio::spawn(attach_loop(
+            spec,
+            command_rx,
+            events,
+            StartupPermit::acquire(),
+        ));
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut connected = 0;
+        let mut watermark = 0;
+        loop {
+            for event in received.try_iter() {
+                match event {
+                    SshEvent::Connected { .. } => connected += 1,
+                    SshEvent::HostedStatus { last_sequence, .. } => {
+                        watermark = watermark.max(last_sequence)
+                    }
+                    SshEvent::Disconnected { message, .. } => {
+                        panic!("viewer falsely disconnected: {message}")
+                    }
+                    _ => {}
+                }
+            }
+            if connected > 0 && watermark > 0 {
+                break;
+            }
+            assert!(Instant::now() < deadline, "viewer did not connect");
+            tokio::time::sleep(LIVE_POLL_INTERVAL).await;
+        }
+        let before = read_host_metadata(&session_dir).unwrap().process_token;
+        drop_connection.notify_one();
+        loop {
+            for event in received.try_iter() {
+                match event {
+                    SshEvent::Connected { .. } => connected += 1,
+                    SshEvent::HostedStatus { last_sequence, .. } => {
+                        assert!(last_sequence >= watermark)
+                    }
+                    SshEvent::Disconnected { message, .. } => {
+                        panic!("a transient drop became a closed terminal: {message}")
+                    }
+                    _ => {}
+                }
+            }
+            if connected >= 2 {
+                break;
+            }
+            assert!(Instant::now() < deadline, "viewer did not recover");
+            tokio::time::sleep(LIVE_POLL_INTERVAL).await;
+        }
+        commands
+            .send(SessionCommand::Input(b"ping\n".to_vec()))
+            .unwrap();
+        let mut output = Vec::new();
+        loop {
+            for event in received.try_iter() {
+                match event {
+                    SshEvent::HostedOutput { data, .. } | SshEvent::HostedSnapshot { data, .. } => {
+                        output.extend(data)
+                    }
+                    SshEvent::Disconnected { message, .. } => {
+                        panic!("recovered input disconnected: {message}")
+                    }
+                    _ => {}
+                }
+            }
+            if output
+                .windows(b"answer:ping".len())
+                .any(|bytes| bytes == b"answer:ping")
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "input did not reach the original shell after recovery"
+            );
+            tokio::time::sleep(LIVE_POLL_INTERVAL).await;
+        }
+        assert_eq!(
+            read_host_metadata(&session_dir).unwrap().process_token,
+            before
+        );
+        commands.send(SessionCommand::Disconnect).unwrap();
+        tokio::time::timeout(Duration::from_secs(2), viewer)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        relay.abort();
+        host.shutdown().await.unwrap();
+    }
 
     #[test]
     fn durable_paths_are_stable_and_scoped_to_the_session() {
