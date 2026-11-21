@@ -10,6 +10,7 @@
 //! a Ctrl-] not followed by d reaches the program, and nothing inside a bracketed paste is a key.
 
 const ESC: u8 = 0x1b;
+const BEL: u8 = 0x07;
 const CTRL_C: u8 = 0x03;
 const CTRL_RIGHT_BRACKET: u8 = 0x1d;
 const PASTE_START: &[u8] = b"\x1b[200~";
@@ -64,7 +65,7 @@ impl DetachKeys {
             if let Some(pending) = self.pending.as_mut() {
                 match key {
                     Key::Detach => return (output, true),
-                    Key::Release | Key::Modifier => pending.extend_from_slice(token),
+                    Key::Release | Key::Modifier | Key::Report => pending.extend_from_slice(token),
                     Key::Leader | Key::CtrlC | Key::Other => {
                         self.flush(&mut output);
                         output.extend_from_slice(token);
@@ -86,10 +87,21 @@ impl DetachKeys {
     }
 }
 
-/// One control sequence when a whole one starts here, ESC and the byte after it when Alt is held
-/// with a key, otherwise one byte. A sequence split across reads is passed on byte by byte, which
-/// only means a detach key sent that way is not seen.
+/// One control sequence or string (OSC, DCS, APC, PM, SOS) when a whole one starts here, ESC and
+/// the byte after it when Alt is held with a key, otherwise one byte. A sequence split across reads
+/// is passed on byte by byte, which only means a detach key or report sent that way is not seen.
 fn next_token(input: &[u8]) -> &[u8] {
+    if input.len() >= 3 && input[0] == ESC && matches!(input[1], b']' | b'P' | b'_' | b'^' | b'X') {
+        let mut index = 2;
+        while index < input.len() {
+            match input[index] {
+                BEL if input[1] == b']' => return &input[..=index],
+                ESC if input.get(index + 1) == Some(&b'\\') => return &input[..index + 2],
+                ESC => break,
+                _ => index += 1,
+            }
+        }
+    }
     if input.len() >= 3 && input[0] == ESC && input[1] == b'[' {
         for (offset, byte) in input[2..].iter().enumerate() {
             match byte {
@@ -115,6 +127,10 @@ enum Key {
     Release,
     /// A modifier key pressed on its own, as Shift is on the way to typing D.
     Modifier,
+    /// Something the terminal reports rather than a key: focus, a mouse report, or its answer to
+    /// a program's question. Programs that ask often and track the mouse would otherwise put one
+    /// between Ctrl-] and d and turn the d into typing.
+    Report,
     Other,
 }
 
@@ -125,6 +141,9 @@ impl Key {
             [CTRL_C] => return Self::CtrlC,
             b"d" | b"D" => return Self::Detach,
             _ => {}
+        }
+        if is_report(token) {
+            return Self::Report;
         }
         let Some(key) = EncodedKey::parse(token) else {
             return Self::Other;
@@ -141,6 +160,33 @@ impl Key {
             (100, 0 | SHIFT) => Self::Detach,
             _ => Self::Other,
         }
+    }
+}
+
+/// Whether a token is a terminal report no key is ever sent as. The one ambiguity, a cursor
+/// position at row 1 against Shift-F3 (`CSI 1 ; 2 R`), only delays that key while a detach is
+/// pending. X10 mouse reports (`CSI M` and three raw bytes) are left out: their bytes can be d.
+fn is_report(token: &[u8]) -> bool {
+    if token.len() > 2 && token[0] == ESC && token[1] != b'[' {
+        // Only whole strings are tokens this long; Alt and a key is two bytes.
+        return true;
+    }
+    let Some(body) = token.strip_prefix(b"\x1b[") else {
+        return false;
+    };
+    let Some((&last, parameters)) = body.split_last() else {
+        return false;
+    };
+    if matches!(parameters.first(), Some(b'?' | b'>' | b'=' | b'<'))
+        || parameters.iter().any(|byte| (0x20..=0x2f).contains(byte))
+    {
+        return true;
+    }
+    match last {
+        b'I' | b'O' => parameters.is_empty(),
+        b'R' | b'n' | b't' => true,
+        b'M' => !parameters.is_empty(),
+        _ => false,
     }
 }
 
@@ -390,6 +436,70 @@ mod tests {
         );
         // Outside a pending detach a modifier report is like any other key.
         assert_eq!(run(&[b"\x1b[57441;2u"]), (b"\x1b[57441;2u".to_vec(), false));
+    }
+
+    /// Codex and Claude Code ask the terminal questions and track the mouse, so answers and
+    /// reports can arrive between the two keys.
+    #[test]
+    fn terminal_reports_between_the_keys_do_not_stop_a_detach() {
+        let reports: &[&[u8]] = &[
+            b"\x1b[I",
+            b"\x1b[O",
+            b"\x1b[<35;20;9M",
+            b"\x1b[<0;10;5m",
+            b"\x1b[0;10;5M",
+            b"\x1b[12;40R",
+            b"\x1b[?62;22c",
+            b"\x1b[>1;10;0c",
+            b"\x1b[?2026;2$y",
+            b"\x1b[2;1$y",
+            b"\x1b[?0u",
+            b"\x1b[?997;1n",
+            b"\x1b[0n",
+            b"\x1b[8;24;80t",
+            b"\x1bP>|Terminal 2.14\x1b\\",
+            b"\x1b]11;rgb:ffff/ffff/ffff\x07",
+            b"\x1b]10;rgb:0000/0000/0000\x1b\\",
+            b"\x1b_Gi=1;OK\x1b\\",
+        ];
+        for report in reports {
+            assert_eq!(
+                run(&[b"\x1d", report, b"d"]),
+                (Vec::new(), true),
+                "{report:?}"
+            );
+            assert_eq!(
+                run(&[&[b"\x1d".as_slice(), report, b"d"].concat()]),
+                (Vec::new(), true),
+                "{report:?} in one read"
+            );
+            // Held reports reach the program, in order, when the leader turns out to be typing.
+            assert_eq!(
+                run(&[b"\x1d", report, b"x"]),
+                ([b"\x1d".as_slice(), report, b"x"].concat(), false),
+                "{report:?}"
+            );
+        }
+        let all = reports.concat();
+        assert_eq!(
+            run(&[&[b"\x1d".as_slice(), &all, b"d"].concat()]),
+            (Vec::new(), true)
+        );
+    }
+
+    /// An X10 mouse report's raw bytes may be a d; it is not held, so it cannot become one.
+    #[test]
+    fn an_x10_mouse_report_after_the_leader_is_typing() {
+        assert_eq!(run(&[b"\x1d\x1b[Md!!"]), (b"\x1d\x1b[Md!!".to_vec(), false));
+    }
+
+    /// An OSC or DCS that never ends in the read is Alt and a key, then text.
+    #[test]
+    fn an_unfinished_string_is_not_held() {
+        assert_eq!(
+            run(&[b"\x1d\x1b]11;rgb", b"d"]),
+            (b"\x1d\x1b]11;rgbd".to_vec(), false)
+        );
     }
 
     #[test]

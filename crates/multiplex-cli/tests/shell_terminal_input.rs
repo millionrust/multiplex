@@ -374,6 +374,38 @@ async fn a_resized_shell_window_resizes_the_program() {
     }
 }
 
+/// The app opens a pane's terminal at a default size and sends the real one as soon as the pane
+/// is laid out, while the attach is still starting. That resize must not be lost.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_window_resized_while_the_attach_starts_resizes_the_program() {
+    // The window between reading the starting size and watching for resizes is a few
+    // milliseconds wide for a shell, so sweep through it; a writer attach never resized at start.
+    let shell_delays: Vec<u64> = (0..=28).step_by(4).collect();
+    for (bridge, delays) in [
+        (Bridge::ShellWindow, shell_delays.clone()),
+        (Bridge::AppRaw, shell_delays),
+        (Bridge::Attach, vec![0, 10]),
+    ] {
+        for delay in delays {
+            let script = "stty raw -echo; printf 'INPUT-READY'; head -c 1 >/dev/null; stty size > \"$RECEIVED\"; printf 'INPUT-DONE'; sleep 30";
+            let mut console = Console::open(bridge, script).await;
+            thread::sleep(Duration::from_millis(delay));
+            console.resize(37, 113);
+            console.wait_for(b"INPUT-READY");
+            thread::sleep(Duration::from_millis(100));
+            console.send(b"r");
+            console.wait_for(b"INPUT-DONE");
+            let size = String::from_utf8(console.received(0)).unwrap();
+            console.close().await;
+            assert_eq!(
+                size.trim(),
+                "37 113",
+                "{bridge:?} lost a resize {delay} ms after it started"
+            );
+        }
+    }
+}
+
 /// A window that reports 0x0, as some do before they are drawn, leaves the program a usable size
 /// (the Host's own, or the classic 80x24 a shell window starts with) rather than one cell.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

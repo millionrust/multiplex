@@ -15,6 +15,7 @@ unsafe extern "system" {
     fn GetStdHandle(which: u32) -> *mut c_void;
     fn GetConsoleMode(handle: *mut c_void, mode: *mut u32) -> i32;
     fn SetConsoleMode(handle: *mut c_void, mode: u32) -> i32;
+    fn CancelSynchronousIo(thread: *mut c_void) -> i32;
     fn ReadConsoleW(
         handle: *mut c_void,
         buffer: *mut u16,
@@ -169,6 +170,14 @@ impl ConsoleInput {
             .collect::<String>()
             .into_bytes()
     }
+}
+
+/// Ends a console read the thread is waiting in, which nothing typed may ever end. Returns
+/// whether there was one to cancel.
+pub(crate) fn cancel_blocking_read(thread: &std::thread::JoinHandle<()>) -> bool {
+    use std::os::windows::io::AsRawHandle as _;
+    // SAFETY: the join handle owns a valid thread handle for as long as it is borrowed here.
+    unsafe { CancelSynchronousIo(thread.as_raw_handle()) != 0 }
 }
 
 #[cfg(test)]

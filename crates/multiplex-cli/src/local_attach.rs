@@ -280,7 +280,19 @@ pub(crate) async fn run_attach(
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut columns = validated.request.columns;
     let mut rows = validated.request.rows;
-    let mut resizes = WindowResizes::new((columns, rows))
+    // Attaching does not resize the Host. Watch from the size it reports, so a writer whose
+    // window differs, including one resized while the attach started, resizes it at once.
+    let host_size = state.viewport.and_then(|viewport| {
+        Some((
+            u16::try_from(viewport.columns).ok()?,
+            u16::try_from(viewport.rows).ok()?,
+        ))
+    });
+    let watched_from = match host_size {
+        Some(size) if validated.request.request_control => size,
+        _ => (columns, rows),
+    };
+    let mut resizes = WindowResizes::new(watched_from)
         .map_err(|_| terminal_unavailable("interactive terminal resizes are unavailable"))?;
 
     loop {
