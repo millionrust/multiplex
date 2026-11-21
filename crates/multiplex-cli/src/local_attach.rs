@@ -1,25 +1,18 @@
-#[cfg(unix)]
-#[path = "raw_stdin.rs"]
-mod raw_stdin;
-
-#[cfg(not(unix))]
-use std::io::Read as _;
 use std::io::{IsTerminal as _, Write};
 use std::time::Duration;
 
-use crossterm::event::{Event as TerminalEvent, EventStream, KeyCode, KeyEventKind};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use futures_util::StreamExt as _;
 use multiplex_client::{ConnectOptions, HostClient, LocalEndpoint, SequencedOutput};
 use multiplex_domain::{CommandId, HostInstanceId, HostedSessionId, OutputSequence};
 use rand::RngCore as _;
 use tokio_util::sync::CancellationToken;
 
+use crate::detach_keys::DetachKeys;
 use crate::local::{
     ValidatedSessionAttach, decode_host_lifecycle, host_lifecycle_name, map_client,
     map_input_after_dispatch, map_resize_after_dispatch,
 };
-use crate::remote_ssh::{append_key_bytes, is_cancel_key, is_leader_key};
+use crate::terminal_input::{TerminalInput, WindowResizes, window_output, window_size};
 use crate::{Cancellation, CliCommand, CliError, CliPaths, ErrorCode, LocalCommandService};
 
 const LIVE_POLL_INTERVAL: Duration = Duration::from_millis(40);
@@ -36,10 +29,11 @@ const SHELL_LEASE_IDLE: Duration = Duration::from_millis(1_500);
 pub(crate) enum AttachStyle {
     /// `session attach`: announces itself, and Ctrl-C detaches.
     Inspect,
-    /// `shell`: the window is the terminal. Nothing is announced, Ctrl-C goes to the program,
-    /// and only Ctrl-] then d detaches, leaving the session running. The window holds the writer
-    /// lease only while it is typed in, so a paired device can take a terminal nobody here is
-    /// using, and keys typed while a device holds it ring the bell instead of mixing in.
+    /// `shell`: the window is the terminal. Nothing is announced, its input reaches the program
+    /// byte for byte, and only Ctrl-] then d detaches, leaving the session running. The window
+    /// holds the writer lease only while it is typed in, so a paired device can take a terminal
+    /// nobody here is using, and keys typed while a device holds it ring the bell instead of
+    /// mixing in.
     Shell,
     /// Native terminal bridge: preserve every input byte, including terminal protocols.
     RawShell,
@@ -107,10 +101,6 @@ async fn send_shell_input(
         .and_then(|()| stdout.flush())
         .map_err(|_| output_unavailable())
 }
-// Bound each raw stdin read; complete pastes stream through negotiated Host requests.
-#[cfg(not(unix))]
-const MAX_INTERACTIVE_INPUT_BYTES: usize = 16 * 1024;
-
 pub struct LocalSessionAttachExecutor {
     paths: CliPaths,
 }
@@ -149,9 +139,9 @@ impl LocalSessionAttachExecutor {
                 "Run multiplex-cli session attach <id> without --json.",
             ));
         };
-        if let Ok((terminal_columns, terminal_rows)) = crossterm::terminal::size() {
-            *columns = terminal_columns.clamp(1, 1_000);
-            *rows = terminal_rows.clamp(1, 1_000);
+        if let Some((terminal_columns, terminal_rows)) = window_size() {
+            *columns = terminal_columns;
+            *rows = terminal_rows;
         }
         let service = LocalCommandService::open(self.paths.clone());
         let validated = service.validate_session_attach(
@@ -196,34 +186,24 @@ pub(crate) async fn run_attach(
         .map_err(map_client)?;
     verify_host_identity(&mut client, validated.request.expected_host_instance_id)?;
 
-    let mut stdout = std::io::stdout().lock();
-    // Enable VT before raw mode snapshots it. Drop raw mode first, then restore
-    // the original VT flags, including when readiness/replay fails.
-    #[cfg(windows)]
-    let _windows_vt_mode = if style == AttachStyle::RawShell {
-        Some(
-            crate::windows_console::RawVtModeGuard::enable()
-                .map_err(|_| terminal_unavailable("virtual terminal mode is unavailable"))?,
-        )
-    } else {
-        None
-    };
-    #[cfg(windows)]
-    let mut stdout: Box<dyn Write> = if style == AttachStyle::RawShell {
-        Box::new(crate::windows_console::MouseModeWriter::new(stdout))
-    } else {
-        Box::new(stdout)
-    };
+    // Raw mode, entered below, drops before these console modes are put back, including when
+    // readiness or replay fails.
+    let (_window_modes, mut stdout) = window_output(std::io::stdout().lock())
+        .map_err(|_| terminal_unavailable("virtual terminal mode is unavailable"))?;
+    let shell = style != AttachStyle::Inspect;
     // Enter raw input before announcing readiness or replaying output. Otherwise tcsetattr can
     // discard keys queued during restore, even though the native PTY already exists.
-    let _native_raw_mode = if style == AttachStyle::RawShell {
+    let _native_raw_mode = if shell {
         enable_raw_mode()
             .map_err(|_| terminal_unavailable("interactive terminal mode is unavailable"))?;
         let guard = RawModeGuard;
-        stdout
-            .write_all(crate::SHELL_READY_MARKER)
-            .and_then(|()| stdout.flush())
-            .map_err(|_| output_unavailable())?;
+        // Only the app's own bridge waits for this; a terminal window would ignore it.
+        if style == AttachStyle::RawShell {
+            stdout
+                .write_all(crate::SHELL_READY_MARKER)
+                .and_then(|()| stdout.flush())
+                .map_err(|_| output_unavailable())?;
+        }
         Some(guard)
     } else {
         None
@@ -271,14 +251,14 @@ pub(crate) async fn run_attach(
         )
         .map_err(|_| output_unavailable())?;
     }
-    let _raw_mode = if style != AttachStyle::RawShell {
+    let _raw_mode = if shell {
+        None
+    } else {
         enable_raw_mode()
             .map_err(|_| terminal_unavailable("interactive terminal mode is unavailable"))?;
         Some(RawModeGuard)
-    } else {
-        None
     };
-    if style == AttachStyle::RawShell {
+    if shell {
         return run_raw_shell(
             &mut client,
             &mut stdout,
@@ -287,96 +267,52 @@ pub(crate) async fn run_attach(
             state
                 .viewport
                 .map(|viewport| (viewport.columns, viewport.rows)),
+            (style == AttachStyle::Shell).then(DetachKeys::default),
             cancellation,
             &async_cancel,
         )
         .await;
     }
-    let mut events = EventStream::new();
-    let mut ticker = tokio::time::interval(match style {
-        AttachStyle::Inspect => LIVE_POLL_INTERVAL,
-        AttachStyle::Shell | AttachStyle::RawShell => SHELL_POLL_INTERVAL,
-    });
+    let mut input = TerminalInput::stdin()
+        .map_err(|_| terminal_unavailable("interactive terminal input is unavailable"))?;
+    let mut detach_keys = DetachKeys::with_ctrl_c();
+    let mut ticker = tokio::time::interval(LIVE_POLL_INTERVAL);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut columns = validated.request.columns;
     let mut rows = validated.request.rows;
-    let mut leader = false;
-    let mut lease = ShellLease::new();
-    let shell = style == AttachStyle::Shell;
+    let mut resizes = WindowResizes::new((columns, rows))
+        .map_err(|_| terminal_unavailable("interactive terminal resizes are unavailable"))?;
 
     loop {
         tokio::select! {
             biased;
-            event = events.next() => {
-                let event = event
-                    .ok_or_else(|| terminal_unavailable("interactive terminal event stream ended"))?
-                    .map_err(|_| terminal_unavailable("interactive terminal input is unavailable"))?;
-                match event {
-                    TerminalEvent::Key(key) if key.kind != KeyEventKind::Release => {
-                        if style == AttachStyle::Inspect && is_cancel_key(&key) {
-                            break;
-                        }
-                        if leader {
-                            leader = false;
-                            if matches!(key.code, KeyCode::Char('d' | 'D')) && key.modifiers.is_empty() {
-                                break;
-                            }
-                            if shell {
-                                send_shell_input(&mut client, &mut lease, vec![0x1d], &mut stdout, &async_cancel).await?;
-                            } else if validated.request.request_control {
-                                send_input(&mut client, vec![0x1d], &async_cancel).await?;
-                            }
-                        } else if is_leader_key(&key) {
-                            leader = true;
-                            continue;
-                        }
-                        if shell || validated.request.request_control {
-                            let mut bytes = Vec::with_capacity(8);
-                            append_key_bytes(&mut bytes, key)?;
-                            if shell {
-                                send_shell_input(&mut client, &mut lease, bytes, &mut stdout, &async_cancel).await?;
-                            } else if !bytes.is_empty() {
-                                send_input(&mut client, bytes, &async_cancel).await?;
-                            }
-                        }
+            bytes = input.recv() => {
+                let bytes = bytes
+                    .ok_or_else(|| terminal_unavailable("interactive terminal input ended"))?;
+                let (bytes, detached) = detach_keys.filter(&bytes);
+                // A read-only attach sends nothing on; its window only watches.
+                if validated.request.request_control && !bytes.is_empty() {
+                    send_input(&mut client, bytes, &async_cancel).await?;
+                }
+                if detached {
+                    break;
+                }
+            }
+            (next_columns, next_rows) = resizes.changed() => {
+                columns = next_columns;
+                rows = next_rows;
+                if validated.request.request_control {
+                    let applied = client
+                        .resize(CommandId::new(), u32::from(columns), u32::from(rows), &async_cancel)
+                        .await
+                        .map_err(map_resize_after_dispatch)?;
+                    if !applied {
+                        return Err(CliError::new(
+                            ErrorCode::Conflict,
+                            "interactive terminal resize was not applied",
+                            "Detach and inspect the current writer lease before retrying.",
+                        ));
                     }
-                    TerminalEvent::Paste(value) if shell || validated.request.request_control => {
-                        // Crossterm removes the framing when it emits Paste. Restore it
-                        // so shells and TUIs receive one paste rather than typed newlines.
-                        let bytes = [b"\x1b[200~".as_slice(), value.as_bytes(), b"\x1b[201~"].concat();
-                        if shell {
-                            send_shell_input(&mut client, &mut lease, bytes, &mut stdout, &async_cancel).await?;
-                        } else {
-                            send_input(&mut client, bytes, &async_cancel).await?;
-                        }
-                    }
-                    // A shell window that is resized while a device writes keeps the device's
-                    // size; the window's own takes effect the next time it is typed in.
-                    TerminalEvent::Resize(next_columns, next_rows) if shell => {
-                        columns = next_columns.clamp(1, 1_000);
-                        rows = next_rows.clamp(1, 1_000);
-                        if lease.take(&mut client, &async_cancel).await {
-                            let _ = client
-                                .resize(CommandId::new(), u32::from(columns), u32::from(rows), &async_cancel)
-                                .await;
-                        }
-                    }
-                    TerminalEvent::Resize(next_columns, next_rows) if validated.request.request_control => {
-                        columns = next_columns.clamp(1, 1_000);
-                        rows = next_rows.clamp(1, 1_000);
-                        let applied = client
-                            .resize(CommandId::new(), u32::from(columns), u32::from(rows), &async_cancel)
-                            .await
-                            .map_err(map_resize_after_dispatch)?;
-                        if !applied {
-                            return Err(CliError::new(
-                                ErrorCode::Conflict,
-                                "interactive terminal resize was not applied",
-                                "Detach and inspect the current writer lease before retrying.",
-                            ));
-                        }
-                    }
-                    _ => {}
                 }
             }
             _ = ticker.tick() => {
@@ -392,9 +328,7 @@ pub(crate) async fn run_attach(
                     &async_cancel,
                 ).await?;
                 let lifecycle = decode_host_lifecycle(state.lifecycle)?;
-                if shell {
-                    lease.release_if_idle(&mut client, &async_cancel).await;
-                } else if validated.request.request_control && !state.has_writer_lease {
+                if validated.request.request_control && !state.has_writer_lease {
                     return Err(CliError::new(
                         ErrorCode::InteractionRequired,
                         "the Session writer lease was lost during attach",
@@ -411,41 +345,27 @@ pub(crate) async fn run_attach(
     Ok(())
 }
 
-/// GPUI already encodes keys, paste, focus, mouse reports and terminal replies. Parsing that
-/// stream as key events loses protocol bytes. Read it verbatim, with bounded backpressure, while
-/// polling the frontend PTY size so resize signals reach the durable Host too.
+/// A terminal window, or GPUI, already encodes keys, paste, focus, mouse reports and its replies
+/// to the program's questions. Parsing that stream as key events loses protocol bytes, and stops
+/// every key behind a reply the parser cannot finish. Read it verbatim, with bounded
+/// backpressure, while polling the frontend PTY size so resize signals reach the durable Host
+/// too. A shell window also watches for its detach keys.
+#[allow(clippy::too_many_arguments)]
 async fn run_raw_shell(
     client: &mut HostClient,
     stdout: &mut impl Write,
     watermark: &mut OutputSequence,
     viewport: (u16, u16),
     mut host_viewport: Option<(u32, u32)>,
+    mut detach_keys: Option<DetachKeys>,
     cancellation: &Cancellation,
     cancel: &CancellationToken,
 ) -> Result<(), CliError> {
     let (mut columns, mut rows) = viewport;
-    #[cfg(unix)]
-    let mut input_rx = raw_stdin::RawStdin::stdin()
+    let mut input_rx = TerminalInput::stdin()
         .map_err(|_| terminal_unavailable("raw terminal input is unavailable"))?;
-    #[cfg(not(unix))]
-    let mut input_rx = {
-        let (input_tx, input_rx) = tokio::sync::mpsc::channel(8);
-        std::thread::spawn(move || {
-            let mut stdin = std::io::stdin().lock();
-            let mut bytes = [0u8; MAX_INTERACTIVE_INPUT_BYTES];
-            loop {
-                match stdin.read(&mut bytes) {
-                    Ok(0) | Err(_) => break,
-                    Ok(count) => {
-                        if input_tx.blocking_send(bytes[..count].to_vec()).is_err() {
-                            break;
-                        }
-                    }
-                }
-            }
-        });
-        input_rx
-    };
+    let mut resizes = WindowResizes::new(viewport)
+        .map_err(|_| terminal_unavailable("raw terminal resizes are unavailable"))?;
     let mut lease = ShellLease::new();
     let mut ticker = tokio::time::interval(SHELL_POLL_INTERVAL);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -453,27 +373,32 @@ async fn run_raw_shell(
         tokio::select! {
             bytes = input_rx.recv() => {
                 let Some(bytes) = bytes else { break; };
+                let (bytes, detached) = match detach_keys.as_mut() {
+                    Some(keys) => keys.filter(&bytes),
+                    None => (bytes, false),
+                };
+                if bytes.is_empty() {
+                    if detached { break; }
+                    continue;
+                }
                 let viewport = (u32::from(columns), u32::from(rows));
                 if lease.take(client, cancel).await && host_viewport != Some(viewport)
                     && client.resize(CommandId::new(), viewport.0, viewport.1, cancel).await.map_err(map_resize_after_dispatch)? {
                     host_viewport = Some(viewport);
                 }
                 send_shell_input(client, &mut lease, bytes, stdout, cancel).await?;
+                if detached { break; }
+            }
+            (next_columns, next_rows) = resizes.changed() => {
+                columns = next_columns;
+                rows = next_rows;
+                if lease.take(client, cancel).await
+                    && client.resize(CommandId::new(), u32::from(columns), u32::from(rows), cancel).await.map_err(map_resize_after_dispatch)? {
+                    host_viewport = Some((u32::from(columns), u32::from(rows)));
+                }
             }
             _ = ticker.tick() => {
                 if cancellation.is_cancelled() { break; }
-                if let Ok((next_columns, next_rows)) = crossterm::terminal::size() {
-                    let next_columns = next_columns.clamp(1, 1_000);
-                    let next_rows = next_rows.clamp(1, 1_000);
-                    if (columns, rows) != (next_columns, next_rows) {
-                        columns = next_columns;
-                        rows = next_rows;
-                        if lease.take(client, cancel).await
-                            && client.resize(CommandId::new(), u32::from(columns), u32::from(rows), cancel).await.map_err(map_resize_after_dispatch)? {
-                            host_viewport = Some((u32::from(columns), u32::from(rows)));
-                        }
-                    }
-                }
                 let state = poll_output(client, stdout, watermark, columns, rows, cancel).await?;
                 if let Some(viewport) = state.viewport {
                     host_viewport = Some((viewport.columns, viewport.rows));

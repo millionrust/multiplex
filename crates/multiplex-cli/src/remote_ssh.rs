@@ -8,11 +8,7 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
-use crossterm::event::{
-    Event as TerminalEvent, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
-};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use futures_util::StreamExt as _;
 use keyring::Error as KeyringError;
 use multiplex_client::{
     AsyncSshControllerProcess, SshControllerErrorCode, SshControllerTarget, SshOperationClass,
@@ -36,6 +32,8 @@ use sha2::{Digest as _, Sha256};
 use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite};
 use zeroize::Zeroize as _;
 
+use crate::detach_keys::DetachKeys;
+use crate::terminal_input::{TerminalInput, WindowResizes, window_output, window_size};
 use crate::{
     ApprovalDecision, Cancellation, CliData, CliError, ControllerRemoteSessionView,
     ControllerSshAction, ControllerSshCommand, ControllerSshData, ErrorCode,
@@ -352,11 +350,11 @@ impl SystemSshControllerExecutor {
                 "Run multiplex-cli controller ssh ... attach with a session and generation.",
             ));
         }
-        if let Ok((terminal_columns, terminal_rows)) = crossterm::terminal::size()
+        if let Some((terminal_columns, terminal_rows)) = window_size()
             && let ControllerSshAction::Attach { columns, rows, .. } = &mut command.action
         {
-            *columns = terminal_columns.max(1);
-            *rows = terminal_rows.max(1);
+            *columns = terminal_columns;
+            *rows = terminal_rows;
         }
         let profile = StoredControllerProfile::load(&self.config_root, &command.target)?;
         let private_key = profile.private_key()?;
@@ -648,7 +646,8 @@ async fn run_interactive_attach(
     else {
         return Err(protocol_failure());
     };
-    let mut stdout = std::io::stdout().lock();
+    let (_window_modes, mut stdout) =
+        window_output(std::io::stdout().lock()).map_err(|_| terminal_mode_unavailable())?;
     let attach_id = channel
         .send(
             ControllerCommand::Attach {
@@ -705,8 +704,10 @@ async fn run_interactive_attach(
     .map_err(|_| output_unavailable())?;
     enable_raw_mode().map_err(|_| terminal_mode_unavailable())?;
     let _raw_mode = RawModeGuard;
-    let mut events = EventStream::new();
-    let mut leader = false;
+    let mut terminal = TerminalInput::stdin().map_err(|_| terminal_mode_unavailable())?;
+    let mut detach_keys = DetachKeys::with_ctrl_c();
+    let mut resizes =
+        WindowResizes::new((*columns, *rows)).map_err(|_| terminal_mode_unavailable())?;
     let mut input = VecDeque::new();
     let mut resize = None;
     let mut pending_mutation = None;
@@ -767,45 +768,17 @@ async fn run_interactive_attach(
                     _ => return Err(protocol_failure()),
                 }
             }
-            event = events.next(), if !detach_requested && input.len() < INPUT_MAX_BYTES as usize => {
-                let event = event
-                    .ok_or_else(terminal_mode_unavailable)?
-                    .map_err(|_| terminal_mode_unavailable())?;
-                match event {
-                    TerminalEvent::Key(key) if key.kind != KeyEventKind::Release => {
-                        if is_cancel_key(&key) {
-                            detach_requested = true;
-                            continue;
-                        }
-                        if leader {
-                            leader = false;
-                            if matches!(key.code, KeyCode::Char('d' | 'D'))
-                                && key.modifiers.is_empty()
-                            {
-                                detach_requested = true;
-                                continue;
-                            }
-                            if *request_control {
-                                input.push_back(0x1d);
-                            }
-                        } else if is_leader_key(&key) {
-                            leader = true;
-                            continue;
-                        }
-                        if *request_control {
-                            let mut bytes = Vec::new();
-                            append_key_bytes(&mut bytes, key)?;
-                            input.extend(bytes);
-                        }
-                    }
-                    TerminalEvent::Paste(bytes) if *request_control => {
-                        queue_interactive_paste(&mut input, &bytes);
-                    }
-                    TerminalEvent::Resize(columns, rows) if *request_control => {
-                        resize = Some((u32::from(columns.max(1)), u32::from(rows.max(1))));
-                    }
-                    _ => {}
+            bytes = terminal.recv(), if !detach_requested && input.len() < INPUT_MAX_BYTES as usize => {
+                let bytes = bytes.ok_or_else(terminal_mode_unavailable)?;
+                let (bytes, detached) = detach_keys.filter(&bytes);
+                // A read-only attach sends nothing on; its window only watches.
+                if *request_control {
+                    input.extend(bytes);
                 }
+                detach_requested = detached;
+            }
+            (columns, rows) = resizes.changed(), if *request_control && !detach_requested => {
+                resize = Some((u32::from(columns), u32::from(rows)));
             }
             () = wait_for_cancellation(cancellation), if !detach_requested => {
                 detach_requested = true;
@@ -985,71 +958,10 @@ impl Drop for RawModeGuard {
     }
 }
 
-pub(crate) fn is_leader_key(key: &KeyEvent) -> bool {
-    // In legacy terminal input Ctrl-] is the single byte 0x1d. Crossterm decodes
-    // that byte as Ctrl-5, so accept both representations.
-    matches!(key.code, KeyCode::Char(']' | '5')) && key.modifiers == KeyModifiers::CONTROL
-}
-
-pub(crate) fn is_cancel_key(key: &KeyEvent) -> bool {
-    matches!(key.code, KeyCode::Char('c' | 'C')) && key.modifiers == KeyModifiers::CONTROL
-}
-
-fn queue_interactive_paste(input: &mut VecDeque<u8>, text: &str) {
-    input.extend(b"\x1b[200~");
-    input.extend(text.as_bytes());
-    input.extend(b"\x1b[201~");
-}
-
 fn next_interactive_input(input: &mut VecDeque<u8>) -> Vec<u8> {
     input
         .drain(..input.len().min(INPUT_MAX_BYTES as usize))
         .collect()
-}
-
-pub(crate) fn append_key_bytes(bytes: &mut Vec<u8>, key: KeyEvent) -> Result<(), CliError> {
-    let mut encoded = Vec::with_capacity(8);
-    match key.code {
-        KeyCode::Char(character) if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            if character.is_ascii() {
-                encoded.push((character.to_ascii_uppercase() as u8) & 0x1f);
-            } else {
-                return Ok(());
-            }
-        }
-        KeyCode::Char(character) => {
-            let mut buffer = [0; 4];
-            encoded.extend_from_slice(character.encode_utf8(&mut buffer).as_bytes());
-        }
-        KeyCode::Enter => encoded.push(b'\r'),
-        KeyCode::Tab => encoded.push(b'\t'),
-        KeyCode::BackTab => encoded.extend_from_slice(b"\x1b[Z"),
-        KeyCode::Backspace => encoded.push(0x7f),
-        KeyCode::Esc => encoded.push(0x1b),
-        KeyCode::Left => encoded.extend_from_slice(b"\x1b[D"),
-        KeyCode::Right => encoded.extend_from_slice(b"\x1b[C"),
-        KeyCode::Up => encoded.extend_from_slice(b"\x1b[A"),
-        KeyCode::Down => encoded.extend_from_slice(b"\x1b[B"),
-        KeyCode::Home => encoded.extend_from_slice(b"\x1b[H"),
-        KeyCode::End => encoded.extend_from_slice(b"\x1b[F"),
-        KeyCode::PageUp => encoded.extend_from_slice(b"\x1b[5~"),
-        KeyCode::PageDown => encoded.extend_from_slice(b"\x1b[6~"),
-        KeyCode::Delete => encoded.extend_from_slice(b"\x1b[3~"),
-        KeyCode::Insert => encoded.extend_from_slice(b"\x1b[2~"),
-        KeyCode::F(number) if (1..=4).contains(&number) => {
-            encoded.extend_from_slice([0x1b, b'O', b'P' + number - 1].as_slice());
-        }
-        KeyCode::F(number) if (5..=12).contains(&number) => {
-            let sequence = [15, 17, 18, 19, 20, 21, 23, 24][usize::from(number - 5)];
-            encoded.extend_from_slice(format!("\x1b[{sequence}~").as_bytes());
-        }
-        _ => return Ok(()),
-    }
-    if key.modifiers.contains(KeyModifiers::ALT) {
-        bytes.push(0x1b);
-    }
-    bytes.extend_from_slice(&encoded);
-    Ok(())
 }
 
 fn terminal_mode_unavailable() -> CliError {
@@ -1928,8 +1840,7 @@ mod tests {
         let text =
             include_str!("../../../tests/fixtures/terminal/browser-checklist.txt").repeat(700);
         let mut queue = std::collections::VecDeque::from(b"before".to_vec());
-        super::queue_interactive_paste(&mut queue, &text);
-        super::queue_interactive_paste(&mut queue, "");
+        queue.extend(format!("\x1b[200~{text}\x1b[201~\x1b[200~\x1b[201~").bytes());
         queue.extend(b"after");
         let mut received = Vec::new();
         let mut requests = 0;
@@ -1944,35 +1855,6 @@ mod tests {
             received,
             format!("before\x1b[200~{text}\x1b[201~\x1b[200~\x1b[201~after").into_bytes()
         );
-    }
-
-    #[test]
-    fn interactive_keys_encode_xterm_bytes_and_reserve_the_detach_leader() {
-        let mut bytes = Vec::new();
-        append_key_bytes(
-            &mut bytes,
-            KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
-        )
-        .unwrap();
-        append_key_bytes(&mut bytes, KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)).unwrap();
-        append_key_bytes(
-            &mut bytes,
-            KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL),
-        )
-        .unwrap();
-        assert_eq!(bytes, b"a\x1b[A\x18");
-        assert!(is_leader_key(&KeyEvent::new(
-            KeyCode::Char(']'),
-            KeyModifiers::CONTROL,
-        )));
-        assert!(is_leader_key(&KeyEvent::new(
-            KeyCode::Char('5'),
-            KeyModifiers::CONTROL,
-        )));
-        assert!(is_cancel_key(&KeyEvent::new(
-            KeyCode::Char('c'),
-            KeyModifiers::CONTROL,
-        )));
     }
 
     #[test]

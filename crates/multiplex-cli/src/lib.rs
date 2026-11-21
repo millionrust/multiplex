@@ -3,11 +3,13 @@
 mod args;
 mod browser_api;
 mod contract;
+mod detach_keys;
 mod local;
 mod local_attach;
 mod remote_ssh;
 mod render;
 mod shell;
+mod terminal_input;
 pub mod web_server;
 
 use std::io::{self, Read, Write};

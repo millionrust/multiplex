@@ -130,12 +130,7 @@ impl ShellLauncher {
         }
         // A terminal that reports no size, as some do before their window is drawn, gets the
         // classic one; the first resize puts the real size right.
-        let (columns, rows) = crossterm::terminal::size()
-            .ok()
-            .filter(|&(columns, rows)| columns >= 10 && rows >= 2)
-            .unwrap_or((80, 24));
-        let columns = columns.min(1_000);
-        let rows = rows.min(1_000);
+        let (columns, rows) = crate::terminal_input::window_size().unwrap_or((80, 24));
         let restoring = session_id.is_some();
         let session_id = session_id.unwrap_or_default();
         let host_instance_id = HostInstanceId::new();
